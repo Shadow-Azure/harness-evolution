@@ -255,15 +255,9 @@ function relationOf(
   return parent.events[index]?.relationConfidence ?? null;
 }
 
-function completionWarningOf(
-  agent: SessionAgent,
-  relation: RelationConfidence | null,
-): string | null {
+function completionWarningOf(agent: SessionAgent): string | null {
   if (agent.kind === "main") {
     return null;
-  }
-  if (relation === "derived") {
-    return MISSING_REPORT_WARNING;
   }
   if (
     agent.executionOutcome === "interrupted" &&
@@ -1062,7 +1056,7 @@ export function buildGraph(
       );
       const labelWidth = measure(item.agent.label, FONT_AGENT_LABEL);
       const relation = relationOf(parentAgent, item.agent);
-      const warning = completionWarningOf(item.agent, relation);
+      const warning = completionWarningOf(item.agent);
       const nodeMetaWidth = measure(
         metaText(item.agent.lines, relation, warning),
         FONT_PILL,

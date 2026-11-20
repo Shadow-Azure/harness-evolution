@@ -464,6 +464,47 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
     }
 
     await page.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        const list = document.querySelector(".session-list");
+        const originals = [...list.querySelectorAll("[data-testid='session-card']")];
+        if (originals.length !== 4 || document.querySelector("[data-session-id^='layout-clone-']")) return false;
+        for (let i = 0; i < 6; i += 1) {
+          const clone = originals[i % originals.length].cloneNode(true);
+          clone.dataset.sessionId = "layout-clone-" + i;
+          clone.removeAttribute("data-selected");
+          list.appendChild(clone);
+        }
+        return true;
+      })()`,
+    });
+    const tenCard = await waitForDocument(
+      page.session,
+      `(() => {
+        const list = document.querySelector(".session-list");
+        const cards = list.querySelectorAll("[data-testid='session-card']");
+        if (cards.length !== 10) return null;
+        const srOnly = [...list.querySelectorAll(".sr-only")];
+        return {
+          cards: cards.length,
+          srOnlyInBody: srOnly.filter((node) => node.offsetParent === document.body).length,
+          documentScrollHeight: document.scrollingElement.scrollHeight,
+          innerHeight,
+        };
+      })()`,
+      "ten-card Session layout",
+    );
+    assert.equal(tenCard.cards, 10, JSON.stringify(tenCard));
+    assert.equal(tenCard.srOnlyInBody, 0, JSON.stringify(tenCard));
+    assert.equal(
+      tenCard.documentScrollHeight,
+      tenCard.innerHeight,
+      JSON.stringify(tenCard),
+    );
+    await page.session.send("Runtime.evaluate", {
+      expression: `document.querySelectorAll("[data-session-id^='layout-clone-']").forEach((node) => node.remove())`,
+    });
+
+    await page.session.send("Runtime.evaluate", {
       expression: `document.querySelector("[data-testid='session-overview']").scrollTop = 1e6`,
     });
     const lowContentBottom = await waitForDocument(

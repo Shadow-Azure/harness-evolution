@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable, Iterator, Mapping
+from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 
 import httpx
 import pytest
@@ -15,6 +15,7 @@ from app.service.acquisition.parsers import (
     BaseTraceParser,
     ParseContext,
     TraceParserFactory,
+    TracePayload,
     UnsupportedTraceRuntime,
 )
 from app.service.acquisition.parsers.base import _dict, _string
@@ -339,6 +340,24 @@ class FakeParser(BaseTraceParser):
 
     runtime_key = "fake-runtime"
     parser_version = 1
+
+    @classmethod
+    def can_parse(cls, payloads: Sequence[TracePayload]) -> bool:
+        """Accept only the fake event schema used by this module."""
+        if not payloads:
+            return False
+        for payload in payloads:
+            first_line = next(
+                (line for line in payload.content.splitlines() if line.strip()),
+                "",
+            )
+            try:
+                first = json.loads(first_line)
+            except json.JSONDecodeError:
+                return False
+            if not isinstance(first, dict) or "event" not in first or "type" in first:
+                return False
+        return True
 
     def consume_record(
         self,
