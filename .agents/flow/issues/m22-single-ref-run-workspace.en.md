@@ -34,7 +34,7 @@ m19 changed only target-content reads and explicitly left the run workspace mirr
 - A run workspace cold clone fetches only the target ref (branch / tag / full commit) and never runs `--mirror`; a target repository clone lands in the 10MB class and completes within 60 seconds.
 - The cache keys on target + ref, with an explicit fetch when the ref changes; transient failures keep complete objects, and partial cleanup and retry are explicit.
 - A single-ref clone supports creating the run branch, writing a patch, committing, passing ancestry checks, and pushing, with the same behavior as the full-mirror flow.
-- Run events record the clone ref, cache hit, duration, and proxy state (disabled / closed / open), so proxy usage is answerable without SSH.
+- Run events and structured logs record, for every git operation (ls-remote / clone / fetch / push), whether it used the proxy, proxy state transitions, fallback reason, and duration; no SSH is needed to answer which operations of a run used the proxy.
 - The push target and credential policy are explicit: by default, do not push a branch to a third-party repository without write access; when pushing is required, use a writable fork / push URL and credentials.
 
 ## Design authority
@@ -51,7 +51,9 @@ m19 changed only target-content reads and explicitly left the run workspace mirr
 - `apps/api/app/third_party_api/git/workspace.py`: replace `_ensure_mirror` with a target + ref `_ensure_ref_cache`. For a tag / branch, run `git init --bare` plus `git fetch --no-tags origin <ref>:<local-ref>`; for a full commit, run `git fetch --depth 1 --no-tags origin <sha>`; `--mirror` is no longer used. The cache key contains the target and the normalized ref, a process lock serializes access, and a ref change triggers an explicit fetch.
 - `prepare`: the workspace still runs `git clone --no-checkout` from the local cache, then `git switch -c evo/<date>-<runId> <base>` and `remote set-url origin <repo_url>`; branch/patch/commit/push behavior is unchanged.
 - Failure and cleanup: transient failures keep already-complete objects; partial directories are cleaned up under the existing policy and can be retried; error classification keeps the `clone` / `reference` / `workspace` / `push` boundary and never exposes stderr or credentials.
-- Run events: add `ref`, `cacheHit`, `cloneSeconds`, and `proxyState` (`disabled` / `closed` / `open`) to the prepare/clone event payload; never record proxy credentials or configuration content. The fields are additive and do not change existing consumers.
+- Run events: add `ref`, `cacheHit`, `cloneSeconds`, and `proxyState` (`disabled` / `closed` / `open`) to the prepare/clone event payload, plus a bounded (≤20) `gitOperations` list; each item carries `operation` (ls-remote / clone / fetch / push), `viaProxy`, `proxyStateBefore` / `proxyStateAfter`, `fallbackReason`, `durationMs`, `exitCode`, and `targetHost`. Never record full URLs, credentials, stderr, or proxy configuration content; truncate and mark the list when it exceeds the bound.
+- Proxy observability: emit one structured log record `git.proxy.operation` per git subprocess (same fields plus `runId` / `jobId` / `stage`; proxy probes use `operation=probe` and `runId=null`) so log aggregation can filter by run. On a proxy-layer failure record `viaProxy=false` and `fallbackReason` such as `proxy_connect` / `407` / `tunnel` / `timeout`; keep health probes separate from run traffic so a probe failure is not mistaken for a run that bypassed the proxy.
+- Admin diagnostics (recommended): provide an admin-only read-only endpoint such as `GET /api/diagnostics/git-proxy` returning the latest N operations and the current `git.proxy.state`; never return proxy credentials or full configuration. If the endpoint is deferred, run events and structured logs must still satisfy the acceptance below; do not rely on SSH and journal access.
 - Push: keep `HE_GIT_PUSH`; add an optional push URL (fork / push URL) or explicitly require disabling push for third-party targets; credentials come only from the runtime environment / credential helper and never enter the repository or database. Do not silently push a branch to a target without write access.
 - Tests: assert argv never contains `--mirror`; cover tags, branches, full SHAs, cache reuse, ref-change refresh, missing refs, and failure cleanup; cover prepare → patch → commit → ancestry → push (local bare remote) and the event payload.
 - Docs: update the git workspace / deployment configuration docs and the Agent Note with the trade-offs of single-ref cloning, caching, and push credentials.
@@ -80,6 +82,7 @@ pnpm lint:docs
 ```
 
 - Unit tests: a local bare repository supports tag, branch, and full SHA targets with only the target ref fetched; argv contains no `--mirror`; a cache hit does not clone again; a ref change triggers a fetch; failure classification and cleanup match expectations; prepare → commit → push works against a local bare remote.
+- Proxy observability tests: a working proxy records `viaProxy=true`; a proxy-layer failure that retries direct records `viaProxy=false` and `fallbackReason`; disabled / open states are recorded; probes stay distinct from run traffic; logs and events contain no credentials or full URLs; `gitOperations` is bounded.
 - Measurement: `git clone --branch v6.4.1 --single-branch --no-tags https://github.com/obra/superpowers /tmp/sp` produces a pack of about 3.9MiB and finishes well under 60 seconds; the run workspace code no longer contains `--mirror`.
 
 ## Acceptance
@@ -87,18 +90,18 @@ pnpm lint:docs
 - A run workspace cold clone no longer runs `--mirror`; tags, branches, and full commits fetch only the target ref.
 - A single-ref clone supports creating the run branch, writing a patch, committing, passing ancestry checks, and pushing; the push target/credential policy is explicit and third-party targets without write access do not receive a branch by default.
 - The cache keys on target + ref and supports hit/refresh; transient failures do not discard complete objects, and partial caches can be retried.
-- Run events include ref, cacheHit, cloneSeconds, and proxyState, so proxy usage is directly answerable.
+- Any run can answer from run events or structured logs, for ls-remote / clone / fetch / push, whether each operation used the proxy, how proxy state changed, and whether it fell back to direct access and why (proxy_connect / 407 / tunnel / timeout, etc.); no SSH is needed. `gitOperations` is bounded and carries no credentials.
 - Existing API, contracts, frontend, and evaluation contracts are unchanged; the target repository clone completes within the 60-second limit.
 
 ## Gates and CI
 
 - `pnpm test:api`, `pnpm typecheck:api`, `pnpm lint:api`, `pnpm verify:flow`, `pnpm lint:docs`; if event fields enter OpenAPI, also run `pnpm contract:check`.
 - `verify:flow --diff` checks the PR title and commits for `(#N)` and scope coverage.
-- New tests cover single-ref argv, cache reuse/refresh, ref types, push, and event fields.
+- New tests cover single-ref argv, cache reuse/refresh, ref types, push, event fields, and per-operation proxy records.
 
 ## Non-goals
 
 - No Xray / VLESS proxy, Secret, or deployment-fallback changes (m18).
 - No target-content cache or 20-second-limit changes (m19).
-- No patch generation, evaluation, frontend, preview-contract, or seven-step state-machine changes.
+- No patch generation, evaluation, frontend, preview-contract, or seven-step state-machine changes; no proxy selection / circuit-breaker behavior changes, only observability.
 - No push credentials in the repository or database; no default push to a third-party public repository.
