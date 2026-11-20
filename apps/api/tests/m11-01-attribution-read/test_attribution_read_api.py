@@ -362,6 +362,7 @@ async def attribution_api(tmp_path: Path) -> AsyncIterator[AttributionApiEnviron
                         "target_type": "skill",
                         "target_name": "deep-research",
                         "target_version": "v2.0.0",
+                        "base_commit": "a3f9c21d4e5f60718293a4b5c6d7e8f901234567",
                         "repo_url": "https://example.invalid/skills.git",
                         "sub_dir": "skills/deep-research",
                         "created_at": NOW,
@@ -376,6 +377,7 @@ async def attribution_api(tmp_path: Path) -> AsyncIterator[AttributionApiEnviron
                         "target_type": "agent",
                         "target_name": "Explore",
                         "target_version": "v1.0.0",
+                        "base_commit": None,
                         "repo_url": "https://example.invalid/agents.git",
                         "sub_dir": "agents/explore",
                         "created_at": NOW,
@@ -483,6 +485,8 @@ async def test_attribution_pages_are_newest_first_and_totals_count_links(
     ]
     newest = first.json()["items"][0]
     assert newest["objectVersion"] == "v2.0.0"
+    assert newest["objectRef"] == "v2.0.0"
+    assert newest["objectCommit"] == "a3f9c21"
     assert newest["runId"] == RUN_ID
     assert newest["isCached"] is True
     assert newest["reusedCount"] == 2
@@ -490,6 +494,8 @@ async def test_attribution_pages_are_newest_first_and_totals_count_links(
     assert non_target["conclusion"] == "non_target"
     assert non_target["category"] is None
     assert non_target["objectVersion"] is None
+    assert non_target["objectRef"] is None
+    assert non_target["objectCommit"] is None
 
 
 async def test_attribution_detail_returns_reasoning_and_trigger_compare(

@@ -25,7 +25,9 @@ class AttributionItem(IdentityModel):
 
     ``attributionId`` is the stable deep-link id and maps ``probe_reports.probe_id``;
     ``runId`` prefers the last run that reused the conclusion so a deep link
-    opens the run that produced the currently displayed row.
+    opens the run that produced the currently displayed row. ``objectRef`` and
+    ``objectCommit`` are display-only evidence from that run; clients fall back
+    to ``objectVersion`` when they are absent.
     """
 
     attribution_id: str = Field(max_length=64)
@@ -33,6 +35,8 @@ class AttributionItem(IdentityModel):
     object_type: AttributionObjectType
     object_name: str = Field(min_length=1, max_length=128)
     object_version: str | None = Field(default=None, max_length=96)
+    object_ref: str | None = Field(default=None, max_length=96)
+    object_commit: str | None = Field(default=None, max_length=40)
     conclusion: AttributionConclusion
     category: AttributionCategory | None
     confidence: float = Field(ge=0, le=1)

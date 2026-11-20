@@ -453,6 +453,8 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "target",
         "window",
         "models",
+        "policy",
+        "cacheEnabled",
         "createdBy",
         "createdAt",
         "status",

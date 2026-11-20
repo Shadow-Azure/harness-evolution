@@ -27,6 +27,7 @@ from app.db.models.domain import (
 from app.db.models.evolution import (
     EvolutionRunCandidateRecord,
     evolution_run_candidates,
+    evolution_runs,
     record_from_evolution_run_candidate,
 )
 from app.utils.time import as_shanghai
@@ -213,6 +214,8 @@ class AttributionRecord:
     probe_type: str
     probe_object: str
     object_version: str | None
+    object_ref: str | None
+    object_commit: str | None
     attribute_type: str | None
     conclusion: str
     confidence: float
@@ -305,6 +308,8 @@ def _row_attribution(mapping: RowMapping) -> AttributionRecord:
         probe_type=mapping["probe_type"],
         probe_object=mapping["probe_object"],
         object_version=_text(mapping["object_version"]),
+        object_ref=_text(mapping["object_ref"]),
+        object_commit=_text(mapping["object_commit"]),
         attribute_type=_text(mapping["attribute_type"]),
         conclusion=mapping["conclusion"],
         confidence=float(mapping["confidence"]),
@@ -1076,13 +1081,30 @@ class AttributionRepository:
         )
 
     def _attribution_statement(self) -> Any:
-        """Select probe detail plus the legacy compatibility columns."""
+        """Select probe detail, legacy columns, and display-only run evidence.
+
+        The displayed run is the one the item deep-links to (last reused run,
+        otherwise the creating run). A missing run leaves both display columns
+        null so the client keeps the digest fallback.
+        """
+        display_run = aliased(evolution_runs)
+        display_run_id = func.coalesce(
+            probe_reports.c.last_reused_run_id,
+            probe_reports.c.created_run_id,
+        )
         return select(
             bad_case_analysis.c.bad_case_id,
             probe_reports,
             bad_case_analysis.c.analysis_status,
             bad_case_analysis.c.analysis_result,
-        ).select_from(self._attribution_join())
+            display_run.c.target_version.label("object_ref"),
+            display_run.c.base_commit.label("object_commit"),
+        ).select_from(
+            self._attribution_join().outerjoin(
+                display_run,
+                display_run.c.id == display_run_id,
+            ),
+        )
 
 
 class EvolutionRunCandidateRepository:

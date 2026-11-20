@@ -156,6 +156,8 @@ async def test_run_detail_returns_workspace_and_seven_backend_states(
         "pushError": None,
     }
     assert body["evalStatus"] == "pending"
+    assert body["policy"] == {"preset": "default"}
+    assert body["cacheEnabled"] is False
     assert body["retryAttempts"] == 0
     assert body["lastEventSeq"] == 0
     assert [step["key"] for step in body["steps"]] == [

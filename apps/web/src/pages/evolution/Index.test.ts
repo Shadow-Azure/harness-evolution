@@ -39,6 +39,8 @@ const run = (
   target: { type: "skill", name: "deep-research", version: "v2.0.0" },
   window: { from: "2026-08-20", to: "2026-09-10" },
   models: ["glm-5.3"],
+  policy: { preset: "default" },
+  cacheEnabled: false,
   createdBy: "Administrator",
   createdAt,
   status,
@@ -250,6 +252,20 @@ describe("evolution run list page", () => {
     ).toEqual(["failed-new", "completed-old"]);
     expect(wrapper.text()).toContain("正在执行（2）");
     expect(wrapper.text()).toContain("历史记录（2）");
+    expect(wrapper.findComponent(RunGroup).props("workspaceName")).toBe(
+      "测试空间",
+    );
+    const historyCard = wrapper.get(".run-group-history [data-run-id]");
+    expect(historyCard.get("[data-testid='run-workspace-chip']").text()).toBe(
+      "测试空间",
+    );
+    expect(historyCard.get("[data-testid='run-policy-chip']").text()).toBe(
+      "默认潜在策略",
+    );
+    expect(historyCard.get("[data-testid='run-cache-chip']").text()).toBe(
+      "不复用缓存",
+    );
+    expect(historyCard.get(".time").text()).toBe("2026-10-25 10:00");
   });
 
   it("opens an existing run card at its detail route", async () => {

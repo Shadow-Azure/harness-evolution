@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import type { AttributionItem } from "@harness/contracts";
-import { computed } from "vue";
+import { computed, ref } from "vue";
 
 import { formatStartedAt } from "../../../utils/sessionDisplay";
 import { badCaseDeepLink } from "../../../utils/badCaseId";
 import { attributionConclusion } from "./attributionDisplay";
+import VersionLabel from "./VersionLabel.vue";
+import { resolveVersionLabel } from "./versionLabel";
 
 const props = defineProps<{
   wid: string;
@@ -26,21 +28,44 @@ const target = computed(() =>
     props.attribution.attributionId,
   ),
 );
-const version = computed(
-  () => props.attribution.objectVersion ?? "版本未固定",
+const versionInfo = computed(() =>
+  resolveVersionLabel(
+    props.attribution.objectVersion,
+    props.attribution.objectRef,
+    props.attribution.objectCommit,
+  ),
 );
+const linkLabel = computed(
+  () => `${props.attribution.objectName} · ${versionInfo.value.full} · ${conclusion.value.label}`,
+);
+const versionLabel = ref<InstanceType<typeof VersionLabel> | null>(null);
+
+function showVersionTip(): void {
+  versionLabel.value?.showTip();
+}
+
+function hideVersionTip(): void {
+  versionLabel.value?.hideTip();
+}
 </script>
 
 <template>
-  <RouterLink
+  <div
     class="attr-item"
     :class="{ active }"
-    :to="target"
     data-testid="attribution-item"
     :data-attribution-id="attribution.attributionId"
-    :aria-current="active ? 'page' : undefined"
-    :title="`${attribution.objectName} · ${version} · ${conclusion.label}`"
+    @mouseenter="showVersionTip"
+    @mouseleave="hideVersionTip"
+    @focusin="showVersionTip"
+    @focusout="hideVersionTip"
   >
+    <RouterLink
+      class="attr-link"
+      :to="target"
+      :aria-current="active ? 'page' : undefined"
+      :aria-label="linkLabel"
+    />
     <span
       class="ai-dot"
       :class="attribution.conclusion"
@@ -48,33 +73,47 @@ const version = computed(
     />
     <span class="ai-main">
       <span class="ai-obj">
-        <b>{{ attribution.objectName }}</b>
-        <span class="ver">{{ version }}</span>
+        <b aria-hidden="true">{{ attribution.objectName }}</b>
+        <VersionLabel
+          ref="versionLabel"
+          :version="attribution.objectVersion"
+          :object-ref="attribution.objectRef"
+          :object-commit="attribution.objectCommit"
+        />
       </span>
-      <span class="ai-sub">
+      <span
+        class="ai-sub"
+        aria-hidden="true"
+      >
         {{ conclusion.label }} · {{ formatStartedAt(attribution.createdAt) }}
       </span>
     </span>
-    <span class="ai-badges">
-      <span
-        v-if="attribution.isCached"
-        class="badge cache"
-        :title="`复用缓存归因 ${attribution.reusedCount} 次`"
-      >缓存</span>
-      <span
-        class="badge"
-        :class="conclusion.tone"
-      >{{ conclusion.badge }}</span>
+    <span
+      class="ai-badges"
+      aria-hidden="true"
+    >
+      <span class="ai-badge-stack">
+        <span
+          v-if="attribution.isCached"
+          class="badge cache"
+          :title="`复用缓存归因 ${attribution.reusedCount} 次`"
+        >缓存</span>
+        <span
+          class="badge"
+          :class="conclusion.tone"
+        >{{ conclusion.badge }}</span>
+      </span>
       <span
         class="ai-go"
         aria-hidden="true"
       >→</span>
     </span>
-  </RouterLink>
+  </div>
 </template>
 
 <style scoped>
 .attr-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -83,7 +122,18 @@ const version = computed(
   border: 1px solid transparent;
   border-radius: 7px;
   color: var(--text);
-  text-decoration: none;
+}
+
+.attr-link {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 7px;
+}
+
+.attr-link:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -1px;
 }
 
 .attr-item:hover {
@@ -96,9 +146,12 @@ const version = computed(
   background: color-mix(in srgb, var(--blue) 8%, var(--bg-card));
 }
 
-.attr-item:focus-visible {
-  outline: 2px solid var(--blue);
-  outline-offset: 1px;
+.attr-item > .ai-dot,
+.attr-item > .ai-main,
+.attr-item > .ai-badges {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
 }
 
 .ai-dot {
@@ -128,24 +181,19 @@ const version = computed(
   display: flex;
   min-width: 0;
   align-items: baseline;
-  gap: 5px;
+  gap: 3px;
 }
 
 .ai-obj b {
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 54%;
   overflow: hidden;
   color: var(--text);
   font-size: 11.5px;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.ver {
-  flex-shrink: 0;
-  color: var(--text-faint);
-  font-family: var(--mono);
-  font-size: 9.5px;
 }
 
 .ai-sub {
@@ -157,10 +205,19 @@ const version = computed(
 }
 
 .ai-badges {
+  position: relative;
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  padding-right: 8px;
+}
+
+.ai-badge-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
 }
 
 .badge {
@@ -185,7 +242,11 @@ const version = computed(
 }
 
 .ai-go {
+  position: absolute;
+  right: 0;
+  bottom: 0;
   color: var(--blue);
   font-size: 11px;
+  line-height: 1;
 }
 </style>

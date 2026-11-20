@@ -80,6 +80,12 @@ class EvolutionRunWindow(IdentityModel):
     to: date | None = None
 
 
+class EvolutionRunPolicy(IdentityModel):
+    """Display-only potential policy preset for one run card."""
+
+    preset: Literal["default", "custom"] = "default"
+
+
 class EvolutionRunError(IdentityModel):
     """Sanitized terminal or blocked error summary."""
 
@@ -142,6 +148,8 @@ class EvolutionRunCard(IdentityModel):
     target: EvolutionRunTarget
     window: EvolutionRunWindow
     models: list[str]
+    policy: EvolutionRunPolicy
+    cache_enabled: bool
     created_by: str | None
     created_at: datetime
     status: EvolutionRunStatus
@@ -340,6 +348,13 @@ def _final(summary: EvolutionRunSummaryRecord) -> EvolutionRunFinal | None:
     )
 
 
+def _policy(summary: EvolutionRunSummaryRecord) -> EvolutionRunPolicy:
+    """Project the display preset from the persisted policy snapshot."""
+    raw = summary.run.potential_policy
+    preset = raw.get("preset") if isinstance(raw, Mapping) else None
+    return EvolutionRunPolicy(preset="custom" if preset == "custom" else "default")
+
+
 def _card(summary: EvolutionRunSummaryRecord) -> EvolutionRunCard:
     """Map one repository summary to the public list card."""
     run = summary.run
@@ -357,6 +372,8 @@ def _card(summary: EvolutionRunSummaryRecord) -> EvolutionRunCard:
             {"from": run.window_from, "to": run.window_to},
         ),
         models=run.models,
+        policy=_policy(summary),
+        cache_enabled=run.cache_enabled,
         created_by=summary.created_by_name,
         created_at=run.created_at,
         status=cast(

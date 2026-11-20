@@ -31,6 +31,8 @@ function runDetail(status: string) {
     target: { type: "skill", name: "synthetic-review", version: "synthetic-1" },
     window: { from: "2026-10-01", to: "2026-10-31" },
     models: ["glm-5.3"],
+    policy: { preset: "default" },
+    cacheEnabled: false,
     createdBy: "Administrator",
     createdAt: "2026-11-17T08:00:00+08:00",
     status,

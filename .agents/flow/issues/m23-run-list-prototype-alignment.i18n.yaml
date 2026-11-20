@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/m23-run-list-prototype-alignment.md
+m23-run-list-prototype-alignment.md: 1a17248d71b9f07d6e0945d4718a06dcb59b0a90
+m23-run-list-prototype-alignment.en.md: 421a5be4bea0c47baca714a8f15d59d57888f3a8

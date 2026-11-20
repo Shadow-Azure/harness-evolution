@@ -2124,8 +2124,12 @@ export interface components {
             executionManifestHash?: string | null;
             /** Iscached */
             isCached: boolean;
+            /** Objectcommit */
+            objectCommit?: string | null;
             /** Objectname */
             objectName: string;
+            /** Objectref */
+            objectRef?: string | null;
             /**
              * Objecttype
              * @enum {string}
@@ -2208,7 +2212,9 @@ export interface components {
          *
          *     ``attributionId`` is the stable deep-link id and maps ``probe_reports.probe_id``;
          *     ``runId`` prefers the last run that reused the conclusion so a deep link
-         *     opens the run that produced the currently displayed row.
+         *     opens the run that produced the currently displayed row. ``objectRef`` and
+         *     ``objectCommit`` are display-only evidence from that run; clients fall back
+         *     to ``objectVersion`` when they are absent.
          */
         AttributionItem: {
             /** Attributionid */
@@ -2231,8 +2237,12 @@ export interface components {
             createdAt: string;
             /** Iscached */
             isCached: boolean;
+            /** Objectcommit */
+            objectCommit?: string | null;
             /** Objectname */
             objectName: string;
+            /** Objectref */
+            objectRef?: string | null;
             /**
              * Objecttype
              * @enum {string}
@@ -3267,6 +3277,8 @@ export interface components {
          * @description One complete run-list card contract.
          */
         EvolutionRunCard: {
+            /** Cacheenabled */
+            cacheEnabled: boolean;
             /**
              * Createdat
              * Format: date-time
@@ -3283,6 +3295,7 @@ export interface components {
             mode: "full" | "cluster_only";
             /** Models */
             models: string[];
+            policy: components["schemas"]["EvolutionRunPolicy"];
             progress: components["schemas"]["EvolutionRunProgress"];
             /** Runid */
             runId: string;
@@ -3305,6 +3318,8 @@ export interface components {
             attributionSkill: components["schemas"]["EvolutionRunAttributionSkill"] | null;
             /** Blockedstage */
             blockedStage: ("patch" | "push" | "eval" | "attribution") | null;
+            /** Cacheenabled */
+            cacheEnabled: boolean;
             /**
              * Createdat
              * Format: date-time
@@ -3330,6 +3345,7 @@ export interface components {
             models: string[];
             /** Nextretryat */
             nextRetryAt: string | null;
+            policy: components["schemas"]["EvolutionRunPolicy"];
             progress: components["schemas"]["EvolutionRunProgress"];
             /** Retryattempts */
             retryAttempts: number;
@@ -3461,6 +3477,18 @@ export interface components {
             history: components["schemas"]["EvolutionRunCard"][];
             /** Running */
             running: components["schemas"]["EvolutionRunCard"][];
+        };
+        /**
+         * EvolutionRunPolicy
+         * @description Display-only potential policy preset for one run card.
+         */
+        EvolutionRunPolicy: {
+            /**
+             * Preset
+             * @default default
+             * @enum {string}
+             */
+            preset: "default" | "custom";
         };
         /**
          * EvolutionRunProgress

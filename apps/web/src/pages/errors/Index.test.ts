@@ -180,6 +180,8 @@ const attributions: AttributionDetail[] = [
     attributionId: "AT-0002",
     objectName: "review-agent",
     objectType: "agent",
+    objectRef: "v2.2.0",
+    objectCommit: "5c41d7a",
     conclusion: "non_target",
     category: null,
     confidence: 0.74,
@@ -444,6 +446,11 @@ describe("error detail page", () => {
     expect(group.get("[data-testid='attribution-item']").text()).toContain(
       "可归因",
     );
+    const secondItem = group.findAll("[data-testid='attribution-item']")[1];
+    expect(secondItem).toBeDefined();
+    const secondItemText = secondItem!.text();
+    expect(secondItemText).toContain("v2.2.0");
+    expect(secondItemText).toContain("5c41d7a");
     expect(group.text()).toContain("1 / 2");
     expect(wrapper.get("#attr-tab").text()).toBe("归因分析 (4)");
     expect(wrapper.get(".flow-head span").text()).toBe(
