@@ -4,12 +4,12 @@ English | [中文](bugfix-run-detail-session-short-title.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-05
+id: bugfix-03
 milestone: bugfix
 depends:
   - m21-01
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - apps/web/**
