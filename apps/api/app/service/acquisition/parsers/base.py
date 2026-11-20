@@ -6,7 +6,7 @@ import hashlib
 import json
 from abc import ABC, abstractmethod
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from types import MappingProxyType
@@ -161,6 +161,15 @@ class TraceEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class AgentLink:
+    """One derived parent-call edge between two transcripts in a root session."""
+
+    child_agent_id: str
+    parent_tool_use_id: str | None
+    confidence: RelationConfidence = "derived"
+
+
+@dataclass(frozen=True, slots=True)
 class ParsedTranscript:
     """Derived transcript statistics and anchors without message detail."""
 
@@ -205,10 +214,20 @@ class ParsedTranscript:
     agent_revision: str | None = None
     attribution_skills: tuple[str, ...] = ()
     evidence: tuple[TraceEvidence, ...] = ()
+    native_agent_id: str | None = None
+    agent_result_ids: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
     def agent_meta_dict(self) -> dict[str, object]:
         """Return a detached JSON-compatible copy of provider metadata."""
         return cast(dict[str, object], _thaw_json(self.agent_meta))
+
+
+@dataclass(frozen=True, slots=True)
+class SessionParseResult:
+    """All transcripts of one root plus the links derived inside the parser."""
+
+    transcripts: tuple[ParsedTranscript, ...]
+    links: tuple[AgentLink, ...] = ()
 
 
 @dataclass(slots=True)
@@ -244,6 +263,8 @@ class ParseContext:
     definition_source: DefinitionSource | None = None
     task_pending: int = 0
     task_in_progress: int = 0
+    native_agent_id: str | None = None
+    agent_result_ids: dict[str, str] = field(default_factory=dict)
 
     def issue(self, line_no: int, code: str, message: str) -> None:
         """Record one stable issue for the current payload identity."""
@@ -510,10 +531,72 @@ class ParseContext:
 
 
 class BaseTraceParser(ABC):
-    """Template method parser owning framing, issue safety, counts, and finalize."""
+    """Session-scoped parser template owning framing, issues, counts, and finalize."""
 
     runtime_key: ClassVar[str]
     parser_version: ClassVar[int]
+
+    def __init__(self, payloads: Sequence[TracePayload]) -> None:
+        """Bind every payload of one root session before normalization starts.
+
+        A parser instance is created per root and never reused across roots. It
+        keeps references to the caller-owned payloads, not copies of their JSONL,
+        and validates the session identity before any record is consumed.
+        """
+        if not payloads:
+            raise ValueError("trace parser session requires at least one payload")
+        roots = {payload.root_session_id for payload in payloads}
+        if len(roots) != 1:
+            raise ValueError("trace parser session payloads must share one root session")
+        runtimes = {payload.runtime_key for payload in payloads}
+        if len(runtimes) != 1:
+            raise ValueError("trace parser session payloads must share one trace runtime")
+        mains = tuple(payload for payload in payloads if payload.agent_kind == "main")
+        if len(mains) != 1:
+            raise ValueError("trace parser session must contain exactly one main payload")
+        self.payloads: tuple[TracePayload, ...] = tuple(payloads)
+        self.main: TracePayload | None = mains[0]
+        self.subagents: tuple[TracePayload, ...] = tuple(
+            payload for payload in self.payloads if payload.agent_kind == "subagent"
+        )
+
+    @classmethod
+    def for_single_payload(cls, payload: TracePayload) -> BaseTraceParser:
+        """Build a parser for the single-payload compatibility facade.
+
+        Session construction always requires exactly one main payload. The
+        compatibility entry also handles one isolated subagent transcript, so it
+        bypasses the session-member validation while still storing the payload.
+        """
+        parser = cls.__new__(cls)
+        parser.payloads = (payload,)
+        parser.main = payload if payload.agent_kind == "main" else None
+        parser.subagents = (payload,) if payload.agent_kind == "subagent" else ()
+        return parser
+
+    @classmethod
+    @abstractmethod
+    def can_parse(cls, payloads: Sequence[TracePayload]) -> bool:
+        """Return whether this parser can initialize the given session payloads.
+
+        Implementations must run a cheap trace-shape probe only: no full JSONL
+        normalization and no provider metadata interpretation.
+        """
+
+    def normalize_session(self) -> SessionParseResult:
+        """Normalize every payload in stable order and derive parent links."""
+        transcripts = tuple(self.normalize(payload) for payload in self.payloads)
+        return SessionParseResult(
+            transcripts=transcripts,
+            links=tuple(self.link_transcripts(transcripts)),
+        )
+
+    def link_transcripts(
+        self,
+        transcripts: Sequence[ParsedTranscript],
+    ) -> tuple[AgentLink, ...]:
+        """Return optional session-level parent links; runtime-neutral base owns none."""
+        return ()
 
     def normalize(self, payload: TracePayload) -> ParsedTranscript:
         """Normalize one payload without retaining message or content detail."""
@@ -618,6 +701,8 @@ class BaseTraceParser(ABC):
             agent_revision=_agent_revision(ctx),
             attribution_skills=tuple(dict.fromkeys(ctx.attribution_skills)),
             evidence=tuple(ctx.evidence),
+            native_agent_id=ctx.native_agent_id,
+            agent_result_ids=MappingProxyType(dict(sorted(ctx.agent_result_ids.items()))),
         )
 
     def metadata_warnings(

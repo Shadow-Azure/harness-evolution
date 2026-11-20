@@ -20,7 +20,7 @@ scope:
   - .agents/**
   - scripts/doc-budgets.manifest.json
 adr:
-  - ../../notes/proposed/architecture/2026-11-20-session-scoped-parser-can-parse.md
+  - ../../notes/implemented/architecture/2026-11-20-session-scoped-parser-can-parse.md
 github:
   number: 429
   url: https://github.com/Shadow-Azure/harness-evolution/issues/429

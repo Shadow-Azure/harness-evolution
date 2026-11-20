@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Literal
 
 from app.service.acquisition.knowledge import knowledge_adapter_for
 from app.service.acquisition.parsers._claude_meta import unknown_metadata_fields
 from app.service.acquisition.parsers.base import (
+    AgentLink,
     AgentMetaFacts,
     BaseTraceParser,
     DefinitionSource,
     ParseContext,
+    ParsedTranscript,
     TraceEvidence,
     TracePayload,
     _content_blocks,
@@ -58,6 +61,35 @@ _GENERIC_VERSION_KEYS = ("objectVersion", "object_version", "version")
 _TAG_KEYS = ("tag", "objectTag", "object_tag")
 _LISTING_DIGEST = re.compile(r"(?:digest|hash)\s*[:=]\s*([0-9a-fA-F]{16})\b")
 _OPAQUE_DIGEST = re.compile(r"^[0-9a-fA-F]{16}$")
+_CLAUDE_SHAPE_MARKERS = (
+    "sessionId",
+    "uuid",
+    "parentUuid",
+    "type",
+    "message",
+    "toolUseResult",
+    "isSidechain",
+    "agentId",
+)
+_CLAUDE_PROBE_LINES = 10
+
+
+def _first_record_object(content: str) -> dict[str, object] | None:
+    """Probe a transcript prefix for its first JSON object without normalizing it."""
+    checked = 0
+    for line in content.split("\n"):
+        if not line.strip():
+            continue
+        checked += 1
+        if checked > _CLAUDE_PROBE_LINES:
+            return None
+        try:
+            value = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(value, dict):
+            return value
+    return None
 
 
 def _bounded_version(value: object) -> str | None:
@@ -391,7 +423,28 @@ class ClaudeCodeTraceParser(BaseTraceParser):
     """Interpret Claude Code JSONL records and closed subagent metadata."""
 
     runtime_key = "claude-code"
-    parser_version = 6
+    parser_version = 7
+
+    @classmethod
+    def can_parse(cls, payloads: Sequence[TracePayload]) -> bool:
+        """Accept only session payloads whose record prefix has the Claude shape.
+
+        This is deliberately a cheap prefix probe: it never normalizes a payload,
+        never reads provider metadata, and never inspects more than a bounded
+        number of lines. A record must declare ``type`` plus at least one other
+        Claude record marker so arbitrary JSONL is not claimed by this runtime.
+        """
+        if not payloads:
+            return False
+        for payload in payloads:
+            record = _first_record_object(payload.content)
+            if record is None:
+                return False
+            if "type" not in record:
+                return False
+            if not any(marker in record for marker in _CLAUDE_SHAPE_MARKERS if marker != "type"):
+                return False
+        return True
 
     def consume_record(
         self,
@@ -404,6 +457,9 @@ class ClaudeCodeTraceParser(BaseTraceParser):
         record_type = record.get("type")
         message = _dict(record.get("message"))
         ctx.observe_timestamp(record.get("timestamp"))
+        native_agent_id = _string(record.get("agentId"))
+        if native_agent_id is not None:
+            ctx.native_agent_id = native_agent_id
 
         if record_type == "assistant":
             ctx.mark_assistant_record(
@@ -492,8 +548,11 @@ class ClaudeCodeTraceParser(BaseTraceParser):
 
         if tool_results:
             result = _dict(record.get("toolUseResult"))
+            result_agent_id = _string(result.get("agentId"))
             for tool_use_id, block in tool_results:
                 tool_name, tool_input = ctx.tool_inputs.get(tool_use_id, (None, {}))
+                if result_agent_id is not None:
+                    ctx.agent_result_ids[tool_use_id] = result_agent_id
                 if result:
                     evidence = _file_evidence(
                         tool_name,
@@ -539,6 +598,47 @@ class ClaudeCodeTraceParser(BaseTraceParser):
                 object_revision=f"tag:{tag}" if tag is not None else None,
                 triggered_at=_timestamp(record.get("timestamp")),
             )
+
+    def link_transcripts(
+        self,
+        transcripts: Sequence[ParsedTranscript],
+    ) -> tuple[AgentLink, ...]:
+        """Derive parent edges from ``toolUseResult.agentId`` and child ``agentId``.
+
+        Only unique, unambiguous matches produce a link, and a child that already
+        carries an authoritative ``parent_tool_use_id`` is never overridden. A
+        missing, duplicate, or multiply-claimed identity stays unlinked so the
+        tree assembler can keep its synthetic fallback.
+        """
+        children_by_native: dict[str, list[ParsedTranscript]] = {}
+        for transcript in transcripts:
+            if transcript.agent_kind != "subagent" or transcript.native_agent_id is None:
+                continue
+            children_by_native.setdefault(transcript.native_agent_id, []).append(transcript)
+
+        claims: dict[str, set[str]] = {}
+        for parent in transcripts:
+            for tool_use_id, native_agent_id in sorted(parent.agent_result_ids.items()):
+                matches = children_by_native.get(native_agent_id, [])
+                if len(matches) != 1:
+                    continue
+                child = matches[0]
+                if child.parent_tool_use_id is not None:
+                    continue
+                claims.setdefault(child.agent_id, set()).add(tool_use_id)
+
+        links: list[AgentLink] = []
+        for child_agent_id, tool_use_ids in sorted(claims.items()):
+            if len(tool_use_ids) != 1:
+                continue
+            links.append(
+                AgentLink(
+                    child_agent_id=child_agent_id,
+                    parent_tool_use_id=next(iter(tool_use_ids)),
+                    confidence="derived",
+                ),
+            )
+        return tuple(links)
 
     def _record_file_knowledge(self, evidence: TraceEvidence, ctx: ParseContext) -> None:
         """Emit one knowledge event only when a Read lands inside a configured root.

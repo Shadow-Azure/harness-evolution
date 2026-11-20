@@ -1,6 +1,6 @@
 # Agent Note: 会话级 parser 与 can_parse 轨迹选型
 
-Status: proposed
+Status: implemented
 
 [English](2026-11-20-session-scoped-parser-can-parse.en.md) | 中文
 
@@ -17,7 +17,7 @@ Session `226504ab-f005-42ce-a9f5-8313c45d669e` 的执行流把三个子 Agent �
 - 父子关联优先级：envelope `toolUseId` 为 authoritative；缺失时用父 `toolUseResult.agentId` ↔ 子 JSONL 顶层 `agentId` 生成 derived；无链接/歧义保留 synthetic。`agent_tree` 只应用链接，不读取 Claude 私有字段。
 - 三条入口（replay / local / normalize）先按 root 取齐 payloads，再 `for_trace` 创建会话 parser，再 `normalize_session`；单 payload `normalize(payload)` 保留为兼容入口。
 - 生命周期与内存：parser 每个 root 一个实例，只持有已加载 payloads 的引用，不复制原始 JSONL；`normalize_session` 后释放，不跨 root 复用、不引入跨请求缓存。
-- 同步修订 [01 §4.1](../../../../plans/fullstack-design/01-architecture.md)、[02 F9](../../../../plans/fullstack-design/02-features.md)、[04 parser 扩展点](../../../../plans/fullstack-design/04-backend-architecture.md)、[05 envelope](../../../../plans/fullstack-design/05-api-design.md)、[06 §3.0.1/§7.1](../../../../plans/fullstack-design/06-database-design.md)、[07 §2.3/§2.5/§2.6](../../../../plans/fullstack-design/07-backend-implementation.md)、[09 R10/R17](../../../../plans/fullstack-design/09-review-guide.md)、[15 多 runtime 缺口](../../../../plans/fullstack-design/15-v1-v2-gap-analysis.md) 与 [README D24](../../../../plans/fullstack-design/README.md)；实现由 #429 跟踪。
+- 同步修订 [01 §4.1](../../../../plans/fullstack-design/01-architecture.md)、[02 F9](../../../../plans/fullstack-design/02-features.md)、[04 parser 扩展点](../../../../plans/fullstack-design/04-backend-architecture.md)、[05 envelope](../../../../plans/fullstack-design/05-api-design.md)、[06 §3.0.1/§7.1](../../../../plans/fullstack-design/06-database-design.md)、[07 §2.3/§2.5/§2.6](../../../../plans/fullstack-design/07-backend-implementation.md)、[09 R10/R17](../../../../plans/fullstack-design/09-review-guide.md)、[15 多 runtime 缺口](../../../../plans/fullstack-design/15-v1-v2-gap-analysis.md) 与 [README D24](../../../../plans/fullstack-design/README.md)；实现随本 PR 落地（#429）。
 
 ## Alternatives considered
 
@@ -28,7 +28,7 @@ Session `226504ab-f005-42ce-a9f5-8313c45d669e` 的执行流把三个子 Agent �
 
 ## Consequences
 
-- 设计文档与实现契约一致：选型、生命周期、链接优先级不再各说各话；实现 PR 以 #429 为准。
+- 设计文档与实现契约一致：选型、生命周期、链接优先级不再各说各话；实现已随本 PR 落地。
 - Parser API 变化：`__init__(payloads)`、`can_parse`、`normalize_session`、`for_trace`；`create(runtime_key)` 与 `normalize(payload)` 退为显式/兼容入口，现有调用方需按 #429 迁移。
 - 每个 root 的 parser 持有全部 payload 引用；大 session 的峰值内存受已加载 payloads 约束，不做额外复制；parser 不跨 root 复用。
 - 选型错误从“未知 runtime”扩展为“未知轨迹/歧义轨迹”；错误码与诊断需在实现中稳定化。

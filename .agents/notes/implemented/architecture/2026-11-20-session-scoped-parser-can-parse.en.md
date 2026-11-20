@@ -1,6 +1,6 @@
 # Agent Note: Session-scoped parser and can_parse trace selection
 
-Status: proposed
+Status: implemented
 
 English | [中文](2026-11-20-session-scoped-parser-can-parse.md)
 
@@ -17,7 +17,7 @@ The design documents still say `TraceParserFactory` selects by `runtime_key`, th
 - Parent-link precedence: the envelope `toolUseId` is authoritative; when absent, the parent `toolUseResult.agentId` ↔ child JSONL top-level `agentId` yields a derived link; missing or ambiguous links keep `synthetic`. `agent_tree` only applies links and reads no Claude-private fields.
 - The three entry points (replay / local / normalize) load all payloads of a root first, create the session parser with `for_trace`, then call `normalize_session`; single-payload `normalize(payload)` stays as a compatibility entry.
 - Lifecycle and memory: one parser instance per root holding references to the already-loaded payloads, without copying raw JSONL; release after `normalize_session`, never reuse across roots, and add no cross-request cache.
-- Revise [01 §4.1](../../../../plans/fullstack-design/01-architecture.md), [02 F9](../../../../plans/fullstack-design/02-features.md), [04 parser extension point](../../../../plans/fullstack-design/04-backend-architecture.md), [05 envelope](../../../../plans/fullstack-design/05-api-design.md), [06 §3.0.1/§7.1](../../../../plans/fullstack-design/06-database-design.md), [07 §2.3/§2.5/§2.6](../../../../plans/fullstack-design/07-backend-implementation.md), [09 R10/R17](../../../../plans/fullstack-design/09-review-guide.md), [15 multi-runtime gap](../../../../plans/fullstack-design/15-v1-v2-gap-analysis.md), and [README D24](../../../../plans/fullstack-design/README.md) in the same change; implementation is tracked by #429.
+- Revise [01 §4.1](../../../../plans/fullstack-design/01-architecture.md), [02 F9](../../../../plans/fullstack-design/02-features.md), [04 parser extension point](../../../../plans/fullstack-design/04-backend-architecture.md), [05 envelope](../../../../plans/fullstack-design/05-api-design.md), [06 §3.0.1/§7.1](../../../../plans/fullstack-design/06-database-design.md), [07 §2.3/§2.5/§2.6](../../../../plans/fullstack-design/07-backend-implementation.md), [09 R10/R17](../../../../plans/fullstack-design/09-review-guide.md), [15 multi-runtime gap](../../../../plans/fullstack-design/15-v1-v2-gap-analysis.md), and [README D24](../../../../plans/fullstack-design/README.md) in the same change; implementation lands in this PR (#429).
 
 ## Alternatives considered
 
@@ -28,7 +28,7 @@ The design documents still say `TraceParserFactory` selects by `runtime_key`, th
 
 ## Consequences
 
-- Design documents and the implementation contract agree: selection, lifecycle, and link precedence no longer disagree; the implementation PR follows #429.
+- Design documents and the implementation contract agree: selection, lifecycle, and link precedence no longer disagree; the implementation has landed in this PR.
 - The parser API changes: `__init__(payloads)`, `can_parse`, `normalize_session`, and `for_trace`; `create(runtime_key)` and `normalize(payload)` become explicit/compatibility entries, and current callers migrate per #429.
 - Each root's parser holds references to all payloads; a large session's peak memory is bounded by the already-loaded payloads, with no extra copy; the parser is not reused across roots.
 - Selection errors expand from "unknown runtime" to "unknown trace/ambiguous trace"; implementation must stabilize the error codes and diagnostics.

@@ -351,7 +351,7 @@ def test_extract_evidence_hook_matches_normalized_evidence() -> None:
         runtime_key="claude-code",
     )
 
-    evidence = TraceParserFactory.create("claude-code").extract_evidence(payload)
+    evidence = TraceParserFactory.for_payload("claude-code", payload).extract_evidence(payload)
 
     assert [item.kind for item in evidence] == ["file_read"]
     assert cast(str, evidence[0].content_hash) == hashlib.sha256(b"synthetic\n").hexdigest()
