@@ -170,6 +170,16 @@ test("valid tree passes and milestone/issue status is cross-checked", () => {
   assert.match(validateTree(broken, { exists: () => true }).join("\n"), /全部 issue 已 done/);
 });
 
+test("standing milestones stay active after their issues are done", () => {
+  const standing = tree();
+  standing.milestones[0].data.status = "active";
+  standing.milestones[0].data.standing = true;
+  assert.deepEqual(validateTree(standing, { exists: () => true }), []);
+  const invalid = tree();
+  invalid.milestones[0].data.standing = "yes";
+  assert.match(validateTree(invalid, { exists: () => true }).join("\n"), /standing 必须是布尔值/);
+});
+
 test("bootstrap is limited to the first milestone", () => {
   const broken = tree();
   broken.issues[0].data.milestone = "m1";

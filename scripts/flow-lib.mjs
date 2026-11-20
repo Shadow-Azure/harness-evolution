@@ -250,6 +250,8 @@ export function validateTree(tree, opts = {}) {
       errors.push(`${file}: 缺 title（GitHub milestone 同步用）`);
     if (!MILESTONE_STATUSES.includes(data.status))
       errors.push(`${file}: status 必须是 ${MILESTONE_STATUSES.join(" | ")}（实有 ${JSON.stringify(data.status)}）`);
+    if (data.standing !== undefined && typeof data.standing !== "boolean")
+      errors.push(`${file}: standing 必须是布尔值（实有 ${JSON.stringify(data.standing)}）`);
     checkGithub(file, data, repo, "milestone", errors);
   }
   if (Array.isArray(order))
@@ -349,8 +351,9 @@ export function validateTree(tree, opts = {}) {
   if (bootstraps.length === 1 && Array.isArray(order) && bootstraps[0].data.milestone !== order[0])
     errors.push(`${bootstraps[0].file}: bootstrap issue 必须属于 roadmap 序列的第一个 milestone（${order[0]}）`);
 
-  // milestone done ⟺ 其 issue 全 done。
+  // milestone done ⟺ 其 issue 全 done；standing milestone 不参与该等价。
   for (const m of tree.milestones) {
+    if (m.data.standing === true) continue;
     const owned = tree.issues.filter((i) => i.data.milestone === m.data.id);
     const allDone = owned.length > 0 && owned.every((i) => i.data.status === "done");
     if (m.data.status === "done" && !allDone)

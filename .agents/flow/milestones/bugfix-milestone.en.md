@@ -7,6 +7,7 @@ kind: milestone
 id: bugfix
 title: Bugfix 问题修复
 status: active
+standing: true
 github:
   number: 34
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/34
@@ -15,6 +16,8 @@ github:
 ## Goals
 
 Own every subsequent bugfix issue under one milestone instead of opening a new milestone per problem; each issue describes one independently acceptable problem, and its fix surface is bounded by that issue's scope.
+
+This milestone is a standing bucket: it stays active/open after all of its issues are done and does not close when one bugfix completes; only a roadmap decision to retire it sets its status to done.
 
 ## Scope
 
@@ -26,4 +29,4 @@ Each bugfix issue delivers its implementation, verification, and screenshot evid
 
 ## Non-goals
 
-No new milestone per single problem; no unrelated refactors, redesigns, or cross-module re-layouts inside a bugfix issue; no production Session content, screenshots, or credentials in the repository.
+No new milestone per single problem; no closing this milestone because one bugfix completed; no unrelated refactors, redesigns, or cross-module re-layouts inside a bugfix issue; no production Session content, screenshots, or credentials in the repository.
