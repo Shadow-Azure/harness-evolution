@@ -4,7 +4,7 @@ English | [中文](bugfix-ci-unit-tests-duration.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-02
+id: bugfix-06
 milestone: bugfix
 depends: []
 priority: P1
@@ -14,11 +14,13 @@ scope:
   - apps/api/pyproject.toml
   - apps/api/tests/**
   - scripts/run-api.mjs
+  - scripts/gates.spec.mjs
   - package.json
   - pnpm-lock.yaml
   - apps/web/vitest.config.ts
   - docs/**
   - .agents/**
+  - AGENTS.md
 adr: []
 github:
   number: 445

@@ -25,6 +25,7 @@ pnpm typecheck
 pnpm typecheck:web
 pnpm test:web
 pnpm test:api
+pnpm test:api:serial
 pnpm test:db
 pnpm test:db:mysql
 pnpm test:integration
