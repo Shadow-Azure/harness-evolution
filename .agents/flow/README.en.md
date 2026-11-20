@@ -59,7 +59,7 @@ Chinese bodies require Background, Goals, Design authority, Implementation, Impl
 
 ## GitHub synchronization
 
-`pnpm flow:sync` is the sole GitHub writer. It creates and updates issue bodies from the detailed Chinese files, maps status, and only with explicit `-- --retire-missing` closes open remote issues/milestones absent locally. **Remote objects are closed, never deleted.** gh authentication is required; `FLOW_TOKEN` enables strong Projects v2 checks.
+`pnpm flow:sync` is the sole GitHub writer. It creates and updates issue bodies from the detailed Chinese files, maps status and milestone. Use `-- --issues 315,417` to publish only the named existing issues. Full sync closes open remote issues or milestones absent locally only when invoked with `-- --retire-missing`. **Remote objects are closed, never deleted.** gh authentication is required; `FLOW_TOKEN` enables strong Projects v2 checks.
 
 ## Tooling
 

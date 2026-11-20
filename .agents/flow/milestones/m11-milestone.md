@@ -6,7 +6,7 @@
 kind: milestone
 id: m11
 title: M11 多归因体验与 V2 切换
-status: done
+status: planned
 github:
   number: 16
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/16

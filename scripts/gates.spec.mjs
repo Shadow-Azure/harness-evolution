@@ -823,9 +823,27 @@ test("sync republish changed detailed issue bodies", async () => {
   await runSync(current, {
     createMilestone() { throw new Error("unexpected"); }, createIssue() { throw new Error("unexpected"); }, backfill() {},
     readMilestoneState: () => "open", updateMilestoneState() {},
-    readIssueState: () => "OPEN", updateIssueState() {},
+    readIssue: () => ({ state: "open", milestone: { number: 2 } }), updateIssue() {},
     readIssueBody: () => "old", updateIssueBody: (_issue, body) => updates.push(body),
     issueBody: () => "new detailed body",
   });
   assert.deepEqual(updates, ["new detailed body"]);
+});
+
+test("scoped sync repairs only the selected issue's state and milestone", async () => {
+  const current = tree();
+  current.milestones[0].data.github = { number: 2 };
+  current.issues[0].data.github = { number: 20 };
+  current.issues.push({ ...current.issues[0], data: { ...current.issues[0].data, github: { number: 21 } } });
+  const updates = [];
+  const io = {
+    readIssue: (issue) => {
+      assert.equal(issue.data.github.number, 20);
+      return { state: "closed", milestone: null };
+    },
+    updateIssue: (issue, state, milestone) => updates.push([issue.data.github.number, state, milestone]),
+  };
+  await assert.rejects(runSync(current, io, [20, 99]), /未登记/);
+  await runSync(current, io, [20]);
+  assert.deepEqual(updates, [[20, "CLOSED", 2]]);
 });
