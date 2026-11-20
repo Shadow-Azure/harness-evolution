@@ -50,6 +50,8 @@ m19 changed only target-content reads and explicitly left the run workspace mirr
 
 - `apps/api/app/third_party_api/git/workspace.py`: replace `_ensure_mirror` with a target + ref `_ensure_ref_cache`. For a tag / branch, run `git init --bare` plus `git fetch --no-tags origin <ref>:<local-ref>`; for a full commit, run `git fetch --depth 1 --no-tags origin <sha>`; `--mirror` is no longer used. The cache key contains the target and the normalized ref, a process lock serializes access, and a ref change triggers an explicit fetch.
 - `prepare`: the workspace still runs `git clone --no-checkout` from the local cache, then `git switch -c evo/<date>-<runId> <base>` and `remote set-url origin <repo_url>`; branch/patch/commit/push behavior is unchanged.
+- Downstream impact: attribution and clustering complete before `_prepare_workspace` and use Session/attribution caches plus m19 target-content reads, not the run workspace, so the single-ref clone does not affect them; patch generation writes only files under `sub_dir`, and a single-branch full-history clone contains the complete tree, so behavior is unchanged; evaluation requests use the candidate commit SHA and tree, which do not change with clone depth.
+- Retry/resume: if `origin` already has the run branch, explicitly fetch `refs/heads/evo/<date>-<runId>` into the workspace before `switch --track` / `merge-base`; do not rely on the target-ref cache containing that branch. Before the fast-forward check `merge-base --is-ancestor <remote_commit> HEAD`, the remote commit must exist locally; otherwise fetch the branch or commit first. `push_candidate` tag force-with-lease only uses the expected SHA from `ls-remote`, so it is unaffected.
 - Failure and cleanup: transient failures keep already-complete objects; partial directories are cleaned up under the existing policy and can be retried; error classification keeps the `clone` / `reference` / `workspace` / `push` boundary and never exposes stderr or credentials.
 - Run events: add `ref`, `cacheHit`, `cloneSeconds`, and `proxyState` (`disabled` / `closed` / `open`) to the prepare/clone event payload, plus a bounded (≤20) `gitOperations` list; each item carries `operation` (ls-remote / clone / fetch / push), `viaProxy`, `proxyStateBefore` / `proxyStateAfter`, `fallbackReason`, `durationMs`, `exitCode`, and `targetHost`. Never record full URLs, credentials, stderr, or proxy configuration content; truncate and mark the list when it exceeds the bound.
 - Proxy observability: emit one structured log record `git.proxy.operation` per git subprocess (same fields plus `runId` / `jobId` / `stage`; proxy probes use `operation=probe` and `runId=null`) so log aggregation can filter by run. On a proxy-layer failure record `viaProxy=false` and `fallbackReason` such as `proxy_connect` / `407` / `tunnel` / `timeout`; keep health probes separate from run traffic so a probe failure is not mistaken for a run that bypassed the proxy.
@@ -83,6 +85,7 @@ pnpm lint:docs
 
 - Unit tests: a local bare repository supports tag, branch, and full SHA targets with only the target ref fetched; argv contains no `--mirror`; a cache hit does not clone again; a ref change triggers a fetch; failure classification and cleanup match expectations; prepare → commit → push works against a local bare remote.
 - Proxy observability tests: a working proxy records `viaProxy=true`; a proxy-layer failure that retries direct records `viaProxy=false` and `fallbackReason`; disabled / open states are recorded; probes stay distinct from run traffic; logs and events contain no credentials or full URLs; `gitOperations` is bounded.
+- Resume scenario: with an existing remote run branch and a new workspace, fetch, switch, merge-base, and fast-forward push succeed; candidate tag force-with-lease is unaffected; attribution/clustering/patch/evaluation requests do not change because of the single-ref clone.
 - Measurement: `git clone --branch v6.4.1 --single-branch --no-tags https://github.com/obra/superpowers /tmp/sp` produces a pack of about 3.9MiB and finishes well under 60 seconds; the run workspace code no longer contains `--mirror`.
 
 ## Acceptance
@@ -92,6 +95,8 @@ pnpm lint:docs
 - The cache keys on target + ref and supports hit/refresh; transient failures do not discard complete objects, and partial caches can be retried.
 - Any run can answer from run events or structured logs, for ls-remote / clone / fetch / push, whether each operation used the proxy, how proxy state changed, and whether it fell back to direct access and why (proxy_connect / 407 / tunnel / timeout, etc.); no SSH is needed. `gitOperations` is bounded and carries no credentials.
 - Existing API, contracts, frontend, and evaluation contracts are unchanged; the target repository clone completes within the 60-second limit.
+- Retry/resume: when the remote run branch already exists, a new workspace can explicitly fetch it and continue commit/push; it must not fail because the single-ref cache lacks the run branch.
+- Attribution, clustering, patch generation, and evaluation commit semantics are unchanged (only the run workspace clone path changes).
 
 ## Gates and CI
 
@@ -103,5 +108,5 @@ pnpm lint:docs
 
 - No Xray / VLESS proxy, Secret, or deployment-fallback changes (m18).
 - No target-content cache or 20-second-limit changes (m19).
-- No patch generation, evaluation, frontend, preview-contract, or seven-step state-machine changes; no proxy selection / circuit-breaker behavior changes, only observability.
+- No attribution / clustering algorithm, patch generation, evaluation contract, frontend, preview-contract, or seven-step state-machine changes; no proxy selection / circuit-breaker behavior changes, only observability.
 - No push credentials in the repository or database; no default push to a third-party public repository.
