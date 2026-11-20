@@ -9,13 +9,13 @@ This directory records the inputs a local Agent used for attribution and the rep
 ```text
 <workspace_id>/
 ├── attribute_skill/
-│   ├── uploads/<package_id>/                         # Extracted upload
+│   ├── uploads/<package_id>/
 │   └── snapshots/<skill_hash>/
 │       ├── manifest.json
 │       └── skill/{SKILL.md,make_probe_report.py,...}
 ├── attribute_source/
-│   ├── <definition_key>/definition.md                 # Original target definition
-│   └── snapshots/<source_hash>/attribute_source.md    # Redacted prompt given to the Agent
+│   ├── <definition_key>/definition.md
+│   └── snapshots/<source_hash>/attribute_source.md
 ├── attribute_input/
 │   ├── sessions/<session_key>/<evidence_hash>/
 │   │   ├── session_tree.json
@@ -25,8 +25,8 @@ This directory records the inputs a local Agent used for attribution and the rep
 │       ├── input_badcase.json
 │       └── manifest.json
 └── attribute_output/<batch_id>/<case_key>/
-    ├── attempt-<random>/                              # Temporary execution directory
-    └── probe_report.json                              # Published atomically after validation
+    ├── attempt-<random>/
+    └── probe_report.json
 ```
 
 ## Batches, recomputation and caching
@@ -68,5 +68,7 @@ FROM probe_reports AS p
 JOIN bad_case_analysis AS a ON a.probe_id = p.probe_id
 WHERE p.probe_id = :probe_id;
 ```
+
+Bind `:probe_id` to the platform database report ID. The writer builds the `probe_id` inside `probe_report.json` from the Session, attributed object and Badcase. Recomputing a case can produce the same writer ID.
 
 `sourceHash` is the SHA-256 digest of the redacted prompt’s UTF-8 bytes. `evidenceHash` hashes the canonical JSON mapping of each of the three evidence filenames to its byte digest. `inputHash` hashes the canonical JSON mapping of the five runtime filenames to their exact text. Older reports remain readable and may predate input manifests. When backing up or pruning data, keep the workspace database records and their referenced snapshots together. Removing a referenced snapshot causes retry verification to fail.

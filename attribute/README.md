@@ -9,13 +9,13 @@
 ```text
 <workspace_id>/
 ├── attribute_skill/
-│   ├── uploads/<package_id>/                         # 上传包解压内容
+│   ├── uploads/<package_id>/
 │   └── snapshots/<skill_hash>/
 │       ├── manifest.json
 │       └── skill/{SKILL.md,make_probe_report.py,...}
 ├── attribute_source/
-│   ├── <definition_key>/definition.md                 # 对象版本的定义原文
-│   └── snapshots/<source_hash>/attribute_source.md    # 实际交给 Agent 的脱敏提示词
+│   ├── <definition_key>/definition.md
+│   └── snapshots/<source_hash>/attribute_source.md
 ├── attribute_input/
 │   ├── sessions/<session_key>/<evidence_hash>/
 │   │   ├── session_tree.json
@@ -25,8 +25,8 @@
 │       ├── input_badcase.json
 │       └── manifest.json
 └── attribute_output/<batch_id>/<case_key>/
-    ├── attempt-<随机值>/                              # 仅在这次执行期间使用
-    └── probe_report.json                              # 校验通过后原子发布
+    ├── attempt-<random>/
+    └── probe_report.json
 ```
 
 ## 批次、重算和缓存
@@ -68,5 +68,7 @@ FROM probe_reports AS p
 JOIN bad_case_analysis AS a ON a.probe_id = p.probe_id
 WHERE p.probe_id = :probe_id;
 ```
+
+查询参数 `:probe_id` 取平台数据库的报告 ID。脚本在 `probe_report.json` 中生成的 `probe_id` 由 Session、归因对象和 Badcase 组成，同一条 Badcase 重算时可能重复。
 
 `sourceHash` 是脱敏提示词 UTF-8 字节的 SHA-256。`evidenceHash` 对三个证据文件的“文件名 → 字节 SHA-256”映射做规范 JSON 哈希；`inputHash` 对五个运行时输入的“文件名 → 实际文本”映射做规范 JSON 哈希。历史报告继续可读，启用归档前的报告可能没有对应的输入清单。备份和清理时请按工作空间保留数据库与这些共享快照，删除仍被清单引用的快照会导致重试校验失败。
