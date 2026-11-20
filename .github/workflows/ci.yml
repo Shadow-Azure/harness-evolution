@@ -90,7 +90,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   unit-tests-api:
-    # API 套件用 pytest-xdist 并发（4 vCPU runner 上 6 worker，I/O 等待可重叠）；
+    # API 套件用 pytest-xdist 并发（4 vCPU runner 上 8 worker，I/O 等待可重叠）；
     # pytest-cov 自动合并 worker 数据，
     # 90% 分支覆盖率仍由本 job 单独判定，不做跨 job coverage 聚合。
     # 本 job 只跑 Python 测试：pnpm 仅用于转发 package.json 脚本，不需要
@@ -114,11 +114,11 @@ jobs:
           python -m venv apps/api/.venv
           apps/api/.venv/bin/python -m pip install -e 'apps/api[dev]'
           echo "SETUP_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
-      - name: API 单元测试（pytest -n 6，覆盖率 ≥90%）
+      - name: API 单元测试（pytest -n 8，覆盖率 ≥90%）
         shell: bash
         run: |
           start=$(date +%s)
-          pnpm test:api -- -n 6 2>&1 | tee "$RUNNER_TEMP/pytest.log"
+          pnpm test:api -- -n 8 2>&1 | tee "$RUNNER_TEMP/pytest.log"
           echo "API_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
       - name: CI 摘要
         if: always()
@@ -129,7 +129,7 @@ jobs:
             echo "| 阶段 | 耗时 |"
             echo "|---|---:|"
             echo "| setup（checkout + venv） | ${SETUP_SECONDS:-未完成}s |"
-            echo "| api pytest（-n 6） | ${API_SECONDS:-未完成}s |"
+            echo "| api pytest（-n 8） | ${API_SECONDS:-未完成}s |"
             if [ -f "$RUNNER_TEMP/pytest.log" ]; then
               echo
               echo "<details><summary>最慢用例（--durations=25）</summary>"

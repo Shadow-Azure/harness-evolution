@@ -11,7 +11,7 @@ English | [中文](2026-11-20-ci-unit-tests-parallelization.md)
 ## Decision
 
 - Split `unit-tests` in `ci.yml` into two parallel jobs, `unit-tests-web` and `unit-tests-api`, both listed in `ci-ok.needs`; Web gets a 10 minute timeout and API 15 minutes, and a failure in either still vetoes the run.
-- Add `pytest-xdist` and `pytest-cov` to the dev dependencies in `apps/api/pyproject.toml`. `pnpm test:api` defaults to `-n auto` (local cores), CI passes an explicit `-n 6` (tuned on a 4 vCPU runner: `-n 4` jobs jittered between 7m58s and 8m31s), and `pnpm test:api:serial` keeps a serial entry point for isolation and timing work; `--serial` makes a single `test:api` run serial.
+- Add `pytest-xdist` and `pytest-cov` to the dev dependencies in `apps/api/pyproject.toml`. `pnpm test:api` defaults to `-n auto` (local cores), CI passes an explicit `-n 8` (tuned on a 4 vCPU runner: `-n 4` jobs ran 7m58s–8m31s and `-n 6` jobs 6m05s–8m02s, so more workers add acceptance margin), and `pnpm test:api:serial` keeps a serial entry point for isolation and timing work; `--serial` makes a single `test:api` run serial.
 - Move coverage to pytest-cov: `--cov=app --cov-branch --cov-report=term-missing`, with `--cov-fail-under=90` added for full-suite runs; a focused path selection skips coverage (`--no-cov`) instead of judging whole-app coverage from a subset. pytest-cov merges worker data in the main process, so the API 90% branch threshold is unchanged; Web's 80% stays owned by vitest, so splitting the jobs needs no cross-job aggregation.
 - Every API run passes `--durations=25` and tees the log; `unit-tests-web` and `unit-tests-api` each write setup and suite wall time to the job summary, and the API summary folds the slowest cases in. This is visibility first, not a hard threshold.
 - Rewrite the timing-sensitive case around events: inject a runner that executes the script directly (no git startup), poll for `process-started`, confirm the whole process group is gone, then watch a 3 second side-effect window; the fixed `sleep(4.5)` is removed.
@@ -31,5 +31,5 @@ English | [中文](2026-11-20-ci-unit-tests-parallelization.md)
 - Two Python test dependencies are added; `pnpm-lock.yaml` is unchanged because Python dependencies do not flow through pnpm.
 - Default parallelism may expose uncleared module-level state; `test:api:serial` and failed worker logs are the entry points for locating it.
 - `ci-ok` gains one more needs entry; the job count grows, but both suites run in parallel, so total runner minutes stay roughly flat.
-- The API job measured 7m58s–8m31s at `-n 4`, straddling the 8-minute acceptance line; `-n 6` overlaps I/O waits, and Phase 2's template database remains the fallback if the line is still missed.
+- The API job measured 7m58s–8m31s at `-n 4` and 6m05s–8m02s at `-n 6`, so `-n 8` adds margin; if runner jitter still pushes the job past 8 minutes, Phase 2's template database is the structural fallback.
 - The summary and `--durations` are soft visibility until they prove stable enough for thresholds.
