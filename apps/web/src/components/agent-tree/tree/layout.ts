@@ -187,10 +187,15 @@ export function chainOf(
       push(width);
     }
 
-    const text =
+    const label =
       event.kind === "skill"
         ? event.name || "skill"
-        : clipName(event.desc || event.name || event.kind);
+        : event.name || event.desc || event.kind;
+    const text = event.kind === "skill" ? label : clipName(label);
+    const title =
+      event.kind === "skill" || !event.desc || event.desc === label
+        ? label
+        : `${label} · ${event.desc}`;
     const width = triggerPillWidth(text, measure);
     const synthetic =
       event.relationConfidence === "synthetic" ||
@@ -198,6 +203,7 @@ export function chainOf(
     items.push({
       kind: event.kind,
       name: text,
+      title,
       evIdx: originalIndex,
       line: event.line,
       w: width,

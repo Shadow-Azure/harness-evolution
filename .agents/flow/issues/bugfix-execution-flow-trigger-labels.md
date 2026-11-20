@@ -8,7 +8,7 @@ id: bugfix-03
 milestone: bugfix
 depends: []
 priority: P2
-status: ready
+status: in-progress
 scope:
   - apps/web/**
   - plans/ui-prototype-v2/**
@@ -71,7 +71,7 @@ V2 原型结构树（同一句 `chainOf`；绿色是 skill 名称，紫色是 su
 2. V2 原型在 subagent 触发节点上同样显示任务描述，只有 skill 触发节点显示 skill 名称。生产与 V2 原型的字段选择一致，**不是生产回归**。
 3. 但标签口径不一致：skill 节点用稳定名称，subagent 节点用自由文本描述；描述在 22 字处被截断（`clipName`），因此主链无法稳定看出是哪个 subagent 触发的，只能到下方子 agent 卡片找名称。
 
-这就是本 issue 的实现口径：触发节点的职责是标识“触发了哪个对象”，统一用 name；描述只作为辅助信息。若产品明确选择保留“描述优先”，在 issue 记录后关闭，不实施本改动。
+2026-11-20 提出人确认：原型与生产的 subagent 节点都改为显示 subagent 名称；skill 节点保持 skill 名称不变。实现见本 issue 的 PR（Before/After 见 PR 描述）。
 
 ## 目标
 
@@ -89,7 +89,7 @@ V2 原型结构树（同一句 `chainOf`；绿色是 skill 名称，紫色是 su
 
 ## 实现内容
 
-按“skill 名称 + subagent 名称、描述进 tooltip”的口径实现；若产品明确选择保留现状，关闭本 issue，不实施本改动。
+已按“skill 名称 + subagent 名称、描述进 tooltip”的口径实现；`chainOf` 的标签取 `event.name`，悬浮 `title` 保留 `desc`；V2 原型同步从子节点类型补出名称。
 
 - `apps/web/src/components/agent-tree/tree/layout.ts` `chainOf`：
   - skill：保持 `event.name || "skill"`。
@@ -140,7 +140,7 @@ pnpm verify:flow
 - 结构树主链的 skill 触发节点显示 skill 名称；subagent/workflow 触发节点显示 subagent 名称；描述不再占用主链标签，但可在 `title` 中读到。
 - 生产页面与 V2 原型使用同一规则，截图对比可复核；不出现新的截断或 pill 重叠。
 - 回归测试覆盖 name/desc 不同的情况，避免以后又把 desc 放回主标签。
-- 若产品决定保留现状，issue 以“按现状关闭”记录，并保留本核对结论。
+- 以实现 PR 的 Before/After 截图、V2 原型 After 截图与回归测试作为验收证据。
 
 ## 门禁与 CI
 

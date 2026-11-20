@@ -8,7 +8,7 @@ id: bugfix-03
 milestone: bugfix
 depends: []
 priority: P2
-status: ready
+status: in-progress
 scope:
   - apps/web/**
   - plans/ui-prototype-v2/**
@@ -71,7 +71,7 @@ The direct answer to the user's question is therefore:
 2. The V2 prototype also shows task descriptions for subagent triggers; only skill triggers show the skill name. Production and the V2 prototype choose the same field, so this is **not a production regression**.
 3. The label rule is still inconsistent: skill nodes use a stable name, while subagent nodes use free-form descriptions. Descriptions are clipped at 22 characters (`clipName`), so the main chain cannot reliably identify which subagent fired; the name is only available on the child agent card below.
 
-This is the implementation rule for this issue: a trigger node exists to identify *which object* fired, so it uses the name consistently, with the description as supporting information. If the requester explicitly chooses to keep "description first", record that on this issue and close it without implementing the change.
+On 2026-11-20 the requester confirmed that both the prototype and production change subagent nodes to show the subagent name, while skill nodes keep the skill name. The implementation and Before/After evidence are in this issue's PR.
 
 ## Goals
 
@@ -89,7 +89,7 @@ This is the implementation rule for this issue: a trigger node exists to identif
 
 ## Implementation
 
-Implement the rule "skill name + subagent name; description in the tooltip". If the requester explicitly chooses to keep the status quo, close this issue without implementing the change.
+Implemented the rule "skill name + subagent name; description in the tooltip": `chainOf` labels take `event.name`, the hover `title` keeps `desc`, and the V2 prototype derives the name from the child type.
 
 - `apps/web/src/components/agent-tree/tree/layout.ts` `chainOf`:
   - skill: keep `event.name || "skill"`.
@@ -140,7 +140,7 @@ pnpm verify:flow
 - Skill trigger nodes on the structure-tree main chain show the skill name; subagent/workflow trigger nodes show the subagent name; the description no longer occupies the main-chain label but is readable in the `title`.
 - Production and the V2 prototype follow the same rule, verifiable from screenshots; no new clipping or pill overlap.
 - A regression test covers the case where name and desc differ, so the desc cannot silently return to the main label.
-- If the requester keeps the status quo, close this issue as "kept as-is" and preserve this finding.
+- Accept with the implementation PR's Before/After screenshots, the V2 prototype After screenshot, and the regression test.
 
 ## Gates and CI
 
