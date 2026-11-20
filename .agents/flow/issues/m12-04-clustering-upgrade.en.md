@@ -30,7 +30,9 @@ M12 carries forward the clustering work scoped in M6 issue #64. The design secti
 
 ## Goals
 
-Deliver clustering that can be verified independently. Keep contracts, database behavior and the frontend consistent for failures, empty inputs and retries.
+- Deliver the declared scope and verify it independently.
+- Keep contracts, the database and the frontend consistent.
+- Define behavior for failures, empty inputs and retries.
 
 ## Design authority
 
@@ -40,7 +42,8 @@ Deliver clustering that can be verified independently. Keep contracts, database 
 
 ## Implementation
 
-Persist cluster assignments in `probe_clusters` and `probe_cluster_probes`. Produce deterministic results for empty, single-item and large inputs.
+- Persist cluster assignments in `probe_clusters` and `probe_cluster_probes`.
+- Produce deterministic results for empty, single-item and large inputs.
 
 ## Implementation steps
 
@@ -50,7 +53,8 @@ Persist cluster assignments in `probe_clusters` and `probe_cluster_probes`. Prod
 
 ## Dependencies and boundary
 
-Depends on m10-04 and the V2 attribution report contract (m12-24). This issue covers the clustering algorithm and its existing persistence interface.
+- Depends on m10-04 and the V2 attribution report contract (m12-24).
+- This issue covers the clustering algorithm and its existing persistence interface.
 
 ## Verification
 
@@ -59,16 +63,16 @@ pnpm test:api -- tests/m12-04-clustering-upgrade
 pnpm test:db
 ```
 
-Verify the algorithm against the existing tables and API.
+- Verify the algorithm against the existing tables and API.
 
 ## Acceptance
 
-Results are reproducible, and migrations preserve the database schema used by callers.
+- Results are reproducible, and migrations preserve the database schema used by callers.
 
 ## Gates and CI
 
-Run the algorithm gate, tests on both supported databases and fixture regression tests.
+- Run the algorithm gate, tests on both supported databases and fixture regression tests.
 
 ## Non-goals
 
-Guarantees about diagnostic accuracy.
+- Guarantees about the accuracy of a diagnosis.

@@ -34,7 +34,9 @@ M12 carries forward the patch and evaluation work scoped in M6 issue #63. The de
 
 ## Goals
 
-Deliver a patch and evaluation pipeline that can be verified independently. Keep contracts, storage and frontend behavior consistent, including for failures, empty inputs and retries.
+- Deliver the declared scope and verify it independently.
+- Keep contracts, the database and the frontend consistent.
+- Define behavior for failures, empty inputs and retries.
 
 ## Design authority
 
@@ -44,7 +46,10 @@ Deliver a patch and evaluation pipeline that can be verified independently. Keep
 
 ## Implementation
 
-Generate a minimal configuration patch, commit and push the candidate, run evaluation and record the final decision. Supply production `HE_EVAL_*` settings to `/opt/harness/shared/.env` through GitHub Secrets and the release workflow. Regenerate OpenAPI and TypeScript contracts for the optional iteration patch note. Existing frontend behavior is preserved.
+- Generate a minimal configuration patch, commit and push the candidate, run evaluation and record the final decision.
+- Preserve existing frontend behavior.
+- Supply production `HE_EVAL_*` settings to `/opt/harness/shared/.env` through GitHub Secrets and the release workflow.
+- Regenerate OpenAPI and TypeScript contracts for the optional iteration patch note.
 
 ## Implementation steps
 
@@ -54,7 +59,8 @@ Generate a minimal configuration patch, commit and push the candidate, run evalu
 
 ## Dependencies and boundary
 
-Depends on m10-04, m12-02 and the attribution Golden evaluation gate (m12-20). This issue covers patch creation through the acceptance decision.
+- Depends on m10-04, m12-02 and the attribution Golden evaluation gate (m12-20).
+- This issue covers patch creation through the acceptance decision.
 
 ## Verification
 
@@ -64,16 +70,17 @@ pnpm test:db
 pnpm contract:check
 ```
 
-Verify that one real problem produces a patch, candidate push, evaluation result and acceptance or rejection. Existing UI types remain compatible.
+- Verify that one real problem produces a patch, candidate push, evaluation result and acceptance or rejection.
+- Existing UI types remain compatible.
 
 ## Acceptance
 
-Trace each decision to its Run, cluster, probe and Badcase.
+- Trace each decision to its Run, cluster, probe and Badcase.
 
 ## Gates and CI
 
-Run the live integration gate, redaction tests and browser smoke test.
+- Run the live integration gate, redaction tests and browser smoke test.
 
 ## Non-goals
 
-Automatic merge into the default branch.
+- Automatic merge into the default branch.

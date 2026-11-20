@@ -2,4 +2,4 @@
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m12-03-real-patch-eval.md
 m12-03-real-patch-eval.md: 59998086d058f2e74c9a9eafcfaabc2bc47f365d
-m12-03-real-patch-eval.en.md: 3ad2242de5b5366012b9e817bed07c7df8f1084f
+m12-03-real-patch-eval.en.md: 8d2a3c941ac9d23c629939f99b48675646c59846
