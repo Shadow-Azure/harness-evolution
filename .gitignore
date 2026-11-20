@@ -19,3 +19,5 @@ dist/
 .vite/
 .pnpm-store/
 claude-code-sessions
+
+/apps/api/release-assets/

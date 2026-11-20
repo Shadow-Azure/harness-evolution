@@ -10,16 +10,28 @@ ROOT = Path(__file__).resolve().parents[4]
 
 
 def test_release_can_read_bundled_attribution_assets(tmp_path: Path) -> None:
+    checkout = tmp_path / "checkout"
     release = tmp_path / "releases" / "candidate"
     api = release / "api"
     data = tmp_path / "shared" / "data"
-    shutil.copytree(
-        ROOT / "apps/api/app", api / "app", ignore=shutil.ignore_patterns("__pycache__")
-    )
-    for asset in (ROOT / "deploy/attribution-assets.list").read_text().splitlines():
-        destination = release / asset
+    manifest = Path("deploy/attribution-assets.list")
+    for resource in [str(manifest), *(ROOT / manifest).read_text().splitlines()]:
+        destination = checkout / resource
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(ROOT / asset, destination)
+        shutil.copyfile(ROOT / resource, destination)
+    node = shutil.which("node")
+    assert node, "Node is required for the release build"
+    subprocess.run(  # noqa: S603 - invoke the repository build script in the temporary checkout.
+        [node, str(ROOT / "scripts/stage-attribution-assets.mjs")], cwd=checkout, check=True
+    )
+    shutil.copytree(
+        ROOT / "apps/api/app",
+        checkout / "apps/api/app",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    # The deploy transport copies the api directory alone to <release>/api.
+    shutil.copytree(checkout / "apps/api", api)
+    shutil.rmtree(checkout)
 
     env = {
         key: value
@@ -36,6 +48,7 @@ def test_release_can_read_bundled_attribution_assets(tmp_path: Path) -> None:
 import asyncio
 import io
 import zipfile
+from pathlib import Path
 
 from app.cli import main
 from app.config import Settings
@@ -45,6 +58,9 @@ from app.service.evolution.attribution_skill_packages import AttributionSkillPac
 
 settings = Settings()
 assert settings.attribution_package_dir == settings.data_dir / 'attribute'
+resources = Path.cwd() / 'release-assets'
+assert settings.attribution_default_skill_path == resources / 'attribute-badcases/SKILL.md'
+assert settings.attribution_golden_set_path == resources / 'fixtures/attribution-golden/cases.json'
 packages = AttributionSkillPackageService(
     AttributionSkillPackageRepository(create_database(settings)),
     settings.attribution_package_dir, settings.attribution_default_skill_path,

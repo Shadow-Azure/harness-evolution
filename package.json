@@ -7,7 +7,7 @@
     "dev": "node scripts/dev.mjs",
     "dev:api": "node scripts/run-api.mjs dev",
     "dev:web": "pnpm --filter @harness/web dev",
-    "build": "pnpm --filter @harness/web build",
+    "build": "pnpm --filter @harness/web build && node scripts/stage-attribution-assets.mjs",
     "lint:web": "pnpm --filter @harness/web lint",
     "start": "node scripts/run-api.mjs start",
     "setup:api": "node scripts/setup-api.mjs",

@@ -9,9 +9,9 @@ from urllib.parse import urlsplit
 from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_API_PARENT = Path(__file__).resolve().parents[2]
+_API_DIR = Path(__file__).resolve().parents[1]
 # Sources run under <checkout>/apps/api or <release>/api.
-_ASSET_ROOT = _API_PARENT.parent if _API_PARENT.name == "apps" else _API_PARENT
+_ASSET_ROOT = _API_DIR.parents[1] if _API_DIR.parent.name == "apps" else _API_DIR / "release-assets"
 DEFAULT_ATTRIBUTION_GOLDEN_SET = _ASSET_ROOT / "fixtures" / "attribution-golden" / "cases.json"
 
 _COOKIE_TOKEN_CHARS = set(
