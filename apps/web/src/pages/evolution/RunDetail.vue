@@ -22,6 +22,7 @@ import { useEvolutionRunStep } from "../../composables/useEvolutionRunStep";
 import { useRunEvents } from "../../composables/useRunEvents";
 import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import { workspacePath } from "../../router/workspace";
+import { useAuthStore } from "../../stores/auth";
 import RunStepContent from "./components/RunStepContent.vue";
 import RunStepper from "./components/RunStepper.vue";
 import RunLogPanel from "./components/RunLogPanel.vue";
@@ -37,6 +38,7 @@ const route = useRoute();
 const router = useRouter();
 const queryClient = useQueryClient();
 const workspaceId = useWorkspaceId();
+const auth = useAuthStore();
 
 const runId = computed(() => String(route.params.runId ?? ""));
 const {
@@ -155,6 +157,10 @@ const selectedKey = computed(() => resolveRunStepKey(route.query.step, steps.val
 const selectedStep = computed(
   () => steps.value.find((step) => step.key === selectedKey.value) ?? null,
 );
+const rangeStep = computed(() => steps.value.find((step) => step.key === "range"));
+const attributionStep = computed(
+  () => steps.value.find((step) => step.key === "attribution"),
+);
 watch(selectedKey, () => {
   stepPage.value = 1;
 });
@@ -173,6 +179,26 @@ const stepPageSize = computed(() => {
 });
 const stepPageParam = computed(() =>
   stepPageSize.value === undefined ? undefined : stepPage.value,
+);
+
+/**
+ * Info-panel facts live on the range and attribution steps, not on the run
+ * shell. Both queries share query keys with the selected step, so opening that
+ * step reuses the cached payload instead of issuing a second request.
+ */
+const { data: rangeData } = useEvolutionRunStep(
+  workspaceId,
+  runId,
+  "range",
+  computed(() => activeTab.value === "steps" && rangeStep.value?.clickable === true),
+);
+const { data: attributionData } = useEvolutionRunStep(
+  workspaceId,
+  runId,
+  "attribution",
+  computed(
+    () => activeTab.value === "steps" && attributionStep.value?.clickable === true,
+  ),
 );
 
 const {
@@ -244,25 +270,112 @@ const windowLabel = computed(() => {
   return "时间窗未设置";
 });
 
-const createdMeta = computed(() => {
-  if (!run.value) return "";
-  const date = run.value.createdAt.replace("T", " ").slice(0, 16);
-  return run.value.createdBy ? `${run.value.createdBy} · ${date}` : date;
+const workspaceName = computed(
+  () => auth.workspaceById(workspaceId.value)?.name ?? "—",
+);
+
+const rangeCondition = computed(() => {
+  const step = rangeData.value;
+  return step?.key === "range" ? step.payload.condition : null;
 });
+
+const attributionRows = computed(() => {
+  const step = attributionData.value;
+  return step?.key === "attribution" ? step.payload.rows : null;
+});
+
+const isDefaultPolicy = computed(() => {
+  const policy = rangeCondition.value?.policy;
+  if (!policy || typeof policy !== "object") return false;
+  return (policy as { preset?: unknown }).preset === "default";
+});
+
+/**
+ * The prototype splits conclusions per row, not per run counter: attributed
+ * rows carry a category, non-target rows do not, and cached/fresh applies only
+ * to attributed rows. The backend summary's `fresh` also counts fresh
+ * non-target rows, so the info panel reads the unpaged rows instead.
+ */
+const attributionFinal = computed(
+  () => attributionStep.value?.status === "done",
+);
+
+const panelAttributed = computed(() => {
+  if (attributionFinal.value && attributionRows.value) {
+    return attributionRows.value.filter((row) => row.category !== null).length;
+  }
+  return run.value?.stats.attributed ?? 0;
+});
+
+const nonTargetCount = computed(() => {
+  if (!attributionFinal.value || !attributionRows.value) return null;
+  return attributionRows.value.filter((row) => row.category === null).length;
+});
+
+const reusedCount = computed(() => {
+  if (!attributionFinal.value || !attributionRows.value) return null;
+  return attributionRows.value.filter(
+    (row) => row.category !== null && row.source === "cached",
+  ).length;
+});
+
+const freshCount = computed(() => {
+  if (!attributionFinal.value || !attributionRows.value) return null;
+  return attributionRows.value.filter(
+    (row) => row.category !== null && row.source === "fresh",
+  ).length;
+});
+
+const pendingCount = computed(() => {
+  if (attributionFinal.value) return 0;
+  return Math.max(0, (run.value?.stats.potential ?? 0) - panelAttributed.value);
+});
+
+const nonTargetLabel = computed(() =>
+  nonTargetCount.value === null ? "—" : String(nonTargetCount.value),
+);
+
+const reusedLabel = computed(() =>
+  reusedCount.value === null ? "—" : String(reusedCount.value),
+);
+
+const freshLabel = computed(() =>
+  freshCount.value === null ? "—" : String(freshCount.value),
+);
 
 const distribution = computed(() => {
   const stats = run.value?.stats.byCategory;
   if (!stats) return [];
-  return [
+  const items = [
     { key: "error", label: "错误", value: stats.error, color: "var(--red)" },
     { key: "prompt", label: "prompt", value: stats.prompt, color: "var(--orange)" },
     { key: "model", label: "模型", value: stats.model, color: "var(--purple)" },
   ];
+  if (nonTargetCount.value !== null) {
+    items.push({
+      key: "nonTarget",
+      label: "非该对象",
+      value: nonTargetCount.value,
+      color: "var(--text-faint)",
+    });
+  }
+  if (pendingCount.value > 0) {
+    items.push({
+      key: "pending",
+      label: "未归因",
+      value: pendingCount.value,
+      color: "var(--border)",
+    });
+  }
+  return items;
 });
 
-const analyzedCount = computed(() =>
-  distribution.value.reduce((sum, item) => sum + item.value, 0),
-);
+const distributionTotal = computed(() => {
+  if (attributionFinal.value && attributionRows.value) {
+    return attributionRows.value.length;
+  }
+  return run.value?.stats.potential ?? 0;
+});
 
 const stepErrorCode = computed(() => {
   const error = stepError.value;
@@ -411,8 +524,10 @@ function clearMissingClusterFocus(): void {
           class="badge"
           :class="statusClass"
         >{{ statusLabel }}</span>
-        <span class="spacer" />
-        <span class="created-meta">{{ createdMeta }}</span>
+        <span
+          class="badge space"
+          data-testid="run-workspace-badge"
+        >{{ workspaceName }}</span>
       </header>
 
       <div
@@ -532,7 +647,10 @@ function clearMissingClusterFocus(): void {
       </div>
 
       <template v-if="activeTab === 'steps'">
-        <article class="card panel info-panel">
+        <article
+          class="card panel info-panel"
+          data-testid="run-info-panel"
+        >
           <h2 class="sec-title">
             目标与输入
             <span class="sub">时间段内当前空间上报的 bad case 是本次进化的候选集</span>
@@ -575,18 +693,10 @@ function clearMissingClusterFocus(): void {
             </div>
             <div class="kv">
               <div class="k">
-                模型（多选）
+                工作空间
               </div>
               <div class="v">
-                <span
-                  v-for="model in run.models"
-                  :key="model"
-                  class="chip model"
-                >{{ model }}</span>
-                <span
-                  v-if="run.models.length === 0"
-                  class="muted"
-                >全部模型</span>
+                {{ workspaceName }}
               </div>
             </div>
             <div class="kv">
@@ -616,33 +726,25 @@ function clearMissingClusterFocus(): void {
             </div>
             <div class="kv">
               <div class="k">
-                可归因
+                可归因 / 非该对象
               </div>
               <div class="v big">
-                {{ run.stats.attributed }}
-              </div>
-            </div>
-            <div class="kv">
-              <div class="k">
-                复用缓存归因
-              </div>
-              <div class="v big">
-                {{ run.stats.reused }}
+                {{ panelAttributed }} <span class="muted">/ {{ nonTargetLabel }}</span>
               </div>
             </div>
           </div>
           <p class="cb-label">
-            已归因结论的归因类型分布（{{ analyzedCount }} 条）
+            潜在 bad case 的归因结论分布（{{ distributionTotal }} 条）
           </p>
           <div
             class="typebar"
-            aria-label="归因类型分布"
+            aria-label="潜在 bad case 的归因结论分布"
           >
             <span
               v-for="item in distribution"
               :key="item.key"
               :style="{
-                width: `${analyzedCount ? (item.value / analyzedCount) * 100 : 0}%`,
+                width: `${distributionTotal ? (item.value / distributionTotal) * 100 : 0}%`,
                 background: item.color,
               }"
             />
@@ -658,107 +760,126 @@ function clearMissingClusterFocus(): void {
               />
               {{ item.label }} <b>{{ item.value }}</b>
             </span>
-            <span class="muted">＝ 可归因 {{ run.stats.attributed }} · 复用缓存 {{ run.stats.reused }}</span>
+            <span class="muted">＝ 归因 {{ panelAttributed }} · 复用缓存 {{ reusedLabel }} · 本次新增 {{ freshLabel }}</span>
           </div>
-        </article>
-
-        <article class="card panel workspace-panel">
-          <h2 class="sec-title">
-            工作区
-            <span class="sub">候选 commit 与 run 分支在这里推进，不提供人工推进入口</span>
-          </h2>
-          <div class="workspace-grid">
-            <div class="kv">
-              <div class="k">
-                run 分支
-              </div>
-              <div class="v">
-                <button
-                  v-if="run.workspace.branchName"
-                  class="branch-copy mono"
-                  type="button"
-                  data-testid="copy-branch"
-                  :title="`点击复制分支名 ${run.workspace.branchName}`"
-                  @click="copyBranch"
-                >
-                  {{ run.workspace.branchName }}
-                  <span aria-live="polite">{{ branchCopied ? " · 已复制" : " · 复制" }}</span>
-                </button>
-                <span
-                  v-else
-                  class="muted"
-                >尚未创建</span>
-              </div>
-            </div>
-            <div class="kv">
-              <div class="k">
-                基线 ref / commit
-              </div>
-              <div class="v mono">
-                {{ run.workspace.baseRef ?? "—" }} /
-                {{ run.workspace.baseCommit?.slice(0, 12) ?? "—" }}
-              </div>
-            </div>
-            <div class="kv">
-              <div class="k">
-                仓库
-              </div>
-              <div class="v mono workspace-path">
-                {{ run.workspace.repoUrl }}
-              </div>
-            </div>
-            <div class="kv">
-              <div class="k">
-                子目录
-              </div>
-              <div class="v mono">
-                {{ run.workspace.subDir }}
-              </div>
-            </div>
-            <div class="kv">
-              <div class="k">
-                推送状态
-              </div>
-              <div class="v mono">
-                {{ workspacePushStatusLabel(run.workspace.pushStatus) }}
-              </div>
-            </div>
-            <div class="kv">
-              <div class="k">
-                推送时间
-              </div>
-              <div class="v mono">
-                {{ run.workspace.pushedAt?.replace("T", " ").slice(0, 16) ?? "尚未推送" }}
-              </div>
-            </div>
-            <div class="kv">
-              <div class="k">
-                评测状态
-              </div>
-              <div class="v mono">
-                {{ run.evalStatus }}
-              </div>
-            </div>
-          </div>
-          <p
-            v-if="run.workspace.pushError"
-            class="workspace-error"
+          <div
+            v-if="rangeCondition"
+            class="f-inline policy-row"
+            data-testid="run-policy-cache"
           >
-            推送错误：{{ run.workspace.pushError }}
-          </p>
+            <span
+              class="v2-badge"
+              :class="{ ok: isDefaultPolicy }"
+            >{{ isDefaultPolicy ? "默认策略 · 对象自身 self 上报 或 触发点在其后" : "自定义策略" }}</span>
+            <span
+              class="v2-badge"
+              :class="rangeCondition.cacheEnabled ? 'ok' : 'warn'"
+            >{{ rangeCondition.cacheEnabled ? "复用缓存归因" : "不复用缓存" }}</span>
+          </div>
           <details
-            v-if="run.workspace.workspacePath || run.workspace.repoPath"
-            class="workspace-paths"
+            class="workspace-detail"
+            data-testid="run-workspace"
           >
-            <summary>查看本地路径</summary>
-            <p class="mono">
-              workspace: {{ run.workspace.workspacePath ?? "—" }}<br>
-              repo: {{ run.workspace.repoPath ?? "—" }}
+            <summary>
+              工作区
+              <span class="sub">分支 / 基线 / 仓库 / 推送与评测状态</span>
+            </summary>
+            <div class="workspace-grid">
+              <div class="kv">
+                <div class="k">
+                  run 分支
+                </div>
+                <div class="v">
+                  <button
+                    v-if="run.workspace.branchName"
+                    class="branch-copy mono"
+                    type="button"
+                    data-testid="copy-branch"
+                    :title="`点击复制分支名 ${run.workspace.branchName}`"
+                    @click="copyBranch"
+                  >
+                    {{ run.workspace.branchName }}
+                    <span aria-live="polite">{{ branchCopied ? " · 已复制" : " · 复制" }}</span>
+                  </button>
+                  <span
+                    v-else
+                    class="muted"
+                  >尚未创建</span>
+                </div>
+              </div>
+              <div class="kv">
+                <div class="k">
+                  基线 ref / commit
+                </div>
+                <div class="v mono">
+                  {{ run.workspace.baseRef ?? "—" }} /
+                  {{ run.workspace.baseCommit?.slice(0, 12) ?? "—" }}
+                </div>
+              </div>
+              <div class="kv">
+                <div class="k">
+                  仓库
+                </div>
+                <div class="v mono workspace-path">
+                  {{ run.workspace.repoUrl }}
+                </div>
+              </div>
+              <div class="kv">
+                <div class="k">
+                  子目录
+                </div>
+                <div class="v mono">
+                  {{ run.workspace.subDir }}
+                </div>
+              </div>
+              <div class="kv">
+                <div class="k">
+                  推送状态
+                </div>
+                <div class="v mono">
+                  {{ workspacePushStatusLabel(run.workspace.pushStatus) }}
+                </div>
+              </div>
+              <div class="kv">
+                <div class="k">
+                  推送时间
+                </div>
+                <div class="v mono">
+                  {{ run.workspace.pushedAt?.replace("T", " ").slice(0, 16) ?? "尚未推送" }}
+                </div>
+              </div>
+              <div class="kv">
+                <div class="k">
+                  评测状态
+                </div>
+                <div class="v mono">
+                  {{ run.evalStatus }}
+                </div>
+              </div>
+            </div>
+            <p
+              v-if="run.workspace.pushError"
+              class="workspace-error"
+            >
+              推送错误：{{ run.workspace.pushError }}
             </p>
+            <details
+              v-if="run.workspace.workspacePath || run.workspace.repoPath"
+              class="workspace-paths"
+            >
+              <summary>查看本地路径</summary>
+              <p class="mono">
+                workspace: {{ run.workspace.workspacePath ?? "—" }}<br>
+                repo: {{ run.workspace.repoPath ?? "—" }}
+              </p>
+            </details>
           </details>
         </article>
 
-        <article class="card panel">
+        <article
+          class="card panel"
+          data-testid="run-progress"
+        >
           <h2 class="sec-title">
             流程进度
             <span class="sub">
@@ -852,14 +973,9 @@ function clearMissingClusterFocus(): void {
   font-weight: 700;
 }
 
-.spacer {
-  flex: 1;
-}
-
-.created-meta {
-  color: var(--text-faint);
-  font-family: var(--mono);
-  font-size: 11.5px;
+.badge.space {
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+  color: var(--text-dim);
 }
 
 .badge {
@@ -1133,11 +1249,61 @@ function clearMissingClusterFocus(): void {
   font-family: var(--mono);
 }
 
-.chip.model {
-  border-color: color-mix(in srgb, var(--cyan) 35%, transparent);
-  background: color-mix(in srgb, var(--cyan) 9%, transparent);
-  color: var(--cyan);
-  font-family: var(--mono);
+.f-inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.policy-row {
+  margin-top: 10px;
+}
+
+.v2-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.v2-badge.ok {
+  border-color: color-mix(in srgb, var(--green) 38%, transparent);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+  color: var(--green);
+}
+
+.v2-badge.warn {
+  border-color: color-mix(in srgb, var(--orange) 40%, transparent);
+  background: color-mix(in srgb, var(--orange) 8%, transparent);
+  color: var(--orange);
+}
+
+.workspace-detail {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.workspace-detail > summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workspace-detail > summary .sub {
+  margin-left: 8px;
+}
+
+.workspace-detail .workspace-grid {
+  margin-top: 12px;
 }
 
 .typebar {
@@ -1241,7 +1407,6 @@ function clearMissingClusterFocus(): void {
     grid-template-columns: 1fr;
   }
 
-  .created-meta,
   .retry-copy {
     width: 100%;
     margin-left: 0;

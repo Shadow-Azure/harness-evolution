@@ -690,6 +690,34 @@
 .evo-app .detail-head { display: flex; align-items: center; gap: 10px; margin: 12px 0 18px; flex-wrap: wrap; }
 .evo-app .detail-head h1 { font-size: 17px; font-weight: 700; }
 .evo-app .detail-head .spacer { flex: 1; }
+.evo-app .badge.preparing { color: var(--blue); background: color-mix(in srgb, var(--blue) 10%, transparent); }
+.evo-app .detail-tabs { display: flex; gap: 3px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.evo-app .detail-tabs button { display: flex; align-items: center; gap: 6px; padding: 7px 12px 8px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-faint); font: inherit; font-size: 12px; cursor: pointer; }
+.evo-app .detail-tabs button.active { color: var(--text); border-bottom-color: var(--blue); font-weight: 650; }
+.evo-app .detail-tabs .tab-count { color: var(--text-faint); font-size: 10px; }
+.evo-app .policy-row { margin-top: 10px; }
+.evo-app .ws-detail { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.evo-app .ws-detail > summary { cursor: pointer; color: var(--text-dim); font-size: 12px; font-weight: 600; }
+.evo-app .ws-detail > summary .sub { margin-left: 8px; color: var(--text-faint); font-size: 11.5px; font-weight: 400; }
+.evo-app .ws-detail .kv-grid { grid-template-columns: repeat(3, 1fr); margin: 12px 0 0; }
+.evo-app .branch-copy { padding: 0; border: 0; background: transparent; color: var(--text-dim); font: inherit; font-size: inherit; font-family: var(--mono); text-align: left; cursor: pointer; }
+.evo-app .branch-copy:hover { color: var(--blue); }
+.evo-app .preparing-copy { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: 10px; color: var(--text-dim); font-size: 12.5px; }
+.evo-app .ev-log-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.evo-app .ev-log-toolbar .spacer { flex: 1; }
+.evo-app .ev-log-toolbar label { display: inline-flex; align-items: center; gap: 5px; color: var(--text-dim); font-size: 11.5px; }
+.evo-app .ev-log-row { display: grid; grid-template-columns: 68px 66px 138px 1fr 52px; align-items: baseline; gap: 10px; padding: 7px 4px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); font-size: 11.5px; }
+.evo-app .ev-log-row .time { color: var(--text-faint); font-size: 10.5px; }
+.evo-app .ev-log-row .stage { color: var(--text-faint); }
+.evo-app .ev-log-row .type { color: var(--text-dim); }
+.evo-app .ev-log-row .msg { color: var(--text); }
+.evo-app .ev-log-row.level-warn .msg { color: var(--orange); }
+.evo-app .ev-log-row.level-error .msg { color: var(--red); }
+.evo-app .ev-log-row .dur { color: var(--text-faint); text-align: right; font-size: 10.5px; }
+.evo-app .ev-log-error { margin: 4px 0 10px 134px; color: var(--text-dim); font-size: 11px; }
+.evo-app .ev-log-error summary { cursor: pointer; color: var(--text-faint); }
+.evo-app .ev-log-error pre { margin: 7px 0 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-inset); color: var(--text-dim); font-family: var(--mono); font-size: 10.5px; white-space: pre-wrap; }
+.evo-app .ev-log-more { margin-top: 10px; text-align: center; }
 .evo-app .panel { padding: 16px 18px; margin-bottom: 16px; }
 .evo-app .kv-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 20px; margin-bottom: 14px; }
 .evo-app .kv .k { font-size: 11px; color: var(--text-faint); margin-bottom: 2px; }
@@ -4857,6 +4885,18 @@ function evMakeRun(cfg) {
     cache: cfg.cache !== false, progress: cfg.progress ?? 0,
     final: { ...EV_FINAL_TEMPLATE, bestVersion: cfg.target.version + '-best' },
     models: ['glm-5.3', 'glm-5.3-flash'],
+    preparing: cfg.preparing === true,
+  };
+  const cfgTarget = (EV_TARGETS[cfg.workspace] || []).find(t => t.objectName === cfg.target.name && t.kind === cfg.target.kind);
+  run.worktree = {
+    branch: `evo/${cfg.id}`,
+    baseRef: cfg.target.version,
+    baseCommit: cfg.preparing ? null : '9f3c2a1',
+    repoUrl: cfgTarget?.repoUrl || 'https://github.com/acme/agent-skills.git',
+    subDir: cfgTarget?.subDir || `skills/${cfg.target.name}`,
+    pushStatus: cfg.preparing ? 'pending' : 'succeeded',
+    pushedAt: cfg.preparing ? null : (cfg.createdAt || '2026-11-10 09:10'),
+    evalStatus: cfg.preparing ? 'pending' : (cfg.progress === 8 ? 'completed' : 'evaluating'),
   };
   const model = evRunModel(run);
   run.model = model;
@@ -4892,6 +4932,7 @@ function evMakeRun(cfg) {
     };
   });
   run.clusters.sort((a, b) => b.sev - a.sev);
+  if (cfg.preparing) run.clusters = [];
   run.final.bestVersion = cfg.target.version + '-best';
   run.progress = cfg.progress ?? 0;
   if (cfg.progress === 8) run.progress = evTotal(run);
@@ -4899,6 +4940,11 @@ function evMakeRun(cfg) {
 }
 
 const EV_RUNS = [
+  evMakeRun({
+    id: 'EV-20261119-05', workspace: 'ws-harness', title: 'deep-research v2.4.0 自进化',
+    target: { kind: 'skill', name: 'deep-research', version: 'v2.4.0' },
+    window: ['2026-11-12', '2026-11-19'], createdAt: '2026-11-19 23:03', progress: 0, cache: true, preparing: true,
+  }),
   evMakeRun({
     id: 'EV-20261109-01', workspace: 'ws-harness', title: 'deep-research v2.4.0 自进化',
     target: { kind: 'skill', name: 'deep-research', version: 'v2.4.0' },
@@ -4921,11 +4967,12 @@ const EV_RUNS = [
   }),
 ];
 
-EV_RUNS[1].clusters.forEach(c => {
+const evNoGainRun = EV_RUNS.find(r => r.id === 'EV-20261106-02');
+evNoGainRun.clusters.forEach(c => {
   c.accepted = false; c.commit = null;
   c.eval = { cur: 81.2, cand: 80.8 };
 });
-Object.assign(EV_RUNS[1].final, {
+Object.assign(evNoGainRun.final, {
   verdict: false, bestScore: 80.4, initScore: 81.2,
   metrics: [
     { name: '总体得分', init: '81.2', best: '80.4', delta: -0.8, unit: '' },
@@ -4935,10 +4982,14 @@ Object.assign(EV_RUNS[1].final, {
   ],
 });
 
-const EV_STATE = { expanded: new Set(), selStep: null, lastDetailId: null, wz: null, targetDialog: null };
+const EV_STATE = { expanded: new Set(), selStep: null, lastDetailId: null, detailTab: 'steps', logLevel: 'all', wz: null, targetDialog: null };
 
 function evTotal(run) { return 5 + run.clusters.length + 1; }
 function evIsDone(run) { return run.progress >= evTotal(run); }
+function evDisplayModel(run) {
+  if (!run.preparing) return run.model;
+  return { cases: [], sessions: [], potentialRows: [], attributed: [], notObject: [], reused: 0, fresh: 0 };
+}
 function evRoundDone(run, i) { return run.progress >= 6 + i; }
 function evRoundActive(run, i) { return run.progress === 5 + i; }
 function evStageIndex(run) {
@@ -4953,6 +5004,7 @@ function evStageDone(run, stage) {
   return run.progress > stage;
 }
 function evStageActive(run, stage) {
+  if (run.preparing) return stage === 0;
   if (stage === 4) return run.progress === 4;
   if (stage === 5) return run.progress >= 5 && run.progress < 5 + run.clusters.length;
   if (stage === 6) return run.progress === 5 + run.clusters.length && !evIsDone(run);
@@ -4984,6 +5036,7 @@ function evRunsOfWs() { return EV_RUNS.filter(r => r.workspace === evCurrentWs()
 function evTargetsOfWs() { return (EV_TARGETS[evCurrentWs()] || []).filter(t => t.enabled); }
 
 function evStatusBadge(run) {
+  if (run.preparing) return `<span class="badge preparing"><span class="pulse"></span>准备中</span>`;
   if (!evIsDone(run)) return `<span class="badge running"><span class="pulse"></span>正在执行 · 第 ${evStageIndex(run) + 1}/7 步</span>`;
   return run.final.verdict ? `<span class="badge done-ok">✓ 已完成 · 自进化有效</span>` : `<span class="badge done-no">已完成 · 无收益</span>`;
 }
@@ -5001,7 +5054,7 @@ function evRunCard(run) {
   const total = evTotal(run), pct = Math.min(100, Math.round(run.progress / total * 100));
   const accepted = run.clusters.filter((c, i) => evRoundDone(run, i) && c.accepted).length;
   const doneRounds = run.clusters.filter((c, i) => evRoundDone(run, i)).length;
-  const m = run.model;
+  const m = evDisplayModel(run);
   let tail;
   if (!evIsDone(run)) {
     const names = ['选择范围', 'Session 关联', '筛选潜在 bad case', '对象归因', '聚类与严重度', '迭代优化', '测试集终评'];
@@ -5055,7 +5108,7 @@ function evRenderList() {
 }
 
 function evInfoPanel(run) {
-  const m = run.model;
+  const m = evDisplayModel(run);
   const byType = {};
   m.potentialRows.forEach(r => { byType[r.category] = (byType[r.category] || 0) + 1; });
   const total = m.potentialRows.length || 1;
@@ -5077,12 +5130,32 @@ function evInfoPanel(run) {
     <div class="cb-label">潜在 bad case 的归因结论分布（${m.potentialRows.length} 条）</div>
     <div class="typebar">${bar}</div>
     <div class="legend">${legend}<span style="color:var(--text-faint)">＝ 归因 ${m.attributed.length} · 复用缓存 ${m.reused} · 本次新增 ${m.fresh}</span></div>
-    <div class="f-inline" style="margin-top:10px">
+    <div class="f-inline policy-row">
       <span class="v2-badge ${run.policy === 'default' ? 'ok' : ''}">${run.policy === 'default' ? '默认策略 · 对象自身 self 上报 或 触发点在其后' : '自定义策略'}</span>
       <span class="v2-badge ${run.cache ? 'ok' : 'warn'}">${run.cache ? '复用缓存归因' : '不复用缓存'}</span>
       ${run.policy !== 'default' ? `<span class="v2-note">${evEsc(JSON.stringify(run.policyRules || {}))}</span>` : ''}
     </div>
+    ${evWorkspaceDetail(run)}
   </div>`;
+}
+
+/* 工作区信息归属 infoPanel 的折叠区，不再单独成卡。 */
+function evWorkspaceDetail(run) {
+  const w = run.worktree || {};
+  const branch = w.branch ? `<button type="button" class="branch-copy" data-action="ev-copy-branch" data-branch="${evEsc(w.branch)}" title="点击复制分支名 ${evEsc(w.branch)}">${evEsc(w.branch)} · 复制</button>` : '<span class="v2-note">尚未创建</span>';
+  return `<details class="ws-detail">
+    <summary>工作区 <span class="sub">分支 / 基线 / 仓库 / 推送与评测状态</span></summary>
+    <div class="kv-grid">
+      <div class="kv"><div class="k">run 分支</div><div class="v">${branch}</div></div>
+      <div class="kv"><div class="k">基线 ref / commit</div><div class="v mono">${evEsc(w.baseRef || '—')} / ${evEsc(w.baseCommit || '—')}</div></div>
+      <div class="kv"><div class="k">仓库</div><div class="v mono" style="word-break:break-all">${evEsc(w.repoUrl || '—')}</div></div>
+      <div class="kv"><div class="k">子目录</div><div class="v mono">${evEsc(w.subDir || '—')}</div></div>
+      <div class="kv"><div class="k">推送状态</div><div class="v mono">${w.pushStatus === 'succeeded' ? '已推送' : w.pushStatus === 'pending' ? '待推送' : evEsc(w.pushStatus || '—')}</div></div>
+      <div class="kv"><div class="k">推送时间</div><div class="v mono">${evEsc(w.pushedAt || '尚未推送')}</div></div>
+      <div class="kv"><div class="k">评测状态</div><div class="v mono">${evEsc(w.evalStatus || '—')}</div></div>
+    </div>
+    <p class="v2-note" style="margin-top:10px">workspace: ${evEsc('data/workspaces/' + run.id)} · repo: data/repos/target</p>
+  </details>`;
 }
 
 const EV_STEPS = ['选择范围', 'Session 关联', '潜在 bad case', '对象归因', '聚类与严重度', '迭代优化', '测试集终评'];
@@ -5096,7 +5169,7 @@ function evStepper(run, sel) {
 }
 
 function evStepScope(run) {
-  const m = run.model;
+  const m = evDisplayModel(run);
   return `<div class="card panel">
     <div class="sec-title">第 1 步 · 选择范围 <span class="sub">进化对象 + 版本 + bad case 时间段</span></div>
     <table class="rep"><tbody>
@@ -5105,6 +5178,7 @@ function evStepScope(run) {
       <tr><th>潜在策略</th><td>${run.policy === 'default' ? '默认：对象自身 self 上报 或 触发点在对象之后' : '自定义：' + evEsc(JSON.stringify(run.policyRules || {}))}</td><th>缓存归因</th><td>${run.cache ? '复用最近一次成功归因' : '不复用，全部重新归因'}</td></tr>
     </tbody></table>
     <p class="v2-note" style="margin-top:10px">先找出时间段内当前空间上报过 bad case 的 Session，共 <b>${m.sessions.length}</b> 个；再判断 ${evEsc(run.target.name)}@${run.target.version} 是否出现在这些 Session 中。</p>
+    ${run.preparing ? '<p class="v2-note" style="margin-top:10px">运行已受理，正在准备筛选与聚类；统计将在准备完成后出现。</p>' : ''}
   </div>`;
 }
 
@@ -5303,29 +5377,72 @@ function evDefaultStep(run) {
   return 6;
 }
 
+const EV_LOG_EVENTS = [
+  { seq: 1, time: '23:03:00', level: 'info', stage: 'prepare', type: 'run_created', message: '运行已创建', dur: '0ms' },
+  { seq: 2, time: '23:03:04', level: 'info', stage: 'prepare', type: 'sessions_linked', message: '关联 Session 5 个', dur: '1.2s' },
+  { seq: 3, time: '23:03:07', level: 'info', stage: 'prepare', type: 'potential_matched', message: '筛选出潜在 bad case 9 个', dur: '840ms' },
+  { seq: 4, time: '23:03:09', level: 'info', stage: 'prepare', type: 'attribution_reused', message: '缓存复用：3 条', dur: '120ms' },
+  { seq: 5, time: '23:03:15', level: 'warn', stage: 'eval', type: 'eval_failed', message: '评测执行失败：sandbox timeout', dur: '30.0s', error: 'TypeError: evaluation sandbox timeout\nat eval/run.js:42:7\ntoken=<redacted>' },
+  { seq: 6, time: '23:03:20', level: 'info', stage: 'eval', type: 'eval_completed', message: '评测完成：candidate 87.2 vs current 84.6', dur: '5.0s' },
+];
+
+/* 执行日志是详情页的独立页签，分页与级别过滤与生产一致。 */
+function evLogAllEvents(run) {
+  return run.preparing ? EV_LOG_EVENTS.slice(0, 3) : EV_LOG_EVENTS;
+}
+function evLogPanel(run) {
+  const all = evLogAllEvents(run);
+  const events = EV_STATE.logLevel === 'all' ? all : all.filter(event => event.level === EV_STATE.logLevel);
+  const rows = events.map(event => `<div class="ev-log-row level-${event.level}" data-ev-event-seq="${event.seq}">
+      <span class="time mono">${event.time}</span><span class="stage mono">${evEsc(event.stage)}</span><span class="type mono">${evEsc(event.type)}</span><span class="msg">${evEsc(event.message)}</span><span class="dur mono">${evEsc(event.dur)}</span>
+    </div>${event.error ? `<details class="ev-log-error" data-ev-event-error="${event.seq}"><summary>错误详情</summary><pre>${evEsc(event.error)}</pre></details>` : ''}`).join('');
+  const level = (key, label) => `<button type="button" class="v2-badge ${EV_STATE.logLevel === key ? 'ok' : ''}" data-action="ev-log-level" data-level="${key}">${label}</button>`;
+  return `<div class="card panel ev-log-panel" data-ev-log-panel>
+    <div class="ev-log-toolbar">
+      ${level('all', '全部')}${level('warn', 'warn')}${level('error', 'error')}
+      <span class="spacer"></span>
+      <label><input type="checkbox" checked> 自动滚动</label>
+      <button type="button" class="btn sm" data-action="ev-log-refresh">刷新</button>
+    </div>
+    <div class="ev-log-list">${rows || '<div class="waiting">该级别暂无事件</div>'}</div>
+    <div class="ev-log-more"><button type="button" class="btn sm" data-action="ev-log-refresh">加载更多</button></div>
+  </div>`;
+}
+function evDetailSteps(run, sel) {
+  return `<div data-ev-detail-steps>
+    ${evInfoPanel(run)}
+    <div class="card panel" data-ev-progress>
+      <div class="sec-title">流程进度 <span class="sub">当前查看：第 ${sel + 1} 步 · ${EV_STEPS[sel]}</span></div>
+      ${evStepper(run, sel)}
+      <div class="step-hint">已完成 / 进行中的节点可点击，下方内容切换为该步骤的产出；未到达的节点不可点击。</div>
+    </div>
+    ${run.preparing ? '<div class="preparing-copy"><span class="pulse"></span>已受理，正在准备筛选与聚类。此步骤完成前后续节点保持禁用。</div>' : ''}
+    ${evStepContent(run, sel)}
+  </div>`;
+}
 function evRenderDetail(id) {
   const run = EV_RUNS.find(r => r.id === id);
   if (!run || run.workspace !== evCurrentWs()) { location.hash = '#/runs'; return; }
-  if (EV_STATE.lastDetailId !== id) { EV_STATE.selStep = null; EV_STATE.lastDetailId = id; window.scrollTo(0, 0); }
+  if (EV_STATE.lastDetailId !== id) { EV_STATE.selStep = null; EV_STATE.lastDetailId = id; EV_STATE.detailTab = 'steps'; EV_STATE.logLevel = 'all'; window.scrollTo(0, 0); }
   if (EV_STATE.selStep === null) EV_STATE.selStep = evDefaultStep(run);
   if (![...EV_STATE.expanded].some(k => k.startsWith(id + ':'))) {
     const ai = run.clusters.findIndex((c, i) => evRoundActive(run, i));
     if (run.clusters[ai >= 0 ? ai : 0]) EV_STATE.expanded.add(id + ':' + run.clusters[ai >= 0 ? ai : 0].id);
   }
   const sel = Math.min(6, Math.max(0, EV_STATE.selStep));
+  const tab = EV_STATE.detailTab === 'logs' ? 'logs' : 'steps';
+  const wsName = (WORKSPACES.find(w => w.id === run.workspace) || {}).name || run.workspace;
   evApp.innerHTML = `<div class="wrap">
     <a class="back" href="#/runs">← 返回自进化列表</a>
     <div class="detail-head">
-      <h1>${evEsc(run.title)}</h1>${evStatusBadge(run)}<span class="spacer"></span>
-      ${!evIsDone(run) ? `<button class="btn primary" data-action="ev-advance" data-id="${run.id}">▶ 模拟推进一轮</button>` : ''}
+      <h1>${evEsc(run.title)}</h1>${evStatusBadge(run)}<span class="v2-badge">${evEsc(wsName)}</span><span class="spacer"></span>
+      ${!run.preparing && !evIsDone(run) ? `<button class="btn primary" data-action="ev-advance" data-id="${run.id}">▶ 模拟推进一轮</button>` : ''}
     </div>
-    ${evInfoPanel(run)}
-    <div class="card panel">
-      <div class="sec-title">流程进度 <span class="sub">当前查看：第 ${sel + 1} 步 · ${EV_STEPS[sel]}</span></div>
-      ${evStepper(run, sel)}
-      <div class="step-hint">已完成 / 进行中的节点可点击，下方内容切换为该步骤的产出；未到达的节点不可点击。</div>
+    <div class="detail-tabs" role="tablist" aria-label="运行详情视图">
+      <button type="button" role="tab" data-action="ev-detail-tab" data-tab="steps" aria-selected="${tab === 'steps'}" class="${tab === 'steps' ? 'active' : ''}">七步详情</button>
+      <button type="button" role="tab" data-action="ev-detail-tab" data-tab="logs" aria-selected="${tab === 'logs'}" class="${tab === 'logs' ? 'active' : ''}">执行日志 <span class="tab-count">≤ ${evLogAllEvents(run).length}</span></button>
     </div>
-    ${evStepContent(run, sel)}
+    ${tab === 'logs' ? evLogPanel(run) : evDetailSteps(run, sel)}
   </div>`;
 }
 
@@ -5763,7 +5880,14 @@ document.addEventListener('click', e => {
   const a = el.dataset.action;
   if (a === 'ev-open-run') { EV_STATE.expanded.clear(); EV_STATE.lastDetailId = null; location.hash = '#/run/' + el.dataset.id; }
   else if (a === 'ev-toggle-cluster') { const k = el.dataset.key; EV_STATE.expanded.has(k) ? EV_STATE.expanded.delete(k) : EV_STATE.expanded.add(k); evRoute(); }
-  else if (a === 'ev-sel-step') { EV_STATE.selStep = +el.dataset.step; evRoute(); }
+  else if (a === 'ev-sel-step') { EV_STATE.detailTab = 'steps'; EV_STATE.selStep = +el.dataset.step; evRoute(); }
+  else if (a === 'ev-detail-tab') { EV_STATE.detailTab = el.dataset.tab === 'logs' ? 'logs' : 'steps'; evRoute(); }
+  else if (a === 'ev-log-level') { EV_STATE.logLevel = el.dataset.level || 'all'; evRoute(); }
+  else if (a === 'ev-log-refresh') { evRoute(); }
+  else if (a === 'ev-copy-branch') {
+    const branch = el.dataset.branch || '';
+    if (branch && navigator.clipboard) { navigator.clipboard.writeText(branch).then(() => { el.textContent = branch + ' · 已复制'; }).catch(() => {}); }
+  }
   else if (a === 'ev-run-page') { const run = EV_RUNS.find(r => r.id === el.dataset.id); if (!run) return; const key = el.dataset.target === 'assoc' ? 'assocPage' : 'potentialPage'; run[key] = Math.max(1, (run[key] || 1) + Number(el.dataset.delta || 0)); evRenderDetail(run.id); }
   else if (a === 'ev-advance') {
     const run = EV_RUNS.find(r => r.id === el.dataset.id);

@@ -743,15 +743,18 @@ Index.vue
 
 ```text
 RunDetail.vue
-├── DetailHeader.vue（标题 + 状态 + 空间 badge；无“推进一轮”按钮）
+├── DetailHeader.vue（标题 + 状态 + 空间 badge；无创建人 · 时间、无“推进一轮”按钮）
 ├── blockedBanner（push/eval/attribution 失败时显示阶段、错误、自动重试时间、[重试]）
-├── infoPanel（目标与输入：kv-grid + 策略/缓存 chip + 类型分布条 + 评测/推送状态）
+├── 详情页签（七步详情 / 执行日志；日志由 `?tab=logs` 承载）
+├── infoPanel（目标与输入：4 列 kv-grid + 潜在 bad case 归因结论分布 + 策略/缓存 chip + 工作区折叠区）
 ├── StepperPanel.vue（步数由 run.steps 决定：七步）
 │   └── StepContent.vue（按 step.key 动态组件）
 │       └── StepRange / StepSessions / StepPotential / StepAttribution / StepClusters / StepIterations / StepFinal
-├── RunLogPanel.vue（执行日志/异常，tab 或右栏）
+├── RunLogPanel.vue（执行日志/异常，独立页签）
 └── （iteration step 内）ClusterCard.vue → DiffView / EvalCompare / CommitBlock
 ```
+
+**目标与输入口径**：4 列依次为进化对象 / 版本 / 时间段 / 工作空间，然后是关联 Session、时间段内 bad case、潜在 bad case、可归因 / 非该对象；「模型（多选）」不在详情页。分布标题固定为「潜在 bad case 的归因结论分布（N 条）」，N 取潜在 bad case 数，图例含非该对象、错误 / prompt / 模型与「＝ 归因 · 复用缓存 · 本次新增」。关联 Session 显示 `已关联 / 版本未知`；非该对象、复用缓存与本次新增按 attribution step 的 rows 行级统计（`category` 为空即非该对象，`source` 为 `cached` / `fresh`；「本次新增」只计可归因的 fresh 行，与原型一致），策略与缓存开关取 range step 的 condition，接口契约不新增字段。归因尚未完成时复用缓存与本次新增显示 `—`，分布条以「未归因」余量补齐，归因完成后显示最终值。工作区折叠区包含 run 分支（可复制）、基线 ref / commit、仓库、子目录、推送状态与时间、评测状态、脱敏推送错误与本地路径。
 
 **单一 schema**：`run.steps` 恒为七步，`steps[].key` 由后端给定，前端按 key 渲染，不推算回退。
 
@@ -772,10 +775,10 @@ RunDetail.vue
 | 交互 | 实现 |
 |---|---|
 | 默认选中步 | `run.steps` 中第一个 `active`；没有则最后一个 `done`；没有则第 0 步（但不可点）；`preparing` 时显示 step 0 的准备态 |
-| 工作区信息 | infoPanel 展示 `workspace.branchName / baseRef / baseCommit / repoUrl / subDir`（路径可折叠）；点击可复制分支名 |
+| 工作区信息 | infoPanel 底部「工作区」折叠区展示 `workspace.branchName / baseRef / baseCommit / repoUrl / subDir`（路径可折叠）；点击可复制分支名 |
 | 推送状态 | 每轮展示 candidate `pushStatus`；终评展示最终 `pushStatus` 与 `pushedAt`；失败展示脱敏错误 + 「重试」按钮（调 `POST /runs/{rid}/retry`，不是旧的 `/push`） |
 | 阻塞状态 | `status=blocked` 时顶部显示 `blockedStage`、`retryAttempts`、`nextRetryAt`、错误摘要；按钮「重试」→ `/retry` → `202 jobId`；自动退避期间显示“等待自动重试” |
-| 首屏加载 | 先并行 `GET /runs/{rid}` + `/steps/{currentKey}`（`preparing` 可为空）+ `/events?afterSeq=0`（分页拉完）渲染初版；`preparing/running` 才建立 SSE，`blocked` 用轮询/重试，终态不建 |
+| 首屏加载 | 先并行 `GET /runs/{rid}` + `/steps/{currentKey}` + 结论字段所需的 `/steps/range` / `/steps/attribution`（步骤未到达或正在看执行日志时不请求）+ `/events?afterSeq=0`（分页拉完）渲染初版；`preparing/running` 才建立 SSE，`blocked` 用轮询/重试，终态不建 |
 | 执行日志 | 独立 tab「执行日志」：`useRunEventLog(rid)` 分页拉库（REST 是事实源）；默认 100 条，滚动到底加载下一页；`level=error` 过滤 |
 | 异常展示 | `run.error` 存在时详情顶部显示错误横幅（stage/message/at），按钮跳日志并展开 `error.detail` |
 | 实时追加 | SSE `run.event` → 把事件 append 到列表并更新 `loadedSeq`；`run.blocked/failed/interrupted` → 失效 run + events |
@@ -811,6 +814,7 @@ RunLogPanel.vue
 └── 底部：加载更多（afterSeq 分页）
 ```
 
+- 入口：详情页「七步详情 / 执行日志」页签；切到日志写 `?tab=logs`，切回步骤删除该参数。准备中态在七步详情内显示「已受理，正在准备筛选与聚类」。
 - 数据源：`GET /runs/{rid}/events?afterSeq=&limit=`；刷新/重进以接口为准。
 - 事件颜色：`info` 灰、`warn` 橙、`error` 红；`candidate_committed` / `eval_completed` / `cluster_accepted` 用不同图标。
 - `error.detail` 默认折叠，避免长堆栈撑爆布局；复制按钮只复制脱敏后的内容。

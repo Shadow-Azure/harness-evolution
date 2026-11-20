@@ -25,6 +25,7 @@ milestones:
   - m18
   - m19
   - m20
+  - m21
 ```
 
 ## Vision
@@ -52,7 +53,8 @@ Harness Evolution connects traceable Claude Code sessions, reported problems, an
 - **m17 Target-card version labels**: refs and short commits replace digests; merge aliases.
 - **m18 Production git egress proxy and fallback**: local Xray/VLESS proxy, Secret injection, git-only wiring, and a health circuit breaker.
 - **m19 Production single-ref target-content reads**: shallow per-ref caching instead of a full mirror.
-- **m20 Launch-wizard Session association display**: short labels with a full-title tooltip and four visible columns; association and statistics stay unchanged.
+- **m20 Launch-wizard Session association display**: short labels with full-title tooltips, four columns on one row; association and counting stay unchanged.
+- **m21 Run detail aligned with the prototype**: the run detail page follows the V2 prototype for goal-and-input, workspace collapse, and the execution-log tab.
 
 ## Delivery rules
 
