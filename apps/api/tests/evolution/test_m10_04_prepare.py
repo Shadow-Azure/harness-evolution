@@ -203,6 +203,47 @@ async def test_prepare_advances_through_every_stage_and_clusters_attributed(
     assert len(await EvolutionRunCandidateRepository(harness.database).list(RUN_ID)) == 1
 
 
+async def test_prepare_persists_short_session_label_for_long_prompt(
+    harness: Harness,
+) -> None:
+    """The prepared Session snapshot keeps the short label and the full title."""
+    long_title = ("SWE-bench astropy-12907 修复任务 " * 200)[:3337]
+    main = await seed_session(
+        harness.database,
+        session_id="session-m10-04",
+        started_at=NOW,
+        title=long_title,
+        short_title="SWE-bench astropy-12907",
+    )
+    await seed_event(
+        harness.database,
+        agent_id=main,
+        event_index=1,
+        kind="skill",
+        name=TARGET_NAME,
+        object_version=TARGET_VERSION,
+        triggered_at=NOW,
+    )
+    await seed_case(
+        harness.database,
+        case_id="case-m10-04",
+        session_id="session-m10-04",
+        case_type="self",
+        agent_id=main,
+        created_at=NOW,
+    )
+    await _create_run(harness.database)
+
+    await _service(harness).handle(_job())
+
+    run = await EvolutionRepository(harness.database).get_run(RUN_ID)
+    assert run is not None
+    rows = run.stats["sessionRows"]
+    assert len(rows) == 1
+    assert rows[0]["short"] == "SWE-bench astropy-12907"
+    assert rows[0]["title"] == long_title
+
+
 async def test_cluster_only_stops_after_clustering(harness: Harness) -> None:
     """Cluster-only runs complete at unit 5 without iteration rounds."""
     await _seed_self_case(harness)

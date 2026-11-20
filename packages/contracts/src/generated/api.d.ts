@@ -4403,6 +4403,8 @@ export interface components {
             potentialCount: number;
             /** Sessionid */
             sessionId: string;
+            /** Short */
+            short?: string | null;
             /** Title */
             title: string | null;
         };

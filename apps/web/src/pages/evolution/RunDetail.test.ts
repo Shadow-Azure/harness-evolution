@@ -726,6 +726,44 @@ describe("evolution run detail page", () => {
     });
   });
 
+  it("renders the short Session label with the full title on hover", async () => {
+    const longTitle = "SWE-bench astropy-12907 修复任务 ".repeat(120).trim();
+    server.use(
+      http.get(`${evolutionBase}/runs/:runId`, () =>
+        HttpResponse.json(
+          detail(
+            run({ status: "running" }),
+            ["done", "done", "pending", "pending", "pending", "pending", "pending"],
+          ),
+        )),
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
+        HttpResponse.json({
+          ...sessionsStep,
+          payload: {
+            ...sessionsStep.payload,
+            rows: [
+              {
+                sessionId: "session-long",
+                title: longTitle,
+                short: "SWE-bench astropy-12907",
+                objectTriggerAt: "2026-09-01T09:00:00+08:00",
+                badCaseCount: 2,
+                potentialCount: 1,
+              },
+            ],
+          },
+        })),
+    );
+    const wrapper = await mountPage("evo-full-1", "?step=sessions");
+
+    const title = wrapper.get(".session-title");
+    expect(title.text()).toBe("SWE-bench astropy-12907");
+    expect(title.attributes("title")).toBe(longTitle);
+    expect(wrapper.find(".session-cell").exists()).toBe(true);
+    expect(wrapper.findAll(".rep thead th")).toHaveLength(4);
+    expect(wrapper.text()).toContain("session-long");
+  });
+
   it("removes a missing cluster deep-link while retaining the notice", async () => {
     server.use(
       http.get(`${evolutionBase}/runs/:runId`, () =>
