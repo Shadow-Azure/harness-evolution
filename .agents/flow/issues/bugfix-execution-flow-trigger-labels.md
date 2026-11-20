@@ -8,7 +8,7 @@ id: bugfix-03
 milestone: bugfix
 depends: []
 priority: P2
-status: backlog
+status: ready
 scope:
   - apps/web/**
   - plans/ui-prototype-v2/**
@@ -71,7 +71,7 @@ V2 原型结构树（同一句 `chainOf`；绿色是 skill 名称，紫色是 su
 2. V2 原型在 subagent 触发节点上同样显示任务描述，只有 skill 触发节点显示 skill 名称。生产与 V2 原型的字段选择一致，**不是生产回归**。
 3. 但标签口径不一致：skill 节点用稳定名称，subagent 节点用自由文本描述；描述在 22 字处被截断（`clipName`），因此主链无法稳定看出是哪个 subagent 触发的，只能到下方子 agent 卡片找名称。
 
-这就是需要核对并决定的口径：触发节点的职责是标识“触发了哪个对象”，应统一用 name；描述只作为辅助信息。是否按这个口径改 V2 原型和生产，由提出人确认。
+这就是本 issue 的实现口径：触发节点的职责是标识“触发了哪个对象”，统一用 name；描述只作为辅助信息。若产品明确选择保留“描述优先”，在 issue 记录后关闭，不实施本改动。
 
 ## 目标
 
@@ -89,7 +89,7 @@ V2 原型结构树（同一句 `chainOf`；绿色是 skill 名称，紫色是 su
 
 ## 实现内容
 
-以下为实现建议，供产品确认后落地；本 issue 先记录核对结论与口径选择。
+按“skill 名称 + subagent 名称、描述进 tooltip”的口径实现；若产品明确选择保留现状，关闭本 issue，不实施本改动。
 
 - `apps/web/src/components/agent-tree/tree/layout.ts` `chainOf`：
   - skill：保持 `event.name || "skill"`。

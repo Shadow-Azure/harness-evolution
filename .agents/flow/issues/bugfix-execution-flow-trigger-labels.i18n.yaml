@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-execution-flow-trigger-labels.md
-bugfix-execution-flow-trigger-labels.md: c60e4ee49232e08a34fa0228a75c61f135a23086
-bugfix-execution-flow-trigger-labels.en.md: 9414105ba99bcf32cf0c7ee52bd97113edd1fbe3
+bugfix-execution-flow-trigger-labels.md: 660179fb1c98999da20da9be3c29b01a313fbbf5
+bugfix-execution-flow-trigger-labels.en.md: a5f3215a13c5f923a34ab553543933c63513c7c6

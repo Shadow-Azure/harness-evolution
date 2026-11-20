@@ -8,7 +8,7 @@ id: bugfix-03
 milestone: bugfix
 depends: []
 priority: P2
-status: backlog
+status: ready
 scope:
   - apps/web/**
   - plans/ui-prototype-v2/**
@@ -71,7 +71,7 @@ The direct answer to the user's question is therefore:
 2. The V2 prototype also shows task descriptions for subagent triggers; only skill triggers show the skill name. Production and the V2 prototype choose the same field, so this is **not a production regression**.
 3. The label rule is still inconsistent: skill nodes use a stable name, while subagent nodes use free-form descriptions. Descriptions are clipped at 22 characters (`clipName`), so the main chain cannot reliably identify which subagent fired; the name is only available on the child agent card below.
 
-This is the rule that needs confirmation: a trigger node exists to identify *which object* fired, so it should use the name consistently, with the description as supporting information. Whether to change the V2 prototype and production to that rule is for the requester to confirm.
+This is the implementation rule for this issue: a trigger node exists to identify *which object* fired, so it uses the name consistently, with the description as supporting information. If the requester explicitly chooses to keep "description first", record that on this issue and close it without implementing the change.
 
 ## Goals
 
@@ -89,7 +89,7 @@ This is the rule that needs confirmation: a trigger node exists to identify *whi
 
 ## Implementation
 
-The following is a recommendation for the requester to approve; this issue first records the finding and the rule choice.
+Implement the rule "skill name + subagent name; description in the tooltip". If the requester explicitly chooses to keep the status quo, close this issue without implementing the change.
 
 - `apps/web/src/components/agent-tree/tree/layout.ts` `chainOf`:
   - skill: keep `event.name || "skill"`.
