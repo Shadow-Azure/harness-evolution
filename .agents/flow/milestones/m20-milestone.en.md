@@ -6,7 +6,7 @@ English | [中文](m20-milestone.md)
 kind: milestone
 id: m20
 title: M20 启动向导 Session 关联展示修复
-status: planned
+status: done
 github:
   number: 28
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/28
