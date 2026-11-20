@@ -8,7 +8,7 @@ id: bugfix-05
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/web/**
   - plans/ui-prototype-v2/**
@@ -71,7 +71,7 @@ V2 原型结构树（同一句 `chainOf`；绿色是 skill 名称，紫色是 su
 2. V2 原型在 subagent 触发节点上同样显示任务描述，只有 skill 触发节点显示 skill 名称。生产与 V2 原型的字段选择一致，**不是生产回归**。
 3. 但标签口径不一致：skill 节点用稳定名称，subagent 节点用自由文本描述；描述在 22 字处被截断（`clipName`），因此主链无法稳定看出是哪个 subagent 触发的，只能到下方子 agent 卡片找名称。
 
-2026-11-20 提出人确认：原型与生产的 subagent 节点都改为显示 subagent 名称；skill 节点保持 skill 名称不变。实现见本 issue 的 PR（Before/After 见 PR 描述）。
+2026-11-20 提出人确认：原型与生产的 subagent 节点都改为显示 subagent 名称；skill 节点保持 skill 名称不变。PR #442 已合入；提出人确认后按 done 关闭本 issue。
 
 ## 目标
 

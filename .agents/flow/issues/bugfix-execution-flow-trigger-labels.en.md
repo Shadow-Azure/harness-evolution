@@ -8,7 +8,7 @@ id: bugfix-05
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/web/**
   - plans/ui-prototype-v2/**
@@ -71,7 +71,7 @@ The direct answer to the user's question is therefore:
 2. The V2 prototype also shows task descriptions for subagent triggers; only skill triggers show the skill name. Production and the V2 prototype choose the same field, so this is **not a production regression**.
 3. The label rule is still inconsistent: skill nodes use a stable name, while subagent nodes use free-form descriptions. Descriptions are clipped at 22 characters (`clipName`), so the main chain cannot reliably identify which subagent fired; the name is only available on the child agent card below.
 
-On 2026-11-20 the requester confirmed that both the prototype and production change subagent nodes to show the subagent name, while skill nodes keep the skill name. The implementation and Before/After evidence are in this issue's PR.
+On 2026-11-20 the requester confirmed that both the prototype and production change subagent nodes to show the subagent name, while skill nodes keep the skill name. PR #442 merged, and the requester confirmed closure, so this issue is closed as done.
 
 ## Goals
 
