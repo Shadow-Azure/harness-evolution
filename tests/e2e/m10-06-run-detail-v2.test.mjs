@@ -302,8 +302,12 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
         if (!page || !info || !progress || !workspace || !head) return null;
         const infoText = info.textContent;
         // The info panel first renders run stats, then fills the attribution
-        // rows (non-target / cached / fresh) from the step request.
+        // rows (non-target / cached / fresh) and the policy chips from the
+        // step requests. Wait for all three so the assertions below never read
+        // a half-filled panel on a slow CI runner.
+        const policy = page.querySelector("[data-testid='run-policy-cache']")?.textContent ?? "";
         if (!infoText.includes("5 / 1") || !infoText.includes("本次新增 3")) return null;
+        if (!policy.includes("默认策略") || !policy.includes("复用缓存归因")) return null;
         return {
           head: head.textContent,
           infoText,
@@ -312,7 +316,7 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
           ),
           workspaceInInfo: info.contains(workspace),
           standaloneWorkspace: Boolean(document.querySelector(".workspace-panel")),
-          policy: page.querySelector("[data-testid='run-policy-cache']")?.textContent ?? "",
+          policy,
           branchCopy: Boolean(page.querySelector("[data-testid='copy-branch']")),
           tabs: [...page.querySelectorAll(".detail-tabs [role='tab']")].map((tab) =>
             tab.textContent.trim(),
