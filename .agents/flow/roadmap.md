@@ -26,11 +26,12 @@ milestones:
   - m19
   - m20
   - m21
+  - m22
 ```
 
 ## 愿景
 
-Harness Evolution 用可回链的 Claude Code 轨迹、外部问题与归因数据，驱动组织内 coding agent 的诊断和自进化改进。V2 以工作空间为数据与权限边界，并把真实轨迹证据、对象归因和自进化执行链连成可解释闭环。
+Harness Evolution 用可回链的 Claude Code 轨迹、外部问题与归因数据，驱动组织内 coding agent 的诊断和自进化改进。V2 以工作空间为数据与权限边界，并把真实轨迹证据、对象归因和自进化执行链连成闭环。
 
 ## Milestone 序列
 
