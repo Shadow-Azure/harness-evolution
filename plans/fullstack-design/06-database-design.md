@@ -529,9 +529,9 @@ erDiagram
 
 索引：`INDEX(session_id)`、`INDEX(probe_type, probe_object, object_version)`、`INDEX(attribute_type)`、`INDEX(workspace_id, object_version)`、`INDEX(workspace_id, updated_at)`、`INDEX(conclusion)`。
 
-- **缓存键**：`cache_key` 是七元组的哈希；命中时复用 `probe_id`，更新 `probe_reports` 的 `reused_count / last_reused_run_id / updated_at`，并在候选行记录 `is_cached=true`。这样可以保持既有 `probe_id`、`probe_cluster_probes` 与 `/api/probes/*` 的兼容链。
+- **复用统计**：缓存命中时更新 `reused_count / last_reused_run_id / updated_at`。`analyzed_at` 是产出时间，决定相同对象版本与 Badcase 下的最新报告。
 - **一 case 多归因**：一个 case 可以在 `bad_case_analysis` 中关联多条 `probe_reports`，分别属于不同对象/版本；`non_target` 也保留明细与关联，但不进簇。
-- **写入方**：自进化 run 按缓存键 upsert `probe_reports`，再 upsert `bad_case_analysis` 关联；没有关联行即未归因。
+- **写入方**：目标绑定批次与显式重算写入 `probe_reports` 和 `bad_case_analysis`。运行内的分析还更新候选指针。
 - **历史迁移**：现有 1:1 `bad_case_analysis` 行原样保留；`probe_reports.workspace_id` 取关联 case 的空间，孤立 probe 回退默认空间；再回填 `conclusion`、`cache_key` 与 legacy 引擎标记。`analyzed_nonissue` 只回填为 `non_target` 的兼容行，不迁移成新的问题结论。
 
 ### 4.3 `bad_case_analysis` / `probe_reports` 读写口径
@@ -744,9 +744,9 @@ erDiagram
 
 > 归因明细继续写 `probe_reports`，case 关联继续写 `bad_case_analysis`，不新增平行归因表。本节只记录「run 怎么写它们」的行为约定。
 
-- **缓存键** = `probe_reports.cache_key`，其原值为 `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`。
+- `attribution_skill_name` 记录报告来源。绑定批次额外记录 `binding_generation`，供任务恢复时跳过已完成的 case。
 - 命中且 `cache_enabled`：复用同一 `probe_id`；更新 `probe_reports` 的 `reused_count / last_reused_run_id / updated_at`，候选行 `is_cached=true`，不再调用引擎。
-- `cache_enabled=false`：跳过读，重算并 upsert 同 `cache_key` 行（`created_run_id` 更新）——结论仍是「最新真相」，不按 run 追加历史行。
+- 关闭缓存时，真实执行器按本次快照重新分析。新 Run 有独立的写入身份，历史运行仍指向自己的报告。
 - 并发同键 upsert 用方言语句原子完成（MySQL `ON DUPLICATE KEY UPDATE` / SQLite `ON CONFLICT DO UPDATE`），封装在 repository 内，不先查后写。
 - 结论只作用于该对象·版本：不修改 bad case 本身，不影响它与其它对象的潜在关系。
 - 历史 `non_target` 与历史 `analyzed_nonissue` 是不同谓词：迁移时 `analyzed_nonissue → conclusion='non_target'` 属于**语义重解释**（V1 的「非问题」= 不是问题；V2 的「非该对象问题」= 对当前对象不成立），因此迁移只清 `nonissue` 与空串标记，其余历史 `attribute_type` 原样保留（不把合法分类改写成 NULL），并在 `attribution_engine='legacy-probe-import'` 上可区分来源。

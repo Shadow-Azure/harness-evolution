@@ -666,7 +666,7 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 **Step 4 归因预览与启动**
 
 - 开关「复用缓存归因」（默认开）：切换即重新请求 `preview/attribution`。
-- 四个数字（副标题写清语义）：潜在 / 复用 / 新增 / 历史非该对象；后两者是推算值（新增 = 潜在 − 复用；历史非该对象是参考值）。
+- 展示对象版本的潜在 Badcase 数、按 Skill 分组的已有报告数、缺报告数、预计复用与重算数。每个候选最多计一份。缓存开启且零命中时禁用启动。关闭缓存时展示空间包选择器，所选包只用于本次启动。
 - 条件摘要 + 策略 badge + 缓存开关状态。
 - 两个出口：
   - 「仅聚类」→ `POST …/evolution/cluster-previews`（`mode:"cluster_only"`）→ 路由 `/workspaces/:wid/evolution/cluster/:runId`，先显示「准备中」

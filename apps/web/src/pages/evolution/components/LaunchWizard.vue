@@ -2111,7 +2111,10 @@ const reasonEntries = computed(() => {
                   v-model="selectedPackage"
                   aria-label="本次重算使用的归因 Skill"
                 >
-                  <option value="" disabled>请选择空间内的归因 Skill</option>
+                  <option
+                    value=""
+                    disabled
+                  >请选择空间内的归因 Skill</option>
                   <option
                     v-for="item in library.packages.data.value?.items"
                     :key="item.id"
