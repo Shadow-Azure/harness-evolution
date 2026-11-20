@@ -25,6 +25,17 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import SplitResult, urlsplit
 
+from app.third_party_api.git.observability import (
+    GitOperationRecord,
+    classify_git_operation,
+    current_git_operation_collector,
+    emit_git_operation,
+    emit_proxy_probe,
+    fallback_reason_for,
+    is_proxy_traffic,
+    target_host_for,
+)
+
 logger = logging.getLogger(__name__)
 
 type ProxyState = Literal["disabled", "closed", "open", "half_open"]
@@ -416,6 +427,8 @@ class GitProxyController:
 
     async def probe_once(self) -> bool:
         """Run one bounded probe and move the state machine accordingly."""
+        state_before = self._state
+        started = time.perf_counter()
         try:
             healthy = await asyncio.wait_for(
                 self._probe(),
@@ -450,6 +463,18 @@ class GitProxyController:
                     self._failures += 1
                     if self._failures >= self._failure_threshold:
                         self._open()
+        emit_proxy_probe(
+            GitOperationRecord(
+                operation="probe",
+                via_proxy=self.enabled,
+                proxy_state_before=state_before,
+                proxy_state_after=self._state,
+                fallback_reason=None,
+                duration_ms=int((time.perf_counter() - started) * 1000),
+                exit_code=0 if healthy else 1,
+                target_host=_DEFAULT_PROBE_HOST,
+            ),
+        )
         return healthy
 
     def _open(self) -> None:
@@ -530,32 +555,67 @@ class ProxyAwareGitRunner:
         cwd: Path | None,
     ) -> GitProcessResult:
         """Run one git argv, retrying direct after a proxy-layer failure."""
-        endpoint = await self._controller.endpoint()
-        environment = build_git_environment()
-        if endpoint is None:
-            if self._controller.enabled:
-                strip_proxy_environment(environment)
-            return await self._spawn(argv, cwd, environment)
-        apply_proxy_environment(
-            environment,
-            endpoint,
-            rewrite_ssh=allows_ssh_rewrite(argv),
+        operation = classify_git_operation(argv)
+        network_operation = is_proxy_traffic(argv)
+        collector = current_git_operation_collector()
+        operation_host = target_host_for(
+            argv,
+            collector.target_host if collector is not None else None,
         )
-        result = await self._spawn(argv, cwd, environment)
-        if result.returncode == 0:
-            if is_network_command(argv):
-                await self._controller.report_success()
+        state_before = self._controller.state
+        started = time.perf_counter()
+        result: GitProcessResult | None = None
+        via_proxy = False
+        fallback_reason: str | None = None
+        try:
+            endpoint = await self._controller.endpoint()
+            environment = build_git_environment()
+            if endpoint is None:
+                if self._controller.enabled:
+                    strip_proxy_environment(environment)
+                result = await self._spawn(argv, cwd, environment)
+                return result
+            apply_proxy_environment(
+                environment,
+                endpoint,
+                rewrite_ssh=allows_ssh_rewrite(argv),
+            )
+            result = await self._spawn(argv, cwd, environment)
+            if result.returncode == 0:
+                via_proxy = network_operation
+                if is_network_command(argv):
+                    await self._controller.report_success()
+                return result
+            if not is_proxy_failure(result.stderr, endpoint):
+                via_proxy = network_operation
+                return result
+            await self._controller.report_failure()
+            fallback_reason = fallback_reason_for(result.stderr)
+            logger.warning(
+                "git request failed through proxy; retrying direct",
+                extra={
+                    "event": "git.proxy.retry_direct",
+                    "fallbackReason": fallback_reason,
+                },
+            )
+            direct_environment = build_git_environment()
+            strip_proxy_environment(direct_environment)
+            via_proxy = False
+            result = await self._spawn(argv, cwd, direct_environment)
             return result
-        if not is_proxy_failure(result.stderr, endpoint):
-            return result
-        await self._controller.report_failure()
-        logger.warning(
-            "git request failed through proxy; retrying direct",
-            extra={"event": "git.proxy.retry_direct"},
-        )
-        direct_environment = build_git_environment()
-        strip_proxy_environment(direct_environment)
-        return await self._spawn(argv, cwd, direct_environment)
+        finally:
+            emit_git_operation(
+                GitOperationRecord(
+                    operation=operation,
+                    via_proxy=via_proxy,
+                    proxy_state_before=state_before,
+                    proxy_state_after=self._controller.state,
+                    fallback_reason=fallback_reason,
+                    duration_ms=int((time.perf_counter() - started) * 1000),
+                    exit_code=result.returncode if result is not None else None,
+                    target_host=operation_host,
+                ),
+            )
 
     async def run_remote(self, argv: tuple[str, ...]) -> GitProcessResult:
         """Run one git argv without a working directory (ls-remote seam)."""

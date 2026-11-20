@@ -67,6 +67,10 @@ The API resolves the absolute path, creates the directory, and writes a probe at
 
 When production access to GitHub is unstable, a local Xray/VLESS proxy that serves git subprocesses only can be enabled; its configuration comes from the Environment Secret `XRAY_CONFIG`, and both deploy and runtime fall back to direct access when the proxy is unavailable. See [Git egress proxy](git-proxy.en.md).
 
+## Git workspaces and pushes
+
+Evolution run workspaces cache the target ref and clone from it; the push target is controlled by `HE_GIT_PUSH` / `HE_GIT_PUSH_URL`. See [Git workspaces and pushes](git-workspace.en.md) for the cache, single-ref clone, push credential policy, and per-operation proxy observability.
+
 ## Upstream health and drift logs
 
 With `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` configured, pulls emit `upstream.health` / `version_drift` / `contract_drift` logs with `key='value'` fields containing only enums, counts, and major numbers, never bodies, session ids, or credentials. Per-session failures stay in `sync_runs.errors`; the scheduler only replays stored payloads, so a failed fetch needs `POST /api/acquisition/pull` with `sessionIds`.

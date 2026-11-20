@@ -15,6 +15,7 @@ The sole index for `docs/`. Every resident document must be registered in the ta
 | [development.en.md](development.en.md) | Local environment, daily loop, commits and flow operations |
 | [deployment.en.md](deployment.en.md) | Alibaba Cloud deployment shape and release/rollback |
 | [git-proxy.en.md](git-proxy.en.md) | Production git egress proxy, Secret and failure fallback |
+| [git-workspace.en.md](git-workspace.en.md) | Single-ref run-workspace cache, push targets and git observability |
 | [claude-code.en.md](claude-code.en.md) | Production Claude Code install, model setup and verification |
 | [review.en.md](review.en.md) | Structured PR review, evidence requirements and triage |
 | [charter.en.md](charter.en.md) | Experiment protocol, evolution criteria and safety boundaries |

@@ -15,6 +15,7 @@
 | [development.md](development.md) | 本地环境、日常循环与提交流程 |
 | [deployment.md](deployment.md) | 阿里云部署与发布回滚 |
 | [git-proxy.md](git-proxy.md) | 生产 Git 出网代理、Secret 与失效回退 |
+| [git-workspace.md](git-workspace.md) | 自进化 Run 的单 ref 工作区缓存、推送目标与 git 可观测性 |
 | [claude-code.md](claude-code.md) | 生产 Claude Code 安装、模型配置与验证 |
 | [review.md](review.md) | PR 检视、证据要求与分流表 |
 | [charter.md](charter.md) | 实验协议、进化判定与边界 |

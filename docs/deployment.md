@@ -67,6 +67,10 @@ API 启动时解析绝对路径、`mkdir` 并写探针；不可写时 `/api/heal
 
 生产机访问 GitHub 不稳定时可启用只服务 git 子进程的本机 Xray/VLESS 代理；配置来自 Environment Secret `XRAY_CONFIG`，代理不可用时部署与运行时会自动回退直连。见 [Git 出网代理](git-proxy.md)。
 
+## Git 工作区与推送
+
+自进化 run 的工作区按目标 ref 建缓存并克隆，推送目标由 `HE_GIT_PUSH` / `HE_GIT_PUSH_URL` 控制；缓存、单 ref 克隆、推送凭据策略与逐操作代理可观测性见 [Git 工作区与推送](git-workspace.md)。
+
 ## 上游健康与漂移日志
 
 配置 `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` 后，pull 输出结构化 `upstream.health` / `version_drift` / `contract_drift` 日志，只含枚举、计数与主版本号，不含正文、会话 id 或凭据。逐会话失败留在 `sync_runs.errors`；调度器只重放 payload，上游抓取失败需用 `POST /api/acquisition/pull` 带 `sessionIds` 重拉。
