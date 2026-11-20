@@ -14,6 +14,8 @@ const card: EvolutionRunCard = {
   target: { type: "skill", name: "deep-research", version: "v2.0.0" },
   window: { from: null, to: null },
   models: [],
+  policy: { preset: "default" },
+  cacheEnabled: false,
   createdBy: null,
   createdAt: "2026-10-19T18:42:00+08:00",
   status: "running",
@@ -44,6 +46,7 @@ describe("RunGroup", () => {
     const wrapper = mount(RunGroup, {
       props: {
         wid: "ws-test",
+        workspaceName: "测试空间",
         kind: "running",
         runs: [card],
       },
@@ -52,12 +55,16 @@ describe("RunGroup", () => {
     expect(wrapper.get(".group-label").text()).toContain("正在执行（1）");
     expect(wrapper.find(".pulse").exists()).toBe(true);
     expect(wrapper.findComponent(RunCard).props("run")).toEqual(card);
+    expect(wrapper.findComponent(RunCard).props("workspaceName")).toBe(
+      "测试空间",
+    );
   });
 
   it("keeps the group count synchronized when the backend list refreshes", async () => {
     const wrapper = mount(RunGroup, {
       props: {
         wid: "ws-test",
+        workspaceName: "测试空间",
         kind: "running",
         runs: [card],
       },
@@ -75,6 +82,7 @@ describe("RunGroup", () => {
     const wrapper = mount(RunGroup, {
       props: {
         wid: "ws-test",
+        workspaceName: "测试空间",
         kind: "running",
         runs: [card],
       },
@@ -90,6 +98,7 @@ describe("RunGroup", () => {
     const wrapper = mount(RunGroup, {
       props: {
         wid: "ws-test",
+        workspaceName: "测试空间",
         kind: "history",
         runs: [{ ...card, status: "completed" }],
       },
@@ -101,10 +110,10 @@ describe("RunGroup", () => {
 
   it("uses distinct required copy for the two empty groups", () => {
     const running = mount(RunGroup, {
-      props: { wid: "ws-test", kind: "running", runs: [] },
+      props: { wid: "ws-test", workspaceName: "测试空间", kind: "running", runs: [] },
     });
     const history = mount(RunGroup, {
-      props: { wid: "ws-test", kind: "history", runs: [] },
+      props: { wid: "ws-test", workspaceName: "测试空间", kind: "history", runs: [] },
     });
 
     expect(running.text()).toContain("当前没有正在执行的自进化");

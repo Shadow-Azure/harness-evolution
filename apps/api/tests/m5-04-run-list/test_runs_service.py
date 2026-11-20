@@ -25,6 +25,8 @@ def _run(
     progress_unit: int = 0,
     stats: dict[str, object] | None = None,
     error: tuple[str, str] | None = None,
+    potential_policy: dict[str, object] | None = None,
+    cache_enabled: bool = False,
 ) -> EvolutionRunRecord:
     """Build a complete run snapshot for a deterministic service test."""
     return EvolutionRunRecord(
@@ -64,6 +66,8 @@ def _run(
         created_by="user-1",
         created_at=NOW,
         finished_at=NOW if status in {"completed", "failed", "interrupted"} else None,
+        potential_policy=potential_policy,
+        cache_enabled=cache_enabled,
     )
 
 
@@ -229,6 +233,40 @@ async def test_final_error_stats_and_creator_are_projected_for_the_card() -> Non
     assert card.final.branch_name == "evo/run-final"
     assert card.final.push_status == "succeeded"
     assert card.final.verdict is True
+
+
+async def test_card_projects_policy_preset_and_cache_switch() -> None:
+    """Cards expose only the policy preset and the cache-reuse switch."""
+    legacy = _run("run-legacy", "completed", potential_policy=None, cache_enabled=False)
+    custom = _run(
+        "run-custom",
+        "completed",
+        potential_policy={
+            "preset": "custom",
+            "includeSelfReport": True,
+            "includeAfterObject": True,
+            "sameObjectOnly": False,
+        },
+        cache_enabled=True,
+    )
+    service = EvolutionRunService(FakeRunStore((_summary(legacy), _summary(custom))))
+
+    cards = (await service.list()).history
+
+    assert cards[0].policy.preset == "default"
+    assert cards[0].cache_enabled is False
+    assert cards[1].policy.preset == "custom"
+    assert cards[1].cache_enabled is True
+    assert cards[1].policy.model_dump() == {"preset": "custom"}
+
+
+async def test_card_normalizes_unknown_policy_preset_to_default() -> None:
+    """A historical row with an unrecognized preset does not surface a new state."""
+    run = _run("run-unknown", "completed", potential_policy={"preset": "legacy"})
+
+    card = (await EvolutionRunService(FakeRunStore((_summary(run),))).list()).history[0]
+
+    assert card.policy.preset == "default"
 
 
 async def test_failed_run_error_keeps_only_the_sanitized_summary() -> None:

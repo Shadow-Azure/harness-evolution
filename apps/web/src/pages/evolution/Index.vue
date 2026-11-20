@@ -9,6 +9,7 @@ import { queryKeys } from "../../api/queryKeys";
 import { useEvolutionRuns } from "../../composables/useEvolutionRuns";
 import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import { workspacePath } from "../../router/workspace";
+import { useAuthStore } from "../../stores/auth";
 import LaunchWizard from "./components/LaunchWizard.vue";
 import RunGroup from "./components/RunGroup.vue";
 import TargetConfigEntry from "./targets/components/TargetConfigEntry.vue";
@@ -18,7 +19,11 @@ defineOptions({ name: "EvolutionPage" });
 const router = useRouter();
 const route = useRoute();
 const queryClient = useQueryClient();
+const auth = useAuthStore();
 const workspaceId = useWorkspaceId();
+const workspaceName = computed(
+  () => auth.workspaceById(workspaceId.value)?.name ?? "",
+);
 const { data, error, isPending, refetch } = useEvolutionRuns(workspaceId);
 const focusCaseId = computed(() => {
   const value = route.query.case;
@@ -128,12 +133,14 @@ async function openRun(path: string): Promise<void> {
     <template v-else>
       <RunGroup
         :wid="workspaceId"
+        :workspace-name="workspaceName"
         kind="running"
         :runs="running"
         @open="openRun"
       />
       <RunGroup
         :wid="workspaceId"
+        :workspace-name="workspaceName"
         kind="history"
         :runs="history"
         @open="openRun"

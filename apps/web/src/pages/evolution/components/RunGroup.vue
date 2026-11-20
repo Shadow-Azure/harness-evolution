@@ -6,6 +6,7 @@ import RunCard from "./RunCard.vue";
 
 const props = defineProps<{
   wid: string;
+  workspaceName: string;
   kind: "running" | "history";
   runs: EvolutionRunCard[];
 }>();
@@ -41,6 +42,7 @@ const title = computed(() => props.kind === "running"
         v-for="run in runs"
         :key="run.runId"
         :wid="wid"
+        :workspace-name="workspaceName"
         :run="run"
         @open="emit('open', $event)"
       />

@@ -603,11 +603,14 @@ Index.vue
 ├── RunGroup.vue（"正在执行"）
 │   └── RunCard.vue × N（进度条 + 阶段文案）
 ├── RunGroup.vue（"历史记录"）
-│   └── RunCard.vue × N（badge + best vs 初始 + Δ + 接纳数）
+│   └── RunCard.vue × N（badge + 运行配置 meta + best vs 初始 + Δ + 接纳数）
 └── LaunchWizard.vue（Modal，打开时挂载）
 ```
 
 - 分组与排序由后端给（`running` / `history`），前端不重排。
+- 卡片右上只显示 `createdAt`；创建人保留在 DTO，不在列表渲染。
+- `run-meta` 依次为对象版本 chip、时间窗、工作空间 chip、`默认潜在策略` / `自定义潜在策略`、`复用缓存` / `不复用缓存`，随后是模型 chip；策略与缓存分别取 `run.policy.preset` 与 `run.cacheEnabled`。
+- 工作空间名来自 auth store 的当前路由空间，列表本就按空间过滤，卡片 DTO 不重复空间信息；空间名缺失时按空串处理，不伪造名称。
 - 进度条：`progress.percent` 直接用；阶段文案 `progress.stageLabel` 直接用（后端算）。
 - `failed` / `interrupted` 的 run 显示红色/橙色状态徽章 + `error.message` 摘要（tooltip），点击进入详情并定位"执行日志"。
 - 空态："当前没有正在执行的自进化"。

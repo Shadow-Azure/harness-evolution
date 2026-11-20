@@ -20,7 +20,7 @@
   "docs/i18n/translation-prompt.md": 320,
   ".agents/notes/README.md": 1000,
   ".agents/flow/README.md": 980,
-  ".agents/flow/roadmap.md": 970,
+  ".agents/flow/roadmap.md": 1015,
   ".agents/flow/milestones/m1-milestone.md": 500,
   ".agents/flow/milestones/m2-milestone.md": 500,
   ".agents/flow/milestones/m3-milestone.md": 500,
@@ -42,5 +42,6 @@
   ".agents/flow/milestones/m19-milestone.md": 500,
   ".agents/flow/milestones/m20-milestone.md": 560,
   ".agents/flow/milestones/m21-milestone.md": 500,
-  ".agents/flow/milestones/m22-milestone.md": 500
+  ".agents/flow/milestones/m22-milestone.md": 500,
+  ".agents/flow/milestones/m23-milestone.md": 500
 }

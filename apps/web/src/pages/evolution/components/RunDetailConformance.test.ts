@@ -30,6 +30,8 @@ const run = {
   target: { type: "skill" as const, name: "deep-research", version: "v2.0.0" },
   window: { from: "2026-08-20", to: "2026-09-10" },
   models: ["glm-5.3"],
+  policy: { preset: "default" as const },
+  cacheEnabled: false,
   createdBy: "Ada",
   createdAt: "2026-10-19T18:42:00+08:00",
   status: "running" as const,
