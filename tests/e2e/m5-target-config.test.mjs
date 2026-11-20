@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -224,6 +224,7 @@ async function runTool(action, value) {
     env: {
       ...process.env,
       HE_DATA_DIR: dataDir,
+    HE_ATTRIBUTION_PACKAGE_DIR: path.join(dataDir, "attribute"),
       HE_DB_DIALECT: "sqlite",
       HE_JWT_SECRET: secret,
       PYTHONPATH: apiDir,
@@ -246,6 +247,7 @@ before(async () => {
     HE_ADMIN_PASSWORD: initialPassword,
     HE_ADMIN_USERNAME: "admin",
     HE_DATA_DIR: dataDir,
+    HE_ATTRIBUTION_PACKAGE_DIR: path.join(dataDir, "attribute"),
     HE_DB_DIALECT: "sqlite",
     HE_JWT_SECRET: secret,
     HE_PHASE: "demo",
@@ -333,6 +335,22 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
   const defaultWorkspace = workspaces.items.find((item) => item.id === "ws-default");
   assert.ok(defaultWorkspace);
   const workspaceBase = `/workspaces/${defaultWorkspace.id}`;
+  const packagesPath = `/api/workspaces/${defaultWorkspace.id}/attribution-skill-packages`;
+  const archive = spawnSync(python, ["-c", [
+    "import io, sys, zipfile",
+    "buf = io.BytesIO()",
+    "with zipfile.ZipFile(buf, 'w') as z:",
+    "    z.writestr('SKILL.md', '---\\nname: e2e-attribution\\n---\\nReview each case.')",
+    "sys.stdout.buffer.write(buf.getvalue())",
+  ].join("\n")]);
+  assert.equal(archive.status, 0, archive.stderr.toString());
+  const form = new FormData();
+  form.set("file", new Blob([archive.stdout]), "e2e-attribution.zip");
+  const upload = await fetch(`${apiUrl}${packagesPath}`, {
+    method: "POST", headers: { authorization: `Bearer ${admin.accessToken}` }, body: form,
+  });
+  assert.equal(upload.status, 201);
+  const uploaded = await upload.json();
   await apiJson(
     `/api/workspaces/${defaultWorkspace.id}/members`,
     admin.accessToken,
@@ -685,72 +703,8 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
       /验证集.*val-m5-e2e.*测试集.*test-m5-e2e/s,
     );
 
-    const skillRevisions = await apiJson(
-      `/api/workspaces/${defaultWorkspace.id}/evolution/attribution-skills`,
-      admin.accessToken,
-    );
-    const bindableRevision = skillRevisions.items.find(
-      (item) =>
-        item.enabled &&
-        item.status === "published" &&
-        item.outputSchemaVersion === "probe-report/v2" &&
-        item.executorType !== "agent",
-    );
-    assert.ok(bindableRevision);
-    await evaluate(
-      page,
-      `(() => {
-        const select = document.querySelector("[data-testid='skill-target-select']");
-        const setter = Object.getOwnPropertyDescriptor(
-          HTMLSelectElement.prototype,
-          "value",
-        ).set;
-        setter.call(select, ${JSON.stringify(created.id)});
-        select.dispatchEvent(new Event("change", { bubbles: true }));
-      })()`,
-    );
-    await waitForDocument(
-      page.session,
-      `document.querySelector("[data-testid='skill-target-select']")?.value === ${JSON.stringify(created.id)} &&
-        Boolean(document.querySelector("[data-testid='skill-revision-select']"))`,
-      "created target attribution skill",
-    );
-    await evaluate(
-      page,
-      `(() => {
-        const select = document.querySelector("[data-testid='skill-revision-select']");
-        const setter = Object.getOwnPropertyDescriptor(
-          HTMLSelectElement.prototype,
-          "value",
-        ).set;
-        setter.call(select, ${JSON.stringify(bindableRevision.id)});
-        select.dispatchEvent(new Event("change", { bubbles: true }));
-      })()`,
-    );
-    await waitForDocument(
-      page.session,
-      `document.querySelector("[data-testid='skill-revision-select']")?.value === ${JSON.stringify(bindableRevision.id)} &&
-        !document.querySelector(".bind-skill")?.disabled`,
-      "bindable attribution skill selected",
-    );
-    await evaluate(page, `document.querySelector(".bind-skill").click()`);
-    await waitForDocument(
-      page.session,
-      `document.querySelector(".source-chip")?.textContent.trim() === "对象覆盖"`,
-      "target attribution skill bound",
-    );
-    const boundSkill = await apiJson(
-      `/api/workspaces/${defaultWorkspace.id}/evolution/targets/${created.id}/attribution-skill`,
-      admin.accessToken,
-    );
-    assert.equal(boundSkill.id, bindableRevision.id);
-    assert.equal(boundSkill.source, "target");
-    await evaluate(page, `document.querySelector(".restore-default").click()`);
-    await waitForDocument(
-      page.session,
-      `document.querySelector(".source-chip")?.textContent.trim() !== "对象覆盖"`,
-      "target attribution skill default restored",
-    );
+    assert.equal(created.attributionSkillName, "attribute-badcases");
+    assert.equal(created.attributionPackageId, "default-attribute-badcases");
 
     await evaluate(
       page,
@@ -765,6 +719,14 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
       `document.querySelector(".target-form-dialog")?.textContent.includes("编辑进化对象")`,
       "edit dialog",
     );
+    await waitForDocument(page.session,
+      `[...document.querySelectorAll("select[aria-label='归因 Skill'] option")]
+         .some(option => option.value === ${JSON.stringify(uploaded.id)})`, "uploaded Skill option");
+    await evaluate(page, `(() => {
+      const select = document.querySelector("select[aria-label='归因 Skill']");
+      select.value = ${JSON.stringify(uploaded.id)};
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    })()`);
     await setInput(page, "input[name='repoUrl']", "https://git.example.com/agent-skills-updated.git");
     await evaluate(
       page,
@@ -776,6 +738,11 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
         .some((item) => item.textContent.includes("agent-skills-updated.git"))`,
       "updated target row",
     );
+    const updated = await apiJson("/api/evolution/targets", admin.accessToken);
+    assert.equal(updated.items.find(item => item.id === created.id).attributionPackageId, uploaded.id);
+    const detail = await apiJson(`${packagesPath}/${uploaded.id}`, admin.accessToken);
+    assert.ok(detail.targets.includes("m5-e2e-target"));
+
 
     await evaluate(
       page,
@@ -937,14 +904,13 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
       `document.querySelector("h1")?.textContent === "进化对象配置" &&
         !document.querySelector(".target-create") &&
         Boolean(document.querySelector(".target-table tbody tr")) &&
-        Boolean(document.querySelector(".read-only-note"))`,
+        document.querySelector(".target-table thead").textContent.includes("归因 Skill")`,
       "member target page",
     );
     assert.equal(await evaluate(page, `Boolean(document.querySelector(".target-create"))`), false);
     assert.equal(await evaluate(page, `Boolean(document.querySelector(".target-table tbody tr"))`), true);
     assert.equal(await evaluate(page, `Boolean(document.querySelector(".edit-target, .delete-target, .toggle-target"))`), false);
-    assert.equal(await evaluate(page, `Boolean(document.querySelector(".read-only-note"))`), true);
-    assert.equal(await evaluate(page, `Boolean(document.querySelector(".binding-controls"))`), false);
+    assert.equal(await evaluate(page, `Boolean(document.querySelector(".target-form-dialog"))`), false);
 
     await page.session.send("Emulation.setDeviceMetricsOverride", {
       width: 390,

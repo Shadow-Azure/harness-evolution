@@ -381,6 +381,8 @@ before(async () => {
     HE_ADMIN_PASSWORD: initialPassword,
     HE_ADMIN_USERNAME: "admin",
     HE_DATA_DIR: dataDir,
+    HE_ATTRIBUTION_AGENT: "e2e-script",
+    HE_ATTRIBUTION_PACKAGE_DIR: path.join(dataDir, "attribute"),
     HE_DB_DIALECT: "sqlite",
     HE_JWT_SECRET: secret,
     HE_LOGIN_RATE_LIMIT: "100",
@@ -671,21 +673,17 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     );
     await screenshot(page, "05-lab-sessions.png", false);
 
-    // 7. Error detail is still un-attributed before the first run.
+    // 7. Binding alone produces a readable report before launching self-evolution.
     await page.session.send("Page.navigate", {
       url: `${baseUrl}${labPath}/sessions/${sessionId}/errors?case=${ingestCases[0].badCaseId}&tab=attr`,
     });
-    const unattributed = await waitForDocument(
+    const backgroundReport = await waitForDocument(
       page.session,
-      `(() => {
-        const empty = document.querySelector("[data-testid='attribution-empty']");
-        if (!empty) return null;
-        return { text: empty.textContent };
-      })()`,
-      "unattributed case",
+      `document.querySelector("[data-testid='attribution-report']")?.textContent`,
+      "report from target binding",
     );
-    assert.match(unattributed.text, /尚未归因/);
-    await screenshot(page, "06-lab-error-unattributed.png");
+    assert.match(backgroundReport, /synthetic-review/);
+    await screenshot(page, "06-lab-background-report.png");
 
     // 8. Four-step wizard previews the same two potential cases.
     await page.session.send("Page.navigate", { url: `${baseUrl}${labPath}/evolution` });
@@ -733,6 +731,9 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     );
     assert.match(attributionPreview, /潜在 bad case/);
     assert.match(attributionPreview, /2/);
+    await click(page, "[data-testid='wizard-cache']");
+    await selectOption(page, "select[aria-label='本次重算使用的归因 Skill']", "attribute-badcases");
+    await waitForDocument(page.session, `!document.querySelector("[data-testid='wizard-cluster']").disabled`, "selected Skill ready");
     await click(page, "[data-testid='wizard-cluster']");
     await waitForDocument(
       page.session,

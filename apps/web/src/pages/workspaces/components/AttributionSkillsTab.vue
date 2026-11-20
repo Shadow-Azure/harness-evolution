@@ -286,9 +286,9 @@ function formatBytes(value: number): string {
           <h4>已绑定进化对象</h4>
           <p>{{ detail.data.value.targets.join("、") || "暂无绑定对象" }}</p>
           <h4>目录结构</h4>
-          <pre>{{ directoryTree }}</pre>
+          <pre data-testid="skill-directory-tree">{{ directoryTree }}</pre>
           <h4>SKILL.md</h4>
-          <pre>{{ detail.data.value.prompt }}</pre>
+          <pre data-testid="skill-resource-prompt">{{ detail.data.value.prompt }}</pre>
         </template>
       </section>
     </template>

@@ -124,7 +124,7 @@ async def test_package_isolation_and_oversized_prompt(
 async def test_upload_inspect_download_and_delete_resource(
     package_client: tuple[FastAPI, httpx.AsyncClient, Path],
 ) -> None:
-    """Custom packages can be inspected, downloaded and removed while the default stays available."""
+    """Inspect, download and remove a custom package alongside the built-in Skill."""
     _, client, package_root = package_client
     initial = await client.get(_base())
     assert initial.status_code == 200
