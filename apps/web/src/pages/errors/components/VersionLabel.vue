@@ -307,13 +307,13 @@ defineExpose({ showTip, hideTip });
   max-width: 320px;
   padding: 5px 8px;
   border-radius: 6px;
-  background: #1f2937;
-  color: #fff;
+  background: var(--text);
+  color: var(--text-on-accent);
   font-family: var(--mono);
   font-size: 10px;
   line-height: 1.5;
   overflow-wrap: anywhere;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.24);
+  box-shadow: var(--shadow-popover);
   pointer-events: none;
   transform: translate(-50%, -100%);
 }
