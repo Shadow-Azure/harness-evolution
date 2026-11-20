@@ -43,6 +43,12 @@ function changePage(delta: number): void {
       class="table-scroll"
     >
       <table class="rep">
+        <colgroup>
+          <col>
+          <col class="col-trigger">
+          <col class="col-count">
+          <col class="col-count">
+        </colgroup>
         <thead>
           <tr>
             <th>Session</th>
@@ -56,8 +62,11 @@ function changePage(delta: number): void {
             v-for="row in payload.rows"
             :key="row.sessionId"
           >
-            <td>
-              <b>{{ row.title ?? "未命名 Session" }}</b>
+            <td class="session-cell">
+              <b
+                class="session-title"
+                :title="row.title ?? undefined"
+              >{{ row.short || row.title || "未命名 Session" }}</b>
               <span
                 class="cell-sub mono"
                 :title="row.sessionId"
@@ -168,8 +177,29 @@ function changePage(delta: number): void {
 
 table.rep {
   width: 100%;
+  min-width: 680px;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 12px;
+}
+
+.col-trigger {
+  width: 220px;
+}
+
+.col-count {
+  width: 130px;
+}
+
+.session-cell {
+  min-width: 0;
+}
+
+.session-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 table.rep th,

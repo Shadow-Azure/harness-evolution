@@ -778,7 +778,7 @@ RunDetail.vue
 | step | 展示 |
 |---|---|
 | 1 选择范围 | 条件摘要（对象@版本、时间窗、策略、缓存开关）+ 统计 |
-| 2 Session 关联 | 4 条/页表格（Session / 对象触发点 / bad case 数 / 潜在数）+ 跳过统计 |
+| 2 Session 关联 | 4 条/页表格（Session 短标签 + 完整 Session ID / 对象触发点 / bad case 数 / 潜在数）；Session 单元格用 `short` 单行省略，`title` 悬停展示完整标题，固定列宽保证四列同屏；存量 run 缺 `short` 时用 `title[:120]` 兜底 + 跳过统计 |
 | 3 潜在 bad case | 5 条/页，含「命中原因」列；`unknown` 标注触发点顺序待重放 |
 | 4 对象归因 | 统计四数 + 表格（来源 bad case / 归因 ID / 分类 / 现象 / 结果来源 cached\|fresh / 置信度）；对象·版本在 step 标题，不在表格重复「结论」；来源 bad case 与归因报告 ID 均为新窗口深链（问题描述 / 归因分析，`at` 选中该行归因） |
 | 5 聚类与严重度 | 簇卡片按 severity 降序，每簇标题 + 聚类描述 + 可折叠来源 bad case 表（ID 可深链错误详情），默认展开第一簇（或 active 簇） |

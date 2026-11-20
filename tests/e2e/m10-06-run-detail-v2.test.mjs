@@ -28,6 +28,7 @@ const initialPassword = "m10-detail-initial-password";
 const finalPassword = "m10-detail-final-password";
 const secret = "m10-detail-signing-secret-with-sufficient-length";
 const ws = "/workspaces/ws-default";
+const longSessionPrompt = "SWE-bench astropy-12907 修复任务 ".repeat(200).slice(0, 3337);
 let api;
 let web;
 let dataDir;
@@ -349,10 +350,26 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
       `(() => {
         const rows = [...document.querySelectorAll(".rep tbody tr")];
         if (rows.length !== 4) return null;
+        const first = rows[0];
+        const title = first.querySelector(".session-title");
+        const table = first.closest("table");
+        const scroll = first.closest(".table-scroll");
+        const headers = [...table.querySelectorAll("thead th")].map((th) => {
+          const rect = th.getBoundingClientRect();
+          return { text: th.textContent.trim(), width: rect.width, left: rect.left };
+        });
         return {
           rows: rows.length,
           pager: document.querySelector(".pager-info")?.textContent ?? "",
           text: rows.map((row) => row.textContent),
+          title: title?.textContent ?? "",
+          hover: title?.getAttribute("title") ?? "",
+          height: first.getBoundingClientRect().height,
+          sessionWidth: first.cells[0].getBoundingClientRect().width,
+          tableWidth: table.getBoundingClientRect().width,
+          scrollWidth: table.scrollWidth,
+          clientWidth: scroll.clientWidth,
+          headers,
         };
       })()`,
       "first Session page",
@@ -360,6 +377,26 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
     assert.equal(sessions.rows, 4);
     assert.match(sessions.pager, /第\s*1\s*\/\s*2\s*页/);
     assert.match(sessions.text.join(" "), /来源运行 A/);
+    assert.equal(sessions.title, "来源运行 A");
+    assert.equal(sessions.hover, longSessionPrompt);
+    assert.ok(
+      sessions.height <= 64,
+      `long prompt grew the Session row to ${sessions.height}px`,
+    );
+    assert.ok(
+      sessions.sessionWidth < sessions.tableWidth * 0.75,
+      `Session column ${sessions.sessionWidth}px of ${sessions.tableWidth}px`,
+    );
+    assert.equal(sessions.headers.length, 4);
+    for (const header of sessions.headers) {
+      assert.ok(header.width >= 100, `${header.text} column is ${header.width}px`);
+      assert.ok(header.left >= 0, `${header.text} column starts off screen`);
+    }
+    assert.ok(
+      sessions.scrollWidth <= sessions.clientWidth + 1,
+      `Session table overflows horizontally: ${sessions.scrollWidth} > ${sessions.clientWidth}`,
+    );
+    await screenshotStep(page, "01a-after-sessions-long-title.png");
     await clickButton(page, "下一页 →");
     const sessionPageTwo = await waitForDocument(
       page.session,

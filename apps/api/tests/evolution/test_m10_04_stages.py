@@ -11,7 +11,7 @@ from app.db.crud.probe_query import ProbeQueryRepository
 from app.errors import AppError
 from app.service.evolution.attribution import AttributionRunner, RuleBasedEngine
 from app.service.evolution.prepare import EvolutionPrepareService
-from app.service.evolution.stages import EvolutionStageService
+from app.service.evolution.stages import EvolutionStageService, StepSessionRow
 from app.service.evolution.state import STEP_KEYS
 from tests.evolution.test_m10_04_prepare import (
     FakeWorkspacePreparer,
@@ -75,6 +75,7 @@ async def test_v2_run_returns_all_seven_steps_in_order(harness: Harness) -> None
     sessions = await service.step("run-m10-04", "sessions")
     assert sessions.payload.summary.associated == 1  # type: ignore[union-attr]
     assert sessions.payload.rows[0].bad_case_count == 1  # type: ignore[union-attr]
+    assert sessions.payload.rows[0].short == "七步 prepare"  # type: ignore[union-attr]
     potential = await service.step("run-m10-04", "potential")
     assert potential.payload.total == 1  # type: ignore[union-attr]
     assert potential.payload.rows[0].hit_reason == "self_report"  # type: ignore[union-attr]
@@ -88,6 +89,35 @@ async def test_v2_run_returns_all_seven_steps_in_order(harness: Harness) -> None
     assert cluster.cases[0].bad_case_id == "case-m10-04"
     iteration = await service.step("run-m10-04", "iteration")
     assert iteration.payload.rounds[0].case_count == 1  # type: ignore[union-attr]
+
+
+async def test_historical_session_rows_fall_back_to_bounded_title(
+    harness: Harness,
+) -> None:
+    """Rows prepared before `short` existed still render a bounded label."""
+    await _seed_self_case(harness)
+    await _create_run(harness.database)
+    await _prepare_service(harness.database, harness).handle(_job())
+    runs = EvolutionRepository(harness.database)
+    prepared = await runs.get_run("run-m10-04")
+    assert prepared is not None
+    long_title = ("SWE-bench astropy-12907 修复任务 " * 200)[:3337]
+    historical = []
+    for row in prepared.stats["sessionRows"]:
+        legacy_row = {**row, "title": long_title}
+        legacy_row.pop("short", None)
+        historical.append(legacy_row)
+    await runs.write_stats(
+        "run-m10-04",
+        {**dict(prepared.stats), "sessionRows": historical},
+    )
+
+    sessions = await _stage_service(harness.database).step("run-m10-04", "sessions")
+
+    row = sessions.payload.rows[0]  # type: ignore[union-attr]
+    assert isinstance(row, StepSessionRow)
+    assert row.title == long_title
+    assert row.short == long_title[:120]
 
 
 async def test_legacy_run_maps_six_step_progress_onto_seven_steps(

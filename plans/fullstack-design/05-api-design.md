@@ -313,7 +313,7 @@ erDiagram
 | step | key | 端点 | payload 关键字段 |
 |---|---|---|---|
 | 0 选择范围 | `range` | `GET …/evolution/runs/{rid}/steps/range` | `condition`（target/版本/时间窗/policy/cacheEnabled）+ `stats`（sessions/badCases/potential） |
-| 1 Session 关联 | `sessions` | `GET …/steps/sessions` | `summary`（reported/associated/skipped/pending）+ `rows[]`（sessionId/title/objectTriggerAt/badCaseCount/potentialCount），4 条/页 |
+| 1 Session 关联 | `sessions` | `GET …/steps/sessions` | `summary`（reported/associated/skipped/pending）+ `rows[]`（sessionId/title/short/objectTriggerAt/badCaseCount/potentialCount），4 条/页 |
 | 2 潜在 bad case | `potential` | `GET …/steps/potential` | `summary`（badCases/potential/byReason）+ `rows[]`（badCaseId/objectName/badCaseType/triggerAt/sessionId/hitReason/orderState），5 条/页 |
 | 3 对象归因 | `attribution` | `GET …/steps/attribution` | `summary`（potential/reused/fresh/nonTarget）+ `rows[]`（badCaseId/sessionId/attributionId/category/description/source/confidence） |
 | 4 聚类与严重度 | `clusters` | `GET …/steps/clusters` | `clusters[]`：`clusterId/title/description/category/caseCount/confidence/severity/rank/cases[]`（按 severity 降序） |
@@ -328,6 +328,7 @@ erDiagram
 ```
 
 - `index` 是步骤顺序（0–6），`key` 是稳定语义标识；前端路由/缓存优先用 `key`，`detail` 给 stepper 副标题。
+- `sessions.rows[].short` 是展示用短标签（来源 `session_families.short_title`，最长 120 字符），`title` 保留完整标题供悬停；存量 run 的 `stats.sessionRows` 没有 `short` 时读取侧用 `title[:120]` 兜底，不要求重新准备。
 - 进度公式 `5 + M + 1`（M = 簇数）：选择范围/Session 关联/潜在/归因/聚类各占 1，迭代占 M，终评占 1；`stageLabel` 文案按上表。
 - `confidence` 在 `clusters` 上是**簇级**占位值（按 `category`：error 0.82 / prompt 0.74 / model 0.66）；归因行上的 `confidence` 是单条结论置信度，两者不互相推导。
 - `impact` 按 `category` 固定映射（`error=9` / `prompt=7` / `model=5`）；`severity = round(min(10, confidence × impact × reportWeight), 1)`，`reportWeight = 1 + 0.1 × min(reportCount - 1, 5)`，`reportCount` 是簇内成员 join 归因行统计的 distinct `bad_case_id` 数。
