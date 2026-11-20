@@ -82,7 +82,7 @@ pnpm lint:docs
 
 - 组件测试：第 4 步两列各有锚点，来源链接 `href` 以 `case=...&tab=desc` 结尾，报告链接带 `tab=attr&at=<attributionId>`，`target="_blank"`、`rel="noopener noreferrer"` 且 `aria-label` 含完整 ID。
 - API 测试：V2 与 legacy 的第 4 步行都返回非空 `session_id`，V2 等于候选行的 Session。
-- E2E：`run-v2-completed` 第 4 步 6 行、12 个链接，报告链接的 `case` / `session` / `at` 与 fixture 对应；点击或键盘 Enter 后可打开错误详情并停在归因分析。
+- E2E：`run-v2-completed` 第 4 步 6 行、12 个链接，报告链接的 `case` / `session` / `at` 与 fixture 对应，首个报告链接可聚焦；新增用例导航到生成的报告/来源 href，断言「归因分析」选中该行归因与「问题描述」页签。
 - 生产同构页面：1500×837 下报告 ID 为蓝色链接、悬停有提示、Tab 可聚焦，点击后新窗口打开归因分析。
 
 ## 验收标准

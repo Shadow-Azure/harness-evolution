@@ -82,7 +82,7 @@ pnpm lint:docs
 
 - Component tests: step 4 has anchors in both columns; the source link ends with `case=...&tab=desc`; the report link carries `tab=attr&at=<attributionId>`; both use `target="_blank"` and `rel="noopener noreferrer"`, and `aria-label` contains the full ID.
 - API tests: the V2 and legacy step-4 rows both return a non-empty `session_id`, and the V2 value equals the candidate Session.
-- E2E: `run-v2-completed` step 4 has 6 rows and 12 links; the report link's `case` / `session` / `at` match the fixture; clicking or pressing Enter opens the error detail on the attribution-analysis tab.
+- E2E: `run-v2-completed` step 4 has 6 rows and 12 links; the report link's `case` / `session` / `at` match the fixture and the first report link is focusable; a new case navigates to the generated report/source hrefs and asserts the selected attribution on the analysis tab and the description tab.
 - Production-shaped page at 1500×837: the report ID is a blue link with a hover title, reachable with Tab, and opens the attribution analysis in a new window.
 
 ## Acceptance
