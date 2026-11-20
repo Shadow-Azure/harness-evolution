@@ -943,10 +943,17 @@ function clearMissingClusterFocus(): void {
 
 <style scoped>
 .run-detail-page {
+  /* Page-level scroll container: the workspace shell fixes main's height and
+     hides overflow, so the page owns the scrollbar. Full width keeps the
+     classic scrollbar at the window's right edge; the symmetric inline
+     padding centers the V2 prototype's 1720px content column. */
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   min-width: 0;
+  height: 100%;
+  padding: 20px max(24px, calc((100% - 1720px) / 2 + 24px)) 64px;
+  overflow-y: auto;
 }
 
 .back {
@@ -1385,6 +1392,16 @@ function clearMissingClusterFocus(): void {
 
   50% {
     opacity: 0.25;
+  }
+}
+
+@media (max-width: 640px) {
+  /* The workspace shell switches main to document flow at this breakpoint,
+     so the page must stop owning scrolling and let the document scroll. */
+  .run-detail-page {
+    height: auto;
+    padding: 14px 12px 48px;
+    overflow-y: visible;
   }
 }
 
