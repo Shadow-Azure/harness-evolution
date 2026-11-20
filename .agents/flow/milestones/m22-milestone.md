@@ -6,7 +6,7 @@
 kind: milestone
 id: m22
 title: M22 归因列表版本显示与 V2 原型对齐
-status: active
+status: done
 github:
   number: 31
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/31
@@ -18,7 +18,7 @@ github:
 
 ## 范围
 
-`plans/ui-prototype-v2/harness-evolution.html`、错误详情归因列表的 API 契约与读取路径、`apps/web/src/pages/errors/**`、对应的契约生成、API / 组件 / E2E 测试、Agent Note、设计文档 08 §7.1 与流程文件。后续归因列表版本展示的同源偏差沿用本 milestone。
+`plans/ui-prototype-v2/harness-evolution.html`、错误详情归因列表的 API 契约与读取路径、`apps/web/src/pages/errors/**`、对应的契约生成、API / 组件 / E2E 测试、Agent Note、设计文档 08 §7.1 与流程文件。后续归因列表版本展示的同源偏差沿用本 milestone；同页 Session 浏览器壳层的低内容填充与执行流占位也随本 milestone 交付。
 
 ## 验收
 

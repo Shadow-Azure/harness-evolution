@@ -9,6 +9,7 @@ import re
 import shutil
 import signal
 import sys
+import time
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
@@ -66,6 +67,8 @@ class PreparedWorkspace:
     ref: str
     base_commit: str
     branch: str
+    cache_hit: bool = False
+    clone_seconds: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +137,12 @@ class GitWorkspaceManager:
         "temporarily unavailable",
         "timed out",
     )
+    _MISSING_REF_MARKERS = (
+        "couldn't find remote ref",
+        "could not find remote ref",
+        "not found in upstream",
+        "not our ref",
+    )
 
     def __init__(
         self,
@@ -143,42 +152,35 @@ class GitWorkspaceManager:
         runner: GitRunner | None = None,
         timeout_seconds: float = 60.0,
         push_enabled: bool = True,
+        push_url: str | None = None,
     ) -> None:
-        """Bind roots and the sanitized process seam."""
+        """Bind roots, the sanitized process seam, and an optional push remote."""
         self.repos_root = repos_root
         self.workspaces_root = workspaces_root
         self._runner = runner or _run_process
         self._timeout_seconds = timeout_seconds
         self._push_enabled = push_enabled
+        self._push_url = (push_url or "").strip() or None
+        self._push_remote = "push" if self._push_url is not None else "origin"
+        self._cache_locks: dict[str, asyncio.Lock] = {}
 
     async def prepare(self, run: EvolutionRunRecord) -> PreparedWorkspace:
-        """Clone a cache and create the uniquely named run branch."""
+        """Fetch one target ref into a cache and create the uniquely named run branch."""
         self.repos_root.mkdir(parents=True, exist_ok=True)
         self.workspaces_root.mkdir(parents=True, exist_ok=True)
-        repo_path = self.repos_root / _safe_component(run.target_config_id or run.id)
+        ref = _checked_ref(run.target_version)
+        cache_path = self._ref_cache_path(run.target_config_id or run.id, ref)
         workspace_path = self.workspaces_root / _safe_component(run.id)
-        ref = run.target_version
         branch = f"evo/{run.created_at:%Y%m%d}-{run.id}"
 
-        await self._ensure_mirror(repo_path, run.repo_url)
-
-        resolved_ref = await self._git_checked(
-            repo_path,
-            ("git", "rev-parse", "--verify", f"{ref}^{{commit}}"),
-            stage="reference",
-            failure="target reference is invalid",
-        )
-        base_commit = resolved_ref.stdout.strip()
-        if not re.fullmatch(r"[0-9a-f]{40}", base_commit):
-            raise GitOperationError(
-                "target reference did not resolve to a commit",
-                stage="reference",
-            )
+        clone_started = time.monotonic()
+        base_commit, cache_hit = await self._ensure_ref_cache(cache_path, run.repo_url, ref)
+        clone_seconds = time.monotonic() - clone_started
 
         sub_dir = _normalize_sub_dir(run.sub_dir)
         if sub_dir != ".":
             object_type = await self._git_checked(
-                repo_path,
+                cache_path,
                 ("git", "cat-file", "-t", f"{base_commit}:{sub_dir}"),
                 stage="subdirectory",
                 failure="target subdirectory is missing",
@@ -190,12 +192,18 @@ class GitWorkspaceManager:
                 )
 
         if workspace_path.exists():
-            await self._reuse_or_reject(workspace_path, branch, run.repo_url)
+            await self._reuse_or_reject(
+                workspace_path,
+                branch,
+                run.repo_url,
+                run.remote_name,
+                base_commit,
+            )
         else:
             try:
                 await self._git_checked(
                     None,
-                    ("git", "clone", "--no-checkout", "--", str(repo_path), str(workspace_path)),
+                    ("git", "clone", "--no-checkout", "--", str(cache_path), str(workspace_path)),
                     stage="workspace",
                     failure="workspace clone failed",
                 )
@@ -208,57 +216,27 @@ class GitWorkspaceManager:
                 stage="workspace",
                 failure="workspace remote setup failed",
             )
-            local_branch = await self._optional_ref(
+            await self._ensure_push_remote(workspace_path)
+            await self._select_or_create_run_branch(
                 workspace_path,
-                ("git", "rev-parse", "--verify", f"refs/heads/{branch}"),
+                branch,
+                run.remote_name,
+                base_commit,
             )
-            if local_branch is None:
-                remote_branch = await self.remote_ref_commit(
-                    workspace_path,
-                    run.remote_name,
-                    branch,
-                )
-                if remote_branch is None:
-                    await self._git_checked(
-                        workspace_path,
-                        ("git", "switch", "-c", branch, base_commit),
-                        stage="workspace",
-                        failure="run branch creation failed",
-                    )
-                else:
-                    await self._git_checked(
-                        workspace_path,
-                        ("git", "switch", "-c", branch, "--track", f"{run.remote_name}/{branch}"),
-                        stage="workspace",
-                        failure="existing run branch could not be resumed",
-                    )
-            else:
-                await self._git_checked(
-                    workspace_path,
-                    ("git", "switch", branch),
-                    stage="workspace",
-                    failure="existing local run branch could not be resumed",
-                )
 
-        await self.validate_for_push(
-            PreparedWorkspace(
-                repo_path=repo_path,
-                path=workspace_path,
-                ref=ref,
-                base_commit=base_commit,
-                branch=branch,
-            ),
-            run,
-        )
-        if self._push_enabled:
-            await self._push_run_branch(workspace_path, branch)
-        return PreparedWorkspace(
-            repo_path=repo_path,
+        prepared = PreparedWorkspace(
+            repo_path=cache_path,
             path=workspace_path,
             ref=ref,
             base_commit=base_commit,
             branch=branch,
+            cache_hit=cache_hit,
+            clone_seconds=clone_seconds,
         )
+        await self.validate_for_push(prepared, run)
+        if self._push_enabled:
+            await self._push_run_branch(workspace_path, branch)
+        return prepared
 
     async def create_candidate(
         self,
@@ -356,15 +334,16 @@ class GitWorkspaceManager:
         await self._validate_candidate(candidate)
         if not self._push_enabled:
             return
-        remote = await self.remote_tag_commit(
+        remote = await self._ensure_push_remote(candidate.workspace_path)
+        remote_commit = await self.remote_tag_commit(
             candidate.workspace_path,
-            "origin",
+            remote,
             candidate.ref,
         )
-        if remote == candidate.commit:
+        if remote_commit == candidate.commit:
             return
         if expected_remote_commit is None:
-            if remote is not None and remote != candidate.commit:
+            if remote_commit is not None and remote_commit != candidate.commit:
                 raise GitOperationError(
                     "candidate reference already exists",
                     stage="push",
@@ -372,11 +351,11 @@ class GitWorkspaceManager:
             args: tuple[str, ...] = (
                 "git",
                 "push",
-                "origin",
+                remote,
                 f"{candidate.commit}:refs/tags/{candidate.ref}",
             )
         else:
-            if remote != expected_remote_commit:
+            if remote_commit != expected_remote_commit:
                 raise GitOperationError(
                     "candidate reference lease no longer matches",
                     stage="push",
@@ -385,7 +364,7 @@ class GitWorkspaceManager:
                 "git",
                 "push",
                 f"--force-with-lease=refs/tags/{candidate.ref}:{expected_remote_commit}",
-                "origin",
+                remote,
                 f"{candidate.commit}:refs/tags/{candidate.ref}",
             )
         await self._push_checked(candidate.workspace_path, args)
@@ -479,7 +458,7 @@ class GitWorkspaceManager:
             )
             remote_commit = await self.remote_tag_commit(
                 candidate.workspace_path,
-                "origin",
+                await self._ensure_push_remote(candidate.workspace_path),
                 candidate.ref,
             )
             if remote_commit not in {None, candidate.commit, final_commit}:
@@ -722,7 +701,8 @@ class GitWorkspaceManager:
         )
         if not self._push_enabled:
             return
-        remote_commit = await self.remote_ref_commit(workspace_path, "origin", branch)
+        remote = await self._ensure_push_remote(workspace_path)
+        remote_commit = await self.remote_ref_commit(workspace_path, remote, branch)
         head = (
             await self._git_checked(
                 workspace_path,
@@ -732,6 +712,16 @@ class GitWorkspaceManager:
             )
         ).stdout.strip()
         if remote_commit is not None and remote_commit != head:
+            if not await self._commit_present(workspace_path, remote_commit):
+                # The single-ref cache does not carry the run branch, so fetch
+                # the remote commit before asking whether it is an ancestor.
+                await self._fetch_remote_branch(workspace_path, remote, branch)
+                if not await self._commit_present(workspace_path, remote_commit):
+                    raise GitOperationError(
+                        "run branch remote commit could not be fetched",
+                        stage="push",
+                        retryable=True,
+                    )
             ancestor = await self._git(
                 workspace_path,
                 ("git", "merge-base", "--is-ancestor", remote_commit, head),
@@ -744,18 +734,19 @@ class GitWorkspaceManager:
                 )
         await self._push_checked(
             workspace_path,
-            ("git", "push", "origin", f"{head}:refs/heads/{branch}"),
+            ("git", "push", remote, f"{head}:refs/heads/{branch}"),
         )
 
     async def _delete_remote_tag(self, workspace_path: Path, ref: str) -> None:
         """Delete a transient candidate tag, treating absence as success."""
         if not self._push_enabled:
             return
-        if await self.remote_tag_commit(workspace_path, "origin", ref) is None:
+        remote = await self._ensure_push_remote(workspace_path)
+        if await self.remote_tag_commit(workspace_path, remote, ref) is None:
             return
         await self._push_checked(
             workspace_path,
-            ("git", "push", "origin", f":refs/tags/{ref}"),
+            ("git", "push", remote, f":refs/tags/{ref}"),
         )
 
     async def _reuse_or_reject(
@@ -763,6 +754,8 @@ class GitWorkspaceManager:
         workspace_path: Path,
         branch: str,
         expected_repo_url: str,
+        remote_name: str,
+        base_commit: str,
     ) -> None:
         """Resume an existing safe run workspace without resetting its branch."""
         if not (workspace_path / ".git").is_dir():
@@ -774,19 +767,110 @@ class GitWorkspaceManager:
         )
         if current_url.returncode != 0 or current_url.stdout.strip() != expected_repo_url:
             raise GitOperationError("workspace remote does not match the run", stage="workspace")
+        await self._ensure_push_remote(workspace_path)
         current_branch = await self._git(
             workspace_path,
             ("git", "branch", "--show-current"),
             stage="workspace",
         )
         if current_branch.stdout.strip() != branch:
+            local_branch = await self._optional_ref(
+                workspace_path,
+                ("git", "rev-parse", "--verify", f"refs/heads/{branch}"),
+            )
+            if local_branch is not None:
+                await self._git_checked(
+                    workspace_path,
+                    ("git", "switch", branch),
+                    stage="workspace",
+                    failure="existing run workspace cannot switch branches",
+                )
+            else:
+                remote_branch = await self.remote_ref_commit(
+                    workspace_path,
+                    remote_name,
+                    branch,
+                )
+                if remote_branch is None:
+                    await self._git_checked(
+                        workspace_path,
+                        ("git", "switch", "-c", branch, base_commit),
+                        stage="workspace",
+                        failure="existing run branch could not be recreated",
+                    )
+                else:
+                    await self._fetch_remote_branch(workspace_path, remote_name, branch)
+                    await self._git_checked(
+                        workspace_path,
+                        ("git", "switch", "-c", branch, "--track", f"{remote_name}/{branch}"),
+                        stage="workspace",
+                        failure="existing run branch could not be resumed",
+                    )
+        await self._require_clean(workspace_path)
+
+    async def _select_or_create_run_branch(
+        self,
+        workspace_path: Path,
+        branch: str,
+        remote_name: str,
+        base_commit: str,
+    ) -> None:
+        """Select a local run branch, resume its remote copy, or create it at the base."""
+        local_branch = await self._optional_ref(
+            workspace_path,
+            ("git", "rev-parse", "--verify", f"refs/heads/{branch}"),
+        )
+        if local_branch is not None:
             await self._git_checked(
                 workspace_path,
                 ("git", "switch", branch),
                 stage="workspace",
-                failure="existing run workspace cannot switch branches",
+                failure="existing local run branch could not be resumed",
             )
-        await self._require_clean(workspace_path)
+            return
+        remote_branch = await self.remote_ref_commit(
+            workspace_path,
+            remote_name,
+            branch,
+        )
+        if remote_branch is None:
+            await self._git_checked(
+                workspace_path,
+                ("git", "switch", "-c", branch, base_commit),
+                stage="workspace",
+                failure="run branch creation failed",
+            )
+            return
+        # The single-ref cache never carries the run branch, so resume it
+        # explicitly instead of relying on the cache's remote-tracking refs.
+        await self._fetch_remote_branch(workspace_path, remote_name, branch)
+        await self._git_checked(
+            workspace_path,
+            ("git", "switch", "-c", branch, "--track", f"{remote_name}/{branch}"),
+            stage="workspace",
+            failure="existing run branch could not be resumed",
+        )
+
+    async def _fetch_remote_branch(
+        self,
+        workspace_path: Path,
+        remote_name: str,
+        branch: str,
+    ) -> None:
+        """Fetch one remote branch explicitly before tracking or ancestry checks."""
+        await self._git_checked(
+            workspace_path,
+            (
+                "git",
+                "fetch",
+                "--no-tags",
+                remote_name,
+                f"+refs/heads/{branch}:refs/remotes/{remote_name}/{branch}",
+            ),
+            stage="workspace",
+            failure="run branch fetch failed",
+            retryable=True,
+        )
 
     async def _require_clean(self, workspace_path: Path) -> None:
         """Require no tracked or untracked file before ref-changing operations."""
@@ -799,50 +883,180 @@ class GitWorkspaceManager:
         if result.stdout.strip():
             raise GitOperationError("workspace is not clean", stage="workspace")
 
-    async def _ensure_mirror(self, repo_path: Path, repo_url: str) -> None:
-        """Create or refresh a cache only when it still points at the run's repository."""
-        if repo_path.exists():  # noqa: ASYNC240
-            current = await self._git(
-                repo_path,
-                ("git", "remote", "get-url", "origin"),
+    def _ref_cache_path(self, target_key: str, ref: str) -> Path:
+        """Return the one cache directory for a target identifier and normalized ref."""
+        ref_key = hashlib.sha256(ref.encode("utf-8")).hexdigest()[:16]
+        return self.repos_root / _safe_component(target_key) / ref_key
+
+    def _cache_lock(self, cache_path: Path) -> asyncio.Lock:
+        """Return the process-local lock serializing one target/ref cache."""
+        key = str(cache_path)
+        lock = self._cache_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._cache_locks[key] = lock
+        return lock
+
+    async def _ensure_ref_cache(
+        self,
+        cache_path: Path,
+        repo_url: str,
+        ref: str,
+    ) -> tuple[str, bool]:
+        """Fetch only ``ref`` into a bare cache and return its commit and hit flag."""
+        async with self._cache_lock(cache_path):
+            reusable = self._cache_usable(cache_path)
+            if reusable:
+                current = await self._git(
+                    cache_path,
+                    ("git", "remote", "get-url", "origin"),
+                    stage="clone",
+                )
+                if current.returncode != 0 or current.stdout.strip() != repo_url:
+                    self._remove_cache(cache_path)
+                    reusable = False
+            if not reusable:
+                await self._build_ref_cache(cache_path, repo_url)
+            try:
+                commit = await self._fetch_ref(cache_path, ref)
+            except GitOperationError:
+                if not reusable:
+                    self._remove_cache(cache_path)
+                raise
+            return commit, reusable
+
+    async def _build_ref_cache(self, cache_path: Path, repo_url: str) -> None:
+        """Initialize an empty bare cache; remove it entirely when setup fails."""
+        try:
+            if cache_path.exists():  # noqa: ASYNC240
+                self._remove_cache(cache_path)
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            await self._git_checked(
+                None,
+                ("git", "init", "--bare", "--", str(cache_path)),
+                stage="clone",
+                failure="repository cache initialization failed",
+            )
+            await self._git_checked(
+                cache_path,
+                ("git", "remote", "add", "origin", repo_url),
+                stage="clone",
+                failure="repository cache remote setup failed",
+            )
+        except Exception:
+            self._remove_cache(cache_path)
+            raise
+
+    async def _fetch_ref(self, cache_path: Path, ref: str) -> str:
+        """Fetch exactly the requested ref (or full commit) and resolve its commit."""
+        if _FULL_COMMIT.fullmatch(ref):
+            if not await self._commit_present(cache_path, ref):
+                result = await self._git(
+                    cache_path,
+                    ("git", "fetch", "--depth", "1", "--no-tags", "origin", ref),
+                    stage="clone",
+                )
+                if result.returncode != 0:
+                    raise self._error_from_result(
+                        result,
+                        stage="clone",
+                        failure="target commit could not be fetched",
+                        retryable=True,
+                    )
+            commit = await self._resolve_commit(cache_path, ref, stage="reference")
+        else:
+            result = await self._git(
+                cache_path,
+                ("git", "fetch", "--no-tags", "origin", _fetch_source(ref)),
                 stage="clone",
             )
-            if current.returncode != 0 or current.stdout.strip() != repo_url:
-                try:
-                    repo_path.resolve().relative_to(self.repos_root.resolve())  # noqa: ASYNC240
-                except ValueError:
+            if result.returncode != 0:
+                if _missing_ref(result.stderr):
                     raise GitOperationError(
-                        "repository cache escaped its configured root",
-                        stage="clone",
-                    ) from None
-                shutil.rmtree(repo_path)
-        if not repo_path.exists():  # noqa: ASYNC240
-            try:
-                await self._git_checked(
-                    None,
-                    (
-                        "git",
-                        "clone",
-                        "--mirror",
-                        "--no-hardlinks",
-                        "--",
-                        repo_url,
-                        str(repo_path),
-                    ),
+                        "target reference was not found",
+                        stage="reference",
+                    )
+                raise self._error_from_result(
+                    result,
                     stage="clone",
-                    failure="repository cache clone failed",
+                    failure="target reference fetch failed",
+                    retryable=True,
                 )
-            except Exception:
-                shutil.rmtree(repo_path, ignore_errors=True)
-                raise
-            return
+            commit = await self._resolve_commit(cache_path, "FETCH_HEAD", stage="reference")
+        # A clone from the cache only copies advertised refs, so expose the
+        # fetched commit through one synthetic branch on every prepare.
         await self._git_checked(
-            repo_path,
-            ("git", "remote", "update", "--prune"),
+            cache_path,
+            ("git", "update-ref", f"refs/heads/{_SYNTHETIC_REF}", commit),
             stage="clone",
-            failure="repository cache refresh failed",
-            retryable=True,
+            failure="target commit reference could not be created",
         )
+        return commit
+
+    async def _resolve_commit(self, repository: Path, name: str, *, stage: GitStage) -> str:
+        """Resolve one local name to a full commit id or raise a reference error."""
+        result = await self._git(
+            repository,
+            ("git", "rev-parse", "--verify", f"{name}^{{commit}}"),
+            stage=stage,
+        )
+        commit = result.stdout.strip()
+        if result.returncode != 0 or not _FULL_COMMIT.fullmatch(commit):
+            raise GitOperationError("target reference is invalid", stage=stage)
+        return commit
+
+    async def _commit_present(self, repository: Path, commit: str) -> bool:
+        """Return whether one full commit id is already present locally."""
+        result = await self._git(
+            repository,
+            ("git", "cat-file", "-e", f"{commit}^{{commit}}"),
+            stage="clone",
+        )
+        return result.returncode == 0
+
+    def _cache_usable(self, cache_path: Path) -> bool:
+        """Return whether a cache directory already holds a complete bare repository."""
+        return (
+            (cache_path / "HEAD").is_file()
+            and (cache_path / "config").is_file()
+            and (cache_path / "objects").is_dir()
+        )
+
+    def _remove_cache(self, cache_path: Path) -> None:
+        """Remove one cache path only inside the configured repository root."""
+        try:
+            cache_path.resolve().relative_to(self.repos_root.resolve())
+        except (OSError, ValueError):
+            return
+        if cache_path.is_file() or cache_path.is_symlink():
+            cache_path.unlink(missing_ok=True)
+            return
+        shutil.rmtree(cache_path, ignore_errors=True)
+
+    async def _ensure_push_remote(self, workspace_path: Path) -> str:
+        """Ensure the optional push remote exists and return the remote to push to."""
+        if self._push_url is None:
+            return "origin"
+        current = await self._git(
+            workspace_path,
+            ("git", "remote", "get-url", self._push_remote),
+            stage="push",
+        )
+        if current.returncode != 0:
+            await self._git_checked(
+                workspace_path,
+                ("git", "remote", "add", self._push_remote, self._push_url),
+                stage="push",
+                failure="push remote setup failed",
+            )
+        elif current.stdout.strip() != self._push_url:
+            await self._git_checked(
+                workspace_path,
+                ("git", "remote", "set-url", self._push_remote, self._push_url),
+                stage="push",
+                failure="push remote update failed",
+            )
+        return self._push_remote
 
     async def _validate_candidate(self, candidate: CandidateWorkspace) -> None:
         """Validate the exact local commit immediately before candidate publication."""
@@ -1222,6 +1436,37 @@ def _safe_component(value: str) -> str:
     if not cleaned:
         raise GitOperationError("workspace identifier is empty", stage="workspace")
     return cleaned
+
+
+_FULL_COMMIT = re.compile(r"[0-9a-f]{40}")
+"""Only a full object id can be fetched directly from a single-ref cache."""
+
+_SYNTHETIC_REF = "harness-target"
+"""Clone-visible local branch used to carry a directly fetched full commit."""
+
+
+def _checked_ref(ref: str) -> str:
+    """Reject a ref that could be parsed as an option or spans control characters."""
+    if (
+        not ref
+        or ref.startswith("-")
+        or any(character.isspace() or ord(character) < 0x20 for character in ref)
+    ):
+        raise GitOperationError("target reference is invalid", stage="reference")
+    return ref
+
+
+def _fetch_source(ref: str) -> str:
+    """Return the remote-side name accepted by a single-ref ``git fetch``."""
+    if ref.startswith("origin/"):
+        return ref[len("origin/") :]
+    return ref
+
+
+def _missing_ref(stderr: str) -> bool:
+    """Return whether git reported that the requested remote ref does not exist."""
+    diagnostic = stderr.lower()
+    return any(marker in diagnostic for marker in GitWorkspaceManager._MISSING_REF_MARKERS)
 
 
 def _normalize_sub_dir(value: str) -> str:

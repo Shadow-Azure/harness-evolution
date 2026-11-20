@@ -12,9 +12,9 @@ Status: implemented
 
 启动在写库前通过 `EngineFactory.is_registered` 校验 `engine_key`，未注册值返回 `422 ENGINE_INVALID`。真实 prepare 按冻结的 run 快照读取 probe，复用现有查询、聚类和演进仓储：完整模式先建立隔离 workspace 与 `evo/{YYYYMMDD}-{run_id}` 分支，再以独立事务完成聚类、簇级置信度和严重度/rank，按 rank 创建轮次并把 run 推入 `running`；cluster-only 只完成前两步的只读事实，不 clone 或建轮次，随后进入 `completed`。
 
-Git 操作只通过 argv 进程边界执行，禁用 terminal prompt，所有诊断先脱敏再进入日志/事件。cache 是 `data/repos/{target_id}` 的 mirror，run workspace 是 `data/workspaces/{run_id}`；mirror 的 origin 与 run 当前 `repo_url` 不一致时整体重建，避免把旧仓库对象发布到新远端。sub dir、ref、base commit、run 分支、clean state、父链和 trailer 在每次发布前校验；`HE_GIT_PUSH=false` 时所有远端写入统一跳过，仅保留本地生命周期。candidate 内容由确定性占位 patch 真实落盘并 commit，message 固定包含问题、分析、改动、追溯和 `Harness-Run-Id` 等 trailer；推送最多立即重试三次、间隔五秒，失败同时持久 `push_failed` 与 `blocked(push)` 并保留 candidate。
+Git 操作只通过 argv 进程边界执行，禁用 terminal prompt，所有诊断先脱敏再进入日志/事件。cache 按 target + ref 存放在 `data/repos/{target_id}/{sha256(ref)[:16]}`，只 fetch 目标 ref；run workspace 是 `data/workspaces/{run_id}`。缓存 origin 与 run 当前 `repo_url` 不一致时整体重建，避免把旧仓库对象发布到新远端。sub dir、ref、base commit、run 分支、clean state、父链和 trailer 在每次发布前校验；`HE_GIT_PUSH=false` 时所有远端写入统一跳过，仅保留本地生命周期。candidate 内容由确定性占位 patch 真实落盘并 commit，message 固定包含问题、分析、改动、追溯和 `Harness-Run-Id` 等 trailer；推送最多立即重试三次、间隔五秒，失败同时持久 `push_failed` 与 `blocked(push)` 并保留 candidate。
 
-`HE_GIT_PUSH` 是唯一公开的远端写入开关，组合根把同一个 workspace 实例传给 prepare、candidate 和 retention；只提供 prepare 的测试注入显式关闭后续 candidate 调度，不会回退到默认真实 manager。Git 超时或任务取消时先终止并回收整个子进程组，再返回可重试错误，避免旧 push 与下一次重试重叠。Git 失败通过统一分类器落到状态机：任何 push 失败进入 `blocked(push)`，可重试 patch/commit 进入 `blocked(patch)`，永久 patch/commit 进入 failed，并在持久状态中保留 `patch`/`commit` 原始 error stage。
+`HE_GIT_PUSH` 是远端写入的总开关，`HE_GIT_PUSH_URL` 可把写入指向可写 fork；组合根把同一个 workspace 实例传给 prepare、candidate 和 retention；只提供 prepare 的测试注入显式关闭后续 candidate 调度，不会回退到默认真实 manager。Git 超时或任务取消时先终止并回收整个子进程组，再返回可重试错误，避免旧 push 与下一次重试重叠。Git 失败通过统一分类器落到状态机：任何 push 失败进入 `blocked(push)`，可重试 patch/commit 进入 `blocked(patch)`，永久 patch/commit 进入 failed，并在持久状态中保留 `patch`/`commit` 原始 error stage。
 
 run 的 `push_status` 是最近一次 push 的聚合状态：candidate 发布成功时与 round 同事务写 `succeeded/pushedAt`，终态失败与 round 同事务写 `failed/pushError`，push block 也同步该聚合字段；因此 RunDetail 工作区与迭代卡不会在正常、失败或本地模式下互相矛盾。
 

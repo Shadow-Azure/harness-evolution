@@ -338,6 +338,7 @@ def create_app(
         workspaces_root=resolved_settings.data_dir / "workspaces",
         runner=cast(Any, proxy_runner.run),
         push_enabled=resolved_settings.git_push,
+        push_url=resolved_settings.git_push_url,
     )
     workspace_manager = git_workspaces or default_workspace_manager
     candidate_workspace_manager = cast(GitWorkspaceManager, workspace_manager)

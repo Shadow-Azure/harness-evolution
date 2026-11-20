@@ -414,6 +414,117 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
     assert.equal(treeCounts.reduce((sum, count) => sum + count, 0), 8);
     assert.ok(keyboardCheck, "expected at least one multi-Agent Session");
 
+    await page.session.send("Runtime.evaluate", {
+      expression: `document.querySelector("[data-testid='session-card'][data-session-id='10000000-0000-4000-8000-000000000004']").click()`,
+    });
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1500,
+      height: 837,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+    await waitForDocument(
+      page.session,
+      `document.querySelector("[data-testid='flow-mode-dag']") ? true : null`,
+      "flow mode switcher",
+    );
+    await page.session.send("Runtime.evaluate", {
+      expression: `document.querySelector("[data-testid='flow-mode-dag']").click()`,
+    });
+    const lowContent = await waitForDocument(
+      page.session,
+      `(() => {
+        const selected = document.querySelector("[data-testid='session-card'][data-selected='true']");
+        const overview = document.querySelector("[data-testid='session-overview']");
+        const flow = document.querySelector("[data-testid='lane-dag']");
+        const list = document.querySelector("[data-testid='problem-list']");
+        if (!selected || !overview || !flow || !list) return null;
+        const rect = (element) => element.getBoundingClientRect();
+        return {
+          innerHeight,
+          documentScrollHeight: document.scrollingElement.scrollHeight,
+          browserBottom: rect(document.querySelector(".session-browser")).bottom,
+          sidebarBottom: rect(document.querySelector(".sidebar")).bottom,
+          overviewBottom: rect(overview).bottom,
+        };
+      })()`,
+      "low-content Session layout",
+    );
+    assert.equal(lowContent.innerHeight, 837, JSON.stringify(lowContent));
+    assert.equal(
+      lowContent.documentScrollHeight,
+      lowContent.innerHeight,
+      JSON.stringify(lowContent),
+    );
+    for (const key of ["browserBottom", "sidebarBottom", "overviewBottom"]) {
+      assert.ok(
+        Math.abs(lowContent[key] - lowContent.innerHeight) < 1,
+        `${key}: ${JSON.stringify(lowContent)}`,
+      );
+    }
+
+    await page.session.send("Runtime.evaluate", {
+      expression: `document.querySelector("[data-testid='session-overview']").scrollTop = 1e6`,
+    });
+    const lowContentBottom = await waitForDocument(
+      page.session,
+      `(() => {
+        const overview = document.querySelector("[data-testid='session-overview']");
+        const list = document.querySelector("[data-testid='problem-list']");
+        if (!overview || !list) return null;
+        return {
+          scrollTop: overview.scrollTop,
+          gap: innerHeight - list.getBoundingClientRect().bottom,
+        };
+      })()`,
+      "right column scrolled to the last problem",
+    );
+    assert.ok(
+      lowContentBottom.gap >= 0 && lowContentBottom.gap <= 24,
+      `1500x837 bottom gap: ${JSON.stringify(lowContentBottom)}`,
+    );
+
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1500,
+      height: 1100,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+    await page.session.send("Runtime.evaluate", {
+      expression: `document.querySelector("[data-testid='session-overview']").scrollTop = 0`,
+    });
+    const tallContent = await waitForDocument(
+      page.session,
+      `(() => {
+        const overview = document.querySelector("[data-testid='session-overview']");
+        const list = document.querySelector("[data-testid='problem-list']");
+        if (!overview || !list) return null;
+        return {
+          innerHeight,
+          documentScrollHeight: document.scrollingElement.scrollHeight,
+          overviewBottom: overview.getBoundingClientRect().bottom,
+          gap: innerHeight - list.getBoundingClientRect().bottom,
+        };
+      })()`,
+      "tall viewport layout",
+    );
+    assert.equal(tallContent.innerHeight, 1100, JSON.stringify(tallContent));
+    assert.equal(
+      tallContent.documentScrollHeight,
+      tallContent.innerHeight,
+      JSON.stringify(tallContent),
+    );
+    assert.ok(
+      Math.abs(tallContent.overviewBottom - tallContent.innerHeight) < 1,
+      `tall overview: ${JSON.stringify(tallContent)}`,
+    );
+    assert.ok(
+      tallContent.gap >= 0 && tallContent.gap <= 24,
+      `1500x1100 fill gap: ${JSON.stringify(tallContent)}`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+
     await page.session.send("Emulation.setDeviceMetricsOverride", {
       width: 390,
       height: 844,
@@ -534,6 +645,7 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
       id: initial.selectedId,
       text: `根会话 ID · ${initial.selectedId}`,
     });
+
 
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
   } finally {
@@ -934,6 +1046,7 @@ test("m3 folded Agent deep links expand ancestors before locating", async () => 
     assert.equal(restored.visible, true, JSON.stringify(restored));
     assert.match(restored.href, /agent=child-9/);
     assert.ok(restored.scrollWidth <= restored.clientWidth, JSON.stringify(restored));
+
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
     await page.session.send("Fetch.disable");
   } finally {

@@ -585,7 +585,7 @@ erDiagram
 | `sub_dir` | `VARCHAR(512)` NOT NULL | 对象目录相对仓库根（如 `skills/deep-research`）；从 target 配置快照，避免配置变更后历史 run 无法定位 |
 | `validation_project_id` | `VARCHAR(128)` NOT NULL DEFAULT `''` | 创建 run 时从 target 快照的验证集测试工程 ID；历史 run 为空串 |
 | `test_project_id` | `VARCHAR(128)` NOT NULL DEFAULT `''` | 创建 run 时从 target 快照的测试集测试工程 ID；历史 run 为空串 |
-| `repo_path` | `VARCHAR(1024)` | 本地缓存仓库路径 `data/repos/{target_id}`；只读缓存，不直接在这里改代码 |
+| `repo_path` | `VARCHAR(1024)` | 本地单 ref 缓存路径 `data/repos/{target_id}/{sha256(ref)[:16]}`；只读缓存，不直接在这里改代码 |
 | `base_ref` | `VARCHAR(128)` | checkout 的 tag/branch，与 `target_version` 对应 |
 | `base_commit` | `CHAR(40)` | 解析后的基线 commit（不可变，复现依据） |
 | `branch_name` | `VARCHAR(128)` | run 分支 `evo/{YYYYMMDD}-{run_id}`；只含已接纳 commit |

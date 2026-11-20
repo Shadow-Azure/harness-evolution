@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol, cast
+from urllib.parse import urlsplit
 
 from app.db.crud.attributions import (
     AttributionRepository,
@@ -57,6 +58,10 @@ from app.service.evolution.target_content import (
     ResolvedTargetVersion,
     TargetVersionResolver,
     resolve_legacy_target_version,
+)
+from app.third_party_api.git.observability import (
+    GitOperationCollector,
+    git_operation_scope,
 )
 from app.third_party_api.git.workspace import GitOperationError, PreparedWorkspace
 from app.utils.ids import new_id
@@ -447,8 +452,16 @@ class EvolutionPrepareService:
         job: JobRunRecord,
     ) -> PreparedWorkspace:
         """Prepare the isolated git workspace, mapping failures to blocked/failed."""
+        collector: GitOperationCollector | None = None
         try:
-            workspace = await self._workspaces.prepare(run)
+            with git_operation_scope(
+                run_id=run.id,
+                job_id=job.id,
+                stage="prepare",
+                target_host=_repo_host(run.repo_url),
+            ) as scope:
+                collector = scope
+                workspace = await self._workspaces.prepare(run)
         except GitOperationError as exc:
             disposition = classify_git_failure(exc)
             if disposition.action == "blocked" and disposition.blocked_stage is not None:
@@ -464,6 +477,12 @@ class EvolutionPrepareService:
                     error_stage=disposition.error_stage,
                 ) from None
             raise
+        operations: list[dict[str, object]] = []
+        truncated = False
+        proxy_state = "disabled"
+        if collector is not None:
+            operations, truncated = collector.bounded()
+            proxy_state = collector.proxy_state
         await self._record(
             run.id,
             "workspace_prepared",
@@ -473,6 +492,12 @@ class EvolutionPrepareService:
             payload={
                 "baseCommit": workspace.base_commit,
                 "branch": workspace.branch,
+                "ref": workspace.ref,
+                "cacheHit": workspace.cache_hit,
+                "cloneSeconds": round(workspace.clone_seconds, 3),
+                "proxyState": proxy_state,
+                "gitOperations": operations,
+                "gitOperationsTruncated": truncated,
             },
         )
         return workspace
@@ -768,6 +793,15 @@ def _payload_run_id(payload: Mapping[str, Any]) -> str:
     if isinstance(value, str) and value:
         return value
     raise ValueError("evolution prepare job has no run id")
+
+
+def _repo_host(repo_url: str) -> str | None:
+    """Return only the target repository host for observability, never the URL."""
+    try:
+        parsed = urlsplit(repo_url)
+    except ValueError:
+        return None
+    return parsed.hostname or None
 
 
 __all__ = ["EvolutionPrepareService"]
