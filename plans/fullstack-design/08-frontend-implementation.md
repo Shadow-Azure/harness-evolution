@@ -563,6 +563,8 @@ Index.vue（grid: 340px 1fr）
 
 数据：`useSessionBadCases(wid, sid)` 拿全部 bad_case（含 `attributionCount` / `hasAttribution`）；选中 case 后 `useAttributions(wid, badCaseId)`（分页 2/页）取子项，选中子项后 `useAttribution(wid, badCaseId, atId)` 取详情。每个展开组各自维护页码（`Record<badCaseId, number>`）。
 
+归因列表项的版本标识：`AttributionItem` 契约带可空 `objectRef` / `objectCommit`，由显示 run 的 `targetVersion` / `baseCommit` 回填；有 ref 时显示 `ref + 短 commit`，只有 commit 时显示短 commit，只有 digest 时显示截断 digest。完整版本值在悬停 / 聚焦时显示于版本上方，右侧复制按钮复制 commit 优先、digest 兜底。`objectVersion` 的 digest 仍是匹配与缓存规范键，回填失败时保留 digest 兜底。
+
 根会话 ID 的展示位置与格式见 [13 §3](13-root-session-id.md)：左栏会话信息框显示“根会话 ID”标签 + 完整值（一行紧凑布局），右栏 `error-head` 的 meta 在开始时间之后、repo 之前增加同一 ID；两处都使用路由解析后的 `sid`，不额外请求，也不放进下方执行流面板的框内。
 
 ### 7.2 选中、展开与深链

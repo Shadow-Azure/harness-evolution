@@ -193,11 +193,35 @@
             "title": "Iscached",
             "type": "boolean"
           },
+          "objectCommit": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectcommit"
+          },
           "objectName": {
             "maxLength": 128,
             "minLength": 1,
             "title": "Objectname",
             "type": "string"
+          },
+          "objectRef": {
+            "anyOf": [
+              {
+                "maxLength": 96,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectref"
           },
           "objectType": {
             "enum": [
@@ -290,7 +314,7 @@
       },
       "AttributionItem": {
         "additionalProperties": false,
-        "description": "One object/revision-scoped attribution shown in the error-detail list.\n\n``attributionId`` is the stable deep-link id and maps ``probe_reports.probe_id``;\n``runId`` prefers the last run that reused the conclusion so a deep link\nopens the run that produced the currently displayed row.",
+        "description": "One object/revision-scoped attribution shown in the error-detail list.\n\n``attributionId`` is the stable deep-link id and maps ``probe_reports.probe_id``;\n``runId`` prefers the last run that reused the conclusion so a deep link\nopens the run that produced the currently displayed row. ``objectRef`` and\n``objectCommit`` are display-only evidence from that run; clients fall back\nto ``objectVersion`` when they are absent.",
         "properties": {
           "attributionId": {
             "maxLength": 64,
@@ -341,11 +365,35 @@
             "title": "Iscached",
             "type": "boolean"
           },
+          "objectCommit": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectcommit"
+          },
           "objectName": {
             "maxLength": 128,
             "minLength": 1,
             "title": "Objectname",
             "type": "string"
+          },
+          "objectRef": {
+            "anyOf": [
+              {
+                "maxLength": 96,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectref"
           },
           "objectType": {
             "enum": [

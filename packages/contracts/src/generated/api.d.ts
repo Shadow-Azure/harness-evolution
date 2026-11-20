@@ -1709,8 +1709,12 @@ export interface components {
             createdAt: string;
             /** Iscached */
             isCached: boolean;
+            /** Objectcommit */
+            objectCommit?: string | null;
             /** Objectname */
             objectName: string;
+            /** Objectref */
+            objectRef?: string | null;
             /**
              * Objecttype
              * @enum {string}
@@ -1743,7 +1747,9 @@ export interface components {
          *
          *     ``attributionId`` is the stable deep-link id and maps ``probe_reports.probe_id``;
          *     ``runId`` prefers the last run that reused the conclusion so a deep link
-         *     opens the run that produced the currently displayed row.
+         *     opens the run that produced the currently displayed row. ``objectRef`` and
+         *     ``objectCommit`` are display-only evidence from that run; clients fall back
+         *     to ``objectVersion`` when they are absent.
          */
         AttributionItem: {
             /** Attributionid */
@@ -1766,8 +1772,12 @@ export interface components {
             createdAt: string;
             /** Iscached */
             isCached: boolean;
+            /** Objectcommit */
+            objectCommit?: string | null;
             /** Objectname */
             objectName: string;
+            /** Objectref */
+            objectRef?: string | null;
             /**
              * Objecttype
              * @enum {string}
