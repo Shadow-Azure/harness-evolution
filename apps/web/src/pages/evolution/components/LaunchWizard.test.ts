@@ -96,6 +96,7 @@ const potentialPreview: PotentialPreviewResult = {
 };
 
 const attributionPreview: AttributionPreviewResult = {
+  canRecompute: true,
   summary: { potential: 2, reused: 1, fresh: 0, missing: 1, bySkill: {"attribute-badcases": 1}, nonTargetKnown: 0 },
   targetRevision: resolvedRevision,
 };
@@ -171,6 +172,9 @@ function useHandlers(options: HandlerOptions = {}): void {
             { status: 500 },
           )
         : HttpResponse.json(options.catalog ?? targetCatalog),
+    ),
+    http.get(`/api${ws}/attribution-skill-packages`, () =>
+      HttpResponse.json({ items: [{ id: "default-attribute-badcases", skillName: "attribute-badcases" }] }),
     ),
     http.get(`${apiBase}/targets/tgt-1/versions`, () =>
       HttpResponse.json({
@@ -672,6 +676,16 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(
       wrapper.find("[data-testid='wizard-target-revision']").exists(),
     ).toBe(false);
+  });
+
+  it("explains the missing agent and keeps existing reports available", async () => {
+    useHandlers({ attribution: () => HttpResponse.json({ ...attributionPreview, canRecompute: false }) });
+    const { wrapper } = await mountWizard();
+    await reachStep4(wrapper);
+    expect(wrapper.get("[data-testid='wizard-cache']").attributes("disabled")).toBeDefined();
+    expect(wrapper.find("select[aria-label='本次重算使用的归因 Skill']").exists()).toBe(false);
+    expect(wrapper.text()).toContain("HE_ATTRIBUTION_AGENT");
+    expect(wrapper.get("[data-testid='wizard-cluster']").attributes("disabled")).toBeUndefined();
   });
 
   it("re-requests the attribution preview when the cache switch changes", async () => {

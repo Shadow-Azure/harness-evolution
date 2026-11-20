@@ -130,18 +130,8 @@ class LocalAttribution:
 
     async def choices(self, workspace: str) -> AttributionSkillList:
         catalog = await self.packages.list(workspace)
-        legacy = await self.registry.list(workspace)
         return AttributionSkillList(
-            items=[
-                *(self._package_revision(workspace, p) for p in catalog.items),
-                *(
-                    r.model_copy(update={"executor_type": "local_agent"})
-                    for r in legacy.items
-                    if not r.built_in
-                    and "packageId" not in r.content
-                    and isinstance(r.content.get("instructions"), str)
-                ),
-            ]
+            items=[self._package_revision(workspace, p) for p in catalog.items]
         )
 
     async def effective(self, workspace: str, target: str) -> EffectiveAttributionSkill:

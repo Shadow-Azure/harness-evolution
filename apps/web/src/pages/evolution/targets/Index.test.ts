@@ -47,37 +47,10 @@ const target: EvolutionTarget = {
   enabled: true,
 };
 
-const platformSkill = {
-  id: "revision-platform-1",
-  skillId: "skill-platform",
-  workspaceId: null,
-  skillKey: "platform-default",
-  displayName: "平台默认归因",
-  description: "固定规则归因",
-  builtIn: true,
-  enabled: true,
-  revision: 1,
-  content: { engine: "rule-v1" },
-  contentHash: "a".repeat(64),
-  executorType: "builtin_rule",
-  outputSchemaVersion: "probe-report/v2",
-  status: "published",
-};
-
-const workspaceSkill = {
-  ...platformSkill,
-  id: "revision-workspace-2",
-  skillId: "skill-workspace",
-  workspaceId,
-  skillKey: "root-cause-agent",
-  displayName: "根因 Agent",
-  description: "使用完整 Session 上下文归因",
-  builtIn: false,
-  revision: 2,
-  content: { instructions: "analyze evidence" },
-  contentHash: "b".repeat(64),
-  executorType: "agent_stub",
-};
+const skillPackages = [
+  { id: "default-attribute-badcases", skillName: "attribute-badcases" },
+  { id: "package-review", skillName: "review-attribution" },
+];
 
 async function mountPage(
   role: "admin" | "member",
@@ -121,11 +94,8 @@ async function mountPage(
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => {
   server.use(
-    http.get(`/api/workspaces/${workspaceId}/evolution/attribution-skills`, () =>
-      HttpResponse.json({ items: [platformSkill, workspaceSkill] }),
-    ),
-    http.get(`${base}/:targetId/attribution-skill`, () =>
-      HttpResponse.json({ ...platformSkill, source: "platform" }),
+    http.get(`/api/workspaces/${workspaceId}/attribution-skill-packages`, () =>
+      HttpResponse.json({ items: skillPackages }),
     ),
   );
 });
@@ -254,6 +224,8 @@ describe("target configuration page", () => {
     const wrapper = await mountPage("admin");
 
     await wrapper.get(".target-create").trigger("click");
+    await vi.waitFor(() => expect(wrapper.get("select.skill-select").text()).toContain("review-attribution"));
+    await wrapper.get("select.skill-select").setValue("package-review");
     await wrapper.get('input[name="objectName"]').setValue("deep-research");
     await wrapper
       .get('input[name="repoUrl"]')
@@ -271,7 +243,7 @@ describe("target configuration page", () => {
     await flushPromises();
 
     expect(submitted).toEqual({
-      attributionPackageId: "default-attribute-badcases",
+      attributionPackageId: "package-review",
       objectType: "skill",
       objectName: "deep-research",
       repoUrl: "https://example.com/skills.git",

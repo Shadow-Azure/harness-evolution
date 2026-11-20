@@ -541,7 +541,13 @@ const potentialPageCount = computed(() =>
       )
     : 1,
 );
+const canRecompute = computed(() => attributionPreview.value?.canRecompute === true);
 const attributionSummary = computed(() => attributionPreview.value?.summary ?? null);
+const canLaunch = computed(() => {
+  if (!hasPotential.value || isBusy.value || requestError.value) return false;
+  if (cacheEnabled.value) return (attributionSummary.value?.reused ?? 0) > 0;
+  return canRecompute.value && Boolean(selectedPackage.value);
+});
 const previewTargetRevision = computed<string | null | undefined>(() => {
   const revisions = [
     attributionPreview.value?.targetRevision,
@@ -1103,7 +1109,7 @@ async function refreshAttribution(): Promise<void> {
 
 /** Accept one full run or cluster-only preview and leave the wizard. */
 async function launch(mode: "full" | "cluster_only"): Promise<void> {
-  if (!selectedTarget.value || !hasPotential.value || isBusy.value) {
+  if (!selectedTarget.value || !canLaunch.value) {
     return;
   }
   pending.value = "launch";
@@ -2060,12 +2066,19 @@ const reasonEntries = computed(() => {
                     type="checkbox"
                     data-testid="wizard-cache"
                     aria-label="复用缓存归因"
-                    :disabled="isBusy"
+                    :disabled="isBusy || (cacheEnabled && !canRecompute)"
                     @change="refreshAttribution"
                   >
                   <span class="slider" />
                 </label>
               </div>
+
+              <p
+                v-if="attributionPreview && !canRecompute"
+                class="f-note"
+              >
+                当前部署仅支持复用已有报告。管理员配置 HE_ATTRIBUTION_AGENT 后可选择 Skill 重新归因。
+              </p>
 
               <div
                 class="preview-stats"
@@ -2103,7 +2116,7 @@ const reasonEntries = computed(() => {
                 <p>尚无报告 {{ attributionSummary?.missing ?? 0 }} 个 Badcase<span v-if="cacheEnabled">，本次跳过</span>。</p>
               </div>
               <label
-                v-if="!cacheEnabled"
+                v-if="!cacheEnabled && canRecompute"
                 class="cache-option"
               >
                 本次重算使用的归因 Skill
@@ -2231,7 +2244,7 @@ const reasonEntries = computed(() => {
               class="btn accent"
               type="button"
               data-testid="wizard-cluster"
-              :disabled="!hasPotential || isBusy || Boolean(requestError) || (cacheEnabled ? attributionSummary?.reused === 0 : !selectedPackage)"
+              :disabled="!canLaunch"
               @click="launch('cluster_only')"
             >
               仅聚类
@@ -2240,7 +2253,7 @@ const reasonEntries = computed(() => {
               class="btn primary"
               type="button"
               data-testid="wizard-start"
-              :disabled="!hasPotential || isBusy || Boolean(requestError) || (cacheEnabled ? attributionSummary?.reused === 0 : !selectedPackage)"
+              :disabled="!canLaunch"
               @click="launch('full')"
             >
               启动自进化 →

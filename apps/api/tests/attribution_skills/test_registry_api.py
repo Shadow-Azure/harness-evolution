@@ -56,9 +56,14 @@ async def _login(client: httpx.AsyncClient) -> None:
 
 
 @pytest_asyncio.fixture
-async def skill_api(tmp_path: Path) -> AsyncIterator[SkillApiEnvironment]:
+async def skill_api(
+    tmp_path: Path, request: pytest.FixtureRequest
+) -> AsyncIterator[SkillApiEnvironment]:
     """Provide a migrated SQLite app with one configured target."""
+    agent = getattr(request, "param", "")
     settings = Settings(
+        attribution_agent=agent,
+        attribution_package_dir=tmp_path / "attribute",
         db_dialect=DatabaseDialect.SQLITE,
         data_dir=tmp_path,
         jwt_secret=SecretStr("attribution-skill-signing-secret-with-length"),
@@ -83,7 +88,7 @@ async def skill_api(tmp_path: Path) -> AsyncIterator[SkillApiEnvironment]:
                     "default_ref": "main",
                     "validation_project_id": "validation",
                     "test_project_id": "test",
-                    "enabled": True,
+                    "enabled": not agent,
                     "created_by": None,
                 },
             )
@@ -426,3 +431,33 @@ async def test_migration_installs_registry_and_run_snapshot_columns(
         "attribution_skill_revision",
         "attribution_skill_content_hash",
     } <= run_columns
+
+
+@pytest.mark.parametrize("skill_api", ["test-local"], indirect=True)
+async def test_package_mode_keeps_one_explicit_target_binding(
+    skill_api: SkillApiEnvironment,
+) -> None:
+    """Only package IDs are selectable and obsolete mutations leave the target untouched."""
+    target = _base(f"targets/{skill_api.target_id}/attribution-skill")
+    choices = await skill_api.client.get(_base("attribution-skills"))
+    assert choices.status_code == 200
+    packages = await skill_api.client.get(
+        f"/api/workspaces/{DEFAULT_WORKSPACE_ID}/attribution-skill-packages"
+    )
+    assert {item["id"] for item in choices.json()["items"]} == {
+        item["id"] for item in packages.json()["items"]
+    }
+    body = {"skillRevisionId": choices.json()["items"][0]["id"]}
+    bound = await skill_api.client.put(target, json=body)
+    assert bound.status_code == 200
+    for response in (
+        await skill_api.client.delete(target),
+        await skill_api.client.put(_base("attribution-skill-bindings/default"), json=body),
+        await skill_api.client.delete(_base("attribution-skill-bindings/default")),
+        await skill_api.client.post(
+            _base("attribution-skill-bindings/default/rollback"), json={"reason": "test"}
+        ),
+    ):
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "ATTRIBUTION_SKILL_INVALID"
+    assert (await skill_api.client.get(target)).json() == bound.json()

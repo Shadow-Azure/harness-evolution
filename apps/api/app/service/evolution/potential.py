@@ -325,7 +325,9 @@ class AttributionPreviewSummary(IdentityModel):
 
 
 class AttributionPreviewResult(IdentityModel):
-    """Read-only attribution preview; it has no paged rows."""
+    """Read-only counts and whether this deployment can run workspace Skill packages."""
+
+    can_recompute: bool
 
     summary: AttributionPreviewSummary
     target_revision: str | None = None
@@ -953,6 +955,7 @@ class PotentialPreviewService:
             for _, skill, _ in rows.values():
                 groups[skill] = groups.get(skill, 0) + 1
             return AttributionPreviewResult(
+                can_recompute=self._local_agent,
                 summary=AttributionPreviewSummary(
                     potential=match.potential,
                     reused=len(rows) if body.cache_enabled else 0,
@@ -970,6 +973,7 @@ class PotentialPreviewService:
             cache_enabled=body.cache_enabled and not deferred,
         )
         return AttributionPreviewResult(
+            can_recompute=self._local_agent,
             summary=AttributionPreviewSummary(
                 potential=counts.potential,
                 reused=None if deferred else counts.reused,

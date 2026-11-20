@@ -397,6 +397,7 @@ async def test_attribution_preview_counts_cache_and_non_target(
 
     assert enabled.status_code == 200
     assert enabled.json() == {
+        "canRecompute": False,
         "summary": {
             "potential": 3,
             "reused": 2,

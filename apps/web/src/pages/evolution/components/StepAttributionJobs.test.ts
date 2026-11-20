@@ -33,6 +33,8 @@ const run = {
   runId,
   title: "归因观测",
   mode: "full",
+  policy: { preset: "default" },
+  cacheEnabled: true,
   target: { type: "skill", name: "Explore", version: "v1" },
   window: { from: null, to: null },
   models: [],

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Path, Request, Response, Security, statu
 
 from app.api.deps import require_workspace_role
 from app.api.security import BEARER_AUTH
-from app.errors import ErrorResponse
+from app.errors import AppError, ErrorCode, ErrorResponse
 from app.service.evolution.attribution_skills import (
     AttributionQualityDecisionWrite,
     AttributionQualityEvaluation,
@@ -50,6 +50,17 @@ def skills_from(request: Request) -> AttributionSkillService:
     return cast(AttributionSkillService, request.app.state.attribution_skills)
 
 
+def require_registry_mode(request: Request) -> AttributionSkillService:
+    """Keep registry configuration in the deployment mode that consumes these settings."""
+    if request.app.state.local_attribution is not None:
+        raise AppError(
+            status_code=409,
+            code=ErrorCode.ATTRIBUTION_SKILL_INVALID,
+            message="Select a workspace Skill package in the target configuration.",
+        )
+    return skills_from(request)
+
+
 @router.get(
     "/attribution-skills",
     dependencies=[Security(BEARER_AUTH)],
@@ -60,7 +71,7 @@ async def list_attribution_skills(
     wid: WorkspaceId,
     access: ViewerAccess,
 ) -> AttributionSkillList:
-    """List platform and workspace Skill revisions visible in this workspace."""
+    """List bindable package IDs in agent mode or registry revision IDs in rule mode."""
     del access
     runtime: LocalAttribution | None = request.app.state.local_attribution
     return await runtime.choices(wid) if runtime else await skills_from(request).list(wid)
@@ -80,7 +91,7 @@ async def create_attribution_skill(
 ) -> AttributionSkillRevision:
     """Create a workspace Skill and publish revision one."""
     del access
-    return await skills_from(request).create(wid, body)
+    return await require_registry_mode(request).create(wid, body)
 
 
 @router.post(
@@ -98,7 +109,7 @@ async def publish_attribution_skill_revision(
 ) -> AttributionSkillRevision:
     """Append a published immutable revision to a workspace Skill."""
     del access
-    return await skills_from(request).publish(wid, skillId, body)
+    return await require_registry_mode(request).publish(wid, skillId, body)
 
 
 @router.patch(
@@ -116,7 +127,7 @@ async def set_attribution_skill_state(
 ) -> Response:
     """Enable or disable a workspace Skill for future resolution."""
     del access
-    await skills_from(request).set_enabled(wid, skillId, body.enabled)
+    await require_registry_mode(request).set_enabled(wid, skillId, body.enabled)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -192,7 +203,7 @@ async def bind_workspace_default_skill(
 ) -> EffectiveAttributionSkill:
     """Set the workspace fallback revision."""
     del access
-    return await skills_from(request).bind(wid, body.skill_revision_id, target_id=None)
+    return await require_registry_mode(request).bind(wid, body.skill_revision_id, target_id=None)
 
 
 @router.delete(
@@ -208,7 +219,7 @@ async def unbind_workspace_default_skill(
 ) -> Response:
     """Remove the workspace fallback and restore the platform default."""
     del access
-    await skills_from(request).unbind(wid, target_id=None)
+    await require_registry_mode(request).unbind(wid, target_id=None)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -225,7 +236,7 @@ async def rollback_workspace_default_skill(
 ) -> EffectiveAttributionSkill:
     """Restore the prior eligible revision or the protected platform rule."""
     del access
-    return await skills_from(request).rollback_default(
+    return await require_registry_mode(request).rollback_default(
         wid,
         request.state.principal.user_id,
         body,
@@ -289,11 +300,7 @@ async def unbind_target_attribution_skill(
     targetId: TargetId,
     access: AdminAccess,
 ) -> Response:
-    """Remove the target override and restore workspace/platform fallback."""
+    """Remove a legacy rule override; agent-mode targets always have an explicit binding."""
     del access
-    runtime: LocalAttribution | None = request.app.state.local_attribution
-    if runtime:
-        await runtime.bind(wid, targetId, "default-attribute-badcases")
-    else:
-        await skills_from(request).unbind(wid, target_id=targetId)
+    await require_registry_mode(request).unbind(wid, target_id=targetId)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
