@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/process/2026-11-20-ci-unit-tests-parallelization.md
-2026-11-20-ci-unit-tests-parallelization.md: 4754e23a633a7114665e056e2e2a105feff2d8b0
-2026-11-20-ci-unit-tests-parallelization.en.md: 8242689b6dd87f84043d62fdc4807ae4aaa4d0af
+2026-11-20-ci-unit-tests-parallelization.md: 67cef71d9a55d5a2ed3acaee158c2ce90d361eb7
+2026-11-20-ci-unit-tests-parallelization.en.md: 52113d5f361c5aff77be2d4414a437b6b5e890b5

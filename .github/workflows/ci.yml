@@ -118,7 +118,7 @@ jobs:
         shell: bash
         run: |
           start=$(date +%s)
-          pnpm test:api -- -n 8 2>&1 | tee "$RUNNER_TEMP/pytest.log"
+          pnpm test:api -- -n 8 --dist worksteal 2>&1 | tee "$RUNNER_TEMP/pytest.log"
           echo "API_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
       - name: CI 摘要
         if: always()
