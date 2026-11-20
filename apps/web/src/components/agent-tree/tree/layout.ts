@@ -857,7 +857,9 @@ export function buildGraph(
       kind: child.kind === "workflow" ? "workflow" : "agent",
       line: Math.max(1, parent.lines),
       messageOffset: parent.messagesCount,
-      name: child.label,
+      // Synthesized triggers use the short subagent name, not the full display
+      // label (which may contain type, desc and line for the demo fixtures).
+      name: child.label.split(" · ")[0] || child.label,
       desc: child.desc,
       toolUseId: child.toolUseId ?? `synthetic-${child.agentId}`,
     });

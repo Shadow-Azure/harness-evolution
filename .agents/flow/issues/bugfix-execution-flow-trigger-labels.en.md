@@ -4,7 +4,7 @@ English | [中文](bugfix-execution-flow-trigger-labels.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-03
+id: bugfix-04
 milestone: bugfix
 depends: []
 priority: P2
