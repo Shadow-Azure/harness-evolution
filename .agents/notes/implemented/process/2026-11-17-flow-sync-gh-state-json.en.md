@@ -10,7 +10,7 @@ The `flow:sync` core orchestration accepts parsed states, but its production CLI
 
 ## Decision
 
-GitHub CLI JSON decoding belongs at the adapter boundary. A strict pure function parses the string and verifies that `state` is a non-empty string; both milestone and issue read adapters parse before returning state. `runSync` continues to consume state strings, preserving its injected test surface and business state machine. A genuine state mismatch still sends PATCH and propagates permission failures.
+The CLI adapter decodes GitHub JSON. It reads state for milestones and both state and nullable milestone number for issues. When either issue field differs, `runSync` updates both in one PATCH. It reconciles the body separately. Scoped sync validates the issue selection before writes and skips all milestone writes.
 
 ## Alternatives considered
 
@@ -20,4 +20,4 @@ GitHub CLI JSON decoding belongs at the adapter boundary. A strict pure function
 
 ## Consequences
 
-Remote objects whose state already matches no longer receive PATCH requests, allowing lower-privilege accounts to complete the issue synchronization they are authorized to perform. Malformed JSON or missing state now fails clearly at the adapter. A real state change still requires the corresponding GitHub permission and has no bypass.
+Records with matching metadata skip the metadata write. The adapter rejects malformed responses and missing fields. GitHub still enforces permission checks on writes.

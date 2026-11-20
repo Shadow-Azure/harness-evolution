@@ -27,9 +27,7 @@ github:
 
 ## 目标
 
-- 正确解析 `gh` JSON 输出中的远端状态。
-- 远端状态一致时不发送 PATCH，并让同步继续处理 Issue 正文。
-- 用门禁测试锁定字符串 JSON 适配边界。
+读取状态和 issue 所属里程碑，按差异同步元数据与正文，支持按编号限定写入范围。
 
 ## 设计依据
 
@@ -37,20 +35,15 @@ github:
 
 ## 实现内容
 
-- 导出只负责解析 GitHub 状态 JSON 的纯函数，对 malformed JSON 和缺失 state fail fast。
-- milestone 与 issue 的 CLI adapter 共用解析函数，保持 `runSync` 注入接口不变。
-- 增加 gates 自测试，覆盖 milestone 小写状态和 issue 大写状态。
+里程碑适配器解析 state。issue 适配器读取 state 与可为空的 milestone 编号，两个字段有差异时一起 PATCH。正文独立比较和更新。
 
 ## 实施步骤
 
-1. 写失败测试复现 JSON 字符串被当对象读取。
-2. 实现统一解析并接两个 read adapter。
-3. 运行 gates、Flow 和一次真实 `flow:sync` 回归。
+用命令适配器测试验证读取、写入和失败路径，并覆盖限定编号和排他参数的命令行校验。
 
 ## 依赖与交付边界
 
-- 依赖：m7-01。
-- 交付边界：只修状态读取与无操作 PATCH；不改变 GitHub 权限、退休策略或 issue body 渲染。
+依赖 m7-01。覆盖已有对象的元数据和限定范围同步。
 
 ## 独立验证
 
@@ -60,13 +53,11 @@ pnpm verify:flow
 pnpm flow:sync
 ```
 
-- 已一致对象不产生状态 PATCH，Issue 创建/回填和正文同步可继续完成。
+- 元数据已一致的对象不产生状态 PATCH，Issue 创建/回填和正文同步可继续完成。
 
 ## 验收标准
 
-- 远端 `{"state":"closed"}` 和 `{"state":"OPEN"}` 分别解析为原值。
-- 非 JSON、缺失 state 或非字符串 state 抛出可诊断错误。
-- 当前权限下同步不再因已关闭 Milestone 的无操作 PATCH 中断。
+元数据一致时跳过状态和归属写入；相同状态、不同里程碑需要更新。格式错误、缺失字段和无效编号范围均报错。
 
 ## 门禁与 CI
 

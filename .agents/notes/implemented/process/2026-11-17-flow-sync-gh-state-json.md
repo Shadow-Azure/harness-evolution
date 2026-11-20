@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-GitHub CLI 的 JSON 解码属于 adapter 边界：增加一个严格纯函数解析字符串并验证 `state` 为非空字符串，milestone 和 issue 的 read adapter 都先解析再返回状态。`runSync` 保持只消费状态字符串，因此测试注入面与业务状态机不变；真实状态不一致时仍执行 PATCH 并传播权限错误。
+CLI 适配器解码 GitHub JSON。里程碑读取状态，issue 读取状态与可为空的里程碑编号。`runSync` 在状态或归属有差异时用一次 PATCH 同时写入两个字段，正文独立同步。编号过滤在远端写入前校验，限定 issue 的同步跳过所有里程碑写入。
 
 ## Alternatives considered
 
@@ -20,4 +20,4 @@ GitHub CLI 的 JSON 解码属于 adapter 边界：增加一个严格纯函数解
 
 ## Consequences
 
-状态一致的远端对象不再收到 PATCH，低权限账号可继续完成其有权执行的 Issue 同步；malformed JSON 或缺失状态会在 adapter 处给出明确错误。状态确实需要改变时仍要求对应 GitHub 权限，不提供绕过路径。
+已对齐的记录可跳过元数据写入。适配器报告格式错误或缺失字段。真实写操作仍由 GitHub 校验权限。

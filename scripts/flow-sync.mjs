@@ -92,7 +92,10 @@ function gh(args) {
  * @returns {string} Non-empty remote state value.
  */
 export function parseGithubState(output) {
-  const value = JSON.parse(output);
+  return validatedState(JSON.parse(output));
+}
+
+function validatedState(value) {
   if (typeof value?.state !== "string" || value.state.length === 0)
     throw new Error("GitHub 状态响应缺少非空 state 字符串");
   return value.state;
@@ -173,23 +176,14 @@ export async function runSync(tree, io, issueNumbers) {
   return { milestones: plan.milestones.length, issues: plan.issues.length, stateUpdates, bodyUpdates };
 }
 
-async function main() {
-  const repoUrl = execFileSync("git", ["remote", "get-url", "origin"], { encoding: "utf8" }).trim();
-  const repo = /github\.com(?::\d+)?[:/]([^/]+\/[^/]+?)(?:\.git)?$/.exec(repoUrl)?.[1];
-  if (!repo) throw new Error(`无法从 origin 推导 GitHub 仓库：${repoUrl}`);
-  const { tree, errors } = await loadFlowTree();
-  if (errors.length > 0) {
-    console.error(`flow:sync: 流程树有错误，先修到 verify:flow 绿\n  ${errors.join("\n  ")}`);
-    process.exit(1);
-  }
-  const { values } = parseArgs({
-    args: process.argv.slice(2).filter((arg) => arg !== "--"),
-    options: { issues: { type: "string" }, "retire-missing": { type: "boolean" } },
-  });
-  if (values.issues !== undefined && (values["retire-missing"] || !/^\d+(,\d+)*$/.test(values.issues)))
-    throw new Error("--issues 需要逗号分隔的 GitHub 编号，且不能与 --retire-missing 同时使用");
-  const issueNumbers = values.issues?.split(",").map(Number);
-  const created = await runSync(tree, {
+/**
+ * Bind sync operations to the GitHub CLI transport.
+ * @param {string} repo Repository in owner/name form.
+ * @param {Function} gh Execute the supplied CLI arguments and return stdout.
+ * @returns {object} Remote and local operations consumed by runSync.
+ */
+export function githubSyncAdapter(repo, gh) {
+  return {
     createMilestone(milestone) {
       const out = gh(["api", `repos/${repo}/milestones`, "-f", `title=${milestone.data.title}`, "-f", "state=open"]);
       const { number } = JSON.parse(out);
@@ -215,7 +209,11 @@ async function main() {
       ]);
     },
     readIssue(issue) {
-      return JSON.parse(gh(["api", `repos/${repo}/issues/${issue.data.github.number}`, "--jq", "{state, milestone: (.milestone | {number})}"]));
+      const issueData = JSON.parse(gh(["api", `repos/${repo}/issues/${issue.data.github.number}`, "--jq", "{state, milestone: .milestone.number}"]));
+      const state = validatedState(issueData);
+      if (issueData.milestone !== null && !Number.isSafeInteger(issueData.milestone))
+        throw new Error("GitHub issue 缺少有效的 milestone 编号或 null");
+      return { state, milestone: issueData.milestone === null ? null : { number: issueData.milestone } };
     },
     updateIssue(issue, state, milestoneNumber) {
       return gh([
@@ -230,7 +228,26 @@ async function main() {
     updateIssueBody(issue, body) {
       return gh(["api", "-X", "PATCH", `repos/${repo}/issues/${issue.data.github.number}`, "-f", `body=${body}`]);
     },
-  }, issueNumbers);
+  };
+}
+
+async function main() {
+  const repoUrl = execFileSync("git", ["remote", "get-url", "origin"], { encoding: "utf8" }).trim();
+  const repo = /github\.com(?::\d+)?[:/]([^/]+\/[^/]+?)(?:\.git)?$/.exec(repoUrl)?.[1];
+  if (!repo) throw new Error(`无法从 origin 推导 GitHub 仓库：${repoUrl}`);
+  const { tree, errors } = await loadFlowTree();
+  if (errors.length > 0) {
+    console.error(`flow:sync: 流程树有错误，先修到 verify:flow 绿\n  ${errors.join("\n  ")}`);
+    process.exit(1);
+  }
+  const { values } = parseArgs({
+    args: process.argv.slice(2).filter((arg) => arg !== "--"),
+    options: { issues: { type: "string" }, "retire-missing": { type: "boolean" } },
+  });
+  if (values.issues !== undefined && (values["retire-missing"] || !/^[1-9]\d*(,[1-9]\d*)*$/.test(values.issues)))
+    throw new Error("--issues 需要逗号分隔的 GitHub 编号，且不能与 --retire-missing 同时使用");
+  const issueNumbers = values.issues?.split(",").map(Number);
+  const created = await runSync(tree, githubSyncAdapter(repo, gh), issueNumbers);
   if (values["retire-missing"]) {
     const remote = {
       milestones: JSON.parse(gh(["api", `repos/${repo}/milestones?state=open&per_page=100`])),

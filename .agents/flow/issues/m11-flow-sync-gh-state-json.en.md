@@ -27,9 +27,7 @@ The `flow:sync` command adapter reads `.state` directly from the JSON strings re
 
 ## Goals
 
-- Parse remote state correctly from GitHub CLI JSON output.
-- Avoid PATCH requests when remote state already matches and allow issue-body synchronization to continue.
-- Lock the string-JSON adapter boundary with gate tests.
+Read state and issue milestone membership. Reconcile metadata and bodies within the selected scope.
 
 ## Design authority
 
@@ -37,20 +35,15 @@ The `flow:sync` command adapter reads `.state` directly from the JSON strings re
 
 ## Implementation
 
-- Export a pure GitHub-state JSON parser that fails fast on malformed JSON or a missing state.
-- Reuse the parser from milestone and issue CLI adapters without changing the injected `runSync` interface.
-- Add gate self-tests for lowercase milestone and uppercase issue states.
+The milestone adapter reads state. The issue adapter reads state and a nullable milestone number, then PATCHes both fields when either differs. Bodies are compared and updated separately.
 
 ## Implementation steps
 
-1. Add a failing test reproducing a JSON string read as an object.
-2. Implement shared parsing and connect both read adapters.
-3. Run gates, Flow verification, and one live `flow:sync` regression.
+Exercise reads, writes and invalid responses at the CLI boundary. Test numbered selections and mutually exclusive flags.
 
 ## Dependencies and boundary
 
-- Depends on: m7-01.
-- Boundary: fix state reads and no-op PATCHes only; do not change GitHub permissions, retirement policy, or issue-body rendering.
+Depends on m7-01. Covers metadata for existing objects and scoped issue synchronization.
 
 ## Verification
 
@@ -60,13 +53,11 @@ pnpm verify:flow
 pnpm flow:sync
 ```
 
-- Objects whose state already matches receive no PATCH, and issue creation/backfill and body synchronization finish.
+- Objects whose metadata already matches receive no PATCH, and issue creation/backfill and body synchronization finish.
 
 ## Acceptance
 
-- Remote `{"state":"closed"}` and `{"state":"OPEN"}` payloads return their original values.
-- Non-JSON, missing state, or non-string state produces a diagnosable error.
-- With current permissions, sync no longer stops on a no-op PATCH to an already closed milestone.
+Matching metadata skips the state and milestone write. A milestone mismatch triggers an update even if state matches. Invalid JSON, missing fields and invalid issue selections produce errors.
 
 ## Gates and CI
 
