@@ -10,7 +10,7 @@ depends:
   - m5-04
   - m10-06
 priority: P2
-status: ready
+status: done
 scope:
   - apps/api/app/service/evolution/**
   - apps/api/tests/**

@@ -9,7 +9,7 @@ milestone: m24
 depends:
   - m19-01
 priority: P2
-status: ready
+status: done
 scope:
   - apps/api/**
   - deploy/**

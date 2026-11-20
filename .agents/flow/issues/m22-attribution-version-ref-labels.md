@@ -9,7 +9,7 @@ milestone: m22
 depends:
   - m17-01
 priority: P2
-status: in-progress
+status: done
 scope:
   - plans/**
   - apps/api/**
