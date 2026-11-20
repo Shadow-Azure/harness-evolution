@@ -3996,6 +3996,10 @@ export interface components {
         /**
          * StepAttributionRow
          * @description One case attribution conclusion of step 4.
+         *
+         *     ``session_id`` is the source Session that owns the bad case. The client
+         *     needs it to build the canonical error-detail deep link without a second
+         *     lookup; rows without a Session cannot offer that link.
          */
         StepAttributionRow: {
             /** Attributionid */
@@ -4008,6 +4012,8 @@ export interface components {
             confidence: number | null;
             /** Description */
             description: string;
+            /** Sessionid */
+            sessionId: string;
             /**
              * Source
              * @enum {string}

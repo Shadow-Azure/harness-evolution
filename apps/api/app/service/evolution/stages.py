@@ -177,9 +177,15 @@ class StepAttributionSummary(IdentityModel):
 
 
 class StepAttributionRow(IdentityModel):
-    """One case attribution conclusion of step 4."""
+    """One case attribution conclusion of step 4.
+
+    ``session_id`` is the source Session that owns the bad case. The client
+    needs it to build the canonical error-detail deep link without a second
+    lookup; rows without a Session cannot offer that link.
+    """
 
     bad_case_id: str
+    session_id: str
     attribution_id: str
     category: ClusterType | None
     description: str
@@ -909,6 +915,7 @@ def _v2_attribution_rows(facts: _RunFacts) -> list[StepAttributionRow]:
         rows.append(
             StepAttributionRow(
                 bad_case_id=candidate.bad_case_id,
+                session_id=candidate.session_id,
                 attribution_id=record.probe_id,
                 category=category,
                 description=record.probe_description,
@@ -932,6 +939,7 @@ def _legacy_attribution_rows(facts: _RunFacts) -> list[StepAttributionRow]:
         rows.append(
             StepAttributionRow(
                 bad_case_id=first.bad_case_id,
+                session_id=first.probe_session_id,
                 attribution_id=probe_id,
                 category=category,
                 description=first.probe_description,

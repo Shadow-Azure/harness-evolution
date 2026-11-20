@@ -59,6 +59,7 @@ defineEmits<{
   />
   <StepAttribution
     v-else-if="step?.key === 'attribution'"
+    :wid="wid"
     :step="step"
     :run="run"
   />

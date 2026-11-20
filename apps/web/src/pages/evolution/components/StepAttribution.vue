@@ -6,9 +6,12 @@ import type {
 } from "@harness/contracts";
 import { computed } from "vue";
 
+import { badCaseDeepLink } from "../../../utils/badCaseId";
+
 const props = defineProps<{
   step: EvolutionStepAttribution;
   run: EvolutionRunCard;
+  wid: string;
 }>();
 
 const summary = computed(() => props.step.payload.summary);
@@ -72,13 +75,33 @@ function confidenceLabel(value: number | null): string {
               class="id mono"
               :title="row.badCaseId"
             >
-              {{ row.badCaseId }}
+              <a
+                :href="badCaseDeepLink(wid, row.sessionId, row.badCaseId, 'desc')"
+                :title="row.badCaseId"
+                :aria-label="`来源问题 ${row.badCaseId}，在新窗口打开问题描述`"
+                rel="noopener noreferrer"
+                target="_blank"
+              >{{ row.badCaseId }}</a>
             </td>
             <td
-              class="mono"
+              class="report-id mono"
               :title="row.attributionId"
             >
-              {{ row.attributionId }}
+              <a
+                :href="
+                  badCaseDeepLink(
+                    wid,
+                    row.sessionId,
+                    row.badCaseId,
+                    'attr',
+                    row.attributionId,
+                  )
+                "
+                :aria-label="`归因报告 ${row.attributionId}，在新窗口打开归因分析`"
+                rel="noopener noreferrer"
+                target="_blank"
+                title="归因报告 ID · 打开归因分析"
+              >{{ row.attributionId }}</a>
             </td>
             <td>
               <span
@@ -193,11 +216,43 @@ table.rep tr:last-child td {
 }
 
 .id {
-  color: var(--blue);
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.report-id {
+  white-space: nowrap;
+}
+
+.id a {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.id a,
+.report-id a {
+  color: var(--blue);
+  font-family: var(--mono);
+  text-decoration: none;
+  border-bottom: 1px dashed color-mix(in srgb, var(--blue) 45%, transparent);
+}
+
+.id a:hover,
+.report-id a:hover {
+  border-bottom-style: solid;
+  text-decoration: none;
+}
+
+.id a:focus-visible,
+.report-id a:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
 }
 
 .desc {

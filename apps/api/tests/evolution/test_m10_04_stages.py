@@ -81,6 +81,7 @@ async def test_v2_run_returns_all_seven_steps_in_order(harness: Harness) -> None
     attribution = await service.step("run-m10-04", "attribution")
     assert attribution.payload.summary.potential == 1  # type: ignore[union-attr]
     assert attribution.payload.summary.non_target == 0  # type: ignore[union-attr]
+    assert attribution.payload.rows[0].session_id == "session-m10-04"  # type: ignore[union-attr]
     clusters = await service.step("run-m10-04", "clusters")
     cluster = clusters.payload.clusters[0]  # type: ignore[union-attr]
     assert cluster.case_count == 1
@@ -111,6 +112,13 @@ async def test_legacy_run_maps_six_step_progress_onto_seven_steps(
     sessions = await service.step(data["run"]["id"], "sessions")
     assert sessions.status == "done"
     assert sessions.payload.summary.associated == 1  # type: ignore[union-attr]
+
+    attribution = await service.step(data["run"]["id"], "attribution")
+    assert attribution.payload.rows
+    assert (  # type: ignore[union-attr]
+        attribution.payload.rows[0].session_id
+        == "050b81ba-0000-4000-8000-0000000000c3"
+    )
 
     range_step = await service.step(data["run"]["id"], "range")
     assert range_step.status == "done"

@@ -138,6 +138,7 @@ const attributionRows = Array.from({ length: 28 }, (_, index) => {
   const attributed = index < 16;
   return {
     badCaseId: `case-${index + 1}`,
+    sessionId: `session-${index + 1}`,
     attributionId: `probe-${index + 1}`,
     category: attributed ? "error" : null,
     description: `结论 ${index + 1}`,
@@ -1024,6 +1025,7 @@ describe("evolution run detail page", () => {
             rows: [
               {
                 badCaseId: "legacy-case-1",
+                sessionId: "legacy-session-1",
                 attributionId: "legacy-probe-1",
                 category: "error",
                 description: "归因结论",
@@ -1032,6 +1034,7 @@ describe("evolution run detail page", () => {
               },
               {
                 badCaseId: "legacy-case-2",
+                sessionId: "legacy-session-2",
                 attributionId: "legacy-probe-2",
                 category: "error",
                 description: "归因结论",
@@ -1040,6 +1043,7 @@ describe("evolution run detail page", () => {
               },
               {
                 badCaseId: "legacy-case-3",
+                sessionId: "legacy-session-3",
                 attributionId: "legacy-probe-3",
                 category: null,
                 description: "非该对象",

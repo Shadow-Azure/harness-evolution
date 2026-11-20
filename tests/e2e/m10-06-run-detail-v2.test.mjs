@@ -427,11 +427,23 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
         if (!text.includes("第 4 步 · 对象归因")) return null;
         const rows = document.querySelectorAll(".rep tbody tr");
         if (rows.length !== 6) return null;
+        const sourceLinks = [...document.querySelectorAll("td.id a")];
+        const reportLinks = [...document.querySelectorAll("td.report-id a")];
+        if (sourceLinks.length !== 6 || reportLinks.length !== 6) return null;
+        reportLinks[0].focus();
         return {
           text,
           rows: rows.length,
           cached: [...document.querySelectorAll(".source-chip.cached")].length,
           fresh: [...document.querySelectorAll(".source-chip.fresh")].length,
+          sourceHrefs: sourceLinks.map((link) => link.getAttribute("href")),
+          reports: reportLinks.map((link) => ({
+            href: link.getAttribute("href"),
+            target: link.target,
+            rel: link.rel,
+            label: link.getAttribute("aria-label"),
+          })),
+          focused: document.activeElement === reportLinks[0],
         };
       })()`,
       "attribution step",
@@ -439,6 +451,39 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
     assert.equal(attribution.rows, 6);
     assert.equal(attribution.cached, 2);
     assert.equal(attribution.fresh, 4);
+    assert.equal(attribution.focused, true);
+    assert.equal(attribution.sourceHrefs.length, 6);
+    assert.equal(
+      attribution.sourceHrefs[0],
+      "/workspaces/ws-default/sessions/v2-session-1/errors?case=v2-case-1&tab=desc",
+    );
+    assert.equal(
+      attribution.sourceHrefs[5],
+      "/workspaces/ws-default/sessions/v2-session-5/errors?case=v2-case-6&tab=desc",
+    );
+    assert.deepEqual(
+      attribution.reports.map((report) => report.href),
+      [
+        "/workspaces/ws-default/sessions/v2-session-1/errors?case=v2-case-1&tab=attr&at=v2-probe-1",
+        "/workspaces/ws-default/sessions/v2-session-2/errors?case=v2-case-2&tab=attr&at=v2-probe-2",
+        "/workspaces/ws-default/sessions/v2-session-1/errors?case=v2-case-3&tab=attr&at=v2-probe-3",
+        "/workspaces/ws-default/sessions/v2-session-3/errors?case=v2-case-4&tab=attr&at=v2-probe-4",
+        "/workspaces/ws-default/sessions/v2-session-4/errors?case=v2-case-5&tab=attr&at=v2-probe-5",
+        "/workspaces/ws-default/sessions/v2-session-5/errors?case=v2-case-6&tab=attr&at=v2-probe-6",
+      ],
+    );
+    assert.ok(
+      attribution.reports.every(
+        (report) =>
+          report.target === "_blank" &&
+          report.rel.includes("noopener") &&
+          report.label?.includes("归因分析"),
+      ),
+    );
+    assert.match(
+      attribution.reports[0].label,
+      /归因报告 v2-probe-1，在新窗口打开归因分析/,
+    );
     assert.match(attribution.text, /非该对象问题/);
     assert.match(attribution.text, /6\s*潜在 bad case/);
     assert.match(attribution.text, /2\s*复用缓存/);
@@ -592,6 +637,75 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
     assert.match(errorDetail, /token=<redacted>/);
 
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+  } finally {
+    await page.session.send("Emulation.clearDeviceMetricsOverride").catch(() => {});
+    await page.close();
+  }
+});
+
+test("m10-06 step-4 attribution links resolve to the description and analysis tabs", async () => {
+  const page = await createBrowserPage();
+  try {
+    await installCookie(page, await currentLoginCookie());
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1408,
+      height: 960,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await openRun(page, "run-v2-completed", "?step=attribution");
+    const links = await waitForDocument(
+      page.session,
+      `(() => {
+        if (!document.body.textContent.includes("第 4 步 · 对象归因")) return null;
+        const source = document.querySelector("td.id a")?.getAttribute("href");
+        const report = document.querySelector("td.report-id a")?.getAttribute("href");
+        return source && report ? { source, report } : null;
+      })()`,
+      "step-4 attribution links",
+    );
+
+    await installCookie(page, await currentLoginCookie());
+    await page.session.send("Page.navigate", { url: `${baseUrl}${links.report}` });
+    const report = await waitForDocument(
+      page.session,
+      `(() => {
+        const tab = document.querySelector("#attr-tab");
+        const report = document.querySelector("[data-testid='attribution-report']");
+        const deepLink = document.querySelector("[data-testid='attribution-deep-link']");
+        if (!tab || !report || !deepLink) return null;
+        return {
+          active: tab.getAttribute("aria-selected"),
+          label: tab.textContent,
+          attributionId: deepLink.getAttribute("title"),
+          href: location.href,
+        };
+      })()`,
+      "attribution analysis deep link",
+    );
+    assert.equal(report.active, "true");
+    assert.match(report.label, /归因分析/);
+    assert.equal(report.attributionId, "v2-probe-1");
+    assert.match(report.href, /tab=attr&at=v2-probe-1$/);
+    await screenshot(page, "07-after-attribution-link-target.png");
+
+    await installCookie(page, await currentLoginCookie());
+    await page.session.send("Page.navigate", { url: `${baseUrl}${links.source}` });
+    const description = await waitForDocument(
+      page.session,
+      `(() => {
+        const tab = document.querySelector("#desc-tab");
+        if (!tab) return null;
+        return {
+          active: tab.getAttribute("aria-selected"),
+          href: location.href,
+        };
+      })()`,
+      "problem description deep link",
+    );
+    assert.equal(description.active, "true");
+    assert.match(description.href, /case=v2-case-1&tab=desc$/);
+    await screenshot(page, "08-after-attribution-source-target.png");
   } finally {
     await page.session.send("Emulation.clearDeviceMetricsOverride").catch(() => {});
     await page.close();
