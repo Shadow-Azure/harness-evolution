@@ -116,8 +116,7 @@ async def test_legacy_run_maps_six_step_progress_onto_seven_steps(
     attribution = await service.step(data["run"]["id"], "attribution")
     assert attribution.payload.rows
     assert (  # type: ignore[union-attr]
-        attribution.payload.rows[0].session_id
-        == "050b81ba-0000-4000-8000-0000000000c3"
+        attribution.payload.rows[0].session_id == "050b81ba-0000-4000-8000-0000000000c3"
     )
 
     range_step = await service.step(data["run"]["id"], "range")
