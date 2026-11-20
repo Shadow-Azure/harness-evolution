@@ -411,6 +411,9 @@ pnpm --filter web build                            # 前端构建产物由 FastA
 | 进化产物 | 远端 `evo/{YYYYMMDD}-{run_id}` 分支 + 每轮临时 `.../candidate/r{n}` ref | 接纳后 fast-forward run 分支；拒绝删除 candidate；后续开 PR / 打 tag |
 | 静态资源 | FastAPI `StaticFiles` | 换 nginx / CDN 无需改前端 |
 | CORS | 配置的正式域名 | 同源托管后可关闭 |
+| Git 出网 | 可选本机 Xray/VLESS 代理，只作用于 git 子进程；健康熔断后直连 | 目标仓库固定后可评估代码镜像，API 侧不变 |
+
+Git 出网代理的配置入口是 GitHub Environment Secret `XRAY_CONFIG`；部署流水线把 Xray 配置渲染到服务器本地文件，并只向 API 注入不含凭据的 `HE_GIT_PROXY`。代理不可用时部署与运行时都回退直连，不影响 API 的其它出网；运维细节见 [Git 出网代理](../../docs/git-proxy.md)。
 
 ## 7. 非功能设计要点
 

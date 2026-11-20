@@ -271,7 +271,7 @@ test("m5 run detail exposes seven steps, candidate state, blocked state and fina
     assert.match(running.text, /candidate 已 push/);
     assert.match(running.text, /评测中/);
     assert.match(running.text, /cluster 1/);
-    assert.match(running.text, /可归因\s*2/);
+    assert.match(running.text, /可归因 \/ 非该对象\s*2\s*\//);
     assert.equal(running.overflow, 0);
 
     await evaluate(

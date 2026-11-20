@@ -22,6 +22,7 @@ Production is a single-instance Alibaba Cloud SaaS: nginx serves the built front
 | `/opt/harness/shared/.env` | Production `HE_*` config (template: [deploy/env.production.example](../deploy/env.production.example)) |
 | `/opt/harness/shared/venv/` | Shared Python virtual environment |
 | `/opt/harness/shared/config/` | Deployment configs pushed by the pipeline (systemd/nginx/release.sh) |
+| `/var/lib/harness-evolution/` | Server data directory created and authorized by systemd `StateDirectory=` for `harness`; `HE_DATA_DIR` points inside it |
 
 ## First-time bootstrap
 
@@ -35,13 +36,15 @@ Bootstrap is done by [deploy/bootstrap-server.sh](../deploy/bootstrap-server.sh)
 | `ALIYUN_USER` | Secret | SSH user (`deploy`) |
 | `ALIYUN_SSH_KEY` | Secret | deploy user's ed25519 private key |
 | `ALIYUN_SSH_PORT` | Variable | SSH port (default 22) |
+| `HE_DATA_DIR` | Variable | Absolute data-directory path; empty uses `/var/lib/harness-evolution/data` |
+| `XRAY_CONFIG` | Environment Secret | Optional: complete Xray JSON (VLESS outbound plus loopback mixed inbound), see [Git egress proxy](git-proxy.en.md) |
 | `production` | Environment | Protective environment for the deploy job; can require approval |
 
-Only the private key lives in GitHub; its public half sits in `deploy`'s `authorized_keys` on the server; runtime secrets live only in `/opt/harness/shared/.env`.
+Only the private key lives in GitHub; its public half sits in `deploy`'s `authorized_keys` on the server; runtime secrets live only in `/opt/harness/shared/.env`, and the proxy config lives only in a `0600` server file.
 
-## Evaluation config injection
+## Config injection
 
-Evaluation-platform secrets reach the server `.env` via GitHub Secrets (`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`); `apiKeyRef` stores an environment-variable name only, and the injection step is skipped when secrets are absent. Values travel base64-encoded, are decoded server-side, and are written atomically by `deploy/inject-eval-config.py`; a decode failure warns and skips, a disk-write failure aborts the release, and the playbook carries the details. Steps: [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md); template: [deploy/env.production.example](../deploy/env.production.example).
+The data directory and evaluation config share one channel into the server `.env`: `Deploy` takes an absolute path from the GitHub Environment `vars.HE_DATA_DIR` (the default applies when empty), and evaluation-platform secrets (`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`) arrive from GitHub Secrets; `apiKeyRef` stores only an environment-variable name and the step is skipped when absent. Values travel base64-encoded and `inject-config.py` writes them atomically, backing up `.env.bak.<sha>` first; decode failures warn and skip, disk-write failures abort the release. Steps: [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md); template: [deploy/env.production.example](../deploy/env.production.example).
 
 ## Claude Code
 
@@ -50,9 +53,19 @@ Before switching `current`, the deploy pipeline installs Claude Code for the `de
 ## Release and rollback
 
 - Trigger: push to main → CI green → `Deploy`; `workflow_dispatch` also available.
-- Behavior: [deploy/release.sh](../deploy/release.sh) installs dependencies → `alembic upgrade head` → switches the `current` symlink → restarts harness-api → probes `/api/health` (up to 60 seconds).
-- Rollback: on a failed probe the symlink returns to the previous release and the service restarts; the server keeps the latest 5 releases.
+- Behavior: [deploy/release.sh](../deploy/release.sh) validates the data directory → installs dependencies → `alembic upgrade head` → switches the `current` symlink → restarts harness-api → probes `/api/health` (up to 60 seconds).
+- Rollback: on a failed probe it restores `.env` first, then returns the symlink to the previous release and restarts; the server keeps the latest 5 releases and 5 `.env` backups.
 - Migrations are idempotent: repeated releases have zero side effects on applied migrations.
+
+## Data directory and writability check
+
+Production `HE_DATA_DIR` must be an absolute path outside the release tree, defaulting to `/var/lib/harness-evolution/data`; `StateDirectory=harness-evolution` in `deploy/harness-api.service` lets systemd create it and chown it to `harness` on every start, and bootstrap also creates it. Before switching `current`, `release.sh` validates that the path is non-empty, absolute, free of whitespace/newlines and `..`, outside `current` and `releases`, and owned by `harness:harness` or covered by the unit's `StateDirectory=`; it exits immediately on failure while the current release keeps serving.
+
+The API resolves the absolute path, creates the directory, and writes a probe at startup; when it is not writable `/api/health` returns 503 (`data.ok=false`), so a failed release probe rolls back. A path change is a data migration: `target-content`, `repos`, and `workspaces` do not follow, so stop the service, move the directories, and change `vars.HE_DATA_DIR`. Enabling `StateDirectory=` on an existing environment needs one root-run bootstrap (or installing the unit followed by `daemon-reload`); that is per-environment initialization, not a routine deploy.
+
+## Git egress proxy
+
+When production access to GitHub is unstable, a local Xray/VLESS proxy that serves git subprocesses only can be enabled; its configuration comes from the Environment Secret `XRAY_CONFIG`, and both deploy and runtime fall back to direct access when the proxy is unavailable. See [Git egress proxy](git-proxy.en.md).
 
 ## Upstream health and drift logs
 

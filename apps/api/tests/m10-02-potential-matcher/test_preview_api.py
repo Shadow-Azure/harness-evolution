@@ -201,12 +201,61 @@ async def test_sessions_preview_partitions_and_paginates(preview_api: PreviewApi
     assert payload["pageSize"] == 4
     assert set(payload["items"][0]) == {
         "sessionId",
+        "short",
         "title",
         "objectTriggerAt",
         "badCaseCount",
     }
+    assert {item["short"] for item in payload["items"]} == {
+        item["title"] for item in payload["items"]
+    }
     assert second.status_code == 200
     assert len(second.json()["items"]) == 2
+
+
+async def test_sessions_preview_returns_short_title_for_long_prompt(
+    preview_api: PreviewApi,
+) -> None:
+    """Step 2 exposes a short label beside the full prompt used by the tooltip."""
+    long_title = (
+        "You are an autonomous software engineer working in the repository at /testbed. "
+        "Solve the issue by editing the repo and running the test suite."
+    )
+    main_id = await seed_session(
+        preview_api.database,
+        session_id="session-long-prompt",
+        started_at=NOW,
+        title=long_title,
+        short_title="SWE-bench 会话",
+    )
+    await seed_event(
+        preview_api.database,
+        agent_id=main_id,
+        event_index=0,
+        kind="skill",
+        name=TARGET_NAME,
+        object_version=TARGET_VERSION,
+        triggered_at=OBJECT_ENTRY,
+    )
+    await seed_case(
+        preview_api.database,
+        case_id="case-long-prompt",
+        session_id="session-long-prompt",
+        case_type="self",
+        object_name=TARGET_NAME,
+        created_at=LATER,
+    )
+
+    response = await preview_api.client.post(
+        path(preview_api, "sessions"),
+        headers=preview_api.reader,
+        json=body(),
+    )
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["short"] == "SWE-bench 会话"
+    assert item["title"] == long_title
 
 
 async def test_potential_preview_paginates_included_rows_and_reports_reasons(

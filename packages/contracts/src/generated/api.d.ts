@@ -727,7 +727,7 @@ export interface paths {
         };
         /**
          * Health
-         * @description Report API reachability, delivery phase, and database health.
+         * @description Report API reachability, delivery phase, database and data-directory health.
          */
         get: operations["health_api_health_get"];
         put?: never;
@@ -3110,6 +3110,14 @@ export interface components {
             username: string;
         };
         /**
+         * DataHealthResponse
+         * @description Sanitized data-directory health included in the public health response.
+         */
+        DataHealthResponse: {
+            /** Ok */
+            ok: boolean;
+        };
+        /**
          * DatabaseDialect
          * @description Supported SQLAlchemy database dialects.
          * @enum {string}
@@ -3954,6 +3962,7 @@ export interface components {
          * @description Public health-check contract.
          */
         HealthResponse: {
+            data: components["schemas"]["DataHealthResponse"];
             db: components["schemas"]["DatabaseHealthResponse"];
             /** Ok */
             ok: boolean;
@@ -4796,6 +4805,8 @@ export interface components {
             objectTriggerAt: string;
             /** Sessionid */
             sessionId: string;
+            /** Short */
+            short: string;
             /** Title */
             title: string;
         };
@@ -5712,6 +5723,8 @@ export interface components {
             objectType: "skill" | "agent" | "knowledge";
             /** Targetid */
             targetId: string;
+            /** Versionoptions */
+            versionOptions?: components["schemas"]["TargetVersionOption"][];
             /** Versions */
             versions: string[];
         };
@@ -5722,10 +5735,14 @@ export interface components {
         TargetDetailVersion: {
             /** Attributed */
             attributed: number;
+            /** Commit */
+            commit?: string | null;
             /** Nontarget */
             nonTarget: number;
             /** Potential */
             potential: number;
+            /** Ref */
+            ref?: string | null;
             /** Unanalyzed */
             unanalyzed: number;
             /** Version */
@@ -5765,8 +5782,13 @@ export interface components {
             /** Unanalyzed */
             unanalyzed: number;
             /**
+             * Versionoptions
+             * @description Display evidence aligned with ``versions``; absent on older captures.
+             */
+            versionOptions?: components["schemas"]["TargetVersionOption"][];
+            /**
              * Versions
-             * @description Versions this target was observed at inside the window, plus its configured defaultRef, ordered by descending natural version.
+             * @description Canonical version keys this target was observed at inside the window, plus its configured defaultRef, ordered by descending display label.
              */
             versions: string[];
         };
@@ -5876,6 +5898,22 @@ export interface components {
             grain: "day" | "week" | "month";
             meta: components["schemas"]["TargetTrendMeta"];
             window: components["schemas"]["OverviewWindow"];
+        };
+        /**
+         * TargetVersionOption
+         * @description One selectable version: canonical identity plus its display evidence.
+         *
+         *     ``version`` stays the filter and match key (the body digest when known);
+         *     ``ref`` and ``commit`` only feed the V2 prototype's ``ref + short commit``
+         *     rendering. Historical versions without ref evidence keep ``ref`` null.
+         */
+        TargetVersionOption: {
+            /** Commit */
+            commit?: string | null;
+            /** Ref */
+            ref?: string | null;
+            /** Version */
+            version: string;
         };
         /**
          * TicketRequest

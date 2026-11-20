@@ -185,6 +185,7 @@ async def seed_session(
     session_id: str,
     started_at: datetime = NOW,
     title: str = "Synthetic session",
+    short_title: str | None = None,
     main_agent_id: str | None = None,
     tree_index: int = 0,
 ) -> str:
@@ -208,7 +209,7 @@ async def seed_session(
         await session.execute(
             insert(session_families).values(
                 id=session_id,
-                short_title=title,
+                short_title=short_title or title,
                 title=title,
                 search_text=title,
                 repo_name="example/repo",

@@ -1,0 +1,30 @@
+# Harness Evolution git egress proxy — resident local Xray client
+# Installed by deploy/bootstrap-server.sh (root, per environment):
+#   install -m 0644 deploy/harness-proxy.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable harness-proxy
+# The config and binary live under /opt/harness/shared/proxy and are written by
+# the deploy pipeline; this unit never reads API credentials or the server .env.
+[Unit]
+Description=Harness Evolution git egress proxy (Xray)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/opt/harness/shared/proxy
+ExecStart=/opt/harness/shared/proxy/bin/xray run -c /opt/harness/shared/proxy/config.json
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

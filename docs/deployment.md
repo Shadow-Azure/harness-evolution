@@ -22,6 +22,7 @@
 | `/opt/harness/shared/.env` | 生产 `HE_*` 配置（模板：[deploy/env.production.example](../deploy/env.production.example)） |
 | `/opt/harness/shared/venv/` | 共享 Python 虚拟环境 |
 | `/opt/harness/shared/config/` | 流水线推送的部署配置（systemd/nginx/release.sh） |
+| `/var/lib/harness-evolution/` | 服务端数据目录，systemd `StateDirectory=` 创建并授权给 `harness`；`HE_DATA_DIR` 指向其下 |
 
 ## 首次初始化
 
@@ -35,13 +36,15 @@
 | `ALIYUN_USER` | Secret | SSH 用户（`deploy`） |
 | `ALIYUN_SSH_KEY` | Secret | deploy 用户 ed25519 私钥 |
 | `ALIYUN_SSH_PORT` | Variable | SSH 端口（默认 22） |
+| `HE_DATA_DIR` | Variable | 数据目录绝对路径；留空用 `/var/lib/harness-evolution/data` |
+| `XRAY_CONFIG` | Environment Secret | 可选：完整 Xray JSON（VLESS 出站 + 回环 mixed 入站），见 [Git 出网代理](git-proxy.md) |
 | `production` | Environment | 发布 job 的保护环境，可配人工审批 |
 
-私钥只存 GitHub，公钥在服务器 `deploy` 的 `authorized_keys`；运行密钥只存 `/opt/harness/shared/.env`。
+私钥只存 GitHub，公钥在服务器 `deploy` 的 `authorized_keys`；运行密钥只存 `/opt/harness/shared/.env`，代理配置只存服务器 `0600` 文件。
 
-## 评测配置注入
+## 配置注入
 
-评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入服务器 `.env`；`apiKeyRef` 只存环境变量名，未配置时注入步骤跳过。值经 base64 传输解码原子写入；解码失败告警跳过，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [deploy/env.production.example](../deploy/env.production.example)。
+数据目录与评测配置经同一通道写入服务器 `.env`：`Deploy` 从 GitHub Environment `vars.HE_DATA_DIR` 取绝对路径（空值用默认），评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入；`apiKeyRef` 只存环境变量名，未配置时跳过。值经 base64 传输、服务器侧 `inject-config.py` 原子写入，注入前备份 `.env.bak.<sha>`；解码失败告警跳过，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [deploy/env.production.example](../deploy/env.production.example)。
 
 ## Claude Code
 
@@ -50,9 +53,19 @@
 ## 发布与回滚
 
 - 触发：push main → CI 全绿 → `Deploy`；支持 `workflow_dispatch` 手动触发。
-- 行为：[deploy/release.sh](../deploy/release.sh) 安装依赖 → `alembic upgrade head` → 切换 `current` 软链 → `systemctl restart harness-api` → 探活 `/api/health`（最长 60 秒）。
-- 回滚：探活失败时软链退回上一 release 并重启；本地保留最近 5 个 release。
+- 行为：[deploy/release.sh](../deploy/release.sh) 校验数据目录 → 安装依赖 → `alembic upgrade head` → 切换 `current` 软链 → `systemctl restart harness-api` → 探活 `/api/health`（最长 60 秒）。
+- 回滚：探活失败时先恢复 `.env`，再将软链退回上一 release 并重启；本地保留最近 5 个 release 与 5 份 `.env` 备份。
 - 迁移幂等：连续发布对已应用的迁移零副作用。
+
+## 数据目录与可写校验
+
+生产 `HE_DATA_DIR` 必须是发布目录外的绝对路径，默认 `/var/lib/harness-evolution/data`；`deploy/harness-api.service` 的 `StateDirectory=harness-evolution` 让 systemd 在每次启动时创建并 chown 给 `harness`，bootstrap 也会补建。`release.sh` 在切换 `current` 前校验路径非空、绝对、无空白/换行/`..`、不在 `current` 或 `releases` 下，且目录属主为 `harness:harness` 或已被 unit 的 `StateDirectory=` 覆盖；失败立即退出，当前 release 继续服务。
+
+API 启动时解析绝对路径、`mkdir` 并写探针；不可写时 `/api/health` 返回 503（`data.ok=false`），发布探活失败后回滚。路径变更等于数据迁移：`target-content`、`repos`、`workspaces` 不跟随，需先停服务、迁移目录再改 `vars.HE_DATA_DIR`。首次给已有环境启用 `StateDirectory=` 需以 root 重跑 bootstrap（或安装 unit 后 `daemon-reload`），属于每环境一次的环境初始化，不进日常发布。
+
+## Git 出网代理
+
+生产机访问 GitHub 不稳定时可启用只服务 git 子进程的本机 Xray/VLESS 代理；配置来自 Environment Secret `XRAY_CONFIG`，代理不可用时部署与运行时会自动回退直连。见 [Git 出网代理](git-proxy.md)。
 
 ## 上游健康与漂移日志
 

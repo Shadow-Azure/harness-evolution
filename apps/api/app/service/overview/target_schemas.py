@@ -37,6 +37,19 @@ class TargetOverviewSummary(IdentityModel):
     unanalyzed: int = Field(ge=0)
 
 
+class TargetVersionOption(IdentityModel):
+    """One selectable version: canonical identity plus its display evidence.
+
+    ``version`` stays the filter and match key (the body digest when known);
+    ``ref`` and ``commit`` only feed the V2 prototype's ``ref + short commit``
+    rendering. Historical versions without ref evidence keep ``ref`` null.
+    """
+
+    version: str = Field(max_length=128)
+    ref: str | None = Field(default=None, max_length=128)
+    commit: str | None = Field(default=None, max_length=40)
+
+
 class TargetOverviewItem(IdentityModel):
     """One target's potential cases and their three-state attribution split.
 
@@ -50,9 +63,13 @@ class TargetOverviewItem(IdentityModel):
     object_name: str = Field(min_length=1, max_length=128)
     versions: list[str] = Field(
         description=(
-            "Versions this target was observed at inside the window, plus its "
-            "configured defaultRef, ordered by descending natural version."
+            "Canonical version keys this target was observed at inside the window, "
+            "plus its configured defaultRef, ordered by descending display label."
         ),
+    )
+    version_options: list[TargetVersionOption] = Field(
+        default_factory=list,
+        description="Display evidence aligned with ``versions``; absent on older captures.",
     )
     sessions: int = Field(ge=0)
     potential: int = Field(ge=0)
@@ -170,6 +187,7 @@ class TargetDetailTarget(IdentityModel):
     object_name: str = Field(min_length=1, max_length=128)
     default_ref: str = Field(max_length=128)
     versions: list[str]
+    version_options: list[TargetVersionOption] = Field(default_factory=list)
 
 
 class TargetDetailStats(IdentityModel):
@@ -185,6 +203,8 @@ class TargetDetailVersion(IdentityModel):
     """One version's contribution inside the selected detail scope."""
 
     version: str = Field(max_length=128)
+    ref: str | None = Field(default=None, max_length=128)
+    commit: str | None = Field(default=None, max_length=40)
     potential: int = Field(ge=0)
     attributed: int = Field(ge=0)
     non_target: int = Field(

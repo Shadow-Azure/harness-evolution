@@ -15,17 +15,24 @@ from app.config import DatabaseDialect, Settings
 from app.db.crud.fixtures import ensure_fixture_external_tables
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
-from app.db.models.domain import agent_events, evolution_targets
+from app.db.models.domain import agent_events, evolution_targets, session_families
 from app.utils.time import SHANGHAI
 
 TARGET_ID = "30000000-0000-4000-8000-000000000001"
 SKILL_AGENT_ID = "10000000-0000-4000-8000-000000000003"
+SESSION_ID = "10000000-0000-4000-8000-000000000003"
 OBJECT_VERSION = "synthetic-1"
 OBJECT_REVISION = "tag:synthetic-1"
 SKILL_TRIGGERED_AT = datetime(2026, 10, 22, 11, 0, tzinfo=SHANGHAI)
+# The first prompt is long, as in production SWE-bench sessions; short_title keeps
+# the production derivation (first 120 characters) so the table must clamp it.
+LONG_TITLE = (
+    "You are an autonomous software engineer working in the repository at /testbed. "
+    "Solve the issue by editing the repository and running the test suite until it passes."
+)
 
 
-async def _seed(data_dir: Path, repo_url: str | None) -> None:
+async def _seed(data_dir: Path, repo_url: str | None, *, long_title: bool = False) -> None:
     settings = Settings(
         data_dir=data_dir,
         db_dialect=DatabaseDialect.SQLITE,
@@ -45,6 +52,12 @@ async def _seed(data_dir: Path, repo_url: str | None) -> None:
                     **({"repo_url": repo_url} if repo_url else {}),
                 ),
             )
+            if long_title:
+                await session.execute(
+                    update(session_families)
+                    .where(session_families.c.id == SESSION_ID)
+                    .values(title=LONG_TITLE, short_title=LONG_TITLE[:120]),
+                )
             await session.execute(
                 update(agent_events)
                 .where(
@@ -65,8 +78,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, required=True)
     parser.add_argument("--repo-url", default=None)
+    parser.add_argument(
+        "--long-title",
+        action="store_true",
+        help="replace the shared session title with a long prompt for the step 2 clamp",
+    )
     args = parser.parse_args()
-    asyncio.run(_seed(args.data_dir, args.repo_url))
+    asyncio.run(_seed(args.data_dir, args.repo_url, long_title=args.long_title))
     print(f"prepared m10-05 preview data in {args.data_dir}", flush=True)
 
 

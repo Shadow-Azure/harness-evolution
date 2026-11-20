@@ -513,6 +513,7 @@ Index.vue
 | 页头动作 | 仅 `canManageWorkspace(currentRole)` 渲染写入口，并随 tab 切换：bad case 总览为「上报接入」「启动自进化」，前者复用当前空间的 `admin?tab=ingest`；进化对象总览为「+ 新增进化对象」「启动自进化」。两个 tab 的启动入口共用同一个 `openLaunchWizard` 和既有 `LaunchWizard`，无权限时只显示「只读访问」提示 |
 | 运营上下文 | 复用 summary 的 `used/quota/sources` 与会话里的 `memberCount/spaceAdminCount/role`；上报地址由 `location.origin` + 当前空间 ID 推导为完整 URL（`POST <origin>/api/workspaces/:wid/bad-cases`），只复制地址，不复制凭据；summary 未就绪时额度显示「—」而不是 0 |
 | 来源多选 | 空 = 全部；多选 = 并集；chip 逐项移除；写 `?objects=`（逗号分隔、URL 可读）；只作用于图表与统计 |
+| 对象卡版本 | 版本多选和版本行显示 `ref` + 浅色 7 位 commit；无 ref 证据时显示 digest；复选框仍以规范版本键写入 `dversions`，旧链接里的 ref 由服务端按别名映射 |
 | 列表筛选 | 列表头独立提供开始/结束日期、上报来源、问题类型，写 `?lfrom=&lto=&lobject=&type=`；日期为空时列表请求带 `allTime=true`（真正不限时间），空来源/`all=类型` 不限制；任一变化重置 `page=1` 并把上一有效结果保留到新查询返回 |
 | 列表分页 | `page` 只改列表页码，保留全部列表筛选；全局时间/来源/粒度变化不重置它 |
 | 点击指标 | 「自身存在问题」/「发现前置步骤问题」→ 写列表类型筛选（`?type=`）并滚到列表；「来源数」→ 聚焦图表来源下拉 |
@@ -651,7 +652,7 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 **Step 2 Session 关联**
 
 - 条件摘要 chip + 「修改条件」（条件同时展示 `targetVersion` ref 与解析后的 `targetRevision` body hash）；统计：上报过 bad case 的 Session / 关联 / 跳过 / 版本未知 / 待轨迹同步。
-- 表格 4 条/页：Session 标题 / 对象出现标记 / 对象触发点时间 / 该 Session 的 bad case 数；只列**对象出现过**的 Session，本步只做关联、不计算潜在数；未出现的只进「跳过」统计，不入表。skill/agent/knowledge 目标的“出现”都按归一化 body hash 匹配，tag 只用于解析内容 hash。
+- 表格 4 条/页：Session 短标签 / 对象出现标记 / 对象触发点时间 / 该 Session 的 bad case 数；Session 单元格用 `short`（来源 `session_families.short_title`）单行省略，`title` 提供完整标题悬停，表格固定布局保证四列同屏；只列**对象出现过**的 Session，本步只做关联、不计算潜在数；未出现的只进「跳过」统计，不入表。skill/agent/knowledge 目标的“出现”都按归一化 body hash 匹配，tag 只用于解析内容 hash。
 - 空态：「没有对象版本出现过的 Session；可回第 1 步调整时间段或对象版本」+ 前进禁用。
 - 分页只重新请求 `preview/sessions` 的 `page`，不重算匹配（服务端已按条件稳定排序）。
 
@@ -671,6 +672,20 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
   - 「仅聚类」→ `POST …/evolution/cluster-previews`（`mode:"cluster_only"`）→ 路由 `/workspaces/:wid/evolution/cluster/:runId`，先显示「准备中」
   - 「启动自进化 →」→ `POST …/evolution/runs` → 路由 `/workspaces/:wid/evolution/runs/:rid`，先显示「准备中」
 - 202 只表示“已受理准备”；不要等接口返回簇或 RunDetail。
+
+### 9.2.1 预览请求的等待反馈
+
+三个 `preview/*` 都是同步请求；第 1 步在冷缓存时先做目标内容读取（必要时 `git clone --mirror`），再关联 Session。生产 `LaunchWizard.vue` 已实现：
+
+- 点击「下一步」后立即把主按钮改成当前阶段文案并带 spinner；表单 `inert` + `locked`（保留内容、禁止编辑）。
+- 在主按钮上方显示阶段进度卡：第 1 步「读取目标版本 → 关联 Session」，第 2 步「筛选潜在 bad case」，第 3 步「检查归因缓存」；当前阶段高亮，显示已等待秒数。服务端尚未上报子阶段，第 1 步只把「读取目标版本」标为进行中、「关联 Session」保持等待，不伪造完成。
+- 文案说明首次读取会从远端仓库克隆、服务端单次读取上限约 20 秒、超时会给出重试，后续有本地 mirror 缓存；不使用假进度条，也不承诺超过上限的等待会成功。
+- 超时（`TARGET_CONTENT_UNRESOLVED` + reason `content_timeout` / `timeout`）显示失败卡：原因、非 Session 数据为空、重试与返回修改条件；版本字段标红。其他内容错误仍保留字段级红字。
+- 等待中提供取消等待：递增请求代际、丢弃 late result，不修改 `http.ts` 或引入 AbortController；已发出的服务端请求可能继续。
+- 等待卡 `role=status`、超时卡 `role=alert`；每秒变化的 elapsed 加 `aria-hidden`，不放进 live region；卡片出现/失败时 `scrollIntoView` 到可见位置。生产另补 `prefers-reduced-motion` 下停止 spinner 动画。
+- 前端不设独立 watchdog：代理/网络挂起时用取消等待退出；只有服务端返回 `content_timeout` / `timeout` 才显示超时卡。
+
+原型交互和截图见 `plans/ui-prototype-v2/harness-evolution.html` 与 `design-v2.md §7.5`。生产实现只覆盖步骤前进的预览；步骤内分页和第 4 步缓存刷新保留原有 `pending` 禁用，不套用阶段卡。代理与后端 shallow fetch 不在本切片。
 
 ### 9.3 占位数据说明
 
@@ -728,15 +743,18 @@ Index.vue
 
 ```text
 RunDetail.vue
-├── DetailHeader.vue（标题 + 状态 + 空间 badge；无“推进一轮”按钮）
+├── DetailHeader.vue（标题 + 状态 + 空间 badge；无创建人 · 时间、无“推进一轮”按钮）
 ├── blockedBanner（push/eval/attribution 失败时显示阶段、错误、自动重试时间、[重试]）
-├── infoPanel（目标与输入：kv-grid + 策略/缓存 chip + 类型分布条 + 评测/推送状态）
+├── 详情页签（七步详情 / 执行日志；日志由 `?tab=logs` 承载）
+├── infoPanel（目标与输入：4 列 kv-grid + 潜在 bad case 归因结论分布 + 策略/缓存 chip + 工作区折叠区）
 ├── StepperPanel.vue（步数由 run.steps 决定：七步）
 │   └── StepContent.vue（按 step.key 动态组件）
 │       └── StepRange / StepSessions / StepPotential / StepAttribution / StepClusters / StepIterations / StepFinal
-├── RunLogPanel.vue（执行日志/异常，tab 或右栏）
+├── RunLogPanel.vue（执行日志/异常，独立页签）
 └── （iteration step 内）ClusterCard.vue → DiffView / EvalCompare / CommitBlock
 ```
+
+**目标与输入口径**：4 列依次为进化对象 / 版本 / 时间段 / 工作空间，然后是关联 Session、时间段内 bad case、潜在 bad case、可归因 / 非该对象；「模型（多选）」不在详情页。分布标题固定为「潜在 bad case 的归因结论分布（N 条）」，N 取潜在 bad case 数，图例含非该对象、错误 / prompt / 模型与「＝ 归因 · 复用缓存 · 本次新增」。关联 Session 显示 `已关联 / 版本未知`；非该对象、复用缓存与本次新增按 attribution step 的 rows 行级统计（`category` 为空即非该对象，`source` 为 `cached` / `fresh`；「本次新增」只计可归因的 fresh 行，与原型一致），策略与缓存开关取 range step 的 condition，接口契约不新增字段。归因尚未完成时复用缓存与本次新增显示 `—`，分布条以「未归因」余量补齐，归因完成后显示最终值。工作区折叠区包含 run 分支（可复制）、基线 ref / commit、仓库、子目录、推送状态与时间、评测状态、脱敏推送错误与本地路径。
 
 **单一 schema**：`run.steps` 恒为七步，`steps[].key` 由后端给定，前端按 key 渲染，不推算回退。
 
@@ -757,10 +775,10 @@ RunDetail.vue
 | 交互 | 实现 |
 |---|---|
 | 默认选中步 | `run.steps` 中第一个 `active`；没有则最后一个 `done`；没有则第 0 步（但不可点）；`preparing` 时显示 step 0 的准备态 |
-| 工作区信息 | infoPanel 展示 `workspace.branchName / baseRef / baseCommit / repoUrl / subDir`（路径可折叠）；点击可复制分支名 |
+| 工作区信息 | infoPanel 底部「工作区」折叠区展示 `workspace.branchName / baseRef / baseCommit / repoUrl / subDir`（路径可折叠）；点击可复制分支名 |
 | 推送状态 | 每轮展示 candidate `pushStatus`；终评展示最终 `pushStatus` 与 `pushedAt`；失败展示脱敏错误 + 「重试」按钮（调 `POST /runs/{rid}/retry`，不是旧的 `/push`） |
 | 阻塞状态 | `status=blocked` 时顶部显示 `blockedStage`、`retryAttempts`、`nextRetryAt`、错误摘要；按钮「重试」→ `/retry` → `202 jobId`；自动退避期间显示“等待自动重试” |
-| 首屏加载 | 先并行 `GET /runs/{rid}` + `/steps/{currentKey}`（`preparing` 可为空）+ `/events?afterSeq=0`（分页拉完）渲染初版；`preparing/running` 才建立 SSE，`blocked` 用轮询/重试，终态不建 |
+| 首屏加载 | 先并行 `GET /runs/{rid}` + `/steps/{currentKey}` + 结论字段所需的 `/steps/range` / `/steps/attribution`（步骤未到达或正在看执行日志时不请求）+ `/events?afterSeq=0`（分页拉完）渲染初版；`preparing/running` 才建立 SSE，`blocked` 用轮询/重试，终态不建 |
 | 执行日志 | 独立 tab「执行日志」：`useRunEventLog(rid)` 分页拉库（REST 是事实源）；默认 100 条，滚动到底加载下一页；`level=error` 过滤 |
 | 异常展示 | `run.error` 存在时详情顶部显示错误横幅（stage/message/at），按钮跳日志并展开 `error.detail` |
 | 实时追加 | SSE `run.event` → 把事件 append 到列表并更新 `loadedSeq`；`run.blocked/failed/interrupted` → 失效 run + events |
@@ -796,6 +814,7 @@ RunLogPanel.vue
 └── 底部：加载更多（afterSeq 分页）
 ```
 
+- 入口：详情页「七步详情 / 执行日志」页签；切到日志写 `?tab=logs`，切回步骤删除该参数。准备中态在七步详情内显示「已受理，正在准备筛选与聚类」。
 - 数据源：`GET /runs/{rid}/events?afterSeq=&limit=`；刷新/重进以接口为准。
 - 事件颜色：`info` 灰、`warn` 橙、`error` 红；`candidate_committed` / `eval_completed` / `cluster_accepted` 用不同图标。
 - `error.detail` 默认折叠，避免长堆栈撑爆布局；复制按钮只复制脱敏后的内容。

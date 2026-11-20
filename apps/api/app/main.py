@@ -32,6 +32,7 @@ from app.api.sessions import workspace_router as workspace_sessions_router
 from app.api.users import router as users_router
 from app.api.workspaces import router as workspaces_router
 from app.config import Settings
+from app.data_dir import probe_data_directory
 from app.db.base import Database
 from app.db.crud.attribution_skill_packages import AttributionSkillPackageRepository
 from app.db.crud.attribution_skills import AttributionSkillRepository
@@ -131,6 +132,7 @@ from app.service.workspaces.service import WorkspaceService
 from app.third_party_api.bad_case_query.http import HttpBadCaseCatalogSource
 from app.third_party_api.bad_case_query.models import BadCaseCatalogSource
 from app.third_party_api.git.content import SubprocessGitContent
+from app.third_party_api.git.proxy import GitProxyController, ProxyAwareGitRunner
 from app.third_party_api.git.remote import GitRemote, SubprocessGitRemote
 from app.third_party_api.git.workspace import GitWorkspaceManager
 from app.third_party_api.session_query.http import HttpSessionQuerySource
@@ -161,7 +163,13 @@ def create_app(
 ) -> FastAPI:
     """Compose middleware, exception handling, and routes."""
     resolved_settings = settings or Settings()
+    # Resolve and probe the data directory before any component captures the path.
+    # A failure stays visible in /api/health instead of crashing the whole process.
+    data_directory = probe_data_directory(resolved_settings.data_dir)
+    resolved_settings = resolved_settings.model_copy(update={"data_dir": data_directory.path})
     resolve_attribution_engine(resolved_settings.attribution_engine)
+    proxy_controller = GitProxyController.from_settings(resolved_settings)
+    proxy_runner = ProxyAwareGitRunner(proxy_controller)
     resolved_database = database or create_database(resolved_settings)
     external_contract = ExternalContractMonitor(
         resolved_database,
@@ -295,8 +303,12 @@ def create_app(
         ProblemRepository(resolved_database),
     )
     target_repository = EvolutionTargetRepository(resolved_database)
-    resolved_git_remote = git_remote or SubprocessGitRemote()
-    git_content = SubprocessGitContent(cache_root=resolved_settings.data_dir / "target-content")
+    resolved_git_remote = git_remote or SubprocessGitRemote(
+        runner=cast(Any, proxy_runner.run_remote),
+    )
+    git_content = SubprocessGitContent(
+        cache_root=resolved_settings.data_dir / "target-content", runner=cast(Any, proxy_runner.run),
+    )
     resolver = target_version_resolver or TargetContentResolver(git_content)
     evolution_targets = EvolutionTargetService(target_repository, resolved_git_remote)
     attribution_skills = AttributionSkillService(
@@ -368,6 +380,7 @@ def create_app(
     default_workspace_manager = GitWorkspaceManager(
         repos_root=resolved_settings.data_dir / "repos",
         workspaces_root=resolved_settings.data_dir / "workspaces",
+        runner=cast(Any, proxy_runner.run),
         push_enabled=resolved_settings.git_push,
     )
     workspace_manager = git_workspaces or default_workspace_manager
@@ -501,6 +514,7 @@ def create_app(
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
         """Start storage and migrations without turning outages into crashes."""
         phase = "startup"
+        proxy_controller.start()
         try:
             await resolved_database.start()
             phase = "migration"
@@ -539,6 +553,7 @@ def create_app(
         try:
             yield
         finally:
+            await proxy_controller.stop()
             await external_contract.stop()
             try:
                 await evolution_blocked_sweeper.stop()
@@ -590,6 +605,7 @@ def create_app(
     )
     app.state.settings = resolved_settings
     app.state.database = resolved_database
+    app.state.data_directory = data_directory
     app.state.identity = identity
     app.state.event_bus = event_bus
     app.state.jobs = jobs

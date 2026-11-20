@@ -90,13 +90,32 @@ if [ ! -f /etc/nginx/sites-enabled/harness ]; then
   ln -sf /etc/nginx/sites-available/harness /etc/nginx/sites-enabled/harness
   rm -f /etc/nginx/sites-enabled/default
 fi
-if [ ! -f /etc/systemd/system/harness-api.service ] && [ -f "$CONF_DIR/harness-api.service" ]; then
-  cp "$CONF_DIR/harness-api.service" /etc/systemd/system/harness-api.service
+# unit 幂等更新：已存在的旧单元（例如缺少 StateDirectory）也必须被覆盖。
+if [ -f "$CONF_DIR/harness-api.service" ]; then
+  install -m 0644 "$CONF_DIR/harness-api.service" /etc/systemd/system/harness-api.service
   systemctl daemon-reload
   systemctl enable harness-api
-fi
-if [ ! -f /etc/systemd/system/harness-api.service ]; then
+else
   echo "[bootstrap] 警告: $CONF_DIR/harness-api.service 缺失，服务单元未安装（重新执行本脚本可补）" >&2
+fi
+# 显式补建状态目录，保证首次 deploy 前属主正确（systemd 启动时也会创建）。
+install -d -m 0750 -o harness -g harness /var/lib/harness-evolution
+# 代理目录归 deploy：流水线在这里写 0600 配置与二进制，harness-proxy 以 deploy 运行。
+install -d -m 0700 -o deploy -g deploy /opt/harness/shared/proxy /opt/harness/shared/proxy/bin
+# 代理单元是可选的：首次 bootstrap 时 deploy/ 可能还没同步到 $CONF_DIR，发布后重跑本脚本即可补装。
+if [ -f "$CONF_DIR/harness-proxy.service" ]; then
+  install -m 0644 "$CONF_DIR/harness-proxy.service" /etc/systemd/system/harness-proxy.service
+  systemctl daemon-reload
+  systemctl enable harness-proxy
+  if [ -f /opt/harness/shared/proxy/config.json ]; then
+    systemctl restart harness-proxy || echo "[bootstrap] 警告: harness-proxy 重启失败，检查代理配置" >&2
+  fi
+else
+  echo "[bootstrap] 警告: $CONF_DIR/harness-proxy.service 缺失，代理单元未安装；发布一次后重跑本脚本可补" >&2
+fi
+# 重启一次让 StateDirectory 生效；首次发布前没有 release/venv，启动失败属正常。
+if ! systemctl restart harness-api; then
+  echo "[bootstrap] 警告: harness-api 暂未启动（首次发布前无 release 属正常），/var/lib/harness-evolution 已准备" >&2
 fi
 nginx -t
 systemctl reload nginx || systemctl restart nginx
@@ -104,10 +123,12 @@ systemctl reload nginx || systemctl restart nginx
 echo "[bootstrap] 7/7 deploy 用户 sudo 收敛"
 SUDOERS=/etc/sudoers.d/harness-deploy
 cat > "$SUDOERS" <<'EOF'
-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart harness-api, /usr/bin/systemctl start harness-api
+deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart harness-api, /usr/bin/systemctl start harness-api, /usr/bin/systemctl restart harness-proxy, /usr/bin/systemctl start harness-proxy, /usr/bin/systemctl stop harness-proxy
 EOF
 chmod 440 "$SUDOERS"
 visudo -c
 
-echo "[bootstrap] 完成。下一步: 填 /opt/harness/shared/.env（参考 deploy/env.production.example），"
+echo "[bootstrap] 完成。下一步: 填 /opt/harness/shared/.env（参考 deploy/env.production.example，"
+echo "           HE_DATA_DIR 用绝对路径，默认 /var/lib/harness-evolution/data），"
 echo "           然后配置 GitHub Secrets 并触发首次发布。"
+echo "           启用 Git 出网代理时，发布后需以 root 重跑本脚本以安装 harness-proxy 单元。"

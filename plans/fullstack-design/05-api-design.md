@@ -1221,6 +1221,7 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 | `GET /api/workspaces/{wid}/overview/targets/{targetId}/detail` | `versions[]`、`versionLimit∈{5,10,20,0}`、`from/to` | `{target, stats{sessions,potential,distinctCases,versions}, byVersion[], bySource[]}` |
 | `GET /api/workspaces/{wid}/sessions` | `q`、`status`、`sort`、`limit`（默认 10） | `{items:[SessionListItem], total, pendingSessions}` |
 
+- 对象卡版本身份：同一条触发记录的 `objectVersion`（ref）与 `objectRevision`（digest）是同一版本的两个身份；`versions[]` 保留规范 digest 键，供筛选、匹配与统计使用。`versionOptions[]` 与 `byVersion[]` 额外返回可空 `ref`/`commit`（`evolution_runs.base_commit` 前 7 位），只用于按 V2 原型渲染。同一 digest 对应多个 ref 时取最近一次 run 的 `targetVersion`；默认 ref 与 digest 只有 run 关联（事件只带 digest）时也按 run 合并；只有 digest 证据且无 run 关联的历史版本保留 digest 兜底，不反查 git ref。
 - 筛选参数可全空（不限制）；`objects` 同时接受重复参数（`?objects=a&objects=b`）与逗号分隔值（`?objects=a,b`），两侧去空白后按首次出现去重，空 = 全部，去重后 >50 项 → `422 OBJECT_FILTER_TOO_LARGE`；窗口 >366 天、`from > to`、只给一个边界且没有 `range`、需要用 `range` 推导窗口而它不在 7/30/90 内、边界落在 1970-01-01..2999-12-31 之外（含日期运算溢出）→ `422 WINDOW_INVALID`；`grain` 非法 → `422 GRAIN_INVALID`。
 - 四个总览读端点都接受 `range`（含列表）。同时给 `from` 与 `to` 时两者直接定义窗口，`range` 被忽略且**不校验**（`from/to/range=0` 合法）；默认窗口是 `[今天-89, 今天]`（90 天）。只有不带边界或只带单一边界时，`range` 才参与推导并要求是 7/30/90。
 - `allTime=true` 是 bad-case 列表专用的“无日期限制”：跳过窗口解析与日期谓词，返回空间内全部上报记录，分页/来源/类型仍生效；同时带 `from/to/range` 时忽略它们。其余总览读端点不接受该参数，列表为空日期时由前端发送它（08 §6.2）。
@@ -1250,7 +1251,7 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 
 | 端点 | 用途 | 关键参数 |
 |---|---|---|
-| `POST …/evolution/preview/sessions` | 第 2 步：关联 Session 分页 | `{targetType,targetName,targetVersion?,from?,to?,page,pageSize=4}` → `{summary:{reported,associated,skipped,versionUnresolved,pending},items:[{sessionId,title,objectTriggerAt,badCaseCount}],total,page,pageSize}`；第 2 步只做关联，不算潜在 |
+| `POST …/evolution/preview/sessions` | 第 2 步：关联 Session 分页 | `{targetType,targetName,targetVersion?,from?,to?,page,pageSize=4}` → `{summary:{reported,associated,skipped,versionUnresolved,pending},items:[{sessionId,short,title,objectTriggerAt,badCaseCount}],total,page,pageSize}`；`short` 取 `session_families.short_title`，`title` 是完整标题供 UI 悬停；第 2 步只做关联，不算潜在 |
 | `POST …/evolution/preview/potential` | 第 3 步：潜在 bad case 分页 | 同上 + `policy`、`pageSize=5` → `{summary{badCases,potential,byReason},items:[PotentialRow],total,page,pageSize}`；`items` 只含纳入潜在的 case |
 | `POST …/evolution/preview/attribution` | 第 4 步：归因预览（**不执行归因**） | 同条件 + `policy`、`cacheEnabled=true` → `{summary{potential,reused,fresh,nonTargetKnown}}`；不接收 `engineKey` 或分页 |
 | `POST …/evolution/runs` | 启动完整自进化 | 条件 + `policy` + `cacheEnabled` + `mode:"full"` + 可选 `engineKey`/`eval` → `202 {runId,jobId,status:"preparing"}` |

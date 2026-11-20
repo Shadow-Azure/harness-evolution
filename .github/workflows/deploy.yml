@@ -4,6 +4,8 @@
 #       仓库（或环境）Variable ALIYUN_SSH_PORT（默认 22）；服务器已完成 bootstrap。
 #       可选 Claude Code：Secrets CLAUDE_CODE_MODEL / CLAUDE_CODE_API_KEY / CLAUDE_CODE_BASE_URL；
 #       未配置时跳过安装步骤，配置后发布前自动安装并写入服务器 ~/.claude。
+#       可选 Git 出网代理：Environment Secret XRAY_CONFIG（完整 Xray JSON）；
+#       未配置、配置非法或探测失败时移除 HE_GIT_PROXY，git 直连。
 name: Deploy
 
 on:
@@ -64,6 +66,97 @@ jobs:
           rsync -az --delete --exclude .venv --exclude __pycache__ -e "$SSH_CMD" apps/api/ "$SSH_USER@$SSH_HOST:$RELEASE/api/"
           rsync -az -e "$SSH_CMD" deploy/ "$SSH_USER@$SSH_HOST:/opt/harness/shared/config/"
           $SSH_CMD "$SSH_USER@$SSH_HOST" "chmod +x /opt/harness/shared/config/release.sh"
+
+      - name: 准备 Git 出网代理（可选，Secret 未配置或不可用时直连）
+        id: git_proxy
+        env:
+          XRAY_CONFIG: ${{ secrets.XRAY_CONFIG }}
+        run: |
+          set -euo pipefail
+          echo "proxy_url=" >> "$GITHUB_OUTPUT"
+          SSH_CMD="ssh -i ~/deploy_key -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
+          stop_proxy() {
+            $SSH_CMD "$SSH_USER@$SSH_HOST" \
+              "sudo /usr/bin/systemctl stop harness-proxy >/dev/null 2>&1 || true; rm -f /opt/harness/shared/proxy/config.json" || true
+          }
+          if [ -z "${XRAY_CONFIG:-}" ]; then
+            echo "未配置 XRAY_CONFIG，git 直连并停止旧代理"
+            stop_proxy
+            exit 0
+          fi
+          EXTRACTED="$(printf '%s' "$XRAY_CONFIG" | python3 deploy/xray-config.py --extract)" || {
+            echo "::warning::XRAY_CONFIG 不是可用的 Xray/VLESS 配置，跳过代理并使用直连"
+            stop_proxy
+            exit 0
+          }
+          PROXY_URL="$(printf '%s\n' "$EXTRACTED" | sed -n 's/^proxy_url=//p')"
+          if [ -z "$PROXY_URL" ]; then
+            echo "::warning::未能从 XRAY_CONFIG 解析本地代理地址，跳过代理"
+            stop_proxy
+            exit 0
+          fi
+          ARCH="$($SSH_CMD "$SSH_USER@$SSH_HOST" 'dpkg --print-architecture')" || {
+            echo "::warning::读取服务器架构失败，跳过代理"
+            stop_proxy
+            exit 0
+          }
+          case "$ARCH" in
+            amd64|arm64) ;;
+            *) echo "::warning::不支持的服务器架构 $ARCH，跳过代理"; stop_proxy; exit 0 ;;
+          esac
+          RESOLVED="$(bash deploy/fetch-xray.sh "$ARCH")" || {
+            echo "::warning::Xray 下载或校验失败，跳过代理并使用直连"
+            stop_proxy
+            exit 0
+          }
+          XRAY_DIR="$(printf '%s\n' "$RESOLVED" | sed -n 's/^dir=//p')"
+          if [ -z "$XRAY_DIR" ] || [ ! -x "$XRAY_DIR/xray" ]; then
+            echo "::warning::Xray 解包目录不完整，跳过代理"
+            stop_proxy
+            exit 0
+          fi
+          if ! $SSH_CMD "$SSH_USER@$SSH_HOST" 'test -f /etc/systemd/system/harness-proxy.service'; then
+            echo "::warning::服务器未安装 harness-proxy.service；请以 root 重跑 bootstrap-server.sh，本次直连"
+            stop_proxy
+            exit 0
+          fi
+          if ! rsync -az --delete -e "$SSH_CMD" "$XRAY_DIR/" "$SSH_USER@$SSH_HOST:/opt/harness/shared/proxy/bin/"; then
+            echo "::warning::上传 Xray 失败，跳过代理"
+            stop_proxy
+            exit 0
+          fi
+          # 配置经 base64 + stdin 传输，不进入命令行、日志或仓库；服务器侧原子写 0600。
+          if ! printf '%s' "$XRAY_CONFIG" | base64 | tr -d '\n' | $SSH_CMD "$SSH_USER@$SSH_HOST" \
+              "python3 /opt/harness/shared/config/xray-config.py --path /opt/harness/shared/proxy/config.json" >/dev/null; then
+            echo "::warning::写入 Xray 配置失败，跳过代理"
+            stop_proxy
+            exit 0
+          fi
+          if ! $SSH_CMD "$SSH_USER@$SSH_HOST" "sudo /usr/bin/systemctl restart harness-proxy"; then
+            echo "::warning::harness-proxy 启动失败，跳过代理"
+            stop_proxy
+            exit 0
+          fi
+          ACTIVE=0
+          for _ in $(seq 1 10); do
+            if $SSH_CMD "$SSH_USER@$SSH_HOST" "systemctl is-active --quiet harness-proxy"; then
+              ACTIVE=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ACTIVE" -ne 1 ]; then
+            echo "::warning::harness-proxy 未进入 active，跳过代理"
+            stop_proxy
+            exit 0
+          fi
+          if ! $SSH_CMD "$SSH_USER@$SSH_HOST" "curl -fsS -x '$PROXY_URL' --max-time 5 https://api.github.com/zen >/dev/null"; then
+            echo "::warning::代理隧道探测失败，停止代理并使用直连"
+            stop_proxy
+            exit 0
+          fi
+          echo "proxy_url=$PROXY_URL" >> "$GITHUB_OUTPUT"
+          echo "Git 出网代理已就绪：$PROXY_URL"
 
       - name: 解析 Claude Code 版本（可选，Secret 未配置时跳过）
         id: claude_code_resolve
@@ -157,29 +250,48 @@ jobs:
           printf '%s\n' "${ENTRIES[@]}" | $SSH_CMD "$SSH_USER@$SSH_HOST" \
             "python3 /opt/harness/shared/config/install-claude-code.py --version '${{ steps.claude_code_resolve.outputs.target }}' $DEB_ARG"
 
-      - name: 注入评测配置（可选，secrets 未配置时跳过）
+      - name: 注入部署配置（数据目录 + 可选评测 + Git 代理）
         env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          HE_DATA_DIR: ${{ vars.HE_DATA_DIR }}
           HE_EVAL_MODE: ${{ secrets.HE_EVAL_MODE }}
           HE_EVAL_BASE_URL: ${{ secrets.HE_EVAL_BASE_URL }}
           HE_EVAL_API_KEY: ${{ secrets.HE_EVAL_API_KEY }}
+          GIT_PROXY_URL: ${{ steps.git_proxy.outputs.proxy_url }}
         run: |
-          set -u
+          set -euo pipefail
+          DATA_DIR="${HE_DATA_DIR:-/var/lib/harness-evolution/data}"
+          case "$DATA_DIR" in
+            /*) ;;
+            *) echo "::error::vars.HE_DATA_DIR 必须是绝对路径：$DATA_DIR"; exit 1 ;;
+          esac
+          if [[ "$DATA_DIR" =~ [[:space:]] ]] || [[ "$DATA_DIR" == *..* ]]; then
+            echo "::error::vars.HE_DATA_DIR 不得包含空白或 ..：$DATA_DIR"; exit 1
+          fi
+          case "$DATA_DIR" in
+            /opt/harness/current|/opt/harness/current/*|/opt/harness/releases|/opt/harness/releases/*)
+              echo "::error::vars.HE_DATA_DIR 不得位于发布目录：$DATA_DIR"; exit 1 ;;
+          esac
           SSH_CMD="ssh -i ~/deploy_key -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
-          ENTRIES=()
+          ENTRIES=("HE_DATA_DIR $(printf '%s' "$DATA_DIR" | base64 | tr -d '\n')")
           [ -n "${HE_EVAL_MODE:-}" ] && ENTRIES+=("HE_EVAL_MODE $(printf '%s' "${HE_EVAL_MODE:-}" | base64 | tr -d '\n')")
           [ -n "${HE_EVAL_BASE_URL:-}" ] && ENTRIES+=("HE_EVAL_BASE_URL $(printf '%s' "${HE_EVAL_BASE_URL:-}" | base64 | tr -d '\n')")
           [ -n "${HE_EVAL_API_KEY:-}" ] && ENTRIES+=("HE_EVAL_API_KEY $(printf '%s' "${HE_EVAL_API_KEY:-}" | base64 | tr -d '\n')")
-          if [ "${#ENTRIES[@]}" -eq 0 ]; then
-            echo "未配置 HE_EVAL_* secrets，跳过评测配置注入（保持服务器现状）"
-            exit 0
+          # 代理不可用时显式移除旧值，避免上一轮成功的 HE_GIT_PROXY 被继续使用。
+          UNSET_ARGS=""
+          if [ -n "${GIT_PROXY_URL:-}" ]; then
+            ENTRIES+=("HE_GIT_PROXY $(printf '%s' "$GIT_PROXY_URL" | base64 | tr -d '\n')")
+          else
+            UNSET_ARGS="--unset HE_GIT_PROXY"
           fi
-          # 值以 base64 传输、服务器侧 inject-eval-config.py 解码：
-          # `&`/`$`/反引号/`|`/引号等特殊字符全部安全；现有 .env 命中键就地替换、
-          # 缺失键追加（重跑幂等），临时文件+mv 原子重写无半写入；
-          # 单键解码失败只告警跳过，不阻塞发布；密钥不回显不落日志。
+          # 值以 base64 传输、服务器侧 inject-config.py 解码并原子重写 .env：
+          # `&`/`$`/反引号/`|`/引号等特殊字符全部安全；HE_DATA_DIR 总是注入（空值用默认绝对路径）。
+          # 注入前备份到 .env.bak.<sha>，release.sh 失败时恢复；单键解码失败只告警跳过。
           # （脚本由上一步 rsync deploy/ 落到 /opt/harness/shared/config/。）
-          printf '%s\n' "${ENTRIES[@]}" | $SSH_CMD "$SSH_USER@$SSH_HOST" "python3 /opt/harness/shared/config/inject-eval-config.py"
-          echo "评测配置已注入 ${#ENTRIES[@]} 个 HE_EVAL_* 变量"
+          BACKUP="/opt/harness/shared/.env.bak.$SHA"
+          printf '%s\n' "${ENTRIES[@]}" | $SSH_CMD "$SSH_USER@$SSH_HOST" \
+            "python3 /opt/harness/shared/config/inject-config.py --backup '$BACKUP' $UNSET_ARGS"
+          echo "已注入 ${#ENTRIES[@]} 个配置变量（数据目录：$DATA_DIR，Git 代理：${GIT_PROXY_URL:-直连}）"
 
       - name: 执行发布（迁移 + 切换 + 重启 + 探活）
         env:

@@ -133,6 +133,9 @@ class Settings(BaseSettings):
         le=86_400,
     )
     git_push: bool = True
+    git_proxy: str | None = None
+    git_proxy_probe_interval_seconds: float = Field(default=60.0, ge=5, le=3_600)
+    git_proxy_probe_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     attribution_engine: str = Field(default="rule-v1", min_length=1, max_length=64)
     attribution_case_concurrency: int = Field(default=4, ge=1, le=32)
     attribution_batch_concurrency: int = Field(default=2, ge=1, le=8)
@@ -186,6 +189,15 @@ class Settings(BaseSettings):
             raise ValueError("HE_JWT_SECRET must not be empty")
         return self
 
+    @model_validator(mode="after")
+    def require_production_data_dir(self) -> "Settings":
+        """Refuse a relative data directory where the process cwd is a release."""
+        if self.production and not self.data_dir.expanduser().is_absolute():
+            raise ValueError(
+                f"HE_DATA_DIR must be an absolute path in production (got {self.data_dir})",
+            )
+        return self
+
     @field_validator("upstream_base_url")
     @classmethod
     def validate_upstream_url(cls, value: str | None) -> str | None:
@@ -212,6 +224,28 @@ class Settings(BaseSettings):
             raise ValueError("HE_WEB_BASE_URL must not contain credentials")
         if parsed.query or parsed.fragment:
             raise ValueError("HE_WEB_BASE_URL must not contain query or fragment")
+        return normalized
+
+    @field_validator("git_proxy")
+    @classmethod
+    def validate_git_proxy(cls, value: str | None) -> str | None:
+        """Accept only a credential-free local HTTP proxy address."""
+        normalized = _validate_http_url(value, "HE_GIT_PROXY")
+        if normalized is None:
+            return None
+        parsed = urlsplit(normalized)
+        if parsed.scheme != "http":
+            raise ValueError("HE_GIT_PROXY must use http")
+        if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+            raise ValueError("HE_GIT_PROXY must point to loopback")
+        if parsed.path not in {"", "/"}:
+            raise ValueError("HE_GIT_PROXY must not include a path")
+        try:
+            port = parsed.port
+        except ValueError:
+            raise ValueError("HE_GIT_PROXY must include a valid port") from None
+        if port is None:
+            raise ValueError("HE_GIT_PROXY must include a port")
         return normalized
 
     @field_validator("session_cookie_name")

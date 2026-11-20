@@ -1,5 +1,8 @@
 {
   "healthy": {
+    "data": {
+      "ok": true
+    },
     "db": {
       "dialect": "sqlite",
       "latencyMs": 0.1,
@@ -11,6 +14,9 @@
     "version": "0.1.0"
   },
   "unavailable": {
+    "data": {
+      "ok": true
+    },
     "db": {
       "dialect": "sqlite",
       "error": "OperationalError: database is unavailable",

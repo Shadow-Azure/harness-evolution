@@ -9,7 +9,7 @@ import type {
   SessionPreviewSummary,
 } from "@harness/contracts";
 import { useQuery } from "@tanstack/vue-query";
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import { getBadCase } from "../../../api/badCases";
@@ -41,6 +41,20 @@ const emit = defineEmits<{
 
 type WizardStep = 1 | 2 | 3 | 4;
 type PendingAction = "" | "sessions" | "potential" | "attribution" | "launch";
+type PreviewAction = "sessions" | "potential" | "attribution";
+type PreviewFromStep = 1 | 2 | 3;
+
+interface PreviewStage {
+  label: string;
+  detail: string;
+}
+
+interface PreviewBusy {
+  fromStep: PreviewFromStep;
+  failed: boolean;
+  elapsed: number;
+  timeoutMessage: string;
+}
 
 const SESSION_PAGE_SIZE = 4;
 const POTENTIAL_PAGE_SIZE = 5;
@@ -78,11 +92,11 @@ const ANCHOR_SOURCE_HINTS: Record<
 
 const CONTENT_REASON_COPY: Record<string, string> = {
   content_not_found:
-    "在该版本下找不到目标文件（skill 需 SKILL.md，agent 需 AGENT.md）。请确认 tag、仓库地址与子目录。",
+    "在该版本下找不到目标文件（skill 需 SKILL.md，agent 需 AGENT.md）。请确认版本、仓库地址与子目录。",
   file_not_found:
     "该版本下没有目标文件（skill 需 SKILL.md，agent 需 AGENT.md）。请检查子目录。",
   ref_not_found:
-    "该版本在仓库中不存在。请确认 tag/分支名称，或刷新版本列表后重选。",
+    "该版本在仓库中不存在。请确认 tag、分支或 commit id，或换一个版本后重试。",
   repo_unreachable:
     "无法访问目标仓库。请检查仓库地址、网络与读取权限。",
   empty_definition_body:
@@ -92,7 +106,7 @@ const CONTENT_REASON_COPY: Record<string, string> = {
   timeout: "读取目标文件超时。请稍后重试，或检查仓库网络与代理。",
   git_unavailable: "服务端无法调用 git。请联系管理员检查运行环境。",
   path_invalid: "目标文件路径无效。请检查配置的子目录。",
-  ref_invalid: "版本名不是合法的 git ref。请重新选择 tag。",
+  ref_invalid: "版本名不是合法的 git ref。请重新输入 tag、分支或 commit id。",
   content_unavailable:
     "目标文件暂时不可读取。请确认仓库地址、子目录与读取权限后重试。",
   knowledge_content_source_unavailable:
@@ -108,6 +122,8 @@ const targetType = ref<"skill" | "agent">("skill");
 const targetId = ref<string | null>(null);
 const targetVersion = ref("");
 const versionPinned = ref(false);
+const versionOpen = ref(false);
+const versionFormatError = ref("");
 const windowFrom = ref("");
 const windowTo = ref("");
 const policyPreset = ref<"default" | "custom">("default");
@@ -124,6 +140,8 @@ const attributionPreview = ref<AttributionPreviewResult | null>(null);
 const sessionPage = ref(1);
 const potentialPage = ref(1);
 const pending = ref<PendingAction>("");
+const previewBusy = ref<PreviewBusy | null>(null);
+const previewCard = ref<HTMLElement | null>(null);
 const requestError = ref("");
 const launchError = ref("");
 const contentUnresolved = ref(false);
@@ -143,6 +161,21 @@ const WIZARD_TITLE_ID = "launch-wizard-title";
 const closeButton = ref<HTMLButtonElement | null>(null);
 let triggerElement: HTMLElement | null = null;
 
+/**
+ * Incremented whenever a preview starts or is cancelled. A response may only
+ * apply state when its captured generation still matches, because the shared
+ * transport has no abort support.
+ */
+let previewGeneration = 0;
+let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * The server runs the mirror clone and Session matching inside one request and
+ * never reports substage progress. Keep the first stage current for the whole
+ * request instead of faking a transition to the second stage.
+ */
+const PREVIEW_CURRENT_STAGE = 0;
+
 const workspaceName = computed(
   () => auth.workspaceById(props.wid)?.name ?? "当前空间",
 );
@@ -153,22 +186,53 @@ function handleKeydown(event: KeyboardEvent): void {
     return;
   }
   event.preventDefault();
+  if (versionOpen.value) {
+    versionOpen.value = false;
+    return;
+  }
   emit("close");
+}
+
+/** Close the version suggestions when a click lands outside the combobox. */
+function handleDocumentClick(event: MouseEvent): void {
+  if (!versionOpen.value) {
+    return;
+  }
+  const target = event.target;
+  if (target instanceof Element && target.closest(".wz-version-combo")) {
+    return;
+  }
+  versionOpen.value = false;
 }
 
 onMounted(() => {
   triggerElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   window.addEventListener("keydown", handleKeydown);
+  document.addEventListener("click", handleDocumentClick);
   closeButton.value?.focus();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleKeydown);
+  document.removeEventListener("click", handleDocumentClick);
+  stopElapsedTimer();
+  previewGeneration += 1;
   if (triggerElement?.isConnected) {
     triggerElement.focus();
   }
   triggerElement = null;
 });
+
+watch(
+  () => [Boolean(previewBusy.value), previewBusy.value?.failed] as const,
+  async () => {
+    if (!previewBusy.value) {
+      return;
+    }
+    await nextTick();
+    previewCard.value?.scrollIntoView?.({ block: "nearest" });
+  },
+);
 
 const catalogs = useQuery({
   queryKey: computed(() => queryKeys.targetCatalog(props.wid)),
@@ -208,33 +272,71 @@ const hasAnyTarget = computed(() => {
 const selectedTarget = computed(
   () => targetOptions.value.find((target) => target.id === targetId.value) ?? null,
 );
-const versionOptions = computed(() => {
-  if (versions.data.value?.versions.length) {
-    return versions.data.value.versions;
+const versionSuggestions = computed(() => {
+  const values: string[] = [];
+  const remoteDefault =
+    versions.data.value?.defaultRef || selectedTarget.value?.defaultRef;
+  if (remoteDefault) {
+    values.push(remoteDefault);
   }
-  return selectedTarget.value?.versions ?? [];
+  const options = versions.data.value?.versions.length
+    ? versions.data.value.versions
+    : selectedTarget.value?.versions ?? [];
+  for (const version of options) {
+    if (!values.includes(version)) {
+      values.push(version);
+    }
+  }
+  return values;
 });
 
 /**
- * Pick the default version for one option list.
- * @param options Versions currently offered by the remote query or catalog fallback.
- * @returns The remote `defaultRef` when present, otherwise the first option.
+ * Pick the default version for the current target.
+ * @returns `defaultRef` when present, otherwise the first suggestion.
  */
-function defaultVersion(options: string[]): string {
-  const remoteDefault = versions.data.value?.defaultRef;
-  if (remoteDefault && options.includes(remoteDefault)) {
+function defaultVersion(): string {
+  const remoteDefault =
+    versions.data.value?.defaultRef || selectedTarget.value?.defaultRef;
+  if (remoteDefault) {
     return remoteDefault;
   }
-  return options[0] ?? "";
+  return versionSuggestions.value[0] ?? "";
+}
+
+/** Identify whether a suggestion is the configured baseline or a tag. */
+function versionKind(version: string): string {
+  const tags = versions.data.value?.versions.length
+    ? versions.data.value.versions
+    : selectedTarget.value?.versions ?? [];
+  return tags.includes(version) ? "tag" : "基线";
+}
+
+/** Toggle the tag suggestion menu without losing a typed value. */
+function toggleVersionMenu(): void {
+  versionOpen.value = !versionOpen.value;
+}
+
+/** Apply one tag suggestion and mark the field as user-pinned. */
+function pickVersion(version: string): void {
+  targetVersion.value = version;
+  versionPinned.value = true;
+  versionOpen.value = false;
+  fieldErrors.version = false;
+  clearContentUnresolved();
+}
+
+/** Mark a typed ref as intentional so async suggestions cannot overwrite it. */
+function onVersionInput(): void {
+  versionPinned.value = true;
 }
 
 watch(
-  versionOptions,
-  (options) => {
-    if (versionPinned.value && options.includes(targetVersion.value)) {
+  versionSuggestions,
+  () => {
+    if (versionPinned.value && targetVersion.value) {
       return;
     }
-    targetVersion.value = defaultVersion(options);
+    targetVersion.value = defaultVersion();
     versionPinned.value = false;
   },
   { immediate: true },
@@ -246,6 +348,7 @@ watch(targetId, () => {
 });
 watch(targetVersion, () => {
   fieldErrors.version = false;
+  versionFormatError.value = "";
   clearContentUnresolved();
   if (sessionPreview.value || potentialPreview.value || attributionPreview.value) {
     resetDownstream();
@@ -296,6 +399,110 @@ const versionError = computed(() => {
 });
 
 const isBusy = computed(() => pending.value !== "");
+const previewInFlight = computed(
+  () => Boolean(previewBusy.value && !previewBusy.value.failed),
+);
+const formLocked = computed(() => previewInFlight.value);
+const nextButtonTestId = computed(() => {
+  switch (previewBusy.value?.fromStep) {
+    case 2:
+      return "wizard-step2-next";
+    case 3:
+      return "wizard-step3-next";
+    default:
+      return "wizard-next";
+  }
+});
+
+const previewStages = computed<PreviewStage[]>(() => {
+  const fromStep = previewBusy.value?.fromStep ?? 1;
+  if (fromStep === 1) {
+    return [
+      {
+        label: "读取目标版本",
+        detail:
+          "读取 SKILL.md / AGENT.md 并计算 body hash；缓存为空时先从远程仓库克隆。",
+      },
+      {
+        label: "关联 Session",
+        detail: `在 ${windowFrom.value} ~ ${windowTo.value} 内匹配对象出现过的 Session。`,
+      },
+    ];
+  }
+  if (fromStep === 2) {
+    return [
+      {
+        label: "筛选潜在 bad case",
+        detail: "按当前策略过滤关联 Session 中的 bad case。",
+      },
+    ];
+  }
+  return [
+    {
+      label: "检查归因缓存",
+      detail: "只读检查该对象版本已有的归因结果。",
+    },
+  ];
+});
+const currentPreviewStage = computed(
+  () => previewStages.value[PREVIEW_CURRENT_STAGE] ?? previewStages.value[0],
+);
+const previewHeading = computed(() => {
+  const stage = currentPreviewStage.value;
+  const busy = previewBusy.value;
+  if (!stage || !busy) {
+    return "";
+  }
+  return busy.failed
+    ? `${stage.label}超时`
+    : `正在准备第 ${busy.fromStep + 1} 步 · ${stage.label}`;
+});
+const previewLead = computed(() => {
+  const busy = previewBusy.value;
+  if (!busy) {
+    return "";
+  }
+  if (busy.failed) {
+    return `${busy.timeoutMessage} 服务端读取达到上限，未能读完目标文件；这不是 Session 数据为空。`;
+  }
+  return busy.fromStep === 1
+    ? "先读取目标版本内容并计算 body hash（缓存为空时会从远程仓库克隆），再在所选时间段内关联 Session。通常 2–5 秒；首次读取需要先克隆仓库，服务端单次读取上限约 20 秒，超时会给出重试。"
+    : "这一步只读预览，不会写入或启动运行。完成后自动进入下一步。";
+});
+const previewHint = computed(() =>
+  previewBusy.value?.failed
+    ? "排查：确认版本、仓库地址与子目录；也可以换一个版本。首次成功读取后服务端会缓存 mirror，重试通常更快。"
+    : "可以取消等待并修改条件；启动前不会写入归因。",
+);
+const previewButtonLabel = computed(() => {
+  const stage = currentPreviewStage.value;
+  return stage ? `正在${stage.label}…` : "正在准备…";
+});
+const previewStageRows = computed(() => {
+  const failed = previewBusy.value?.failed ?? false;
+  return previewStages.value.map((stage, index) => {
+    const state =
+      failed && index === PREVIEW_CURRENT_STAGE
+        ? "failed"
+        : index < PREVIEW_CURRENT_STAGE
+          ? "done"
+          : index === PREVIEW_CURRENT_STAGE
+            ? "current"
+            : "pending";
+    return {
+      ...stage,
+      state,
+      stateLabel:
+        state === "done"
+          ? "完成"
+          : state === "current"
+            ? "进行中"
+            : state === "failed"
+              ? "超时"
+              : "等待",
+    };
+  });
+});
 const sessionSummary = computed(
   () => sessionPreview.value?.summary ?? sessionEmptySummary.value,
 );
@@ -367,11 +574,10 @@ function applyFocusCase(): void {
   targetId.value = target.id;
   versionPinned.value = true;
   targetVersion.value =
-    caseData.objectVersion &&
-    (target.versions.includes(caseData.objectVersion) ||
-      target.defaultRef === caseData.objectVersion)
-      ? caseData.objectVersion
-      : target.defaultRef || target.versions[0] || "";
+    caseData.objectVersion ||
+    target.defaultRef ||
+    target.versions[0] ||
+    "";
   focusTargetMissing.value = false;
 }
 
@@ -406,6 +612,7 @@ function selectType(next: "skill" | "agent"): void {
   targetId.value = null;
   targetVersion.value = "";
   versionPinned.value = false;
+  versionOpen.value = false;
   resetDownstream();
 }
 
@@ -414,6 +621,7 @@ function selectTargetId(id: string): void {
   targetId.value = id || null;
   targetVersion.value = "";
   versionPinned.value = false;
+  versionOpen.value = false;
   resetDownstream();
 }
 
@@ -446,12 +654,42 @@ function goTargetConfig(): void {
   void router.push(workspacePath(props.wid, "evolution/targets"));
 }
 
+/** Return a local git-ref format error, matching the server's safe-ref rules. */
+function versionRefFormatError(value: string): string {
+  const ref = value.trim();
+  if (!ref) {
+    return "请选择或输入版本";
+  }
+  if (ref.length > 96) {
+    return "版本不能超过 96 个字符";
+  }
+  if (ref.startsWith("-") || ref.startsWith("/")) {
+    return "版本不能以 - 或 / 开头";
+  }
+  if (ref.endsWith("/") || ref.endsWith(".") || ref.endsWith(".lock")) {
+    return "版本不能以 /、. 或 .lock 结尾";
+  }
+  if (ref.includes("..") || ref.includes("@{") || ref.includes("//")) {
+    return "版本不是合法的 git ref";
+  }
+  const reserved = "~^:?*[\\";
+  if (
+    Array.from(ref).some(
+      (char) =>
+        /\s/.test(char) || reserved.includes(char) || char.charCodeAt(0) < 0x20,
+    )
+  ) {
+    return "版本不能包含空格或 git ref 保留字符";
+  }
+  return "";
+}
+
 /** Build the shared preview/launch condition from the current step-1 form. */
 function condition() {
   return {
     targetType: targetType.value,
     targetName: selectedTarget.value?.name ?? "",
-    targetVersion: targetVersion.value || undefined,
+    targetVersion: targetVersion.value.trim() || undefined,
     from: windowFrom.value || undefined,
     to: windowTo.value || undefined,
   };
@@ -475,8 +713,10 @@ function validateStep1(): boolean {
   const reversed = Boolean(
     windowFrom.value && windowTo.value && windowFrom.value > windowTo.value,
   );
+  versionFormatError.value = versionRefFormatError(targetVersion.value);
   fieldErrors.target = !selectedTarget.value;
-  fieldErrors.version = !targetVersion.value || contentUnresolved.value;
+  fieldErrors.version =
+    Boolean(versionFormatError.value) || contentUnresolved.value;
   fieldErrors.from = !windowFrom.value || reversed;
   fieldErrors.to = !windowTo.value || reversed;
   fieldErrors.policy = policyRuleError.value;
@@ -507,10 +747,14 @@ function hasCode(error: unknown, code: string): boolean {
 function clearContentUnresolved(): void {
   contentUnresolved.value = false;
   contentError.value = "";
+  if (previewBusy.value?.failed) {
+    stopElapsedTimer();
+    previewBusy.value = null;
+  }
 }
 
-/** Build actionable copy from a `TARGET_CONTENT_UNRESOLVED` reason. */
-function contentUnresolvedMessage(error: unknown): string {
+/** Read the stable reason string carried by a target-content failure. */
+function contentFailureReason(error: unknown): string {
   const details =
     error instanceof ApiError &&
     error.details &&
@@ -518,15 +762,107 @@ function contentUnresolvedMessage(error: unknown): string {
     !Array.isArray(error.details)
       ? (error.details as { reason?: unknown })
       : null;
-  const reason = typeof details?.reason === "string" ? details.reason : "";
+  return typeof details?.reason === "string" ? details.reason : "";
+}
+
+/**
+ * Only timeout reasons use the failed progress card; every other content
+ * failure keeps the existing inline version-field error.
+ */
+function isContentTimeout(error: unknown): boolean {
+  if (!hasCode(error, "TARGET_CONTENT_UNRESOLVED")) {
+    return false;
+  }
+  const reason = contentFailureReason(error);
+  return reason === "content_timeout" || reason === "timeout";
+}
+
+/** Build actionable copy from a `TARGET_CONTENT_UNRESOLVED` reason. */
+function contentUnresolvedMessage(error: unknown): string {
+  const reason = contentFailureReason(error);
   return (
     CONTENT_REASON_COPY[reason] ??
     "服务端无法把所选版本解析为 body hash。请确认 tag、仓库地址与子目录；也可换一个版本后重试。"
   );
 }
 
+/** Format elapsed seconds, switching to minutes once a wait passes one minute. */
+function formatElapsed(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  if (total < 60) {
+    return `${total} 秒`;
+  }
+  return `${Math.floor(total / 60)} 分 ${String(total % 60).padStart(2, "0")} 秒`;
+}
+
+/** Stop the one-second elapsed ticker if it is running. */
+function stopElapsedTimer(): void {
+  if (elapsedTimer !== null) {
+    clearInterval(elapsedTimer);
+    elapsedTimer = null;
+  }
+}
+
+/** Tick the elapsed counter once per second while a preview is in flight. */
+function startElapsedTimer(): void {
+  stopElapsedTimer();
+  elapsedTimer = setInterval(() => {
+    if (previewBusy.value && !previewBusy.value.failed) {
+      previewBusy.value.elapsed += 1;
+    }
+  }, 1000);
+}
+
 /**
- * Turn a content-resolver 422 into an actionable version-field failure.
+ * Start one forward preview and return its generation token.
+ * @param fromStep Step the user is waiting on.
+ * @param action Preview endpoint being called.
+ * @returns The generation that may still apply the response.
+ */
+function beginPreview(fromStep: PreviewFromStep, action: PreviewAction): number {
+  previewGeneration += 1;
+  const generation = previewGeneration;
+  stopElapsedTimer();
+  previewBusy.value = {
+    fromStep,
+    failed: false,
+    elapsed: 0,
+    timeoutMessage: "",
+  };
+  pending.value = action;
+  requestError.value = "";
+  startElapsedTimer();
+  return generation;
+}
+
+/**
+ * Settle a preview only when it is still the active generation. A cancelled
+ * request may resolve later and must never advance the wizard or clear a newer
+ * request's pending state.
+ * @param generation Token returned by {@link beginPreview}.
+ */
+function finishPreview(generation: number): void {
+  if (generation !== previewGeneration) {
+    return;
+  }
+  pending.value = "";
+  stopElapsedTimer();
+  if (previewBusy.value && !previewBusy.value.failed) {
+    previewBusy.value = null;
+  }
+}
+
+/** Cancel the wait, keep the current step and its values, and ignore late results. */
+function cancelPreview(): void {
+  previewGeneration += 1;
+  stopElapsedTimer();
+  previewBusy.value = null;
+  pending.value = "";
+}
+
+/**
+ * Turn a content-resolver 422 into an actionable version-field failure, or a
+ * failed progress card when the reason is a timeout and a preview was running.
  * @param error Failure raised by the shared API transport.
  * @returns Whether the failure is a target-content 422.
  */
@@ -534,10 +870,11 @@ function handleContentUnresolved(error: unknown): boolean {
   if (!hasCode(error, "TARGET_CONTENT_UNRESOLVED")) {
     return false;
   }
+  const timeoutCard = isContentTimeout(error) && previewBusy.value !== null;
   step.value = 1;
   contentUnresolved.value = true;
   contentError.value = contentUnresolvedMessage(error);
-  fieldErrors.version = true;
+  fieldErrors.version = !timeoutCard;
   sessionPreview.value = null;
   sessionEmptySummary.value = null;
   potentialPreview.value = null;
@@ -545,6 +882,14 @@ function handleContentUnresolved(error: unknown): boolean {
   attributionPreview.value = null;
   requestError.value = "";
   launchError.value = "";
+  if (timeoutCard && previewBusy.value) {
+    // Content resolution always belongs to step 1's target read, even when a
+    // later preview surfaced it; keep the failed card on that stage.
+    previewBusy.value.fromStep = 1;
+    previewBusy.value.failed = true;
+    previewBusy.value.timeoutMessage = contentError.value;
+    stopElapsedTimer();
+  }
   return true;
 }
 
@@ -555,19 +900,33 @@ function retryContentResolution(): void {
   void goToSessions();
 }
 
+/** Dismiss the timeout card and keep the user on step 1 with the form editable. */
+function returnToEditing(): void {
+  previewGeneration += 1;
+  stopElapsedTimer();
+  previewBusy.value = null;
+  pending.value = "";
+  clearContentUnresolved();
+  fieldErrors.version = false;
+  step.value = 1;
+  requestError.value = "";
+}
+
 /** Run the Session association preview and advance to step 2. */
 async function goToSessions(): Promise<void> {
   if (!validateStep1()) {
+    versionOpen.value = false;
     return;
   }
-  pending.value = "sessions";
-  requestError.value = "";
+  versionOpen.value = false;
+  const generation = beginPreview(1, "sessions");
   try {
     const result = await previewSessions(props.wid, {
       ...condition(),
       page: 1,
       pageSize: SESSION_PAGE_SIZE,
     });
+    if (generation !== previewGeneration) return;
     sessionPreview.value = result;
     sessionEmptySummary.value = null;
     sessionPage.value = result.page;
@@ -576,6 +935,7 @@ async function goToSessions(): Promise<void> {
     attributionPreview.value = null;
     step.value = 2;
   } catch (error) {
+    if (generation !== previewGeneration) return;
     if (handleContentUnresolved(error)) return;
     if (hasCode(error, "NO_ASSOCIATED_SESSIONS")) {
       sessionPreview.value = null;
@@ -586,7 +946,7 @@ async function goToSessions(): Promise<void> {
     }
     requestError.value = formatApiError(error, "加载 Session 关联失败").message;
   } finally {
-    pending.value = "";
+    finishPreview(generation);
   }
 }
 
@@ -618,8 +978,7 @@ async function goToPotential(): Promise<void> {
   if (!hasAssociatedSessions.value) {
     return;
   }
-  pending.value = "potential";
-  requestError.value = "";
+  const generation = beginPreview(2, "potential");
   try {
     const result = await previewPotential(props.wid, {
       ...condition(),
@@ -627,12 +986,14 @@ async function goToPotential(): Promise<void> {
       page: 1,
       pageSize: POTENTIAL_PAGE_SIZE,
     });
+    if (generation !== previewGeneration) return;
     potentialPreview.value = result;
     potentialEmpty.value = false;
     potentialPage.value = result.page;
     attributionPreview.value = null;
     step.value = 3;
   } catch (error) {
+    if (generation !== previewGeneration) return;
     if (handleContentUnresolved(error)) return;
     if (hasCode(error, "NO_POTENTIAL_MATCHED")) {
       potentialPreview.value = null;
@@ -651,7 +1012,7 @@ async function goToPotential(): Promise<void> {
     }
     requestError.value = formatApiError(error, "加载潜在 bad case 失败").message;
   } finally {
-    pending.value = "";
+    finishPreview(generation);
   }
 }
 
@@ -684,16 +1045,18 @@ async function goToAttribution(): Promise<void> {
   if (!hasPotential.value) {
     return;
   }
-  pending.value = "attribution";
-  requestError.value = "";
+  const generation = beginPreview(3, "attribution");
   try {
-    attributionPreview.value = await previewAttribution(props.wid, {
+    const result = await previewAttribution(props.wid, {
       ...condition(),
       policy: currentPolicy(),
       cacheEnabled: cacheEnabled.value,
     });
+    if (generation !== previewGeneration) return;
+    attributionPreview.value = result;
     step.value = 4;
   } catch (error) {
+    if (generation !== previewGeneration) return;
     if (handleContentUnresolved(error)) return;
     if (hasCode(error, "NO_POTENTIAL_MATCHED")) {
       potentialPreview.value = null;
@@ -703,7 +1066,7 @@ async function goToAttribution(): Promise<void> {
     }
     requestError.value = formatApiError(error, "加载归因预览失败").message;
   } finally {
-    pending.value = "";
+    finishPreview(generation);
   }
 }
 
@@ -770,6 +1133,7 @@ function openPotentialCase(item: PotentialPreviewItem): void {
 function backToStep(next: WizardStep): void {
   requestError.value = "";
   launchError.value = "";
+  versionOpen.value = false;
   step.value = next;
 }
 
@@ -896,734 +1260,875 @@ const reasonEntries = computed(() => {
             <span :class="{ on: step === 4 }">④ 归因预览与启动</span>
           </div>
 
-          <template v-if="step === 1">
-            <div class="f-row">
-              <div class="f-label">
-                工作空间
+          <div
+            v-if="previewBusy"
+            ref="previewCard"
+            class="wz-progress"
+            :class="{ failed: previewBusy.failed }"
+            :data-testid="previewBusy.failed ? 'wizard-progress-failed' : 'wizard-progress'"
+            :role="previewBusy.failed ? 'alert' : 'status'"
+          >
+            <div class="wz-progress-head">
+              <span
+                v-if="previewBusy.failed"
+                class="wz-error-mark"
+                aria-hidden="true"
+              >!</span>
+              <span
+                v-else
+                class="wz-spinner"
+                aria-hidden="true"
+              />
+              <div class="wz-progress-title">
+                <b>{{ previewHeading }}</b>
+                <span class="wz-progress-sub">{{ previewBusy.failed ? "本次预览未完成，表单内容已保留" : "只读预览，不会写入数据" }}</span>
               </div>
-              <div class="f-inline">
-                <span class="v2-badge">{{ workspaceName }}</span>
-                <span class="f-note">启动后只处理该空间上报的 bad case</span>
-              </div>
+              <span
+                class="wz-progress-elapsed"
+                data-testid="wizard-elapsed"
+                aria-hidden="true"
+              >已等待 {{ formatElapsed(previewBusy.elapsed) }}</span>
             </div>
+            <p
+              :id="previewBusy.failed ? 'wizard-content-error' : undefined"
+              class="wz-progress-lead"
+            >
+              {{ previewLead }}
+            </p>
+            <ol class="wz-progress-steps">
+              <li
+                v-for="row in previewStageRows"
+                :key="row.label"
+                :class="row.state"
+                data-testid="wizard-progress-stage"
+              >
+                <span
+                  class="dot"
+                  aria-hidden="true"
+                >
+                  <span
+                    v-if="row.state === 'current'"
+                    class="wz-spinner"
+                  />
+                  <template v-else-if="row.state === 'done'">✓</template>
+                  <template v-else-if="row.state === 'failed'">!</template>
+                </span>
+                <div class="wz-progress-stage-body">
+                  <b>{{ row.label }}</b>
+                  <span>{{ row.detail }}</span>
+                </div>
+                <span class="state">{{ row.stateLabel }}</span>
+              </li>
+            </ol>
+            <div
+              v-if="previewBusy.failed"
+              class="wz-progress-actions"
+            >
+              <button
+                class="btn primary"
+                type="button"
+                data-testid="wizard-progress-retry"
+                @click="retryContentResolution"
+              >
+                重试解析
+              </button>
+              <button
+                class="btn"
+                type="button"
+                data-testid="wizard-content-back"
+                @click="returnToEditing"
+              >
+                返回修改条件
+              </button>
+            </div>
+            <p class="wz-progress-hint">
+              {{ previewHint }}
+            </p>
+          </div>
 
-            <div class="f-row">
-              <div class="f-label">
-                进化对象 <span class="req">*</span>
+          <div
+            class="wz-form"
+            :class="{ locked: formLocked }"
+            :inert="formLocked || undefined"
+            data-testid="wizard-form"
+          >
+            <template v-if="step === 1">
+              <div class="f-row">
+                <div class="f-label">
+                  工作空间
+                </div>
+                <div class="f-inline">
+                  <span class="v2-badge">{{ workspaceName }}</span>
+                  <span class="f-note">启动后只处理该空间上报的 bad case</span>
+                </div>
               </div>
-              <div class="f-inline wz-controls">
-                <div class="seg">
-                  <button
-                    :class="{ active: targetType === 'skill' }"
-                    type="button"
-                    @click="selectType('skill')"
-                  >
-                    skill
-                  </button>
-                  <button
-                    :class="{ active: targetType === 'agent' }"
-                    type="button"
-                    @click="selectType('agent')"
-                  >
-                    agent
-                  </button>
+
+              <div class="f-row">
+                <div class="f-label">
+                  进化对象 <span class="req">*</span>
                 </div>
-                <div class="wz-field">
-                  <select
-                    class="inp"
-                    :class="{ 'input-error': fieldErrors.target }"
-                    data-testid="wizard-target"
-                    :value="targetId ?? ''"
-                    :aria-invalid="fieldErrors.target ? 'true' : undefined"
-                    aria-describedby="wizard-target-error"
-                    @change="selectTargetId(($event.target as HTMLSelectElement).value)"
-                  >
-                    <option value="">
-                      {{ catalogs.isPending.value ? "读取对象…" : "选择对象" }}
-                    </option>
-                    <option
-                      v-for="target in targetOptions"
-                      :key="target.id"
-                      :value="target.id"
-                    >
-                      {{ target.name }}
-                    </option>
-                  </select>
-                  <p
-                    v-if="fieldErrors.target"
-                    id="wizard-target-error"
-                    data-testid="wizard-target-error"
-                    class="field-error"
-                    role="alert"
-                  >
-                    请选择进化对象
-                  </p>
-                  <p
-                    v-else-if="!targetOptions.length"
-                    class="field-error"
-                  >
-                    当前类型没有已启用的对象，可切换到另一种类型或前往配置。
-                  </p>
-                </div>
-                <span class="wz-inline-label">版本</span>
-                <div class="wz-field">
-                  <select
-                    v-model="targetVersion"
-                    class="inp"
-                    :class="{ 'input-error': fieldErrors.version }"
-                    data-testid="wizard-version"
-                    :aria-invalid="fieldErrors.version ? 'true' : undefined"
-                    aria-describedby="wizard-version-error"
-                    @change="versionPinned = true"
-                  >
-                    <option value="">
-                      {{ versions.isPending.value ? "读取版本…" : "版本" }}
-                    </option>
-                    <option
-                      v-for="version in versionOptions"
-                      :key="version"
-                      :value="version"
-                    >
-                      {{ version }}
-                    </option>
-                  </select>
-                  <p
-                    v-if="fieldErrors.version"
-                    id="wizard-version-error"
-                    data-testid="wizard-version-error"
-                    class="field-error"
-                    role="alert"
-                  >
-                    {{ contentUnresolved ? contentError : "请选择版本" }}
+                <div class="f-inline wz-controls">
+                  <div class="seg">
                     <button
-                      v-if="contentUnresolved"
-                      class="linklike"
+                      :class="{ active: targetType === 'skill' }"
                       type="button"
-                      data-testid="wizard-content-retry"
-                      @click="retryContentResolution"
+                      @click="selectType('skill')"
                     >
-                      重试解析
+                      skill
                     </button>
+                    <button
+                      :class="{ active: targetType === 'agent' }"
+                      type="button"
+                      @click="selectType('agent')"
+                    >
+                      agent
+                    </button>
+                  </div>
+                  <div class="wz-field">
+                    <select
+                      class="inp"
+                      :class="{ 'input-error': fieldErrors.target }"
+                      data-testid="wizard-target"
+                      :value="targetId ?? ''"
+                      :aria-invalid="fieldErrors.target ? 'true' : undefined"
+                      aria-describedby="wizard-target-error"
+                      @change="selectTargetId(($event.target as HTMLSelectElement).value)"
+                    >
+                      <option value="">
+                        {{ catalogs.isPending.value ? "读取对象…" : "选择对象" }}
+                      </option>
+                      <option
+                        v-for="target in targetOptions"
+                        :key="target.id"
+                        :value="target.id"
+                      >
+                        {{ target.name }}
+                      </option>
+                    </select>
+                    <p
+                      v-if="fieldErrors.target"
+                      id="wizard-target-error"
+                      data-testid="wizard-target-error"
+                      class="field-error"
+                      role="alert"
+                    >
+                      请选择进化对象
+                    </p>
+                    <p
+                      v-else-if="!targetOptions.length"
+                      class="field-error"
+                    >
+                      当前类型没有已启用的对象，可切换到另一种类型或前往配置。
+                    </p>
+                  </div>
+                  <span class="wz-inline-label">版本</span>
+                  <div class="wz-field">
+                    <div class="wz-version-combo">
+                      <input
+                        v-model="targetVersion"
+                        class="inp"
+                        :class="{ 'input-error': fieldErrors.version || contentUnresolved }"
+                        data-testid="wizard-version"
+                        :placeholder="versions.isPending.value ? '读取版本…' : 'tag / 分支名 / commit id'"
+                        autocomplete="off"
+                        spellcheck="false"
+                        role="combobox"
+                        aria-controls="wizard-version-menu"
+                        :aria-expanded="versionOpen ? 'true' : 'false'"
+                        :aria-invalid="fieldErrors.version || contentUnresolved ? 'true' : undefined"
+                        :aria-describedby="fieldErrors.version ? 'wizard-version-error' : contentUnresolved ? 'wizard-content-error' : undefined"
+                        @input="onVersionInput"
+                        @focus="versionOpen = true"
+                        @keydown.down.prevent="versionOpen = true"
+                      >
+                      <button
+                        type="button"
+                        class="wz-version-toggle"
+                        data-testid="wizard-version-toggle"
+                        aria-label="展开 tag 建议"
+                        @click="toggleVersionMenu"
+                      >
+                        ▾
+                      </button>
+                      <ul
+                        v-if="versionOpen"
+                        id="wizard-version-menu"
+                        class="wz-version-menu"
+                        data-testid="wizard-version-menu"
+                        role="listbox"
+                      >
+                        <li
+                          v-for="version in versionSuggestions"
+                          :key="version"
+                        >
+                          <button
+                            type="button"
+                            class="wz-version-option"
+                            :class="{ current: version === targetVersion }"
+                            data-testid="wizard-version-option"
+                            role="option"
+                            :aria-selected="version === targetVersion ? 'true' : 'false'"
+                            @click="pickVersion(version)"
+                          >
+                            <span class="mono">{{ version }}</span>
+                            <span class="wz-version-kind">{{ versionKind(version) }}</span>
+                          </button>
+                        </li>
+                      </ul>
+                    </div>
+                    <p
+                      v-if="fieldErrors.version"
+                      id="wizard-version-error"
+                      data-testid="wizard-version-error"
+                      class="field-error"
+                      role="alert"
+                    >
+                      {{ contentUnresolved ? contentError : versionFormatError || "请选择或输入版本" }}
+                      <button
+                        v-if="contentUnresolved"
+                        class="linklike"
+                        type="button"
+                        data-testid="wizard-content-retry"
+                        @click="retryContentResolution"
+                      >
+                        重试解析
+                      </button>
+                    </p>
+                  </div>
+                </div>
+                <p
+                  v-if="versions.isError.value"
+                  id="wizard-version-load-error"
+                  class="wizard-error"
+                  data-testid="wizard-version-load-error"
+                  role="alert"
+                >
+                  版本列表读取失败<span v-if="versionError">：{{ versionError }}</span>。
+                  <button
+                    class="linklike"
+                    type="button"
+                    data-testid="wizard-version-retry"
+                    @click="retryVersions"
+                  >
+                    重试
+                  </button>
+                </p>
+                <p class="f-note">
+                  版本可直接输入 tag、分支名或 commit id；下拉建议来自当前对象的 tag 与基线。服务端会先用 git 校验该 ref 是否存在，再读取 SKILL.md / AGENT.md 并解析 body hash 作为目标 revision；解析结果可在运行详情查看。只列出当前空间已启用的进化对象；点击<!-- eslint-disable vue/multiline-html-element-content-newline -- 中文句内按钮与前后文字紧邻渲染，不留多余空格 --><button
+                    class="cfg-link"
+                    type="button"
+                    data-testid="wizard-target-config-link"
+                    @click="goTargetConfig"
+                  >配置页</button><!-- eslint-enable vue/multiline-html-element-content-newline -->调整。
+                </p>
+              </div>
+
+              <div
+                v-if="previewTargetRevision !== undefined"
+                class="f-row"
+              >
+                <div class="f-label">
+                  目标 revision
+                </div>
+                <div class="f-inline">
+                  <span
+                    v-if="previewTargetRevision"
+                    class="revision-chip"
+                    data-testid="wizard-target-revision"
+                    :title="previewTargetRevision"
+                  >{{ targetVersion }} → {{ previewTargetRevision }}</span>
+                  <span
+                    v-else
+                    class="revision-unresolved"
+                    data-testid="wizard-target-revision-unresolved"
+                  >未解析到 revision：服务端未返回 body hash；请确认 tag、仓库地址与子目录，或换一个版本后重试。</span>
+                </div>
+                <p class="f-note">
+                  只读结果，来自最近一次预览；不会回退到 tag 猜测。
+                </p>
+              </div>
+
+              <div class="f-row">
+                <div class="f-label">
+                  bad case 时间段 <span class="req">*</span>
+                </div>
+                <div class="f-inline wz-controls">
+                  <div class="wz-field">
+                    <input
+                      v-model="windowFrom"
+                      class="inp"
+                      :class="{ 'input-error': fieldErrors.from }"
+                      type="date"
+                      data-testid="wizard-from"
+                      :aria-invalid="fieldErrors.from ? 'true' : undefined"
+                      aria-describedby="wizard-from-error"
+                    >
+                    <p
+                      v-if="fieldErrors.from"
+                      id="wizard-from-error"
+                      data-testid="wizard-from-error"
+                      class="field-error"
+                      role="alert"
+                    >
+                      {{ windowFrom ? "起始时间不能晚于结束时间" : "请选择开始时间" }}
+                    </p>
+                  </div>
+                  <span class="wz-inline-label">~</span>
+                  <div class="wz-field">
+                    <input
+                      v-model="windowTo"
+                      class="inp"
+                      :class="{ 'input-error': fieldErrors.to }"
+                      type="date"
+                      data-testid="wizard-to"
+                      :aria-invalid="fieldErrors.to ? 'true' : undefined"
+                      aria-describedby="wizard-to-error"
+                    >
+                    <p
+                      v-if="fieldErrors.to"
+                      id="wizard-to-error"
+                      data-testid="wizard-to-error"
+                      class="field-error"
+                      role="alert"
+                    >
+                      {{ windowTo ? "起始时间不能晚于结束时间" : "请选择结束时间" }}
+                    </p>
+                  </div>
+                </div>
+                <p class="f-note">
+                  按 bad case 的 created_at 过滤；Session 的启动时间只用于展示。
+                </p>
+              </div>
+
+              <div class="f-row">
+                <div class="f-label">
+                  潜在 bad case 策略
+                </div>
+                <div
+                  class="policy"
+                  :class="{ selected: policyPreset === 'default' }"
+                  @click="policyPreset = 'default'"
+                >
+                  <label>
+                    <input
+                      v-model="policyPreset"
+                      type="radio"
+                      name="wizard-policy"
+                      value="default"
+                      data-testid="wizard-policy-default"
+                    >
+                    默认策略
+                  </label>
+                  <p>进化对象自身 <b>self</b> 上报的 bad case，或触发点在对象触发点之后的 bad case。</p>
+                </div>
+                <div
+                  class="policy"
+                  :class="{ selected: policyPreset === 'custom' }"
+                  @click="policyPreset = 'custom'"
+                >
+                  <label>
+                    <input
+                      v-model="policyPreset"
+                      type="radio"
+                      name="wizard-policy"
+                      value="custom"
+                      data-testid="wizard-policy-custom"
+                    >
+                    自定义策略
+                  </label>
+                  <div
+                    v-if="policyPreset === 'custom'"
+                    class="policy-rules"
+                  >
+                    <label class="switch-row">
+                      <input
+                        v-model="includeSelfReport"
+                        type="checkbox"
+                        data-testid="wizard-rule-self"
+                      >
+                      包含对象自身 self 上报
+                    </label>
+                    <label class="switch-row">
+                      <input
+                        v-model="includeAfterObject"
+                        type="checkbox"
+                        data-testid="wizard-rule-after"
+                      >
+                      包含触发点在对象之后
+                    </label>
+                    <label class="switch-row">
+                      <input
+                        v-model="sameObjectOnly"
+                        type="checkbox"
+                        data-testid="wizard-rule-same"
+                      >
+                      仅纳入同 object_name
+                    </label>
+                  </div>
+                  <p v-else>
+                    勾选规则组合成策略；两条匹配规则至少勾选一条。
                   </p>
                 </div>
+                <p
+                  v-if="policyRuleError"
+                  id="wizard-policy-error"
+                  data-testid="wizard-policy-error"
+                  class="field-error"
+                  role="alert"
+                >
+                  请至少勾选一条潜在匹配规则
+                </p>
+              </div>
+
+              <div
+                v-if="focusCaseId && focusCase.data.value"
+                class="wz-demo"
+                data-testid="wizard-focus-case"
+              >
+                <template v-if="focusTargetMissing">
+                  <b>从 bad case 启动</b> · {{ shortId(focusCaseId) }} 的对象 {{ focusCase.data.value?.objectName }} 未在配置中启用，请先前往配置页启用。
+                </template>
+                <template v-else>
+                  <b>从 bad case 启动</b> · {{ shortId(focusCaseId) }} 已锁定为关注对象；启动后可在归因列表中找到它。
+                </template>
               </div>
               <p
-                v-if="versions.isError.value"
-                id="wizard-version-load-error"
+                v-if="focusCase.isError.value"
                 class="wizard-error"
-                data-testid="wizard-version-load-error"
+                data-testid="wizard-focus-case-error"
                 role="alert"
               >
-                版本列表读取失败<span v-if="versionError">：{{ versionError }}</span>。
+                bad case 线索读取失败<span v-if="focusCaseError">：{{ focusCaseError }}</span>，将按普通条件启动。
                 <button
                   class="linklike"
                   type="button"
-                  data-testid="wizard-version-retry"
-                  @click="retryVersions"
+                  @click="retryFocusCase"
                 >
                   重试
                 </button>
               </p>
-              <p class="f-note">
-                版本是内容来源：服务端会读取该 tag 下的 SKILL.md / AGENT.md，并解析 body hash 作为目标 revision；解析结果可在运行详情查看。只列出当前空间已启用的进化对象；点击<!-- eslint-disable vue/multiline-html-element-content-newline -- 中文句内按钮与前后文字紧邻渲染，不留多余空格 --><button
-                  class="cfg-link"
-                  type="button"
-                  data-testid="wizard-target-config-link"
-                  @click="goTargetConfig"
-                >配置页</button><!-- eslint-enable vue/multiline-html-element-content-newline -->调整。
-              </p>
-            </div>
 
-            <div
-              v-if="previewTargetRevision !== undefined"
-              class="f-row"
-            >
-              <div class="f-label">
-                目标 revision
-              </div>
-              <div class="f-inline">
-                <span
-                  v-if="previewTargetRevision"
-                  class="revision-chip"
-                  data-testid="wizard-target-revision"
-                  :title="previewTargetRevision"
-                >{{ targetVersion }} → {{ previewTargetRevision }}</span>
-                <span
-                  v-else
-                  class="revision-unresolved"
-                  data-testid="wizard-target-revision-unresolved"
-                >未解析到 revision：服务端未返回 body hash；请确认 tag、仓库地址与子目录，或换一个版本后重试。</span>
-              </div>
-              <p class="f-note">
-                只读结果，来自最近一次预览；不会回退到 tag 猜测。
-              </p>
-            </div>
-
-            <div class="f-row">
-              <div class="f-label">
-                bad case 时间段 <span class="req">*</span>
-              </div>
-              <div class="f-inline wz-controls">
-                <div class="wz-field">
-                  <input
-                    v-model="windowFrom"
-                    class="inp"
-                    :class="{ 'input-error': fieldErrors.from }"
-                    type="date"
-                    data-testid="wizard-from"
-                    :aria-invalid="fieldErrors.from ? 'true' : undefined"
-                    aria-describedby="wizard-from-error"
-                  >
-                  <p
-                    v-if="fieldErrors.from"
-                    id="wizard-from-error"
-                    data-testid="wizard-from-error"
-                    class="field-error"
-                    role="alert"
-                  >
-                    {{ windowFrom ? "起始时间不能晚于结束时间" : "请选择开始时间" }}
-                  </p>
-                </div>
-                <span class="wz-inline-label">~</span>
-                <div class="wz-field">
-                  <input
-                    v-model="windowTo"
-                    class="inp"
-                    :class="{ 'input-error': fieldErrors.to }"
-                    type="date"
-                    data-testid="wizard-to"
-                    :aria-invalid="fieldErrors.to ? 'true' : undefined"
-                    aria-describedby="wizard-to-error"
-                  >
-                  <p
-                    v-if="fieldErrors.to"
-                    id="wizard-to-error"
-                    data-testid="wizard-to-error"
-                    class="field-error"
-                    role="alert"
-                  >
-                    {{ windowTo ? "起始时间不能晚于结束时间" : "请选择结束时间" }}
-                  </p>
-                </div>
-              </div>
-              <p class="f-note">
-                按 bad case 的 created_at 过滤；Session 的启动时间只用于展示。
-              </p>
-            </div>
-
-            <div class="f-row">
-              <div class="f-label">
-                潜在 bad case 策略
-              </div>
-              <div
-                class="policy"
-                :class="{ selected: policyPreset === 'default' }"
-                @click="policyPreset = 'default'"
-              >
-                <label>
-                  <input
-                    v-model="policyPreset"
-                    type="radio"
-                    name="wizard-policy"
-                    value="default"
-                    data-testid="wizard-policy-default"
-                  >
-                  默认策略
-                </label>
-                <p>进化对象自身 <b>self</b> 上报的 bad case，或触发点在对象触发点之后的 bad case。</p>
-              </div>
-              <div
-                class="policy"
-                :class="{ selected: policyPreset === 'custom' }"
-                @click="policyPreset = 'custom'"
-              >
-                <label>
-                  <input
-                    v-model="policyPreset"
-                    type="radio"
-                    name="wizard-policy"
-                    value="custom"
-                    data-testid="wizard-policy-custom"
-                  >
-                  自定义策略
-                </label>
-                <div
-                  v-if="policyPreset === 'custom'"
-                  class="policy-rules"
-                >
-                  <label class="switch-row">
-                    <input
-                      v-model="includeSelfReport"
-                      type="checkbox"
-                      data-testid="wizard-rule-self"
-                    >
-                    包含对象自身 self 上报
-                  </label>
-                  <label class="switch-row">
-                    <input
-                      v-model="includeAfterObject"
-                      type="checkbox"
-                      data-testid="wizard-rule-after"
-                    >
-                    包含触发点在对象之后
-                  </label>
-                  <label class="switch-row">
-                    <input
-                      v-model="sameObjectOnly"
-                      type="checkbox"
-                      data-testid="wizard-rule-same"
-                    >
-                    仅纳入同 object_name
-                  </label>
-                </div>
-                <p v-else>
-                  勾选规则组合成策略；两条匹配规则至少勾选一条。
-                </p>
-              </div>
               <p
-                v-if="policyRuleError"
-                id="wizard-policy-error"
-                data-testid="wizard-policy-error"
-                class="field-error"
+                v-if="requestError"
+                class="wizard-error"
+                data-testid="wizard-error"
                 role="alert"
               >
-                请至少勾选一条潜在匹配规则
-              </p>
-            </div>
-
-            <div
-              v-if="focusCaseId && focusCase.data.value"
-              class="wz-demo"
-              data-testid="wizard-focus-case"
-            >
-              <template v-if="focusTargetMissing">
-                <b>从 bad case 启动</b> · {{ shortId(focusCaseId) }} 的对象 {{ focusCase.data.value?.objectName }} 未在配置中启用，请先前往配置页启用。
-              </template>
-              <template v-else>
-                <b>从 bad case 启动</b> · {{ shortId(focusCaseId) }} 已锁定为关注对象；启动后可在归因列表中找到它。
-              </template>
-            </div>
-            <p
-              v-if="focusCase.isError.value"
-              class="wizard-error"
-              data-testid="wizard-focus-case-error"
-              role="alert"
-            >
-              bad case 线索读取失败<span v-if="focusCaseError">：{{ focusCaseError }}</span>，将按普通条件启动。
-              <button
-                class="linklike"
-                type="button"
-                @click="retryFocusCase"
-              >
-                重试
-              </button>
-            </p>
-
-            <p
-              v-if="requestError"
-              class="wizard-error"
-              data-testid="wizard-error"
-              role="alert"
-            >
-              {{ requestError }}
-            </p>
-          </template>
-
-          <template v-else-if="step === 2">
-            <div class="wz-condstrip">
-              <span class="chip kind">{{ targetType }}:{{ selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
-              <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
-              <span class="chip">{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
-              <span
-                v-if="previewTargetRevision !== undefined"
-                class="chip revision"
-                :class="{ unresolved: !previewTargetRevision }"
-                data-testid="wizard-condition-revision"
-                :title="previewTargetRevision ?? '服务端未返回 targetRevision，不猜测 tag'"
-              >{{ previewTargetRevision ? `revision ${previewTargetRevision}` : "revision 未解析" }}</span>
-              <button
-                class="btn sm back"
-                type="button"
-                @click="backToStep(1)"
-              >
-                ← 修改条件
-              </button>
-            </div>
-
-            <div class="wz-section-title">
-              第 2 步 · Session 关联
-              <span>先判断对象版本出现在哪些 Session，只有出现的 Session 才进入下一步</span>
-            </div>
-
-            <div class="wz-stats">
-              <span class="st"><b>{{ sessionSummary?.reported ?? 0 }}</b><span>上报过 bad case 的 Session</span></span>
-              <span class="st accent"><b>{{ sessionSummary?.associated ?? 0 }}</b><span>对象出现 · 已关联</span></span>
-              <span class="st"><b>{{ sessionSummary?.skipped ?? 0 }}</b><span>未出现 · 跳过</span></span>
-              <span class="st"><b>{{ sessionSummary?.versionUnresolved ?? 0 }}</b><span>版本未知</span></span>
-              <span class="st"><b>{{ sessionSummary?.pending ?? 0 }}</b><span>待轨迹同步</span></span>
-            </div>
-
-            <template v-if="sessionPreview">
-              <div class="rep-scroll">
-                <table
-                  class="rep"
-                  data-testid="wizard-session-table"
-                >
-                  <thead>
-                    <tr>
-                      <th>Session</th>
-                      <th>对象出现</th>
-                      <th>对象触发点时间</th>
-                      <th>该 Session 的 bad case 数</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="item in sessionPreview.items"
-                      :key="item.sessionId"
-                    >
-                      <td>
-                        <b>{{ item.title }}</b>
-                        <span class="cell-sub mono">#{{ shortId(item.sessionId) }}</span>
-                      </td>
-                      <td>
-                        <span class="v2-badge ok">已出现</span>
-                      </td>
-                      <td class="mono">
-                        {{ formatMoment(item.objectTriggerAt) }}
-                      </td>
-                      <td class="mono">
-                        {{ item.badCaseCount }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div class="pager">
-                <button
-                  class="btn"
-                  type="button"
-                  data-testid="wizard-session-prev"
-                  :disabled="sessionPage <= 1 || isBusy"
-                  @click="changeSessionPage(sessionPage - 1)"
-                >
-                  ← 上一页
-                </button>
-                <span class="pager-info">第 <b>{{ sessionPage }}</b> / {{ sessionPageCount }} 页 · 共 <b>{{ sessionPreview.total }}</b> 个关联 Session</span>
-                <button
-                  class="btn"
-                  type="button"
-                  data-testid="wizard-session-next"
-                  :disabled="sessionPage >= sessionPageCount || isBusy"
-                  @click="changeSessionPage(sessionPage + 1)"
-                >
-                  下一页 →
-                </button>
-              </div>
-              <p class="f-note">
-                只展示对象版本出现过的 Session；未出现的 Session 已跳过，下一步再按策略筛选潜在 bad case。
+                {{ requestError }}
               </p>
             </template>
-            <div
-              v-else
-              class="wz-empty"
-              data-testid="wizard-session-empty"
-            >
-              <div>
-                <div
-                  aria-hidden="true"
-                  class="wz-empty-icon"
+
+            <template v-else-if="step === 2">
+              <div class="wz-condstrip">
+                <span class="chip kind">{{ targetType }}:{{ selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
+                <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
+                <span class="chip">{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
+                <span
+                  v-if="previewTargetRevision !== undefined"
+                  class="chip revision"
+                  :class="{ unresolved: !previewTargetRevision }"
+                  data-testid="wizard-condition-revision"
+                  :title="previewTargetRevision ?? '服务端未返回 targetRevision，不猜测 tag'"
+                >{{ previewTargetRevision ? `revision ${previewTargetRevision}` : "revision 未解析" }}</span>
+                <button
+                  class="btn sm back"
+                  type="button"
+                  @click="backToStep(1)"
                 >
-                  ∅
+                  ← 修改条件
+                </button>
+              </div>
+
+              <div class="wz-section-title">
+                第 2 步 · Session 关联
+                <span>先判断对象版本出现在哪些 Session，只有出现的 Session 才进入下一步</span>
+              </div>
+
+              <div class="wz-stats">
+                <span class="st"><b>{{ sessionSummary?.reported ?? 0 }}</b><span>上报过 bad case 的 Session</span></span>
+                <span class="st accent"><b>{{ sessionSummary?.associated ?? 0 }}</b><span>对象出现 · 已关联</span></span>
+                <span class="st"><b>{{ sessionSummary?.skipped ?? 0 }}</b><span>未出现 · 跳过</span></span>
+                <span class="st"><b>{{ sessionSummary?.versionUnresolved ?? 0 }}</b><span>版本未知</span></span>
+                <span class="st"><b>{{ sessionSummary?.pending ?? 0 }}</b><span>待轨迹同步</span></span>
+              </div>
+
+              <template v-if="sessionPreview">
+                <div class="rep-scroll">
+                  <table
+                    class="rep wz-session-table"
+                    data-testid="wizard-session-table"
+                  >
+                    <colgroup>
+                      <col class="wz-session-col-title">
+                      <col class="wz-session-col-appear">
+                      <col class="wz-session-col-trigger">
+                      <col class="wz-session-col-cases">
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th>Session</th>
+                        <th>对象出现</th>
+                        <th>对象触发点时间</th>
+                        <th>该 Session 的 bad case 数</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="item in sessionPreview.items"
+                        :key="item.sessionId"
+                      >
+                        <td>
+                          <b
+                            class="wz-session-title"
+                            data-testid="wizard-session-title"
+                            :title="item.title"
+                          >{{ item.short || item.title }}</b>
+                          <span class="cell-sub mono">#{{ shortId(item.sessionId) }}</span>
+                        </td>
+                        <td>
+                          <span class="v2-badge ok">已出现</span>
+                        </td>
+                        <td class="mono">
+                          {{ formatMoment(item.objectTriggerAt) }}
+                        </td>
+                        <td class="mono">
+                          {{ item.badCaseCount }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
-                <h3>没有对象版本出现过的 Session</h3>
-                <p>可回第 1 步调整时间段或对象版本后重试。</p>
-              </div>
-            </div>
-
-            <p
-              v-if="requestError"
-              class="wizard-error"
-              data-testid="wizard-error"
-              role="alert"
-            >
-              {{ requestError }}
-            </p>
-          </template>
-
-          <template v-else-if="step === 3">
-            <div class="wz-condstrip">
-              <span class="chip kind">{{ targetType }}:{{ selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
-              <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
-              <span class="chip">{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
-              <span
-                v-if="previewTargetRevision !== undefined"
-                class="chip revision"
-                :class="{ unresolved: !previewTargetRevision }"
-                data-testid="wizard-condition-revision"
-                :title="previewTargetRevision ?? '服务端未返回 targetRevision，不猜测 tag'"
-              >{{ previewTargetRevision ? `revision ${previewTargetRevision}` : "revision 未解析" }}</span>
-              <button
-                class="btn sm back"
-                type="button"
-                @click="backToStep(1)"
+                <div class="pager">
+                  <button
+                    class="btn"
+                    type="button"
+                    data-testid="wizard-session-prev"
+                    :disabled="sessionPage <= 1 || isBusy"
+                    @click="changeSessionPage(sessionPage - 1)"
+                  >
+                    ← 上一页
+                  </button>
+                  <span class="pager-info">第 <b>{{ sessionPage }}</b> / {{ sessionPageCount }} 页 · 共 <b>{{ sessionPreview.total }}</b> 个关联 Session</span>
+                  <button
+                    class="btn"
+                    type="button"
+                    data-testid="wizard-session-next"
+                    :disabled="sessionPage >= sessionPageCount || isBusy"
+                    @click="changeSessionPage(sessionPage + 1)"
+                  >
+                    下一页 →
+                  </button>
+                </div>
+                <p class="f-note">
+                  只展示对象版本出现过的 Session；未出现的 Session 已跳过，下一步再按策略筛选潜在 bad case。
+                </p>
+              </template>
+              <div
+                v-else
+                class="wz-empty"
+                data-testid="wizard-session-empty"
               >
-                ← 修改条件
-              </button>
-            </div>
+                <div>
+                  <div
+                    aria-hidden="true"
+                    class="wz-empty-icon"
+                  >
+                    ∅
+                  </div>
+                  <h3>没有对象版本出现过的 Session</h3>
+                  <p>可回第 1 步调整时间段或对象版本后重试。</p>
+                </div>
+              </div>
 
-            <div class="wz-section-title">
-              第 3 步 · 潜在 bad case
-              <span>{{ policyPreset === "default" ? "默认策略：对象自身 self 上报 或 触发点在对象触发点之后" : "自定义策略：按第 1 步勾选的规则组合" }}</span>
-            </div>
-
-            <div class="wz-stats">
-              <span class="st"><b>{{ potentialSummary?.badCases ?? 0 }}</b><span>时间段内 bad case</span></span>
-              <span class="st accent"><b>{{ potentialSummary?.potential ?? 0 }}</b><span>潜在 bad case</span></span>
-              <span
-                v-for="entry in reasonEntries"
-                :key="entry.key"
-                class="st"
+              <p
+                v-if="requestError"
+                class="wizard-error"
+                data-testid="wizard-error"
+                role="alert"
               >
-                <b>{{ entry.count }}</b><span>{{ entry.label }}</span>
-              </span>
-            </div>
-
-            <template v-if="potentialPreview">
-              <div class="rep-scroll">
-                <table
-                  class="rep"
-                  data-testid="wizard-potential-table"
-                >
-                  <thead>
-                    <tr>
-                      <th>bad case</th>
-                      <th>object_name</th>
-                      <th>类型</th>
-                      <th>触发点时间</th>
-                      <th>来源 Session</th>
-                      <th>命中原因</th>
-                      <th>锚点来源</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="item in potentialPreview.items"
-                      :key="item.badCaseId"
-                    >
-                      <td>
-                        <button
-                          class="linklike"
-                          type="button"
-                          :title="item.badCaseId"
-                          @click="openPotentialCase(item)"
-                        >
-                          {{ shortId(item.badCaseId) }}
-                        </button>
-                      </td>
-                      <td>
-                        {{ item.objectName }}
-                      </td>
-                      <td>
-                        {{ item.badCaseType }}
-                      </td>
-                      <td class="mono">
-                        {{ formatMoment(item.triggerAt) }}
-                      </td>
-                      <td class="mono">
-                        #{{ shortId(item.sessionId) }}
-                      </td>
-                      <td>
-                        <span class="hit-reason">{{ HIT_REASON_LABELS[item.hitReason] ?? item.hitReason }}</span>
-                        <span
-                          v-if="item.orderState === 'unknown'"
-                          class="order-note"
-                        >触发点顺序待轨迹时间戳重放</span>
-                      </td>
-                      <td>
-                        <span
-                          class="anchor-source"
-                          :class="{ post: item.anchorSource === 'post_process' }"
-                          :data-anchor-source="item.anchorSource"
-                          :title="ANCHOR_SOURCE_HINTS[item.anchorSource]"
-                        >{{ ANCHOR_SOURCE_LABELS[item.anchorSource] }}</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div class="pager">
-                <button
-                  class="btn"
-                  type="button"
-                  data-testid="wizard-potential-prev"
-                  :disabled="potentialPage <= 1 || isBusy"
-                  @click="changePotentialPage(potentialPage - 1)"
-                >
-                  ← 上一页
-                </button>
-                <span class="pager-info">第 <b>{{ potentialPage }}</b> / {{ potentialPageCount }} 页 · 共 <b>{{ potentialPreview.total }}</b> 个潜在 bad case</span>
-                <button
-                  class="btn"
-                  type="button"
-                  data-testid="wizard-potential-next"
-                  :disabled="potentialPage >= potentialPageCount || isBusy"
-                  @click="changePotentialPage(potentialPage + 1)"
-                >
-                  下一页 →
-                </button>
-              </div>
-              <p class="f-note">
-                默认策略 = 对象自身 self 上报 或 触发点在对象之后；修改策略需回第 1 步。归因在下一步预览，不在向导内执行。
+                {{ requestError }}
               </p>
             </template>
-            <div
-              v-else
-              class="wz-empty"
-              data-testid="wizard-potential-empty"
-            >
-              <div>
-                <div
-                  aria-hidden="true"
-                  class="wz-empty-icon"
+
+            <template v-else-if="step === 3">
+              <div class="wz-condstrip">
+                <span class="chip kind">{{ targetType }}:{{ selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
+                <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
+                <span class="chip">{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
+                <span
+                  v-if="previewTargetRevision !== undefined"
+                  class="chip revision"
+                  :class="{ unresolved: !previewTargetRevision }"
+                  data-testid="wizard-condition-revision"
+                  :title="previewTargetRevision ?? '服务端未返回 targetRevision，不猜测 tag'"
+                >{{ previewTargetRevision ? `revision ${previewTargetRevision}` : "revision 未解析" }}</span>
+                <button
+                  class="btn sm back"
+                  type="button"
+                  @click="backToStep(1)"
                 >
-                  ∅
-                </div>
-                <h3>当前策略没有命中潜在 bad case</h3>
-                <p>可返回第 1 步调整时间段或策略后重试。</p>
+                  ← 修改条件
+                </button>
               </div>
-            </div>
 
-            <p
-              v-if="requestError"
-              class="wizard-error"
-              data-testid="wizard-error"
-              role="alert"
-            >
-              {{ requestError }}
-            </p>
-          </template>
-
-          <template v-else>
-            <div class="wz-condstrip">
-              <span class="chip kind">{{ targetType }}:{{ selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
-              <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
-              <span
-                class="v2-badge"
-                :class="{ ok: policyPreset === 'default' }"
-              >{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
-              <span
-                class="v2-badge"
-                :class="{ warn: !cacheEnabled }"
-              >{{ cacheEnabled ? "复用缓存" : "不复用缓存" }}</span>
-              <span
-                v-if="previewTargetRevision !== undefined"
-                class="chip revision"
-                :class="{ unresolved: !previewTargetRevision }"
-                data-testid="wizard-condition-revision"
-                :title="previewTargetRevision ?? '服务端未返回 targetRevision，不猜测 tag'"
-              >{{ previewTargetRevision ? `revision ${previewTargetRevision}` : "revision 未解析" }}</span>
-              <button
-                class="btn sm back"
-                type="button"
-                @click="backToStep(1)"
-              >
-                ← 修改条件
-              </button>
-            </div>
-
-            <div class="wz-section-title">
-              第 4 步 · 归因预览与启动
-              <span>确认缓存策略后启动；归因结果会写回该对象版本</span>
-            </div>
-
-            <div class="cache-option">
-              <div>
-                <b>复用缓存归因</b>
-                <div class="f-note">
-                  如果该对象版本已经对某个潜在 bad case 做过归因，直接复用最近一次成功结果。
-                </div>
+              <div class="wz-section-title">
+                第 3 步 · 潜在 bad case
+                <span>{{ policyPreset === "default" ? "默认策略：对象自身 self 上报 或 触发点在对象触发点之后" : "自定义策略：按第 1 步勾选的规则组合" }}</span>
               </div>
-              <label class="switch">
-                <input
-                  v-model="cacheEnabled"
-                  type="checkbox"
-                  data-testid="wizard-cache"
-                  aria-label="复用缓存归因"
-                  :disabled="isBusy"
-                  @change="refreshAttribution"
+
+              <div class="wz-stats">
+                <span class="st"><b>{{ potentialSummary?.badCases ?? 0 }}</b><span>时间段内 bad case</span></span>
+                <span class="st accent"><b>{{ potentialSummary?.potential ?? 0 }}</b><span>潜在 bad case</span></span>
+                <span
+                  v-for="entry in reasonEntries"
+                  :key="entry.key"
+                  class="st"
                 >
-                <span class="slider" />
-              </label>
-            </div>
+                  <b>{{ entry.count }}</b><span>{{ entry.label }}</span>
+                </span>
+              </div>
 
-            <div
-              v-if="effectiveSkill.data.value"
-              class="cache-option"
-              data-testid="wizard-effective-skill"
-            >
-              <div>
-                <b>归因 Skill · {{ effectiveSkill.data.value.displayName }}</b>
-                <div class="f-note">
-                  {{ effectiveSkill.data.value.source === "target" ? "对象覆盖" : effectiveSkill.data.value.source === "workspace" ? "空间默认" : "平台默认" }} · {{ effectiveSkill.data.value.skillKey }}@r{{ effectiveSkill.data.value.revision }} · {{ effectiveSkill.data.value.executorType }}
+              <template v-if="potentialPreview">
+                <div class="rep-scroll">
+                  <table
+                    class="rep"
+                    data-testid="wizard-potential-table"
+                  >
+                    <thead>
+                      <tr>
+                        <th>bad case</th>
+                        <th>object_name</th>
+                        <th>类型</th>
+                        <th>触发点时间</th>
+                        <th>来源 Session</th>
+                        <th>命中原因</th>
+                        <th>锚点来源</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="item in potentialPreview.items"
+                        :key="item.badCaseId"
+                      >
+                        <td>
+                          <button
+                            class="linklike"
+                            type="button"
+                            :title="item.badCaseId"
+                            @click="openPotentialCase(item)"
+                          >
+                            {{ shortId(item.badCaseId) }}
+                          </button>
+                        </td>
+                        <td>
+                          {{ item.objectName }}
+                        </td>
+                        <td>
+                          {{ item.badCaseType }}
+                        </td>
+                        <td class="mono">
+                          {{ formatMoment(item.triggerAt) }}
+                        </td>
+                        <td class="mono">
+                          #{{ shortId(item.sessionId) }}
+                        </td>
+                        <td>
+                          <span class="hit-reason">{{ HIT_REASON_LABELS[item.hitReason] ?? item.hitReason }}</span>
+                          <span
+                            v-if="item.orderState === 'unknown'"
+                            class="order-note"
+                          >触发点顺序待轨迹时间戳重放</span>
+                        </td>
+                        <td>
+                          <span
+                            class="anchor-source"
+                            :class="{ post: item.anchorSource === 'post_process' }"
+                            :data-anchor-source="item.anchorSource"
+                            :title="ANCHOR_SOURCE_HINTS[item.anchorSource]"
+                          >{{ ANCHOR_SOURCE_LABELS[item.anchorSource] }}</span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
-              </div>
-              <span class="v2-badge ok">Run 将固化此 revision</span>
-            </div>
-
-            <div
-              class="preview-stats"
-              data-testid="wizard-attribution-stats"
-            >
-              <div class="preview-stat">
-                <strong>{{ attributionSummary?.potential ?? 0 }}</strong>
-                <span>潜在 bad case</span>
-              </div>
-              <div class="preview-stat">
-                <strong>{{ attributionSummary?.reused ?? "待计算" }}</strong>
-                <span>复用缓存</span>
-              </div>
-              <div class="preview-stat">
-                <strong>{{ attributionSummary?.fresh ?? "待计算" }}</strong>
-                <span>本次新增归因</span>
-              </div>
-              <div class="preview-stat">
-                <strong>{{ attributionSummary?.nonTargetKnown ?? 0 }}</strong>
-                <span>历史非该对象</span>
-              </div>
-            </div>
-
-            <div class="notice">
-              启动后逐一分析 {{ attributionSummary?.potential ?? 0 }} 个候选，归因完成后进入聚类。
-              <template v-if="attributionSummary?.reused === null">
-                准备本次轨迹与对象提示词后计算缓存命中数。
+                <div class="pager">
+                  <button
+                    class="btn"
+                    type="button"
+                    data-testid="wizard-potential-prev"
+                    :disabled="potentialPage <= 1 || isBusy"
+                    @click="changePotentialPage(potentialPage - 1)"
+                  >
+                    ← 上一页
+                  </button>
+                  <span class="pager-info">第 <b>{{ potentialPage }}</b> / {{ potentialPageCount }} 页 · 共 <b>{{ potentialPreview.total }}</b> 个潜在 bad case</span>
+                  <button
+                    class="btn"
+                    type="button"
+                    data-testid="wizard-potential-next"
+                    :disabled="potentialPage >= potentialPageCount || isBusy"
+                    @click="changePotentialPage(potentialPage + 1)"
+                  >
+                    下一页 →
+                  </button>
+                </div>
+                <p class="f-note">
+                  默认策略 = 对象自身 self 上报 或 触发点在对象之后；修改策略需回第 1 步。归因在下一步预览，不在向导内执行。
+                </p>
               </template>
-            </div>
-            <p class="f-note">
-              缓存键包含工作空间、bad case、对象身份/版本、策略版本、归因 Skill revision 与引擎；修改绑定后只复用新清单完全相同的结果。「非该对象问题」不会修改 bad case 本身。
-            </p>
+              <div
+                v-else
+                class="wz-empty"
+                data-testid="wizard-potential-empty"
+              >
+                <div>
+                  <div
+                    aria-hidden="true"
+                    class="wz-empty-icon"
+                  >
+                    ∅
+                  </div>
+                  <h3>当前策略没有命中潜在 bad case</h3>
+                  <p>可返回第 1 步调整时间段或策略后重试。</p>
+                </div>
+              </div>
 
-            <p
-              v-if="requestError"
-              class="wizard-error"
-              data-testid="wizard-error"
-              role="alert"
-            >
-              {{ requestError }}
-            </p>
-            <p
-              v-if="launchError"
-              class="wizard-error"
-              data-testid="wizard-launch-error"
-              role="alert"
-            >
-              {{ launchError }}
-            </p>
-          </template>
+              <p
+                v-if="requestError"
+                class="wizard-error"
+                data-testid="wizard-error"
+                role="alert"
+              >
+                {{ requestError }}
+              </p>
+            </template>
+
+            <template v-else>
+              <div class="wz-condstrip">
+                <span class="chip kind">{{ targetType }}:{{ selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
+                <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
+                <span
+                  class="v2-badge"
+                  :class="{ ok: policyPreset === 'default' }"
+                >{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
+                <span
+                  class="v2-badge"
+                  :class="{ warn: !cacheEnabled }"
+                >{{ cacheEnabled ? "复用缓存" : "不复用缓存" }}</span>
+                <span
+                  v-if="previewTargetRevision !== undefined"
+                  class="chip revision"
+                  :class="{ unresolved: !previewTargetRevision }"
+                  data-testid="wizard-condition-revision"
+                  :title="previewTargetRevision ?? '服务端未返回 targetRevision，不猜测 tag'"
+                >{{ previewTargetRevision ? `revision ${previewTargetRevision}` : "revision 未解析" }}</span>
+                <button
+                  class="btn sm back"
+                  type="button"
+                  @click="backToStep(1)"
+                >
+                  ← 修改条件
+                </button>
+              </div>
+
+              <div class="wz-section-title">
+                第 4 步 · 归因预览与启动
+                <span>确认缓存策略后启动；归因结果会写回该对象版本</span>
+              </div>
+
+              <div class="cache-option">
+                <div>
+                  <b>复用缓存归因</b>
+                  <div class="f-note">
+                    如果该对象版本已经对某个潜在 bad case 做过归因，直接复用最近一次成功结果。
+                  </div>
+                </div>
+                <label class="switch">
+                  <input
+                    v-model="cacheEnabled"
+                    type="checkbox"
+                    data-testid="wizard-cache"
+                    aria-label="复用缓存归因"
+                    :disabled="isBusy"
+                    @change="refreshAttribution"
+                  >
+                  <span class="slider" />
+                </label>
+              </div>
+
+              <div
+                class="preview-stats"
+                data-testid="wizard-attribution-stats"
+              >
+                <div class="preview-stat">
+                  <strong>{{ attributionSummary?.potential ?? 0 }}</strong>
+                  <span>潜在 bad case</span>
+                </div>
+                <div class="preview-stat">
+                  <strong>{{ attributionSummary?.reused ?? 0 }}</strong>
+                  <span>复用缓存</span>
+                </div>
+                <div class="preview-stat">
+                  <strong>{{ attributionSummary?.fresh ?? 0 }}</strong>
+                  <span>本次新增归因</span>
+                </div>
+                <div class="preview-stat">
+                  <strong>{{ attributionSummary?.nonTargetKnown ?? 0 }}</strong>
+                  <span>历史非该对象</span>
+                </div>
+              </div>
+
+              <div class="notice">
+                启动后先生成 {{ attributionSummary?.potential ?? 0 }} 条对象级归因，再进入迭代优化。可归因 {{ attributionSummary?.potential ?? 0 }} 个 · 非该对象 {{ attributionSummary?.nonTargetKnown ?? 0 }} 个 · 缓存命中 {{ attributionSummary?.reused ?? 0 }} 个。
+              </div>
+              <p class="f-note">
+                缓存键包含工作空间、bad case、对象身份/版本、策略版本与归因模型版本；「非该对象问题」不会修改 bad case 本身。
+              </p>
+
+              <p
+                v-if="requestError"
+                class="wizard-error"
+                data-testid="wizard-error"
+                role="alert"
+              >
+                {{ requestError }}
+              </p>
+              <p
+                v-if="launchError"
+                class="wizard-error"
+                data-testid="wizard-launch-error"
+                role="alert"
+              >
+                {{ launchError }}
+              </p>
+            </template>
+          </div>
         </div>
 
         <div class="modal-foot">
-          <template v-if="step === 1">
+          <template v-if="previewInFlight">
+            <button
+              class="btn"
+              type="button"
+              data-testid="wizard-cancel-wait"
+              @click="cancelPreview"
+            >
+              取消等待
+            </button>
+            <button
+              class="btn primary"
+              type="button"
+              :data-testid="nextButtonTestId"
+              disabled
+            >
+              <span
+                class="wz-spinner"
+                aria-hidden="true"
+              />
+              {{ previewButtonLabel }}
+            </button>
+          </template>
+          <template v-else-if="step === 1">
             <button
               class="btn primary"
               type="button"
@@ -1832,6 +2337,236 @@ const reasonEntries = computed(() => {
   font-weight: 600;
 }
 
+.wz-form.locked {
+  opacity: 0.55;
+  pointer-events: none;
+  user-select: none;
+}
+
+.wz-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--blue) 25%, transparent);
+  border-top-color: var(--blue);
+  animation: wz-spin 0.7s linear infinite;
+}
+
+@keyframes wz-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.wz-progress {
+  max-width: 100%;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--blue) 28%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--blue) 5%, var(--bg-card));
+  overflow-wrap: anywhere;
+}
+
+.wz-progress.failed {
+  border-color: color-mix(in srgb, var(--red) 35%, var(--border));
+  background: color-mix(in srgb, var(--red) 5%, var(--bg-card));
+}
+
+.wz-progress-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.wz-progress-head .wz-spinner {
+  margin-top: 3px;
+}
+
+.wz-error-mark {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 1px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--red) 45%, var(--border));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--red) 8%, var(--bg-card));
+  color: var(--red);
+  font-size: 10px;
+}
+
+.wz-progress-title {
+  min-width: 0;
+}
+
+.wz-progress-title b {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.wz-progress.failed .wz-progress-title b {
+  color: var(--red);
+}
+
+.wz-progress-sub {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.wz-progress-elapsed {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.wz-progress-lead {
+  margin: 8px 0 0 21px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.wz-progress-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wz-progress-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.wz-progress-stage-body {
+  min-width: 0;
+}
+
+.wz-progress-steps li b {
+  display: block;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.wz-progress-steps li.current b,
+.wz-progress-steps li.done b {
+  color: var(--text);
+}
+
+.wz-progress-steps li .state {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.wz-progress-steps li.current .state {
+  color: var(--blue);
+}
+
+.wz-progress-steps li.done .state {
+  color: var(--green);
+}
+
+.wz-progress-steps li.failed b,
+.wz-progress-steps li.failed .state {
+  color: var(--red);
+}
+
+.wz-progress-steps .dot {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 1px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-card);
+  color: var(--text-faint);
+  font-size: 9px;
+}
+
+.wz-progress-steps li.done .dot {
+  border-color: color-mix(in srgb, var(--green) 45%, var(--border));
+  background: color-mix(in srgb, var(--green) 10%, var(--bg-card));
+  color: var(--green);
+}
+
+.wz-progress-steps li.current .dot {
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--border));
+  background: color-mix(in srgb, var(--blue) 8%, var(--bg-card));
+}
+
+.wz-progress-steps li.failed .dot {
+  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+  background: color-mix(in srgb, var(--red) 8%, var(--bg-card));
+  color: var(--red);
+}
+
+.wz-progress-steps .dot .wz-spinner {
+  width: 10px;
+  height: 10px;
+  border-width: 2px;
+}
+
+.wz-progress-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 0 21px;
+}
+
+.wz-progress-actions .btn {
+  font-size: 11.5px;
+  padding: 5px 12px;
+}
+
+.wz-progress-hint {
+  margin: 9px 0 0 21px;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.btn .wz-spinner {
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+
+.btn.primary .wz-spinner {
+  border-color: color-mix(in srgb, white 35%, transparent);
+  border-top-color: white;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wz-spinner {
+    animation: none;
+  }
+
+  .switch .slider,
+  .switch .slider::before {
+    transition: none;
+  }
+}
+
 .wz-section-title {
   display: flex;
   align-items: baseline;
@@ -1963,6 +2698,83 @@ const reasonEntries = computed(() => {
 
 .wz-field .inp {
   width: 100%;
+}
+
+.wz-version-combo {
+  position: relative;
+  width: 100%;
+}
+
+.wz-version-combo .inp {
+  width: 100%;
+  padding-right: 30px;
+}
+
+.wz-version-toggle {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.wz-version-toggle:hover {
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+.wz-version-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 190px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-popover);
+}
+
+.wz-version-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 7px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wz-version-option:hover,
+.wz-version-option.current {
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+}
+
+.wz-version-kind {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 10.5px;
 }
 
 .wz-inline-label {
@@ -2154,6 +2966,37 @@ table.rep th {
   font-size: 11px;
   color: var(--text-faint);
   font-weight: 600;
+}
+
+.wz-session-table {
+  table-layout: fixed;
+}
+
+.wz-session-col-title {
+  width: 38%;
+}
+
+.wz-session-col-appear {
+  width: 15%;
+}
+
+.wz-session-col-trigger {
+  width: 22%;
+}
+
+.wz-session-col-cases {
+  width: 25%;
+}
+
+table.rep.wz-session-table th {
+  white-space: normal;
+}
+
+.wz-session-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cell-sub {
