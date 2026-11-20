@@ -14,6 +14,7 @@ scope:
   - apps/api/**
   - fixtures/**
   - scripts/**
+  - package.json
   - packages/contracts/**
   - tests/**
   - docs/**
@@ -43,6 +44,8 @@ Agent-skill attribution feeds clustering, proposals, and real patch execution, s
 - [01 §4.3](../../../plans/fullstack-design/01-architecture.md): the evolution loop and evidence boundary.
 
 ## Implementation
+
+Register the offline Golden evaluator as `pnpm attribution:evaluate` in the root package manifest.
 
 - Add redacted fixtures for self/discovery, target occurrence without causation, multiple occurrences, multiple targets, missing traces, degraded relations, non-skill faults, and prompt injection.
 - Define metrics for conclusion accuracy, evidence validity, introduction/detection-point accuracy, schema compliance, latency, tokens, and failures.

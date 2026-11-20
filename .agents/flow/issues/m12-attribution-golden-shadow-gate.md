@@ -14,6 +14,7 @@ scope:
   - apps/api/**
   - fixtures/**
   - scripts/**
+  - package.json
   - packages/contracts/**
   - tests/**
   - docs/**
@@ -43,6 +44,8 @@ Agent-Skill 归因的输出会进入聚类、Proposal 和真实 Patch 链路，�
 - [01 §4.3](../../../plans/fullstack-design/01-architecture.md)：自进化闭环与证据边界。
 
 ## 实现内容
+
+在根 package.json 注册离线评测入口 `pnpm attribution:evaluate`。
 
 - 建立脱敏 fixture，覆盖 self/discovery、对象出现但非根因、多 occurrence、多对象、缺 Trace、关系降级、非 Skill 问题和提示注入。
 - 定义结论准确率、证据有效率、引入/检测点命中率、schema 合规率、延迟、Token 与失败率指标。
