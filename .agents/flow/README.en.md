@@ -15,7 +15,7 @@ English | [中文](README.md)
 
 ## Machine-readable yaml flow fence
 
-Every file has exactly one yaml flow fence with byte-identical fences on both languages. Roadmaps record `kind` and `milestones`; milestones record `kind/id/title/status/github`. Issues record:
+Every file has exactly one yaml flow fence with byte-identical fences on both languages. Roadmaps record `kind` and `milestones`; milestones record `kind/id/title/status/github`, with an optional `standing: true` for a standing bucket. Issues record:
 
 ```text
 kind: issue
@@ -46,6 +46,7 @@ Chinese bodies require Background, Goals, Design authority, Implementation, Impl
 - A draft with null `github.number` stays in backlog until sync backfills it.
 - At most one `bootstrap: true` issue exists, in the first milestone; remove it after backfill.
 - Equal priorities serialize across milestones; within-milestone demotion follows the existing rule.
+- A `standing: true` milestone is a standing bucket: it stays active/open after all its issues are done and is exempt from the status ↔ all-issues-done equivalence; retirement requires an explicit roadmap decision to set it done before `flow:sync`.
 - Active work requires completed dependencies; dependency cycles are red.
 
 ## Gates

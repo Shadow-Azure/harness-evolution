@@ -8698,6 +8698,17 @@
             "title": "Sessionid",
             "type": "string"
           },
+          "short": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short"
+          },
           "title": {
             "anyOf": [
               {

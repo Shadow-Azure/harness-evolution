@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import PurePath
@@ -17,6 +17,7 @@ from app.service.acquisition.normalize import (
     RootMetadata,
 )
 from app.service.acquisition.parsers.base import (
+    AgentLink,
     DefinitionSource,
     EndReason,
     ExecutionOutcome,
@@ -446,14 +447,30 @@ def _session_execution_state(
     return "completed", "end_turn"
 
 
+def _derived_parent_tools(links: Sequence[AgentLink]) -> dict[str, str]:
+    """Keep only child links whose parent call identity is unique."""
+    claims: dict[str, set[str]] = {}
+    for link in links:
+        if link.parent_tool_use_id is None:
+            continue
+        claims.setdefault(link.child_agent_id, set()).add(link.parent_tool_use_id)
+    return {
+        child_agent_id: next(iter(tool_use_ids))
+        for child_agent_id, tool_use_ids in claims.items()
+        if len(tool_use_ids) == 1
+    }
+
+
 def _assemble_root(
     root_session_id: str,
     transcripts: tuple[ParsedTranscript, ...],
+    links: Sequence[AgentLink] = (),
 ) -> tuple[AssembledSessionTree | None, tuple[ParsedIssue, ...]]:
     """Assemble one root, returning no tree if its structural identity is invalid."""
     issues: list[ParsedIssue] = list(
         issue for transcript in transcripts for issue in transcript.issues
     )
+    derived_parent_tools = _derived_parent_tools(links)
     mains = [transcript for transcript in transcripts if transcript.agent_kind == "main"]
     if not mains:
         return None, (
@@ -712,6 +729,10 @@ def _assemble_root(
             and weak_parent in nodes
             else None
         )
+        derived_parent_tool = derived_parent_tools.get(transcript.agent_id)
+        link_applied = parent_tool is None and derived_parent_tool is not None
+        if link_applied:
+            parent_tool = derived_parent_tool
         if parent_tool is None:
             if weak_parent_id is not None:
                 append_synthetic_parent_event(
@@ -773,15 +794,14 @@ def _assemble_root(
                 )
             continue
         owner_id, event = matched
-        confidence: RelationConfidence = (
-            "authoritative"
-            if parent_tool in returned_tool_ids.get(owner_id, frozenset())
-            else "derived"
-        )
+        confidence: RelationConfidence = "derived"
+        if not link_applied and parent_tool in returned_tool_ids.get(owner_id, frozenset()):
+            confidence = "authoritative"
         nodes[owner_id] = _with_relation(nodes[owner_id], parent_tool, confidence)
         nodes[transcript.agent_id] = replace(
             nodes[transcript.agent_id],
             parent_agent_id=owner_id,
+            tool_use_id=parent_tool,
             description=event.description,
         )
         anchors[transcript.agent_id] = _event_anchor(event)
@@ -899,8 +919,14 @@ def _assemble_root(
 
 def assemble_agent_trees(
     transcripts: tuple[ParsedTranscript, ...],
+    links: Mapping[str, Sequence[AgentLink]] | None = None,
 ) -> AgentTreeAssemblyResult:
-    """Assemble all roots into deterministic flat trees and aggregate counts."""
+    """Assemble all roots into deterministic flat trees and aggregate counts.
+
+    ``links`` is keyed by root session id and contains only session-level
+    parent edges returned by the parser; a missing or ambiguous root entry keeps
+    the existing synthetic fallback.
+    """
     grouped: dict[str, list[ParsedTranscript]] = {}
     for transcript in transcripts:
         grouped.setdefault(transcript.root_session_id, []).append(transcript)
@@ -919,7 +945,12 @@ def assemble_agent_trees(
                 ),
             )
             continue
-        tree, root_issues = _assemble_root(root_id, tuple(grouped[root_id]))
+        root_links = links.get(root_id, ()) if links is not None else ()
+        tree, root_issues = _assemble_root(
+            root_id,
+            tuple(grouped[root_id]),
+            root_links,
+        )
         issues.extend(root_issues)
         if tree is not None:
             trees.append(tree)

@@ -28,6 +28,7 @@ const initialPassword = "m10-detail-initial-password";
 const finalPassword = "m10-detail-final-password";
 const secret = "m10-detail-signing-secret-with-sufficient-length";
 const ws = "/workspaces/ws-default";
+const longSessionPrompt = "SWE-bench astropy-12907 修复任务 ".repeat(200).slice(0, 3337);
 let api;
 let web;
 let dataDir;
@@ -205,6 +206,7 @@ before(async () => {
     HE_DATA_DIR: dataDir,
     HE_DB_DIALECT: "sqlite",
     HE_JWT_SECRET: secret,
+    HE_LOGIN_RATE_LIMIT: "100",
     HE_PHASE: "demo",
     PYTHONPATH: apiDir,
   };
@@ -301,8 +303,12 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
         if (!page || !info || !progress || !workspace || !head) return null;
         const infoText = info.textContent;
         // The info panel first renders run stats, then fills the attribution
-        // rows (non-target / cached / fresh) from the step request.
+        // rows (non-target / cached / fresh) and the policy chips from the
+        // step requests. Wait for all three so the assertions below never read
+        // a half-filled panel on a slow CI runner.
+        const policy = page.querySelector("[data-testid='run-policy-cache']")?.textContent ?? "";
         if (!infoText.includes("5 / 1") || !infoText.includes("本次新增 3")) return null;
+        if (!policy.includes("默认策略") || !policy.includes("复用缓存归因")) return null;
         return {
           head: head.textContent,
           infoText,
@@ -311,7 +317,7 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
           ),
           workspaceInInfo: info.contains(workspace),
           standaloneWorkspace: Boolean(document.querySelector(".workspace-panel")),
-          policy: page.querySelector("[data-testid='run-policy-cache']")?.textContent ?? "",
+          policy,
           branchCopy: Boolean(page.querySelector("[data-testid='copy-branch']")),
           tabs: [...page.querySelectorAll(".detail-tabs [role='tab']")].map((tab) =>
             tab.textContent.trim(),
@@ -344,10 +350,26 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
       `(() => {
         const rows = [...document.querySelectorAll(".rep tbody tr")];
         if (rows.length !== 4) return null;
+        const first = rows[0];
+        const title = first.querySelector(".session-title");
+        const table = first.closest("table");
+        const scroll = first.closest(".table-scroll");
+        const headers = [...table.querySelectorAll("thead th")].map((th) => {
+          const rect = th.getBoundingClientRect();
+          return { text: th.textContent.trim(), width: rect.width, left: rect.left };
+        });
         return {
           rows: rows.length,
           pager: document.querySelector(".pager-info")?.textContent ?? "",
           text: rows.map((row) => row.textContent),
+          title: title?.textContent ?? "",
+          hover: title?.getAttribute("title") ?? "",
+          height: first.getBoundingClientRect().height,
+          sessionWidth: first.cells[0].getBoundingClientRect().width,
+          tableWidth: table.getBoundingClientRect().width,
+          scrollWidth: table.scrollWidth,
+          clientWidth: scroll.clientWidth,
+          headers,
         };
       })()`,
       "first Session page",
@@ -355,6 +377,26 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
     assert.equal(sessions.rows, 4);
     assert.match(sessions.pager, /第\s*1\s*\/\s*2\s*页/);
     assert.match(sessions.text.join(" "), /来源运行 A/);
+    assert.equal(sessions.title, "来源运行 A");
+    assert.equal(sessions.hover, longSessionPrompt);
+    assert.ok(
+      sessions.height <= 64,
+      `long prompt grew the Session row to ${sessions.height}px`,
+    );
+    assert.ok(
+      sessions.sessionWidth < sessions.tableWidth * 0.75,
+      `Session column ${sessions.sessionWidth}px of ${sessions.tableWidth}px`,
+    );
+    assert.equal(sessions.headers.length, 4);
+    for (const header of sessions.headers) {
+      assert.ok(header.width >= 100, `${header.text} column is ${header.width}px`);
+      assert.ok(header.left >= 0, `${header.text} column starts off screen`);
+    }
+    assert.ok(
+      sessions.scrollWidth <= sessions.clientWidth + 1,
+      `Session table overflows horizontally: ${sessions.scrollWidth} > ${sessions.clientWidth}`,
+    );
+    await screenshotStep(page, "01a-after-sessions-long-title.png");
     await clickButton(page, "下一页 →");
     const sessionPageTwo = await waitForDocument(
       page.session,
@@ -674,6 +716,233 @@ test("m12 attribution-jobs UI shows sanitized metrics and retries unfinished wor
       ),
     ];
     assert.deepEqual(requestedKeys, ["range", "attribution"]);
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+  } finally {
+    await page.session.send("Emulation.clearDeviceMetricsOverride").catch(() => {});
+    await page.close();
+  }
+});
+
+test("m10-06 run detail owns the page scroll and keeps the V2 gutter", async () => {
+  const page = await createBrowserPage();
+  const violations = browserViolations(page.session);
+  try {
+    await installCookie(page, await currentLoginCookie());
+    const viewports = [
+      { width: 1500, height: 837, gutter: 24 },
+      { width: 1440, height: 900, gutter: 24 },
+      { width: 1366, height: 768, gutter: 24 },
+      { width: 1920, height: 1080, gutter: 124 },
+    ];
+    for (const viewport of viewports) {
+      await page.session.send("Emulation.setDeviceMetricsOverride", {
+        width: viewport.width,
+        height: viewport.height,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await installCookie(page, await currentLoginCookie());
+      await openRun(
+        page,
+        "run-v2-completed",
+        `?step=clusters&g=${viewport.width}x${viewport.height}`,
+      );
+      const geometry = await waitForDocument(
+        page.session,
+        `(() => {
+          const root = document.querySelector("[data-testid='evolution-run-detail']");
+          const main = document.querySelector("main.workspace-main");
+          const info = root?.querySelector("[data-testid='run-info-panel']");
+          if (!root || !main || !info) return null;
+          if (document.querySelectorAll("[data-step-key]").length !== 7) return null;
+          if (root.querySelectorAll(".cluster").length !== 2) return null;
+          const rect = root.getBoundingClientRect();
+          const infoRect = info.getBoundingClientRect();
+          const style = getComputedStyle(root);
+          return {
+            innerWidth,
+            scrollWidth: root.scrollWidth,
+            clientWidth: root.clientWidth,
+            scrollHeight: root.scrollHeight,
+            clientHeight: root.clientHeight,
+            rectLeft: rect.left,
+            rectRight: rect.right,
+            paddingLeft: Number.parseFloat(style.paddingLeft),
+            paddingRight: Number.parseFloat(style.paddingRight),
+            overflowY: style.overflowY,
+            mainOverflow: getComputedStyle(main).overflowY,
+            infoLeft: infoRect.left,
+            infoRight: infoRect.right,
+            documentScrollWidth: document.documentElement.scrollWidth,
+            documentClientWidth: document.documentElement.clientWidth,
+          };
+        })()`,
+        `${viewport.width}x${viewport.height} run detail scroll geometry`,
+      );
+      assert.equal(geometry.overflowY, "auto", JSON.stringify(geometry));
+      assert.equal(geometry.mainOverflow, "hidden", JSON.stringify(geometry));
+      assert.ok(
+        Math.abs(geometry.rectRight - geometry.innerWidth) <= 1,
+        `scroll container right edge ${geometry.rectRight} must equal window width ${geometry.innerWidth}`,
+      );
+      assert.ok(
+        Math.abs(geometry.rectLeft) <= 1,
+        `scroll container must span the main column: left ${geometry.rectLeft}`,
+      );
+      assert.ok(
+        Math.abs(geometry.paddingLeft - viewport.gutter) <= 1,
+        `left gutter ${geometry.paddingLeft} must match ${viewport.gutter}`,
+      );
+      assert.ok(
+        Math.abs(geometry.paddingRight - viewport.gutter) <= 1,
+        `right gutter ${geometry.paddingRight} must match ${viewport.gutter}`,
+      );
+      assert.ok(
+        geometry.infoRight - geometry.infoLeft <= 1720,
+        `content column must cap at 1720px: ${geometry.infoRight - geometry.infoLeft}`,
+      );
+      assert.ok(
+        geometry.scrollHeight > geometry.clientHeight,
+        `run detail must overflow inside the page: ${geometry.scrollHeight} <= ${geometry.clientHeight}`,
+      );
+      assert.equal(
+        geometry.scrollWidth,
+        geometry.clientWidth,
+        "the scroll container must not overflow horizontally",
+      );
+      assert.equal(
+        geometry.documentScrollWidth,
+        geometry.documentClientWidth,
+        "the document must not scroll horizontally",
+      );
+    }
+
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1500,
+      height: 837,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await installCookie(page, await currentLoginCookie());
+    await openRun(page, "run-v2-completed", "?step=clusters");
+    await waitForDocument(
+      page.session,
+      `document.querySelectorAll(".run-detail-page .cluster").length === 2`,
+      "cluster step for input scrolling",
+    );
+    await page.session.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x: 750,
+      y: 500,
+      button: "none",
+    });
+    await page.session.send("Input.dispatchMouseEvent", {
+      type: "mouseWheel",
+      x: 750,
+      y: 500,
+      deltaX: 0,
+      deltaY: 120,
+      button: "none",
+    });
+    const wheeled = await waitForDocument(
+      page.session,
+      `(() => {
+        const root = document.querySelector("[data-testid='evolution-run-detail']");
+        return root.scrollTop > 0 ? root.scrollTop : null;
+      })()`,
+      "wheel scroll inside run detail",
+    );
+    assert.ok(wheeled > 0);
+
+    const stepPoint = await evaluate(
+      page,
+      `(() => {
+        const el = document.querySelector("[data-step-key='clusters']");
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      })()`,
+    );
+    await page.session.send("Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x: stepPoint.x,
+      y: stepPoint.y,
+      button: "left",
+      clickCount: 1,
+    });
+    await page.session.send("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x: stepPoint.x,
+      y: stepPoint.y,
+      button: "left",
+      clickCount: 1,
+    });
+    for (const keyName of ["PageDown", "End"]) {
+      const virtualKey = keyName === "End" ? 35 : 34;
+      await page.session.send("Input.dispatchKeyEvent", {
+        type: "rawKeyDown",
+        key: keyName,
+        code: keyName,
+        windowsVirtualKeyCode: virtualKey,
+        nativeVirtualKeyCode: virtualKey,
+      });
+      await page.session.send("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: keyName,
+        code: keyName,
+        windowsVirtualKeyCode: virtualKey,
+        nativeVirtualKeyCode: virtualKey,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    const bottom = await waitForDocument(
+      page.session,
+      `(() => {
+        const root = document.querySelector("[data-testid='evolution-run-detail']");
+        if (root.scrollHeight - root.scrollTop - root.clientHeight > 2) return null;
+        return { scrollTop: root.scrollTop, scrollHeight: root.scrollHeight };
+      })()`,
+      "PageDown and End reach the run detail bottom",
+    );
+    assert.ok(
+      bottom.scrollTop > wheeled,
+      "PageDown and End must scroll past the wheel position",
+    );
+
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 640,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    await installCookie(page, await currentLoginCookie());
+    await openRun(page, "run-v2-completed", "?step=clusters");
+    await waitForDocument(
+      page.session,
+      `document.querySelectorAll(".run-detail-page .cluster").length === 2`,
+      "mobile cluster step",
+    );
+    const mobile = await evaluate(
+      page,
+      `(() => {
+        const root = document.querySelector("[data-testid='evolution-run-detail']");
+        const main = document.querySelector("main.workspace-main");
+        return {
+          overflowY: getComputedStyle(root).overflowY,
+          mainOverflow: getComputedStyle(main).overflowY,
+          rootScrollHeight: root.scrollHeight,
+          rootClientHeight: root.clientHeight,
+          documentScrollHeight: document.scrollingElement.scrollHeight,
+          documentClientHeight: document.scrollingElement.clientHeight,
+        };
+      })()`,
+    );
+    assert.equal(mobile.overflowY, "visible", JSON.stringify(mobile));
+    assert.equal(mobile.mainOverflow, "visible", JSON.stringify(mobile));
+    assert.ok(
+      mobile.documentScrollHeight > mobile.documentClientHeight,
+      "mobile documents must scroll instead of nesting a second scrollbar",
+    );
+
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
   } finally {
     await page.session.send("Emulation.clearDeviceMetricsOverride").catch(() => {});

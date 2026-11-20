@@ -102,7 +102,7 @@ def parse(
 
 def test_parser_version_advances_with_new_evidence() -> None:
     """The parser version changes when persisted evidence semantics change."""
-    assert CURRENT_PARSER_VERSION == 6
+    assert CURRENT_PARSER_VERSION == 7
 
 
 def test_task_snapshot_and_open_tool_use_are_explicit() -> None:

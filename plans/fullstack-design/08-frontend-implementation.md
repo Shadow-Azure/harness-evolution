@@ -477,6 +477,16 @@ Index.vue
 
 保留下来的能力：会话统计（用户轮次数、消息数、工具失败数、token）由解析期按 agent 累计、组装时整树求和；这些数字不依赖时间线页面。
 
+### 5.5 壳层高度与右栏填充
+
+会话浏览页根节点 `.session-browser` 固定为窗口高度：`calc(100dvh - var(--shell-header-height))`，以 `100vh` 作为旧浏览器回退，并保持 `min-height: 0; overflow: hidden`。文档本身不滚动，左栏 `.sidebar` 与右栏 `.overview` 各自是唯一的滚动容器。
+
+右栏 `.overview` 保持块级滚动容器，`.overview-content` 是纵向 flex 容器并以 `min-height: 100%` 撑满可用高度；最后一个问题列表在内容不足一屏时占满剩余高度，底部与视口保持 24px 以内间距；内容超过一屏时问题列表保持自然高度，由 `.overview` 内部滚动。Agent 执行流在接口加载、接口失败、无数据，以及异步分片加载、异步分片失败五种状态下都保留与原型 `rf-canvas` 同量级的全高占位（桌面 720px、窄屏 420px）；分片失败显示可读的失败提示。执行流数据到达后按自身高度渲染，不因异步分片未到而提前结束内容。
+
+移动端（≤860px）保持单列、自然高度与 `overflow: visible`，与原型窄屏行为一致。父级 `.workspace-main` 仍按 `100vh` 约束：桌面 `dvh` 与 `vh` 一致，移动端由窄屏规则接管，本次不改共享壳层。
+
+滚动容器内的绝对定位辅助文本（`.sr-only` 等）必须以该容器内的某个元素为包含块：例如 `.session-card { position: relative; }`。否则绝对定位盒子的包含块会落到初始包含块，`overflow` 裁剪不生效，卡片列表会把文档撑到最后一屏之外，表现为多出一条窗口滚动条；m3 e2e 用 10 条 Session 的列表布局与 `.sr-only` 的 `offsetParent` 断言回归。
+
 ## 6. 工作空间总览页（`pages/overview/Index.vue`，V2）
 
 ### 6.1 结构
@@ -768,7 +778,7 @@ RunDetail.vue
 | step | 展示 |
 |---|---|
 | 1 选择范围 | 条件摘要（对象@版本、时间窗、策略、缓存开关）+ 统计 |
-| 2 Session 关联 | 4 条/页表格（Session / 对象触发点 / bad case 数 / 潜在数）+ 跳过统计 |
+| 2 Session 关联 | 4 条/页表格（Session 短标签 + 完整 Session ID / 对象触发点 / bad case 数 / 潜在数）；Session 单元格用 `short` 单行省略，`title` 悬停展示完整标题，固定列宽保证四列同屏；存量 run 缺 `short` 时用 `title[:120]` 兜底 + 跳过统计 |
 | 3 潜在 bad case | 5 条/页，含「命中原因」列；`unknown` 标注触发点顺序待重放 |
 | 4 对象归因 | 统计四数 + 表格（来源 bad case / 归因 ID / 分类 / 现象 / 结果来源 cached\|fresh / 置信度）；对象·版本在 step 标题，不在表格重复「结论」 |
 | 5 聚类与严重度 | 簇卡片按 severity 降序，每簇标题 + 聚类描述 + 可折叠来源 bad case 表（ID 可深链错误详情），默认展开第一簇（或 active 簇） |

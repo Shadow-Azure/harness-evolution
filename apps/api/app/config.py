@@ -136,6 +136,7 @@ class Settings(BaseSettings):
         le=86_400,
     )
     git_push: bool = True
+    git_push_url: str | None = None
     git_proxy: str | None = None
     git_proxy_probe_interval_seconds: float = Field(default=60.0, ge=5, le=3_600)
     git_proxy_probe_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
@@ -232,6 +233,30 @@ class Settings(BaseSettings):
             raise ValueError("HE_WEB_BASE_URL must not contain credentials")
         if parsed.query or parsed.fragment:
             raise ValueError("HE_WEB_BASE_URL must not contain query or fragment")
+        return normalized
+
+    @field_validator("git_push_url")
+    @classmethod
+    def validate_git_push_url(cls, value: str | None) -> str | None:
+        """Accept a credential-free HTTP(S)/SSH push URL or one scp-like remote."""
+        if value is None or not value.strip():
+            return None
+        normalized = value.strip()
+        if any(character.isspace() or ord(character) < 0x20 for character in normalized):
+            raise ValueError("HE_GIT_PUSH_URL must not contain whitespace or controls")
+        if "://" in normalized:
+            parsed = urlsplit(normalized)
+            if parsed.scheme not in {"http", "https", "ssh", "git"} or not parsed.hostname:
+                raise ValueError("HE_GIT_PUSH_URL must be an HTTP(S) or SSH URL")
+            if parsed.password is not None:
+                raise ValueError("HE_GIT_PUSH_URL must not contain a password")
+            if parsed.scheme in {"http", "https"} and parsed.username is not None:
+                raise ValueError("HE_GIT_PUSH_URL must not embed credentials")
+            if parsed.query or parsed.fragment:
+                raise ValueError("HE_GIT_PUSH_URL must not contain query or fragment")
+            return normalized
+        if not re.fullmatch(r"[^@\s/]+@[^:\s/]+:[^\s]+", normalized):
+            raise ValueError("HE_GIT_PUSH_URL must be an HTTP(S)/SSH URL or scp-like remote")
         return normalized
 
     @field_validator("git_proxy")

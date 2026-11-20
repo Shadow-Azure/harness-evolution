@@ -15,7 +15,7 @@
 
 ## 机读面：yaml flow 围栏
 
-每个工作文件带且仅带一个 yaml flow 围栏；中英两侧围栏逐字节一致。roadmap 记 `kind` 与 `milestones`；milestone 记 `kind/id/title/status/github`。issue 记：
+每个工作文件带且仅带一个 yaml flow 围栏；中英两侧围栏逐字节一致。roadmap 记 `kind` 与 `milestones`；milestone 记 `kind/id/title/status/github`，可额外声明 `standing: true` 表示常驻桶。issue 记：
 
 ```text
 kind: issue
@@ -46,6 +46,7 @@ github: {number, url}
 - draft 的 `github.number` 为 null 时只能在 backlog；`flow:sync` 回填后可流转。
 - `bootstrap: true` 全库至多一个，仅允许 roadmap 第一个 milestone；编号回填后移除。
 - 跨 milestone 同 priority 串行；milestone 内按既有退档规则解锁。
+- `standing: true` 的 milestone 是常驻桶：issue 全 done 后仍保持 active/open，不参与 status ↔ issue 全 done 的等价校验；退役时由 roadmap 明确改为 done 再 `flow:sync`。
 - in-progress/done 的依赖必须在同档或更早 milestone 且已完成；依赖环即红。
 
 ## 门禁与拦截点

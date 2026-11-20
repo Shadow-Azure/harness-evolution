@@ -42,7 +42,7 @@ Session 默认最新 10 条并回车搜索；错误按 case 分组并支持 `cas
 - 证据：父子关系分 `authoritative/derived/synthetic/unresolved`；`execution_outcome` 独立于解析状态；对象 revision 取 `path + body hash` 或 tag，未知 revision 不按名称猜测。
 - 知识触发：`kind=knowledge` 只认空间知识根或 Provider/Collection 文档，存身份、revision、来源与检索证据，不存全文。
 - 任务：`job_runs` 是真值；默认串行，归因走 claim/lease 有界 lane，四入口共享幂等服务。`sync_lock` 与 job 同事务单飞；payload 三元组唯一，重放按 root 原子重写。
-- 上游用版本化 outbound contract；pull 先写 `http_api` payload 再共享重放；归一化由 `TraceParserFactory` 按 runtime 选子类，消息与内容不落库。
+- 上游用版本化 outbound contract；pull 先写 `http_api` payload 再共享重放；归一化由会话级 parser 按轨迹选型、产出链接，消息与内容不落库。
 - 兼容：无前缀读取可见空间并集；V1 run 只读映射七步；遗留可空字段与删除条件见 [compatibility.md](compatibility.md)。
 - 密钥只从环境变量注入，不入仓库或数据库。
 

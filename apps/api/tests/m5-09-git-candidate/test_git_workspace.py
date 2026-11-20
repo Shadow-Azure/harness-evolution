@@ -118,7 +118,9 @@ async def test_prepare_creates_isolated_workspace_and_run_branch(
     assert prepared.base_commit == base_commit
     assert prepared.branch == "evo/20261028-run-m5-09"
     assert prepared.path == tmp_path / "workspaces" / "run-m5-09"
-    assert prepared.repo_path == tmp_path / "repos" / "target-m5-09"
+    assert prepared.repo_path.parent == tmp_path / "repos" / "target-m5-09"
+    assert prepared.cache_hit is False
+    assert prepared.clone_seconds >= 0
     assert prepared.path.is_dir()
     assert (prepared.path / "skills" / "deep-research" / "SKILL.md").is_file()
     assert _git(prepared.path, "status", "--porcelain") == ""
@@ -184,12 +186,12 @@ async def test_prepare_sanitizes_clone_and_workspace_copy_failures(
     clone_manager = GitWorkspaceManager(
         repos_root=tmp_path / "clone-repos",
         workspaces_root=tmp_path / "clone-workspaces",
-        runner=FailingRunner("clone"),
+        runner=FailingRunner("fetch"),
     )
-    with pytest.raises(GitOperationError, match="repository cache clone failed") as clone_error:
+    with pytest.raises(GitOperationError, match="target reference fetch failed") as clone_error:
         await clone_manager.prepare(_run(str(bare), base_commit))
     assert "secret" not in str(clone_error.value)
-    assert not (tmp_path / "clone-repos" / "target-m5-09").exists()
+    assert not list((tmp_path / "clone-repos" / "target-m5-09").glob("*"))
 
     copy_manager = GitWorkspaceManager(
         repos_root=tmp_path / "copy-repos",
@@ -730,7 +732,7 @@ async def test_reject_deletes_candidate_and_leaves_run_branch_unchanged(
     assert remote_candidate_after == ""
 
 
-async def test_prepare_rebuilds_a_mirror_when_the_target_repo_url_changes(
+async def test_prepare_rebuilds_a_ref_cache_when_the_target_repo_url_changes(
     tmp_path: Path,
 ) -> None:
     """One target id must never prepare new content from a stale repository cache."""
@@ -763,6 +765,7 @@ async def test_prepare_rebuilds_a_mirror_when_the_target_repo_url_changes(
     assert prepared.base_commit == new_commit
     assert (prepared.path / "skills" / "deep-research" / "SKILL.md").read_text() == "# NEW\n"
     assert _git(prepared.repo_path, "remote", "get-url", "origin") == str(new_bare)
+    assert prepared.cache_hit is False
 
 
 async def test_disabled_push_performs_no_remote_mutation_for_any_candidate_stage(

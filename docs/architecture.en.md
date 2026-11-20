@@ -42,7 +42,7 @@ A trace that is not ready is not a 404.
 - Evidence: parent/child relations are `authoritative/derived/synthetic/unresolved`; `execution_outcome` is independent of parse status; object revision comes from `path + body hash` or a tag, and an unknown revision is never guessed by name.
 - Knowledge triggers: `kind=knowledge` accepts only workspace-root or Provider/Collection documents and stores identity, revision, source, and retrieval evidence, never the body.
 - Jobs: `job_runs` is the source of truth. Work is serial by default; attribution uses a bounded claim/lease lane, and four entrypoints share one idempotent service. `sync_lock` and its job are transactional single-flight; payload triples are unique, and replay rewrites each root atomically.
-- Upstream uses a versioned outbound contract; pull writes `http_api` payloads before shared replay; normalization picks a parser subclass by runtime through `TraceParserFactory`, keeping messages and content out of storage.
+- Upstream uses a versioned outbound contract; pull writes `http_api` payloads before shared replay; normalization selects a session parser by trace shape through `can_parse` / `TraceParserFactory.for_trace` and produces links, keeping messages and content out of storage.
 - Compatibility: unprefixed reads use visible-workspace union; V1 runs map read-only to seven steps; legacy nullable fields and deletion conditions live in [compatibility.en.md](compatibility.en.md).
 - Secrets enter only through environment variables, never the repo or database.
 

@@ -41,11 +41,11 @@ def create_app(settings: Settings) -> FastAPI:
 | 文件 | 职责 |
 |---|---|
 | `payloads.py` | 读 `trajectory_payloads`；pull 时 upsert payload + `agent_meta`；按 `(runtime_key, root_session_id, agent_id)` 取原文 |
-| `parsers/base.py` | `BaseTraceParser` 模板方法：JSONL 帧、坏行 issue、隐私边界、统一计数与 finalize |
-| `parsers/factory.py` | `TraceParserFactory`：runtime_key → parser 子类，fail-fast 注册与未知 runtime 错误 |
+| `parsers/base.py` | 会话级 `BaseTraceParser`：`can_parse`、会话成员、JSONL 帧/坏行/隐私/计数/finalize 模板 |
+| `parsers/factory.py` | `TraceParserFactory`：注册 + `for_trace` 轨迹选型 + 显式 `create`；未知/歧义选型错误 |
 | `parsers/claude_code.py` | `ClaudeCodeTraceParser`：Claude 的 record/meta/event/evidence 解释 |
-| `agent_tree.py` | 子转录与主会话关联（meta.toolUseId / `agentId`），组装 agent 树、`agent_events` 与会话统计 |
-| `service.py` | 找出待处理 payload → 逐条归一化 → 幂等写业务表 → 更新 `source_records.processed_*` 与 `job_runs.progress` |
+| `agent_tree.py` | 应用 parser 返回的父子链接，组装 agent 树、`agent_events` 与会话统计 |
+| `service.py` | 找出待处理 payload → 按 root 取齐 → 会话级 parser 归一化 → 幂等写业务表 → 更新 `source_records.processed_*` 与 `job_runs.progress` |
 | `scheduler.py` | 每 `HE_SYNC_INTERVAL_SECONDS` 检查 pending；抢 `sync_lock` 后提交 `sync` 任务；与手动触发共用锁 |
 | 路由在 `api/acquisition.py`（薄层，不在本目录） | `POST /api/acquisition/sync`、`POST /api/acquisition/pull`、`GET /api/acquisition/status` |
 
@@ -117,7 +117,7 @@ async def trigger_sync(source: str) -> TriggerResult:
 
 ### 2.3 归一化（行数组 → 中间结构）
 
-`source_records.runtime_key` 决定使用的 parser；`ClaudeCodeTraceParser` 是当前唯一生产实现。`ParsedTranscript` 的公共字段必须 runtime 无关，provider 私有字段只放 `agent_meta`。
+`source_records.runtime_key` 是 runtime 身份与存储键；parser 由 `can_parse(payloads)` 按轨迹选型，`TraceParserFactory.for_trace(payloads)` 创建会话级实例。`ClaudeCodeTraceParser` 是当前唯一生产实现。`ParsedTranscript` 的公共字段必须 runtime 无关，provider 私有字段只放 `agent_meta`。
 
 ```python
 @dataclass
@@ -198,7 +198,7 @@ agent 写入时一并落 `model` / `requested_model` / `name` / `skill_name` / `
 ```
 
 - `Workflow` 调用建 `kind=workflow` 的合成节点（`agent_id=wf_...`、`lines=0`、`messages_count=0`）；workflow 内部的子 agent 是 `kind=subagent`、`agent_type=workflow-subagent`，`parent_agent_id` 指向 workflow 节点。
-- 普通子 agent 的父调用来自 `meta.toolUseId`；teammate（`task_kind=in_process_teammate`）没有 toolUseId，挂到 main 并保留 `team_name`；forked skill（`task_kind=forked_skill`）用 `skillName` 找父 Skill 事件。
+- 普通子 agent 的父调用优先来自 `meta.toolUseId`；envelope 缺 `toolUseId` 时用父 `toolUseResult.agentId` ↔ 子 JSONL `agentId` 生成 derived 链接，仍无/歧义才走 synthetic；teammate（`task_kind=in_process_teammate`）没有 toolUseId，挂到 main 并保留 `team_name`；forked skill（`task_kind=forked_skill`）用 `skillName` 找父 Skill 事件。
 - 普通 skill 不建节点：`Skill` 调用只写 `agent_events`；仅 forked skill（有独立转录）建 `agents` 行，`task_kind=forked_skill`、`skill_name` 非空、`name` 为空。
 - 子 agent 的 `sessionId` 与主 agent 相同，不能靠 sessionId 找父；必须用 meta / `agentId`。
 
@@ -212,16 +212,19 @@ agent 写入时一并落 `model` / `requested_model` / `name` / `skill_name` / `
 ```python
 async def run_sync(job_id: str) -> SyncResult:
     pending = await payloads.list_pending(parser_versions_by_runtime())  # §2.2 查询
-    for i, p in enumerate(pending):
+    roots = group_by_root(pending)                        # (runtime_key, root_session_id)
+    for i, (runtime_key, root_session_id) in enumerate(roots):
+        session_payloads = await payloads.get_root(runtime_key, root_session_id)
+        parser = TraceParserFactory.for_trace(session_payloads)  # can_parse 唯一选型
+        result = parser.normalize_session()                # transcripts + links，纯 CPU
         async with db.transaction():
-            sr = await source_records.ensure(p)             # 无则插入处理索引
-            raw = await payloads.get(p.runtime_key, p.root_session_id, p.agent_id)
-            parser = TraceParserFactory.create(p.runtime_key)
-            parsed = parser.normalize(raw)                  # 纯 CPU，线程池
-            upsert_derived(sr, parsed)                      # 业务表
-            await source_records.mark_processed(
-                sr.id, p.content_hash, parser.parser_version, job_id)
-        await jobs.update_progress(job_id, (i + 1) / max(len(pending), 1))
+            for p, transcript in zip(session_payloads, result.transcripts):
+                sr = await source_records.ensure(p)        # 无则插入处理索引
+                upsert_derived(sr, transcript)             # 业务表
+                await source_records.mark_processed(
+                    sr.id, p.content_hash, parser.parser_version, job_id)
+            # 父子链接随 assembled tree 写入业务表，不单独落表。
+        await jobs.update_progress(job_id, (i + 1) / max(len(roots), 1))
 
 async def pull(job_id: str, session_ids: list[str] | None = None,
                window: tuple[date, date] | None = None) -> SyncResult:
@@ -231,6 +234,7 @@ async def pull(job_id: str, session_ids: list[str] | None = None,
     return await run_sync(job_id)                           # 走同一管线
 ```
 
+- 真实实现入口是 `replay.py`：取齐 root payloads 后 `for_trace` + `normalize_session`，把 `{root: links}` 传给 `assemble_agent_trees` 后整体持久化；上面的 `run_sync` 是服务层伪代码，`upsert_links` 一类辅助名不是现有函数。
 - **payload 只存一份**：`trajectory_payloads`；`source_records` 不再有 `payload/content_hash/source_ref`。
 - 单条失败不中断整批（记 `errors`），全部完成 `status=completed`（有错误也 completed）。
 - 进度每 5 条或 500ms 发一次。
@@ -239,12 +243,12 @@ async def pull(job_id: str, session_ids: list[str] | None = None,
 
 ### 2.6 多 runtime parser 工厂
 
-`runtime_key` 是 AI agent 类型（`claude-code`、`codex`、...），与 `source_type`（`http_api` / `script` 接入通道）分开。`trajectory_payloads`、`source_records`、`session_families` 都带 `runtime_key`；历史行回填 `claude-code`。
+`runtime_key` 是 AI agent 类型（`claude-code`、`codex`、...），与 `source_type`（`http_api` / `script` 接入通道）分开；它继续作为 runtime 身份与存储键。parser **选型**由轨迹内容决定：`BaseTraceParser.can_parse(payloads)` 由子类实现，`TraceParserFactory.for_trace(payloads)` 在已注册子类中唯一命中后实例化；`create(runtime_key, payloads)` 只保留为显式/测试入口。parser 以**会话**为生命周期：构造时接收同一个 root 的主/子 Agent payload，成员变量持有会话引用；`normalize_session()` 一次产出全部 transcript 与父子链接，`agent_tree` 只应用链接。
 
 ```text
 app/service/acquisition/parsers/
   __init__.py       # 自动发现并 import 子模块，触发注册
-  base.py           # BaseTraceParser + ParseContext + TracePayload
+  base.py           # BaseTraceParser + ParseContext + TracePayload + AgentLink
   factory.py        # TraceParserFactory
   claude_code.py    # ClaudeCodeTraceParser
   <runtime>.py      # 新 runtime 只加这一文件
@@ -255,22 +259,33 @@ class BaseTraceParser(ABC):
     runtime_key: ClassVar[str]
     parser_version: ClassVar[int]
 
+    def __init__(self, payloads: Sequence[TracePayload]) -> None:
+        self.payloads = tuple(payloads)
+        self.main = next(p for p in self.payloads if p.agent_kind == "main")
+        self.subagents = tuple(p for p in self.payloads if p.agent_kind == "subagent")
+
+    @classmethod
+    @abstractmethod
+    def can_parse(cls, payloads: Sequence[TracePayload]) -> bool: ...
+
+    def normalize_session(self) -> SessionParseResult:
+        transcripts = tuple(self.normalize(payload) for payload in self.payloads)
+        return SessionParseResult(transcripts, self.link_transcripts(transcripts))
+
     def normalize(self, payload: TracePayload) -> ParsedTranscript:
-        ctx = ParseContext(payload)
-        for line_no, line in enumerate(self.iter_lines(payload.content), 1):
-            record = self.decode_record(line, ctx, line_no)
-            if record is not None:
-                self.consume_record(record, ctx, line_no)
-        return self.finalize(ctx)
+        ...  # 单 transcript 模板：帧、坏行、计数、finalize
+
+    def link_transcripts(self, transcripts: Sequence[ParsedTranscript]) -> tuple[AgentLink, ...]:
+        return ()
+
+    def extract_evidence(self, payload: TracePayload) -> tuple[TraceEvidence, ...]:
+        return ()
 
     @abstractmethod
     def consume_record(self, record, ctx, line_no): ...
 
     @abstractmethod
     def parse_agent_meta(self, meta) -> AgentMetaFacts: ...
-
-    def extract_evidence(self, payload: TracePayload) -> tuple[TraceEvidence, ...]:
-        return ()
 ```
 
 ```python
@@ -286,9 +301,18 @@ class TraceParserFactory:
         return parser_cls
 
     @classmethod
-    def create(cls, runtime_key: str) -> BaseTraceParser:
+    def for_trace(cls, payloads):
+        matches = [p for p in cls._parsers.values() if p.can_parse(payloads)]
+        if not matches:
+            raise UnsupportedTraceRuntime(...)
+        if len(matches) > 1:
+            raise AmbiguousTraceRuntime([p.runtime_key for p in matches])
+        return matches[0](payloads)
+
+    @classmethod
+    def create(cls, runtime_key, payloads):
         try:
-            return cls._parsers[runtime_key]()
+            return cls._parsers[runtime_key](payloads)
         except KeyError as exc:
             raise UnsupportedTraceRuntime(runtime_key) from exc
 ```
@@ -297,23 +321,29 @@ class TraceParserFactory:
 @TraceParserFactory.register
 class ClaudeCodeTraceParser(BaseTraceParser):
     runtime_key = "claude-code"
-    parser_version = 1
+    parser_version = 7
+
+    @classmethod
+    def can_parse(cls, payloads):
+        ...  # 首条 JSONL 形状：sessionId/uuid/type/message/toolUseResult/isSidechain/agentId
 
     def consume_record(self, record, ctx, line_no):
         ...  # 现有 Claude normalize 主体
 
     def parse_agent_meta(self, meta):
         ...  # Claude meta.json
+
+    def link_transcripts(self, transcripts):
+        ...  # 优先 envelope toolUseId；缺失用 toolUseResult.agentId ↔ 子 agentId
 ```
 
-- `BaseTraceParser` 负责 JSONL 帧、坏行 issue、隐私边界、计数与 finalize；子类只解释 record/meta/event/evidence。
+- `can_parse` 只做快速形态探测，不做完整解析；零命中 `UnsupportedTraceRuntime`，多命中 `AmbiguousTraceRuntime`，不按注册顺序静默选择。
+- 会话 parser 每个 root 一个实例，只持有已加载 payloads 的引用，不复制原始 JSONL；`normalize_session` 结束后即可释放，不跨 root 复用、不引入跨请求缓存。
+- `normalize(payload)` 保留为单 payload 兼容入口（内部仍走同一模板），`extract_evidence` 等既有调用不变；新调用方应使用 `for_trace` + `normalize_session`。
 - 子类用 `@TraceParserFactory.register` 自注册；`parsers/__init__.py` 自动 import 子模块，新增文件不需要改工厂。
-- 未知 runtime 产生稳定 `UNSUPPORTED_RUNTIME`，不能静默 fallback 到 Claude。
 - `parser_version` 来自 parser 类；`source_records.parser_version` 只与同一 `runtime_key` 比较。升级一个 runtime 不重放另一个。
-- `normalize_transcript(...)` 保留为兼容 facade，默认 `claude-code`；新调用方应显式传 `runtime_key`。
-- `extract_evidence()` 是 M9 的可选接口：Claude 返回 agent prompt、Skill body、文件读取 hash；其他 runtime 可先返回空元组。
-
-新增 runtime 的完整步骤：新增 `parsers/<runtime>.py`，继承 `BaseTraceParser`，声明 `runtime_key/parser_version`，实现 `consume_record`/`parse_agent_meta`，加 `@TraceParserFactory.register`，补 fixture 与 factory/replay 测试。公共 normalization、replay、agent_tree 不改。
+- `normalize_transcript(...)` 保留为兼容 facade；新调用方应显式走会话级入口。
+- 新增 runtime 的完整步骤：新增 `parsers/<runtime>.py`，继承 `BaseTraceParser`，声明 `runtime_key/parser_version`，实现 `can_parse` / `consume_record` / `parse_agent_meta` / `link_transcripts`，加 `@TraceParserFactory.register`，补 fixture 与 factory/replay 测试。公共 session 编排、replay、agent_tree 不出现 runtime 分支。
 
 ### 2.6.1 会话来源适配器工厂（M9-07）
 
@@ -699,7 +729,7 @@ async def evolution_dispatch(job) -> None:
 - **事件记录由各阶段模板所在类统一调用**：prepare 的事件在基类，advance/apply/finalize 的事件在 Full；子类（钩子实现）不直接调 `events.record`，保证 F20 执行日志不因子类遗漏而缺行。
 - `eval_poller` / `blocked_sweeper` 是进程级基础设施循环，不属于 engine；但遇到具体 run 时同样经 `EngineFactory.for_run` 解析，用 `engine.gateway` 调外部评测（§5.7）。
 - `POST /cluster-previews` 与 `POST /runs` 共用同一入口；差异全部收敛在 `ClusterOnlyEngine`：不建 workspace、不建 `evolution_rounds`、不提交 advance；聚类与 `confidence`/`severity` 落库后 run 直接 `completed`（终态，归入历史组），前端轮询到 `completed` 再拉 `steps/clusters`（[08 §11](08-frontend-implementation.md)）。
-- `Workspace.prepare`：从 `data/repos/{target_id}` 缓存本地克隆 → 建 `evo/{YYYYMMDD}-{run_id}` 分支；缓存由 `RepoCache.ensure_by_url(repo_url)` 拉取/更新。
+- `Workspace.prepare`：按 target + ref 维护 `data/repos/{target_id}/{sha256(ref)[:16]}` 裸缓存（tag/分支保留该 ref 全历史，完整 SHA 用 depth 1），从缓存本地克隆 → 建 `evo/{YYYYMMDD}-{run_id}` 分支；远端已有 run 分支时显式 fetch 后 `switch --track`，push 前先补齐远端 commit 再做 ancestry 校验。详见 [Git 工作区与推送](../../docs/git-workspace.md)。
 - prepare 只读 run 快照（`repo_url` / `sub_dir` / `target_version` / `engine_key` / `eval_config`），不读 `evolution_targets` 的当前值；target 配置后续变更不影响已创建的 run。
 - `TYPE_IMPACT = {"error": 9, "prompt": 7, "model": 5}`：建簇时写入 `probe_clusters.impact` 并固化；聚类步写入 `confidence / severity / rank`（簇级占位，按 `probe_cluster_type`）。这些列落库后 `build_step_payload` 只读，不在接口层重算。
 - 第 4/5 步必须是独立写库点：归因步骤写单条结论，聚类步骤写簇级 `confidence / severity / rank`，**之后才**按 rank 顺序创建 `evolution_rounds`。不能把归因和聚类合并成一次不可恢复的内存步骤。

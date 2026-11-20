@@ -6,20 +6,23 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.service.acquisition.parsers import (
+    AgentLink,
     ParsedBlock,
     ParsedEvent,
     ParsedIssue,
     ParsedTranscript,
     ParsedUserTurn,
     RootMetadata,
+    SessionParseResult,
     TraceParserFactory,
     TracePayload,
 )
 
-CURRENT_PARSER_VERSION = TraceParserFactory.create("claude-code").parser_version
+CURRENT_PARSER_VERSION = TraceParserFactory.version("claude-code")
 
 __all__ = [
     "CURRENT_PARSER_VERSION",
+    "AgentLink",
     "NormalizationAggregate",
     "NormalizationResult",
     "ParsedBlock",
@@ -28,7 +31,9 @@ __all__ = [
     "ParsedTranscript",
     "ParsedUserTurn",
     "RootMetadata",
+    "SessionParseResult",
     "aggregate_transcripts",
+    "normalize_payloads",
     "normalize_transcript",
 ]
 
@@ -53,6 +58,16 @@ class NormalizationAggregate:
     issues_count: int
 
 
+def normalize_payloads(payloads: tuple[TracePayload, ...]) -> SessionParseResult:
+    """Normalize one root session through the parser selected by trace shape.
+
+    Callers are responsible for loading every payload of exactly one root first;
+    the session parser then returns all transcripts and derived parent links.
+    """
+    parser = TraceParserFactory.for_trace(payloads)
+    return parser.normalize_session()
+
+
 def normalize_transcript(
     content: str,
     *,
@@ -63,23 +78,23 @@ def normalize_transcript(
     runtime_key: str = "claude-code",
     knowledge_roots: tuple[str, ...] = (),
 ) -> ParsedTranscript:
-    """Normalize one payload through its runtime parser.
+    """Normalize one payload through its explicitly named runtime parser.
 
-    The default keeps the historical Claude Code callers source-compatible;
-    new callers should pass the payload's explicit ``runtime_key``.
+    This is the single-payload compatibility facade. The default keeps the
+    historical Claude Code callers source-compatible; new session-level callers
+    should build every root payload and use ``normalize_payloads`` instead.
     """
-    parser = TraceParserFactory.create(runtime_key)
-    return parser.normalize(
-        TracePayload(
-            content=content,
-            root_session_id=root_session_id,
-            agent_id=agent_id,
-            agent_kind=agent_kind,
-            runtime_key=runtime_key,
-            agent_meta=agent_meta,
-            knowledge_roots=knowledge_roots,
-        ),
+    payload = TracePayload(
+        content=content,
+        root_session_id=root_session_id,
+        agent_id=agent_id,
+        agent_kind=agent_kind,
+        runtime_key=runtime_key,
+        agent_meta=agent_meta,
+        knowledge_roots=knowledge_roots,
     )
+    parser = TraceParserFactory.for_payload(runtime_key, payload)
+    return parser.normalize(payload)
 
 
 def aggregate_transcripts(

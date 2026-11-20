@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -28,6 +28,7 @@ from app.service.acquisition.parsers import (
     BaseTraceParser,
     ParseContext,
     TraceParserFactory,
+    TracePayload,
 )
 from app.service.acquisition.parsers.base import _dict, _string
 from app.service.acquisition.replay import replay_pending_payloads
@@ -114,6 +115,24 @@ class FakeTraceParser(BaseTraceParser):
 
     runtime_key = "fake-runtime"
     parser_version = 1
+
+    @classmethod
+    def can_parse(cls, payloads: Sequence[TracePayload]) -> bool:
+        """Accept only the fake event schema so both runtimes stay distinguishable."""
+        if not payloads:
+            return False
+        for payload in payloads:
+            first_line = next(
+                (line for line in payload.content.splitlines() if line.strip()),
+                "",
+            )
+            try:
+                first = json.loads(first_line)
+            except json.JSONDecodeError:
+                return False
+            if not isinstance(first, dict) or "event" not in first or "type" in first:
+                return False
+        return True
 
     def consume_record(
         self,
@@ -325,7 +344,7 @@ async def test_parser_upgrade_replays_only_that_runtime(
                 for source in (await session.execute(select(source_records))).mappings().all()
             }
         assert claude_after["updated_at"] == claude_before["updated_at"]
-        assert versions == {("claude-code", 6), ("fake-runtime", 2)}
+        assert versions == {("claude-code", 7), ("fake-runtime", 2)}
     finally:
         await database.dispose()
 

@@ -780,6 +780,8 @@ onBeforeUnmount(() => {
   grid-template-columns: 360px minmax(0, 1fr);
   width: 100%;
   height: calc(100vh - var(--shell-header-height));
+  height: calc(100dvh - var(--shell-header-height));
+  min-height: 0;
   overflow: hidden;
   background: var(--bg);
 }
@@ -888,6 +890,7 @@ onBeforeUnmount(() => {
 
 .overview {
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
   padding: 18px 20px;
 }
