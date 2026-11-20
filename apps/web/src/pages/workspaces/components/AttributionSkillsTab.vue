@@ -2,6 +2,8 @@
 import type { AttributionSkillPackage } from "@harness/contracts";
 import { ElMessage } from "element-plus/es/components/message/index";
 import { ElMessageBox } from "element-plus/es/components/message-box/index";
+import { useQuery } from "@tanstack/vue-query";
+import { getSkillResource } from "../../../api/attributionSkillPackages";
 import { computed, ref } from "vue";
 
 import ErrorState from "../../../components/ui/ErrorState.vue";
@@ -17,7 +19,28 @@ const manager = useAttributionSkillPackages(() => props.workspaceId);
 const fileInput = ref<HTMLInputElement | null>(null);
 const operationError = ref("");
 const items = computed(() => manager.packages.data.value?.items ?? []);
-const effective = computed(() => manager.packages.data.value?.effective);
+const selectedId = ref("");
+const selected = computed(() => items.value.find(item => item.id === selectedId.value) ?? items.value[0]);
+const detail = useQuery({
+  queryKey: computed(() => ["skill-resource", props.workspaceId, selected.value?.id]),
+  queryFn: () => getSkillResource(props.workspaceId, selected.value!.id),
+  enabled: computed(() => Boolean(selected.value)),
+});
+
+const directoryTree = computed(() => {
+  const lines: string[] = [];
+  let previous: string[] = [];
+  for (const path of detail.data.value?.files ?? []) {
+    const parts = path.split("/");
+    let depth = 0;
+    while (depth < parts.length && previous[depth] === parts[depth]) depth++;
+    for (; depth < parts.length; depth++) {
+      lines.push("  ".repeat(depth) + parts[depth] + (depth < parts.length - 1 ? "/" : ""));
+    }
+    previous = parts;
+  }
+  return lines.join("\n");
+});
 
 function openUpload(): void {
   if (!props.canManage || manager.isMutating.value) return;
@@ -35,21 +58,10 @@ async function handleUpload(event: Event): Promise<void> {
   }
   operationError.value = "";
   try {
-    await manager.upload(file);
-    ElMessage.success("归因 Skill 已上传，可手动设为生效。");
+    selectedId.value = (await manager.upload(file)).id;
+    ElMessage.success("归因 Skill 已上传，可在进化对象中选择。");
   } catch (error) {
     operationError.value = packageErrorMessage(error, "上传失败");
-  }
-}
-
-async function activate(item: AttributionSkillPackage): Promise<void> {
-  if (!props.canManage || item.isActive) return;
-  operationError.value = "";
-  try {
-    await manager.activate(item.id);
-    ElMessage.success(`已启用 ${item.skillName}`);
-  } catch (error) {
-    operationError.value = packageErrorMessage(error, "切换失败");
   }
 }
 
@@ -72,9 +84,7 @@ async function remove(item: AttributionSkillPackage): Promise<void> {
   if (!props.canManage || item.builtIn) return;
   try {
     await ElMessageBox.confirm(
-      item.isActive
-        ? `删除当前生效的 ${item.skillName} 后将立即回退默认 Skill。`
-        : `删除 ${item.skillName} 及其服务器文件？`,
+      `删除 ${item.skillName} 及其服务器文件？`,
       "删除归因 Skill",
       {
         type: "warning",
@@ -102,6 +112,7 @@ function packageErrorMessage(error: unknown, fallback: string): string {
       case "ATTRIBUTION_SKILL_PACKAGE_TOO_LARGE":
         return "压缩包超过限制，请检查 ZIP 大小、解压大小、文件数和 SKILL.md 大小。";
       case "ATTRIBUTION_SKILL_PACKAGE_INVALID":
+        if ("status" in error && error.status === 409) return "请先更改已绑定对象的归因 Skill，再删除此包。";
         return "压缩包不合法：需要且只能包含一个 UTF-8 SKILL.md，并提供合法 name。";
       case "ATTRIBUTION_SKILL_PACKAGE_NOT_FOUND":
         return "该 Skill 已不存在，请刷新列表。";
@@ -130,7 +141,7 @@ function formatBytes(value: number): string {
       <div>
         <h2>自定义归因 Skill</h2>
         <p class="sub">
-          管理当前空间的归因提示词包。上传不会自动生效，也不会绕过生产 Run 的质量门禁。
+          上传归因 Skill 后，可在进化对象配置中绑定，或在启动自进化时选择。
         </p>
       </div>
       <button
@@ -196,7 +207,7 @@ function formatBytes(value: number): string {
                 <th>上传者</th>
                 <th>文件数</th>
                 <th>大小</th>
-                <th>生效状态</th>
+                <th>资源详情</th>
                 <th class="operations">
                   操作
                 </th>
@@ -218,22 +229,16 @@ function formatBytes(value: number): string {
                 <td>{{ item.fileCount }}</td>
                 <td>{{ formatBytes(item.sizeBytes) }}</td>
                 <td>
-                  <span
-                    class="status"
-                    :class="item.isActive ? 'active' : 'inactive'"
-                  >{{ item.isActive ? "当前生效" : "未生效" }}</span>
+                  <button
+                    type="button"
+                    class="text-button"
+                    :aria-pressed="selected?.id === item.id"
+                    @click="selectedId = item.id"
+                  >
+                    查看详情
+                  </button>
                 </td>
                 <td class="operations">
-                  <button
-                    v-if="canManage && !item.isActive"
-                    class="text-button emphasize"
-                    :disabled="manager.isMutating.value"
-                    type="button"
-                    :data-testid="`activate-skill-${item.id}`"
-                    @click="activate(item)"
-                  >
-                    设为生效
-                  </button>
                   <button
                     class="text-button"
                     type="button"
@@ -260,18 +265,31 @@ function formatBytes(value: number): string {
       </section>
 
       <section
-        v-if="effective"
+        v-if="selected"
         class="panel prompt-panel"
         data-testid="effective-skill-prompt"
       >
         <div class="section-heading">
           <div>
-            <h3>当前生效的归因 Skill 提示词</h3>
-            <p><strong>{{ effective.skillName }}</strong> · SKILL.md 原文</p>
+            <h3>{{ selected.skillName }}</h3>
           </div>
-          <span class="status active">当前生效</span>
         </div>
-        <pre>{{ effective.prompt }}</pre>
+        <p v-if="detail.isPending.value">
+          正在读取资源详情…
+        </p>
+        <ErrorState
+          v-else-if="detail.isError.value"
+          message="无法读取资源详情"
+          @retry="detail.refetch()"
+        />
+        <template v-else-if="detail.data.value">
+          <h4>已绑定进化对象</h4>
+          <p>{{ detail.data.value.targets.join("、") || "暂无绑定对象" }}</p>
+          <h4>目录结构</h4>
+          <pre>{{ directoryTree }}</pre>
+          <h4>SKILL.md</h4>
+          <pre>{{ detail.data.value.prompt }}</pre>
+        </template>
       </section>
     </template>
   </div>

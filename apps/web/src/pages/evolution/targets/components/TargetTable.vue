@@ -88,6 +88,7 @@ function toggle(target: EvolutionTarget): void {
           <tr>
             <th>对象类型</th>
             <th>对象名称</th>
+            <th>归因 Skill</th>
             <th>仓库</th>
             <th>子目录</th>
             <th>基线</th>
@@ -109,6 +110,7 @@ function toggle(target: EvolutionTarget): void {
             <td class="object-name">
               {{ target.objectName }}
             </td>
+            <td>{{ target.attributionSkillName || "attribute-badcases" }}</td>
             <td
               class="repo-url"
               :title="target.repoUrl"

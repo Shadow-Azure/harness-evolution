@@ -211,50 +211,7 @@ describe("target configuration page", () => {
     expect(wrapper.text()).toContain("deep-research");
     expect(wrapper.find(".target-create").exists()).toBe(false);
     expect(wrapper.find(".row-actions").exists()).toBe(false);
-    expect(wrapper.text()).toContain("平台默认归因");
-    expect(wrapper.text()).toContain("仅空间管理员可修改绑定");
-  });
-
-  it("binds an older published revision and exposes its target source", async () => {
-    let selectedRevision = "";
-    server.use(
-      http.get(base, () => HttpResponse.json({ items: [target] })),
-      http.put(`${base}/:targetId/attribution-skill`, async ({ request }) => {
-        selectedRevision = String(
-          (await request.json() as { skillRevisionId: string }).skillRevisionId,
-        );
-        return HttpResponse.json({ ...workspaceSkill, source: "target" });
-      }),
-    );
-    const wrapper = await mountPage("admin");
-
-    await wrapper.get("[data-testid='skill-revision-select']").setValue(workspaceSkill.id);
-    await wrapper.get(".bind-skill").trigger("click");
-    await flushPromises();
-
-    expect(selectedRevision).toBe(workspaceSkill.id);
-    expect(wrapper.get(".source-chip").text()).toBe("对象覆盖");
-    expect(wrapper.text()).toContain("root-cause-agent@r2");
-  });
-
-  it("unbinds a target override and falls back to the workspace default", async () => {
-    let removed = false;
-    server.use(
-      http.get(base, () => HttpResponse.json({ items: [target] })),
-      http.get(`${base}/:targetId/attribution-skill`, () =>
-        HttpResponse.json({ ...workspaceSkill, source: "target" }),
-      ),
-      http.delete(`${base}/:targetId/attribution-skill`, () => {
-        removed = true;
-        return new HttpResponse(null, { status: 204 });
-      }),
-    );
-    const wrapper = await mountPage("admin");
-
-    await wrapper.get(".restore-default").trigger("click");
-    await flushPromises();
-
-    expect(removed).toBe(true);
+    expect(wrapper.text()).toContain("attribute-badcases");
   });
 
   it("retries a failed target query without replacing the page", async () => {
@@ -314,6 +271,7 @@ describe("target configuration page", () => {
     await flushPromises();
 
     expect(submitted).toEqual({
+      attributionPackageId: "default-attribute-badcases",
       objectType: "skill",
       objectName: "deep-research",
       repoUrl: "https://example.com/skills.git",

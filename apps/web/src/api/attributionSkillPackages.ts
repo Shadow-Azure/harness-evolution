@@ -1,7 +1,7 @@
 import type {
   AttributionSkillPackage,
   AttributionSkillPackageList,
-  EffectiveAttributionSkillPackage,
+  SkillResourceDetail,
 } from "@harness/contracts";
 
 import { request } from "./http";
@@ -11,9 +11,9 @@ function basePath(workspaceId: string): string {
 }
 
 /**
- * List package metadata and the effective SKILL.md prompt.
+ * List built-in and uploaded Skill package metadata.
  * @param workspaceId Owning workspace identifier.
- * @returns Package list and effective package.
+ * @returns Workspace package list.
  */
 export function listAttributionSkillPackages(
   workspaceId: string,
@@ -37,19 +37,13 @@ export function uploadAttributionSkillPackage(
 }
 
 /**
- * Make one package effective for workspace package configuration.
- * @param workspaceId Owning workspace identifier.
- * @param packageId Selected package identifier.
- * @returns Newly effective package and prompt.
+ * Read the selected resource.
+ * @param workspaceId Owning workspace.
+ * @param packageId Selected Skill.
+ * @returns Prompt, archived file paths and bound targets.
  */
-export function activateAttributionSkillPackage(
-  workspaceId: string,
-  packageId: string,
-): Promise<EffectiveAttributionSkillPackage> {
-  return request(
-    `${basePath(workspaceId)}/${encodeURIComponent(packageId)}/activate`,
-    { method: "POST" },
-  );
+export function getSkillResource(workspaceId: string, packageId: string): Promise<SkillResourceDetail> {
+  return request(`${basePath(workspaceId)}/${encodeURIComponent(packageId)}`);
 }
 
 /**

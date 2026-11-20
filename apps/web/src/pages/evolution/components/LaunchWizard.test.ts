@@ -96,7 +96,7 @@ const potentialPreview: PotentialPreviewResult = {
 };
 
 const attributionPreview: AttributionPreviewResult = {
-  summary: { potential: 2, reused: 1, fresh: 1, nonTargetKnown: 3 },
+  summary: { potential: 2, reused: 1, fresh: 0, missing: 1, bySkill: {"attribute-badcases": 1}, nonTargetKnown: 0 },
   targetRevision: resolvedRevision,
 };
 
@@ -574,9 +574,9 @@ describe("launch wizard", { timeout: 30000 }, () => {
     const stats = wrapper.get("[data-testid='wizard-attribution-stats']").text();
     expect(stats).toContain("2");
     expect(stats).toContain("复用缓存");
-    expect(stats).toContain("3");
+    expect(stats).toContain("0本次新增归因");
     expect(wrapper.get("[data-testid='wizard-effective-skill']").text()).toContain(
-      "platform-default@r1",
+      "attribute-badcases · 1 份",
     );
     expect(
       wrapper.get("[data-testid='wizard-condition-revision']").text(),

@@ -16,8 +16,8 @@ import { useWorkspaceId } from "../../../composables/useWorkspaceId";
 import { workspacePath } from "../../../router/workspace";
 import { useAuthStore } from "../../../stores/auth";
 import TargetTable from "./components/TargetTable.vue";
+import { useAttributionSkillPackages } from "../../../composables/useAttributionSkillPackages";
 import TargetFormDialog from "./components/TargetFormDialog.vue";
-import AttributionSkillPanel from "./components/AttributionSkillPanel.vue";
 import { targetServerError, type TargetServerError } from "./targetErrors";
 
 defineOptions({ name: "TargetConfigPage" });
@@ -42,6 +42,7 @@ const formError = ref<TargetServerError | null>(null);
 const operationError = ref("");
 const submitting = ref(false);
 const editingTargetId = computed(() => editingTarget.value?.id ?? null);
+const skillLibrary = useAttributionSkillPackages(workspaceId);
 const versionsQuery = useEvolutionTargetVersions(workspaceId, editingTargetId);
 const versions = computed(() => versionsQuery.data.value?.versions ?? []);
 const versionsLoading = computed(
@@ -177,14 +178,9 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
       @toggle="toggleTarget"
     />
 
-    <AttributionSkillPanel
-      :can-write="canWrite"
-      :targets="targets"
-      :workspace-id="workspaceId"
-    />
-
     <TargetFormDialog
       v-model="dialogOpen"
+      :packages="skillLibrary.packages.data.value?.items"
       :server-error="formError"
       :submitting="submitting"
       :target="editingTarget"

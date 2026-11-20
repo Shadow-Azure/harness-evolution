@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { computed, toValue, type MaybeRefOrGetter } from "vue";
 
 import {
-  activateAttributionSkillPackage,
   deleteAttributionSkillPackage,
   downloadAttributionSkillPackage,
   listAttributionSkillPackages,
@@ -42,11 +41,6 @@ export function useAttributionSkillPackages(
       uploadAttributionSkillPackage(toValue(workspaceId), file),
     onSuccess: refresh,
   });
-  const activateMutation = useMutation({
-    mutationFn: (packageId: string) =>
-      activateAttributionSkillPackage(toValue(workspaceId), packageId),
-    onSuccess: refresh,
-  });
   const deleteMutation = useMutation({
     mutationFn: (packageId: string) =>
       deleteAttributionSkillPackage(toValue(workspaceId), packageId),
@@ -56,14 +50,12 @@ export function useAttributionSkillPackages(
   return {
     packages,
     upload: (file: File) => uploadMutation.mutateAsync(file),
-    activate: (packageId: string) => activateMutation.mutateAsync(packageId),
     download: (packageId: string) =>
       downloadAttributionSkillPackage(toValue(workspaceId), packageId),
     remove: (packageId: string) => deleteMutation.mutateAsync(packageId),
     isMutating: computed(
       () =>
         uploadMutation.isPending.value ||
-        activateMutation.isPending.value ||
         deleteMutation.isPending.value,
     ),
   };

@@ -1015,7 +1015,7 @@ describe("evolution run detail page", () => {
                 attributed: 3,
                 reused: 0,
                 clusters: 0,
-                byCategory: { model: 0, prompt: 0, error: 2 },
+                byCategory: { model: 0, prompt: 0, error: 2, flow: 0, context: 0 },
               },
             }),
             ["done", "done", "done", "done", "done", "done", "done"],

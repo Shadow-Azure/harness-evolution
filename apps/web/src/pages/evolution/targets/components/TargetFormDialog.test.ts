@@ -93,6 +93,7 @@ describe("TargetFormDialog", () => {
 
     expect(wrapper.emitted("submit")).toEqual([[
       {
+        attributionPackageId: "default-attribute-badcases",
         objectType: "skill",
         objectName: "deep-research",
         repoUrl: "https://example.com/skills.git",
