@@ -264,7 +264,7 @@ test("m11-02 multi-attribution error detail folds groups, pages by two and resto
           items: items.map((item) => ({
             id: item.getAttribute("data-attribution-id"),
             text: item.textContent,
-            href: item.getAttribute("href"),
+            href: item.querySelector(".attr-link")?.getAttribute("href"),
           })),
           pager: group.querySelector(".attr-pager")?.textContent?.replace(/\\s+/g, " ").trim(),
           filter: document.querySelector(".sidebar-filter")?.textContent,
@@ -324,7 +324,7 @@ test("m11-02 multi-attribution error detail folds groups, pages by two and resto
       page,
       `document.querySelector(${JSON.stringify(
         `[data-attribution-id='probe-m11-02-0001']`,
-      )}).click()`,
+      )}).querySelector(".attr-link").click()`,
     );
     const selected = await waitForDocument(
       page.session,

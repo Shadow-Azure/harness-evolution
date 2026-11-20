@@ -20,7 +20,7 @@ scope:
   - scripts/**
   - .agents/**
 adr:
-  - ../../notes/proposed/feature/2026-11-20-attribution-version-labels.md
+  - ../../notes/implemented/feature/2026-11-20-attribution-version-labels.md
 github:
   number: 416
   url: https://github.com/Shadow-Azure/harness-evolution/issues/416

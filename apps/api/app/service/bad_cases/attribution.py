@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Literal, cast
 
 from app.db.crud.attributions import (
@@ -101,6 +102,8 @@ class AttributionReadService:
             object_type=cast(AttributionObjectType, record.probe_type),
             object_name=record.probe_object,
             object_version=record.object_version,
+            object_ref=_display_ref(record.object_ref),
+            object_commit=_short_commit(record.object_commit),
             conclusion=cast(AttributionConclusion, record.conclusion),
             category=cast(AttributionCategory | None, record.attribute_type),
             confidence=record.confidence,
@@ -134,6 +137,29 @@ class AttributionReadService:
             ),
             warnings=_evidence_warnings(record, order),
         )
+
+
+_COMMIT_RE = re.compile(r"^[0-9a-f]{7,40}$", re.IGNORECASE)
+
+
+def _display_ref(value: str | None) -> str | None:
+    """Return a human-readable ref, or null when the value is a content key."""
+    if value is None:
+        return None
+    trimmed = value.strip()
+    if not trimmed or trimmed.startswith(("digest:", "provider:")):
+        return None
+    if _COMMIT_RE.fullmatch(trimmed):
+        return None
+    return trimmed
+
+
+def _short_commit(value: str | None) -> str | None:
+    """Return the seven-character commit prefix the V2 label renders."""
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed[:7] if len(trimmed) >= 7 else None
 
 
 def _evidence_warnings(
