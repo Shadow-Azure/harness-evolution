@@ -19,6 +19,8 @@ scope:
   - tests/**
   - scripts/**
   - deploy/**
+  - attribute/README*
+  - attribute-badcases/SKILL.md
   - .gitignore
   - package.json
 adr:
@@ -42,7 +44,7 @@ Bind one package per target and share latest case reports with evolution.
 
 ## Implementation
 
-Persist target binding, batch intent, report provenance and latest-per-case counts.
+Persist target binding, batch intent, report provenance and latest-per-case counts. Archive each batch and case input with references to immutable Session evidence, target prompt and Skill snapshots.
 
 ## Implementation steps
 

@@ -19,6 +19,8 @@ scope:
   - tests/**
   - scripts/**
   - deploy/**
+  - attribute/README*
+  - attribute-badcases/SKILL.md
   - .gitignore
   - package.json
 adr:
@@ -42,7 +44,7 @@ github:
 
 ## 实现内容
 
-持久化绑定、后台任务、报告 Skill 和逐 case 缓存统计。
+持久化绑定、后台任务、报告 Skill 和逐 case 缓存统计。 归档每批每条 Badcase 的输入清单，引用不可变 Session 证据、对象提示词和 Skill 快照。
 
 ## 实施步骤
 

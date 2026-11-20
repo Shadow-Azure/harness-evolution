@@ -354,7 +354,7 @@ def create_app(
         context_provider=AttributionContextProvider(potential_repository),
         skill_resolver=local_attribution,
         engine_factory=local_attribution.engine,
-        prepare_input=local_attribution.prepare_input,
+        prepare_inputs=local_attribution.prepare_inputs,
         max_concurrency=resolved_settings.attribution_case_concurrency,
     )
     binding_worker = BindingWorker(

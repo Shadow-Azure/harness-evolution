@@ -1,9 +1,9 @@
 ---
 name: attribute-badcases
-description: 你的目标是对session粒度的对象生成问题报告; 根据上报的session粒度下的badcase进行归因分析, 并生成归因报告; 你需要结合完整的session trace和codespec整套背景信息, 从每一个badcase的角度出发, 定位到其session trace中出现这个问题的位置或原因, 总结提炼, 为每个badcase生成独立的probe report; 输出的问题报告格式请参考`template/report_template.json`.
+description: 你的目标是对session粒度的对象生成问题报告; 根据上报的session粒度下的badcase进行归因分析, 并生成归因报告; 你需要结合完整的session trace和codespec整套背景信息, 从每一个badcase的角度出发, 定位到其session trace中出现这个问题的位置或原因, 总结提炼, 为每个badcase生成独立的probe report; 使用包内 make_probe_report.py 生成报告.
 metadata:
   author: "chenzhiyang"
-  version: "1.0.0"
+  version: "1.0.0"
 user-invocable: true
 ---
 
@@ -51,16 +51,13 @@ user-invocable: true
 
 只有前置步骤实际完成后，才能更新对应 TODO 为完成状态。
 
-## 步骤1: 获取待分析session的所有badcase输入
+## 步骤1: 确认本次 Badcase 与选定对象
 
-确认已获取输入的某一session下的所有badcase, 以session为主体粒度进行后续步骤的分析;
-一个session中可能包含多个已初步明确对象的badcase, 你后续需要对每一个badcase结合完整的session看是在session哪里出的问题并抛出为何会出现此类问题;
+一次调用只处理输入中的一条 Badcase。Session 提供整棵树的上下文。先确认 `selected_target` 的类型、名称和版本，再区分上报位置与实际引入问题的位置。
 
 ### 输入格式
 
-输入为一个 JSON 文件 (`input_badcase.json`)，由编排脚本
-`badcase_service/attribute/attribute.py` 自动写入，包含
-`session_id`、`session` (主 session 元数据) 与 `bad_cases` 数组。
+平台在本次工作目录中提供 `input_badcase.json`，含 `session_id`、`session`、当前分析对象 `selected_target` 和仅包含当前上报记录的 `bad_cases` 数组。读取同目录的 `attribute_source.md` 查看选定对象的定义。
 
 **关键字段**：
 
@@ -96,7 +93,8 @@ user-invocable: true
     "badcase_count": 3,
     "type_summary": ["code-review"]
   },
-  "bad_cases": [
+  "selected_target": {"name": "code-review", "type": "skill", "version": "2.1.0", "revision": "2.1.0"},
+  "bad_cases": [
     {
       "bad_case_id": "1203957",
       "type": "skill",
@@ -129,10 +127,6 @@ user-invocable: true
   ]
 }
 ```
-
-### 特殊输入
-
-用户也会输入单个 badcase id, 请你继续按照相同步骤完成技能指定任务.
 
 ## 步骤1.5: 对象归属与正报/误报/上游归还判别（强制前置门）
 
@@ -175,13 +169,7 @@ user-invocable: true
 
 ## 步骤2: 获取完整session trace
 
-对于session，通过统一查询接口恢复完整 session 多叉树和 trace。
-根据 badcase 的 session_id，通过 HTTP 接口复原其对应的完整 session 多叉树结构（父 session + 递归子 session）以及每个 session 的 trace。
-
-trace 恢复由上游编排模块完成，产物已落盘在 `attribute_output/<session_id>/` 下，包括：
-
-- `session_tree.json` / `session_tree_structure.json` — 完整 session 树结构与内容
-- `traces/<session_id>.json` — 每个 session 的 message-parts trace 记录
+平台已在本次工作目录准备证据。读取 `session_tree.json` 中的 Agent 节点、父子关系和事件，再按 Agent ID 在 `traces.json` 中查找原始消息与工具记录。使用 `trace_coverage.json` 核对哪些节点有轨迹、哪些缺失。缺证据时在结论中说明。
 
 ### 2.1 检查产物
 
@@ -211,7 +199,7 @@ trace 恢复由上游编排模块完成，产物已落盘在 `attribute_output/<
 
 ## 步骤3: 收集 badcase对应用到的 Skill、Codespec框架、先验分析及其他必要背景。
 
-读取badcase对应主体, 了解提示词全貌及工作流程, 如"code-review" skill, "codespec-ut-generator" skill, "codespec-wx"
+读取 `attribute_source.md` 了解选定对象的提示词与流程。结合本次输入中提供的背景、先验分析及工具输出判断，缺失的资料在报告中标明。
 
 针对每个 badcase，读取与其直接相关的背景资料。
 
@@ -367,21 +355,22 @@ trace 恢复由上游编排模块完成，产物已落盘在 `attribute_output/<
 你只负责通过脚本参数提供归因的开放内容（`probe_type` / `probe_object` / `object_version` /
 `probe_description` / `probe_analysis` / `attribute_type`）。
 
-对每个 badcase，调用以下脚本（脚本路径相对于运行目录 `attribute/`）：
+在本次工作目录执行以下命令，将尖括号内参数替换为本条 Badcase 的实际值：
 
-```
-python .cac/skills/attribute-badcases/make_probe_report.py \
-  --input-badcase <session_dir>/input_badcase.json \
-  --bad-case-id <badcase_id> \
-  --probe_type <skill|agents>\
-  --probe_object "<实际归因到的归因对象>"\
-  --object-version "<实际归因对象的版本>"\
-  --attribute-type <prompt|model|error|flow|context|unknown> \
-  --probe-description "<归因到的问题是什么, 应怎么改进>" \
-  --probe-analysis "<问题分析过程, 需脱敏>" \
+```sh
+python3 .claude/skills/attribute-badcases/make_probe_report.py \
+  --input-badcase input_badcase.json \
+  --bad-case-id "<badcase_id>" \
+  --probe_type "<skill|agents|knowledge>" \
+  --probe_object "<实际归因对象>" \
+  --object-version "<实际归因对象的版本>" \
+  --attribute-type "<prompt|model|error|flow|context|unknown>" \
+  --probe-description "<问题及改进方向>" \
+  --probe-analysis "<脱敏后的分析过程>" \
+  --output probe_report.json
 ```
 
-其中 `<session_dir>` 是 `attribute_output/<session_id>/`。脚本会自动：
+脚本按以下规则生成报告：
 
 - 从 `input_badcase.json` 按 `--bad-case-id` 读取该 badcase，生成 `probe_id`（
   `{session_id}_{probe_object}_{bad_case_id}`）与 `from_bad_cases`（reason / type /
@@ -399,7 +388,7 @@ python .cac/skills/attribute-badcases/make_probe_report.py \
 **必须遵守**：
 
 - 每个输入 badcase 都必须调用一次脚本生成对应报告，落盘到
-  `attribute_output/<session_id>/badcases/<badcase_id>/probe_report.json`。
+  本次工作目录的 `probe_report.json`。
 - 即使多个 badcase 聚类为同一个根因，也必须保留每条独立报告；不允许用一份报告替代多条。
 - 调用后必须用 Read 工具复核生成的 JSON：内容合法、字段完整、`probe_id` 与 `from_bad_cases` 正确。
 - 报告内容（`--probe_type` / `--probe_object` / `probe_description` / `probe_analysis` ）必须是你从 trace 与对象 skill
@@ -409,7 +398,7 @@ python .cac/skills/attribute-badcases/make_probe_report.py \
 ## 步骤5: 核验全部单条报告和证据引用。
 
 必须核验：
-你在前面步骤是否通过脚本将所有的badcase粒度归因分析都写入了对应的`attribute_output/<session_id>/badcases/<badcase_id>/probe_report.json`中, 必须核验完成才算分析结束。
+你在前面步骤是否通过脚本将所有的badcase粒度归因分析都写入了本次工作目录的 `probe_report.json`，并核验其来源与内容。
 
 1. 输入 badcase 总数与单条报告数量一致。
 2. 每个 badcase ID 都有唯一对应的报告。

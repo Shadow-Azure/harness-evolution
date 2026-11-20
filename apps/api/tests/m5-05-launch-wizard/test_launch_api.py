@@ -1010,6 +1010,18 @@ async def test_local_attribution_from_wizard_to_cluster(
             await asyncio.sleep(0.2)
     before = await launch_api.get("/api/evolution/runs")
     assert before.json()["running"] == before.json()["history"] == []
+    root = app.state.local_attribution.root("ws-default")
+    batches = root / "attribute_input/batches"
+    (binding_batch,) = list(batches.iterdir())
+    binding_inputs = [
+        json.loads(path.read_bytes()) for path in binding_batch.glob("*/manifest.json")
+    ]
+    assert binding_inputs
+    assert all(
+        m["batchId"] == binding_batch.name and m["trigger"] == "target_binding"
+        for m in binding_inputs
+    )
+    assert all(m["skill"]["name"] == "acceptance-skill" for m in binding_inputs)
     preview_body = {
         key: value
         for key, value in _query_body(cacheEnabled=True).items()
@@ -1026,6 +1038,8 @@ async def test_local_attribution_from_wizard_to_cluster(
     )
     assert cache_run.status_code == 202, cache_run.text
     assert (await app.state.jobs.wait(cache_run.json()["jobId"])).status == "completed"
+    assert set(batches.iterdir()) == {binding_batch}
+    assert not (root / "attribute_output" / cache_run.json()["runId"]).exists()
     accepted = await launch_api.post(
         "/api/evolution/runs", json=_query_body(attributionPackageId="default-attribute-badcases")
     )
@@ -1051,6 +1065,18 @@ async def test_local_attribution_from_wizard_to_cluster(
     for report in reports:
         assert report["attribution_skill_name"] == "attribute-badcases"
         assert report["attribution_engine"] == "local-agent-skill-v1"
+        case_id = report["execution_manifest"]["badCaseId"]
+        inputs = batches / accepted.json()["runId"] / case_id
+        manifest = json.loads((inputs / "manifest.json").read_bytes())
+        assert manifest["trigger"] == "evolution_run"
+        assert manifest["inputHash"] == report["execution_manifest"]["contextSnapshotHash"]
+        assert (
+            manifest["skill"]["snapshotHash"]
+            == report["execution_manifest"]["skill"]["contentHash"]
+        )
+        original = next(m for m in binding_inputs if m["badcaseId"] == case_id)
+        assert manifest["evidenceHash"] == original["evidenceHash"]
+        assert manifest["skill"]["snapshotHash"] != original["skill"]["snapshotHash"]
         canonical = report["report_payload"]["sourceReport"]
         assert canonical["attribute_type"] in {
             "prompt",

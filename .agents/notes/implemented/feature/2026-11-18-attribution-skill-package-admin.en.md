@@ -21,3 +21,5 @@ Workspace-wide activation changes unrelated targets. Counting every historical r
 The resource library can show and protect bound packages. Background analysis runs independently of downstream clustering. Retry uses the batch generation to skip completed cases.
 
 Each batch stops after three consecutive failures, with delays of 30 and 60 seconds. An expired lease counts as a failure. Polling for an outstanding Session trace uses a separate wait. The target displays the terminal error. After addressing its cause, saving the same binding retries that generation with its snapshot and skips completed Badcases.
+
+Retries in a batch need the inputs first supplied to the model. A per-case manifest pins the redacted prompt, Session evidence version and Skill snapshot. Cases in one Session share evidence. A new batch can use backfilled transcripts, while reuse keeps the original report.

@@ -120,6 +120,7 @@ class AttributionInput:
     report_source: str = ""
     local_input: Mapping[str, str] = field(default_factory=dict)
     local_input_hash: str | None = None
+    batch_trigger: Literal["target_binding", "evolution_run"] = "evolution_run"
 
     @property
     def cache_key(self) -> str:
@@ -636,6 +637,9 @@ class AttributionStore(Protocol):
         """Persist a fresh probe, its link, and its candidate pointer."""
 
 
+InputPreparer = Callable[[AttributionInput], Awaitable[AttributionInput]]
+
+
 class AttributionRunner:
     """Apply the configured engine to included candidates with cache semantics."""
 
@@ -648,11 +652,13 @@ class AttributionRunner:
         context_provider: AttributionContextProvider | None = None,
         skill_resolver: AttributionSkillSnapshotResolver | None = None,
         max_concurrency: int = 1,
-        prepare_input: Callable[[AttributionInput], Awaitable[AttributionInput]] | None = None,
+        prepare_input: InputPreparer | None = None,
+        prepare_inputs: Callable[[Sequence[str]], InputPreparer] | None = None,
     ) -> None:
         """Bind persistence, engine resolution, and the injectable clock."""
         self._store = store
         self._prepare_input = prepare_input
+        self._prepare_inputs = prepare_inputs
         self._engine_factory = engine_factory
         self._now = now
         self._context_provider = context_provider
@@ -794,6 +800,12 @@ class AttributionRunner:
             ],
         )
 
+        prepare_input = (
+            self._prepare_inputs([case.session_id for case in pending])
+            if self._prepare_inputs
+            else self._prepare_input
+        )
+
         async def attribute_one(
             candidate: PotentialCase,
             item: AttributionInput,
@@ -802,10 +814,10 @@ class AttributionRunner:
                 started = perf_counter()
                 now = self._now()
                 if (
-                    self._prepare_input is not None
+                    prepare_input is not None
                     and item.attribution_skill_executor_type == "local_agent"
                 ):
-                    item = await self._prepare_input(item)
+                    item = await prepare_input(item)
                 if cache_enabled:
                     cached = await self._store.get_probe_by_cache_key(item.cache_key)
                     if cached is not None:
@@ -975,6 +987,7 @@ class AttributionRunner:
         return AttributionInput(
             bad_case_id=candidate.bad_case_id,
             run_id=run.id,
+            batch_trigger="target_binding" if isinstance(run, BindingBatch) else "evolution_run",
             workspace_id=run.workspace_id,
             session_id=candidate.session_id,
             probe_type=run.target_type,

@@ -37,7 +37,7 @@ Session 默认最新 10 条并回车搜索；错误按 case 分组并支持 `cas
 - 生产 MySQL 8、本地/测试 SQLite；`HE_DB_DIALECT` 是唯一选择点。`Database` 统管连接、只读 session、写事务与 health；Alembic 维护双方言迁移，业务只依赖 `db/crud/` 与 `Database`。
 - 空间：`workspaces`、`workspace_members`、`workspace_ingest_credentials`；bad case、对象配置与运行带 `workspace_id`。轨迹全局共享，空间 Session 由 bad case 投影。
 - 上报：凭据只写 URL 空间，额度在写入事务内判定；同 ID 幂等 upsert，不重复计数。
-- 对象绑定一个空间 Skill，默认 `attribute-badcases`。保存绑定触发独立后台归因。向导按对象版本逐 Badcase 复用最新报告，或选择 Skill 单次重算。`HE_ATTRIBUTION_AGENT=claude` 启用本地 CLI，`HE_ATTRIBUTION_MODEL` 选择模型。空间下的 `attribute_skill` 存包，`attribute_source` 存对象定义，`attribute_output` 存逐 Badcase 报告。Worker 校验平台脚本输出，将原始报告随 V2 写入 `probe_reports` 并在同一事务关联候选。
+- 对象绑定一个空间 Skill，默认 `attribute-badcases`。保存绑定触发独立后台归因。向导按对象版本逐 Badcase 复用最新报告，或选择 Skill 单次重算。`HE_ATTRIBUTION_AGENT=claude` 启用本地 CLI，`HE_ATTRIBUTION_MODEL` 选择模型。[归因工作目录](../attribute/README.md)按空间保存 Skill、对象原文、归因输入与报告。Worker 验证脚本输出，将原报告随 V2 写入 `probe_reports` 并在同一事务关联候选。
 - 外部问题表按 06 §4 巡检；schema/行漂移写结构化日志，读失败映射为稳定错误码，读路径只发 SELECT。
 - 证据：父子关系分 `authoritative/derived/synthetic/unresolved`；`execution_outcome` 独立于解析状态；对象 revision 取 `path + body hash` 或 tag，未知 revision 不按名称猜测。
 - 知识触发：`kind=knowledge` 只认空间知识根或 Provider/Collection 文档，存身份、revision、来源与检索证据，不存全文。
