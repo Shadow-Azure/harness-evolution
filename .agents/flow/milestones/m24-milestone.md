@@ -6,7 +6,7 @@
 kind: milestone
 id: m24
 title: M24 自进化 Run 单 ref 克隆与推送
-status: active
+status: done
 github:
   number: 30
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/30

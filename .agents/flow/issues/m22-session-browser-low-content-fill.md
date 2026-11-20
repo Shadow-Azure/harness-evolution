@@ -9,7 +9,7 @@ milestone: m22
 depends:
   - m3-01
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/web/src/pages/sessions/**
   - tests/e2e/**

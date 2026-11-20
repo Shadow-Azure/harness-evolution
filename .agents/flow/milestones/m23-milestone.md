@@ -6,7 +6,7 @@
 kind: milestone
 id: m23
 title: M23 运行列表与原型对齐
-status: active
+status: done
 github:
   number: 32
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/32
