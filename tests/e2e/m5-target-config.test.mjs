@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,6 +14,8 @@ import {
   waitFor,
   waitForDocument,
 } from "../support/runtime.mjs";
+
+import { uploadSkill } from "./support/attribution-skill.mjs";
 
 const root = process.cwd();
 const apiDir = path.join(root, "apps/api");
@@ -336,21 +338,7 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
   assert.ok(defaultWorkspace);
   const workspaceBase = `/workspaces/${defaultWorkspace.id}`;
   const packagesPath = `/api/workspaces/${defaultWorkspace.id}/attribution-skill-packages`;
-  const archive = spawnSync(python, ["-c", [
-    "import io, sys, zipfile",
-    "buf = io.BytesIO()",
-    "with zipfile.ZipFile(buf, 'w') as z:",
-    "    z.writestr('SKILL.md', '---\\nname: e2e-attribution\\n---\\nReview each case.')",
-    "sys.stdout.buffer.write(buf.getvalue())",
-  ].join("\n")]);
-  assert.equal(archive.status, 0, archive.stderr.toString());
-  const form = new FormData();
-  form.set("file", new Blob([archive.stdout]), "e2e-attribution.zip");
-  const upload = await fetch(`${apiUrl}${packagesPath}`, {
-    method: "POST", headers: { authorization: `Bearer ${admin.accessToken}` }, body: form,
-  });
-  assert.equal(upload.status, 201);
-  const uploaded = await upload.json();
+  const uploaded = await uploadSkill(python, `${apiUrl}${packagesPath}`, admin.accessToken, "e2e-attribution");
   await apiJson(
     `/api/workspaces/${defaultWorkspace.id}/members`,
     admin.accessToken,

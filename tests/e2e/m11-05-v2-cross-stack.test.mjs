@@ -15,6 +15,8 @@ import {
   waitForDocument,
 } from "../support/runtime.mjs";
 
+import { uploadSkill } from "./support/attribution-skill.mjs";
+
 const root = process.cwd();
 const apiDir = path.join(root, "apps/api");
 const python = path.join(
@@ -674,6 +676,17 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     await screenshot(page, "05-lab-sessions.png", false);
 
     // 7. Binding alone produces a readable report before launching self-evolution.
+    const reportPath = `/api/workspaces/${workspaceId}/bad-cases/${ingestCases[0].badCaseId}/attributions`;
+    const deadline = Date.now() + 20_000;
+    let original;
+    while (!original && Date.now() < deadline) {
+      original = (await requireApi(reportPath)).body.items[0];
+      if (!original) await new Promise(resolve => setTimeout(resolve, 150));
+    }
+    assert.ok(original, "expected a persisted report from target binding");
+    const initialReport = (await requireApi(`${reportPath}/${original.attributionId}`)).body;
+    assert.equal(initialReport.executionManifest.skill.key, "attribute-badcases");
+    const override = await uploadSkill(python, `${baseUrl}/api/workspaces/${workspaceId}/attribution-skill-packages`, adminToken, "wizard-recompute");
     await page.session.send("Page.navigate", {
       url: `${baseUrl}${labPath}/sessions/${sessionId}/errors?case=${ingestCases[0].badCaseId}&tab=attr`,
     });
@@ -732,7 +745,7 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     assert.match(attributionPreview, /潜在 bad case/);
     assert.match(attributionPreview, /2/);
     await click(page, "[data-testid='wizard-cache']");
-    await selectOption(page, "select[aria-label='本次重算使用的归因 Skill']", "attribute-badcases");
+    await selectOption(page, "select[aria-label='本次重算使用的归因 Skill']", override.skillName);
     await waitForDocument(page.session, `!document.querySelector("[data-testid='wizard-cluster']").disabled`, "selected Skill ready");
     await click(page, "[data-testid='wizard-cluster']");
     await waitForDocument(
@@ -749,6 +762,15 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     );
     const runCard = await pollRun(runId);
     assert.equal(runCard.status, "completed", JSON.stringify(runCard));
+    const recomputed = (await requireApi(reportPath)).body.items.find(item => item.runId === runId);
+    assert.ok(recomputed, "expected a persisted report from the wizard run");
+    assert.notEqual(recomputed.attributionId, original.attributionId);
+    assert.ok(new Date(recomputed.createdAt) >= new Date(original.createdAt));
+    const freshReport = (await requireApi(`${reportPath}/${recomputed.attributionId}`)).body;
+    assert.equal(freshReport.executionManifest.skill.key, override.skillName);
+    assert.equal(freshReport.isCached, false);
+    const effective = (await requireApi(`/api/workspaces/${workspaceId}/evolution/targets/${targetId}/attribution-skill`)).body;
+    assert.equal(effective.skillKey, "attribute-badcases");
     await waitForDocument(
       page.session,
       `(() => {
