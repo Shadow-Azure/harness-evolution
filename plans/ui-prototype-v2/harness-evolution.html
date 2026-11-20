@@ -4817,6 +4817,7 @@ function evRunModel(run) {
     row.attributionId = `AR-${runShort}-${String(idx + 1).padStart(3, '0')}`;
     const cached = run.cache !== false && (h % 2 === 0);
     const notObject = row.c.objectName !== run.target.name && row.c.type === 'discovery' && (h % 4 === 0);
+    row.hasReport = h % 2 === 0;
     row.cached = cached;
     row.conclusion = notObject ? 'not-object' : 'attributed';
     row.category = notObject ? '非该对象问题' : ['错误', 'prompt缺失某些提示词', '模型问题'][h % 3];
@@ -5822,12 +5823,12 @@ function evRenderWizard() {
       <div class="cache-option"><div><b>复用缓存归因</b><div class="v2-note" style="margin-top:2px">如果该对象版本已经对某个潜在 bad case 做过归因，直接复用最近一次成功结果。</div></div><label class="switch"><input type="checkbox" ${wz.cache ? 'checked' : ''} data-action="ev-wz-cache"><span class="slider"></span></label></div>
       <div class="preview-stats">
         <div class="preview-stat"><strong>${m.potentialRows.length}</strong><span>潜在 bad case</span></div>
-        <div class="preview-stat"><strong>${m.reused}</strong><span>复用缓存</span></div>
-        <div class="preview-stat"><strong>${m.fresh}</strong><span>本次新增归因</span></div>
+        <div class="preview-stat"><strong>${wz.cache ? m.potentialRows.filter(r => r.hasReport).length : 0}</strong><span>复用缓存</span></div>
+        <div class="preview-stat"><strong>${wz.cache ? 0 : m.potentialRows.length}</strong><span>本次新增归因</span></div>
         <div class="preview-stat"><strong>${m.notObject.length}</strong><span>非该对象问题</span></div>
       </div>
-      <div class="notice">启动后先生成 ${m.potentialRows.length} 条对象级归因，再进入迭代优化。可归因 ${m.attributed.length} 个 · 非该对象 ${m.notObject.length} 个 · 缓存命中 ${m.reused} 个。</div>
-      <div class="wz-note">缓存键包含工作空间、bad case、对象身份/版本、策略版本与归因模型版本；「非该对象问题」不会修改 bad case 本身。</div>`;
+      <div class="notice"><b>已有问题报告</b><p>${v2Esc(t?.attributionSkill || 'attribute-badcases')} · ${m.potentialRows.filter(r => r.hasReport).length} 份</p><p>尚无报告 ${m.potentialRows.filter(r => !r.hasReport).length} 个 Badcase${wz.cache ? '，本次跳过' : ''}。</p></div>
+      ${wz.cache ? '' : `<label class="cache-option">本次重算使用的归因 Skill <select class="inp" id="ev-recompute-skill">${v2SkillOptions(wz.attributionSkill || t?.attributionSkill || 'attribute-badcases')}</select></label>` }`;
   }
 
   const busyLabel = busy ? (busy.failed ? '等待重试' : `正在${busy.stages[busy.stage].label}…`) : '';
@@ -6759,6 +6760,7 @@ function v2RenderTargetsOverview() {
     return `<div class="tg-side-item ${selected.has(t.id) ? 'selected' : ''}" title="${v2Esc(t.objectName)} · 潜在 ${d.potential} · 是 ${c.isTarget} / 非 ${c.notTarget} / 未 ${c.unanalyzed}">
       <div class="tg-side-top"><div class="tg-target-title"><span class="chip kind">${v2Esc(t.kind)}</span><b>${v2Esc(t.objectName)}</b><span class="mono">@${v2Esc(d.version)}</span></div><div class="tg-target-actions"><button class="btn sm" data-v2-tg-edit="${t.id}">编辑</button><button class="btn sm danger" data-v2-tg-remove="${t.id}">移除</button></div></div>
       <div class="tg-side-meta"><span><b>${d.assoc}</b> 关联 Session</span><span><b>${d.potential}</b> 潜在 bad case</span></div>
+      <div class="tg-side-meta">归因 Skill · ${v2Esc(t.attributionSkill || "attribute-badcases")}</div>
       <div class="tg-side-evolvable">可进化潜在 bad case 数量 <b>${evolvableOf(d)}</b><span>（是问题 ${c.isTarget}；未分析 ${c.unanalyzed}）</span></div>
     </div>`;
   }).join('');
@@ -6945,10 +6947,16 @@ function v2SkillState() {
     const { default: builtIn, seed } = V2_SKILL_FIXTURES;
     V2.admin.skills.set(V2.wsId, {
       items: V2.wsId === 'ws-harness' ? [builtIn, seed] : [builtIn],
-      active: builtIn.name,
+      selected: builtIn.name,
     });
   }
   return V2.admin.skills.get(V2.wsId);
+}
+function v2BoundTargets(skill) {
+  return (EV_TARGETS[V2.wsId] || []).filter(t => (t.attributionSkill || 'attribute-badcases') === skill);
+}
+function v2SkillOptions(selected) {
+  return v2SkillState().items.map(item => `<option ${item.name === selected ? 'selected' : ''}>${v2Esc(item.name)}</option>`).join('');
 }
 function v2SkillDownload(item, label, className) {
   return `<a class="${className}" href="data:application/zip;base64,${item.zip}" download="${item.name}.zip">${label}</a>`;
@@ -6956,16 +6964,14 @@ function v2SkillDownload(item, label, className) {
 function v2AdminSkills() {
   const state = v2SkillState();
   const canManage = v2CanManage(V2.wsId);
-  const effective = state.items.find(item => item.name === state.active);
+  const effective = state.items.find(item => item.name === state.selected);
   const rows = state.items.map(item => {
     const builtIn = item === V2_SKILL_FIXTURES.default;
-    const active = item === effective;
     return `<tr>
       <td><strong class="skill-name">${v2Esc(item.name)}</strong> ${builtIn ? v2Badge('平台默认', '') : ''}</td>
       <td>${v2Esc(item.uploader)}</td><td>1</td><td>${item.bytes} B</td>
-      <td>${v2Badge(active ? '当前生效' : '未生效', active ? 'ok' : '')}</td>
+      <td><button class="skill-action" data-v2-skill-inspect="${item.name}">查看详情</button></td>
       <td class="actions">
-        ${canManage && !active ? `<button type="button" class="skill-action skill-activate" data-v2-skill-activate="${item.name}">设为生效</button>` : ''}
         ${v2SkillDownload(item, '下载', 'skill-download')}
         ${canManage && !builtIn ? `<button type="button" class="skill-action skill-remove" data-v2-skill-remove="${item.name}">删除</button>` : ''}
       </td>
@@ -6973,7 +6979,7 @@ function v2AdminSkills() {
   }).join('');
   return `<div class="skill-tab">
     <div class="admin-head">
-      <div><h2>自定义归因 Skill</h2><div class="sub">管理 ${v2Esc(v2WsName(V2.wsId))} 的归因提示词包。上传后需手动设为生效，生产 Run 继续使用通过质量门禁的 revision。</div></div>
+      <div><h2>自定义归因 Skill</h2><div class="sub">管理 ${v2Esc(v2WsName(V2.wsId))} 的归因提示词包。在进化对象配置中选择要绑定的包。</div></div>
       ${canManage ? '<div class="actions"><button class="btn primary" type="button" data-v2-skill-upload>上传自定义归因 Skill</button><input id="v2SkillFile" type="file" accept=".zip,application/zip" hidden></div>' : ''}
     </div>
     ${canManage ? `<div class="skill-help v2-note">上传 Skill 文件夹的 ZIP 包。最多 200 个文件，ZIP 不超过 10 MiB，解压后不超过 20 MiB。包内须有一个不超过 512 KiB 的 <code>SKILL.md</code>。<br>演示上传请使用${v2SkillDownload(V2_SKILL_FIXTURES.upload, '示例 ZIP', 'skill-download')}。</div>
@@ -6981,13 +6987,13 @@ function v2AdminSkills() {
     <section class="skill-panel">
       <div class="skill-panel-head"><div><h3>已上传归因 Skill</h3><p class="v2-note">${state.items.length} 个包。平台默认包始终可用。</p></div>${canManage ? '' : v2Badge('只读', 'viewer')}</div>
       <div class="skill-table-scroll"><table class="admin-table">
-        <thead><tr><th scope="col">Skill 名</th><th scope="col">上传者</th><th scope="col">文件数</th><th scope="col">大小</th><th scope="col">生效状态</th><th scope="col">操作</th></tr></thead>
+        <thead><tr><th scope="col">Skill 名</th><th scope="col">上传者</th><th scope="col">文件数</th><th scope="col">大小</th><th scope="col">资源详情</th><th scope="col">操作</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
     </section>
     <section class="skill-panel">
-      <div class="skill-panel-head"><div><h3>当前生效的归因 Skill 提示词</h3><p class="v2-note"><strong>${v2Esc(effective.name)}</strong> · SKILL.md 原文</p></div>${v2Badge('当前生效', 'ok')}</div>
-      <pre class="skill-prompt" tabindex="0">${v2Esc(effective.prompt)}</pre>
+      <div class="skill-panel-head"><div><h3>${v2Esc(effective.name)}</h3><p class="v2-note"><strong>${v2Esc(effective.name)}</strong> · SKILL.md 原文</p></div></div>
+      <h4>已绑定进化对象</h4><p>${v2BoundTargets(effective.name).map(t => v2Esc(t.objectName)).join("、") || "暂无绑定对象"}</p><h4>目录结构</h4><pre>${v2Esc(effective.name)}/SKILL.md</pre><h4>SKILL.md</h4><pre class="skill-prompt" tabindex="0">${v2Esc(effective.prompt)}</pre>
     </section>
     <dialog class="card skill-confirm" id="v2SkillRemove" aria-labelledby="v2SkillRemoveTitle">
       <form method="dialog">
@@ -7033,41 +7039,40 @@ async function v2UploadSkill(input) {
     return;
   }
   state.items.push({ ...sample, uploader: user.name });
-  v2RenderSkillUpdate('归因 Skill 已上传，可手动设为生效。');
+  v2RenderSkillUpdate('归因 Skill 已上传，可在进化对象配置中选择。');
 }
 function v2RemoveSkill(item, state) {
   const dialog = document.getElementById('v2SkillRemove');
-  const isActive = item.name === state.active;
-  document.getElementById('v2SkillRemoveText').textContent = isActive
-    ? `删除当前生效的 ${item.name} 后将立即回退默认 Skill。`
-    : `删除 ${item.name} 及其文件？`;
+  if (v2BoundTargets(item.name).length) { v2Toast('请先更改已绑定对象的归因 Skill'); return; }
+  const isActive = item.name === state.selected;
+  document.getElementById('v2SkillRemoveText').textContent = `删除 ${item.name} 及其文件？`;
   dialog.returnValue = '';
   dialog.addEventListener('close', () => {
     if (dialog.returnValue !== 'remove') return;
     state.items = state.items.filter(current => current !== item);
-    if (isActive) state.active = V2_SKILL_FIXTURES.default.name;
+    if (isActive) state.selected = V2_SKILL_FIXTURES.default.name;
     v2RenderSkillUpdate('归因 Skill 已删除。');
   }, { once: true });
   dialog.showModal();
 }
 document.addEventListener('change', event => {
+  if (event.target.id === 'ev-recompute-skill') EV_STATE.wz.attributionSkill = event.target.value;
   if (event.target.id === 'v2SkillFile') v2UploadSkill(event.target);
 });
 document.addEventListener('click', event => {
-  const action = event.target.closest('[data-v2-skill-upload], [data-v2-skill-activate], [data-v2-skill-remove]');
+  const inspect = event.target.closest('[data-v2-skill-inspect]');
+  if (inspect) { v2SkillState().selected = inspect.dataset.v2SkillInspect; v2RenderAdmin(); return; }
+  const action = event.target.closest('[data-v2-skill-upload], [data-v2-skill-remove]');
   if (!action || !v2CanManage(V2.wsId)) return;
-  const { v2SkillUpload, v2SkillActivate, v2SkillRemove: removeName } = action.dataset;
+  const { v2SkillUpload, v2SkillRemove: removeName } = action.dataset;
   if (v2SkillUpload !== undefined) {
     document.getElementById('v2SkillFile').click();
     return;
   }
   const state = v2SkillState();
-  const item = state.items.find(current => current.name === (v2SkillActivate || removeName));
+  const item = state.items.find(current => current.name === removeName);
   if (!item) return;
-  if (v2SkillActivate) {
-    state.active = item.name;
-    v2RenderSkillUpdate(`已启用 ${item.name}`);
-  } else if (item !== V2_SKILL_FIXTURES.default) {
+  if (item !== V2_SKILL_FIXTURES.default) {
     v2RemoveSkill(item, state);
   }
 });
@@ -7254,13 +7259,15 @@ function v2TargetModal(id) {
       <div class="f-row"><div class="f-label">默认版本 <span class="req">*</span></div><input class="inp" id="v2TgVersion" value="${t ? v2Esc(t.defaultRef || '') : ''}" placeholder="例如：v1.8.0" style="width:180px"></div>
       <div class="f-row"><div class="f-label">仓库地址</div><input class="inp" id="v2TgRepo" value="${t ? v2Esc(t.repoUrl || '') : ''}" placeholder="https://github.com/acme/agent-skills.git" style="width:100%"></div>
       <div class="f-row"><div class="f-label">子目录</div><input class="inp" id="v2TgSubdir" value="${t ? v2Esc(t.subDir || '') : ''}" placeholder="skills/code-review" style="width:100%"></div>
-      <div class="notice">新增后，这个对象会立即出现在本页统计、趋势和自进化启动向导中；移除不会删除已有运行记录。</div>
+      <label class="f-row">归因 Skill <select class="inp" id="v2TgSkill">${v2SkillOptions(t?.attributionSkill || 'attribute-badcases')}</select></label>
+      <div class="notice">保存绑定后，后台会逐条分析当前与该对象关联的 Badcase。</div>
     </div>
     <div class="modal-foot"><button class="btn" data-v2-close>取消</button><button class="btn primary" data-v2-tg-save="${t ? t.id : ''}">${t ? '保存' : '新增对象'}</button></div>
   </div></div>`);
 }
 function v2SaveTarget(id) {
   const name = (document.getElementById('v2TgName')?.value || '').trim();
+  const attributionSkill = document.getElementById('v2TgSkill').value;
   const kind = document.getElementById('v2TgKind')?.value || 'skill';
   const version = (document.getElementById('v2TgVersion')?.value || '').trim() || 'v1.0.0';
   const repoUrl = (document.getElementById('v2TgRepo')?.value || '').trim();
@@ -7271,10 +7278,10 @@ function v2SaveTarget(id) {
   if (id) {
     const t = list.find(x => x.id === id);
     if (!t) return;
-    Object.assign(t, { kind, objectName: name, defaultRef: version, tags: [version], repoUrl, subDir });
+    Object.assign(t, { kind, attributionSkill, objectName: name, defaultRef: version, tags: [version], repoUrl, subDir });
   } else {
     const tid = 't-' + Date.now().toString(36);
-    list.push({ id: tid, kind, objectName: name, defaultRef: version, tags: [version], repoUrl, subDir, enabled: true, validationProjectId: 'val-' + tid, testProjectId: 'test-' + tid });
+    list.push({ id: tid, kind, attributionSkill, objectName: name, defaultRef: version, tags: [version], repoUrl, subDir, enabled: true, validationProjectId: 'val-' + tid, testProjectId: 'test-' + tid });
   }
   v2CloseModal();
   V2.targetOv.page = 1;
