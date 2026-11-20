@@ -124,7 +124,7 @@ async def test_package_isolation_and_oversized_prompt(
 async def test_upload_inspect_download_and_delete_resource(
     package_client: tuple[FastAPI, httpx.AsyncClient, Path],
 ) -> None:
-    """The full package lifecycle is explicit and active deletion restores default."""
+    """Custom packages can be inspected, downloaded and removed while the default stays available."""
     _, client, package_root = package_client
     initial = await client.get(_base())
     assert initial.status_code == 200
@@ -189,6 +189,14 @@ async def test_rejects_unsafe_or_ambiguous_archives(
 ) -> None:
     """Traversal and multiple SKILL.md files fail before filesystem writes."""
     _, client, package_root = package_client
+    reserved = await client.post(
+        _base(),
+        files={"file": ("skill.zip", _zip({"SKILL.md": "---\nname: attribute-badcases\n---\n"}))},
+    )
+    assert reserved.status_code == 409
+    assert reserved.json()["error"]["code"] == "ATTRIBUTION_SKILL_PACKAGE_EXISTS"
+    assert not (package_root / DEFAULT_WORKSPACE_ID).exists()
+
     traversal = await client.post(
         _base(),
         files={

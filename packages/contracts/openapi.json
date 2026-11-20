@@ -1472,7 +1472,7 @@
       },
       "AttributionSkillPackageList": {
         "additionalProperties": false,
-        "description": "All workspace packages and the currently effective prompt.",
+        "description": "Workspace resources available for binding and one-off analysis.",
         "properties": {
           "items": {
             "items": {
@@ -14265,7 +14265,7 @@
     },
     "/api/workspaces/{wid}/attribution-skill-packages": {
       "get": {
-        "description": "List the built-in package, custom uploads, and effective prompt.",
+        "description": "List the built-in package and workspace uploads.",
         "operationId": "list_attribution_skill_packages_api_workspaces__wid__attribution_skill_packages_get",
         "parameters": [
           {
@@ -14473,7 +14473,7 @@
     },
     "/api/workspaces/{wid}/attribution-skill-packages/{packageId}": {
       "delete": {
-        "description": "Delete one custom package and fall back to default when it was active.",
+        "description": "Remove a custom package that has no target bindings.",
         "operationId": "delete_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__delete",
         "parameters": [
           {

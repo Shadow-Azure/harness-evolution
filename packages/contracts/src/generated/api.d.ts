@@ -955,7 +955,7 @@ export interface paths {
         };
         /**
          * List Attribution Skill Packages
-         * @description List the built-in package, custom uploads, and effective prompt.
+         * @description List the built-in package and workspace uploads.
          */
         get: operations["list_attribution_skill_packages_api_workspaces__wid__attribution_skill_packages_get"];
         put?: never;
@@ -986,7 +986,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Attribution Skill Package
-         * @description Delete one custom package and fall back to default when it was active.
+         * @description Remove a custom package that has no target bindings.
          */
         delete: operations["delete_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__delete"];
         options?: never;
@@ -2627,7 +2627,7 @@ export interface components {
         };
         /**
          * AttributionSkillPackageList
-         * @description All workspace packages and the currently effective prompt.
+         * @description Workspace resources available for binding and one-off analysis.
          */
         AttributionSkillPackageList: {
             /** Items */

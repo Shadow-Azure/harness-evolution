@@ -135,6 +135,13 @@ class AttributionSkillPackageService:
         if len(archive) > MAX_ARCHIVE_BYTES:
             raise self._too_large("compressed archive exceeds 10 MiB")
         validated = await asyncio.to_thread(self._validate_archive, archive)
+        if validated.skill_name == DEFAULT_SKILL_NAME:
+            raise AppError(
+                status_code=HTTPStatus.CONFLICT,
+                code=ErrorCode.ATTRIBUTION_SKILL_PACKAGE_EXISTS,
+                message="this name belongs to the built-in attribution Skill",
+                details={"skillName": DEFAULT_SKILL_NAME},
+            )
         package_id = new_id()
         relative_storage = str(
             PurePosixPath(workspace_id, "attribute_skill", "uploads", package_id)
