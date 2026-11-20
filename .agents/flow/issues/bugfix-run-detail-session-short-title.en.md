@@ -4,7 +4,7 @@ English | [中文](bugfix-run-detail-session-short-title.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-02
+id: bugfix-03
 milestone: bugfix
 depends:
   - m21-01
