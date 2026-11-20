@@ -33,74 +33,87 @@ Zooming into the right edge confirms that the third bar is the page (window) scr
 
 ![Right edge zoom: the right-column scrollbar and the window scrollbar side by side](https://github.com/Shadow-Azure/harness-evolution/releases/download/session-triple-scrollbar-evidence-20261120/session-third-scrollbar-problem-right-edge.png)
 
-Facts read from the screenshot:
+The captured page is already scrolled down as a whole: the left "Session browser" title, search and filters, and the right-hand Session title, stats and flow top edge are outside the capture. The red box is the page background band left below both columns.
 
-- The page is already scrolled down as a whole: the left "Session browser" title, search and filters, and the right-hand Session title, stats and flow top edge are all outside the capture. The left list scrollbar track ends at y≈406, so the document itself scrolled by roughly 400–500px, which is not the left list scrolling internally.
-- The window scrollbar at the far right pushes the `.overview` scrollbar about 17px to the left; the two grey scrollbars sit side by side. The window thumb covers about 353/837 of the track, implying a document about 1.5–1.9 viewports tall.
-- The blank band outlined by the user below both columns is page background that remains after the two columns end, produced by the same document-level scroll.
+## Production re-check and root cause
 
-This is not the intended scroll structure for this page. [08 §5.5](../../../plans/fullstack-design/08-frontend-implementation.md) fixes the root node to the viewport height, keeps the document itself from scrolling, and makes the left `.sidebar` and the right `.overview` the only scroll containers — exactly two bars. The V2 prototype at the same page and viewport also shows exactly two bars, see the comparison below.
+Around 15:00 on 2026-11-20 the same Session `5f4a5c96-d4bf-4781-b5c5-291c6b5b21ea` was re-checked against production (http://8.149.232.63/ with the administrator account):
+
+- The deployed `assets/index-CYlO1h4q.js` has the same hash as a local `pnpm build` of main, ruling out a stale build or cache.
+- At 1500×837, dpr 2: `document.scrollingElement.scrollHeight = 1895`, `clientHeight = 837` (about 2.26 screens), and the window scrollbar takes 15px.
+- `.shell` is 837 tall; `main.workspace-main`, `.session-browser`, `.sidebar` and `.overview` are all 781 tall with bottom 837; the only qualifying `overflow-y: auto` scrollers are `.session-list` (1843 / 607) and `.overview` (952 / 781).
+- No visible element extends past 837, yet hiding `.session-list` drops the document back to 837 immediately; hiding the Session cards one by one reduces the document height by one card height (about 179px) each time; the last card's `span.sr-only` sits at y≈1830, and the 1895 document height is exactly determined by it.
+
+The root cause is the accessible status text in `apps/web/src/pages/sessions/components/SessionCard.vue`:
+
+- `.sr-only` uses `position: absolute`, while `.session-card` and `.session-list` have no positioned ancestor, so the computed `offsetParent` is `body`.
+- The absolutely positioned box's containing block is the initial containing block; `.session-list`'s `overflow-y: auto` is not in its containing-block chain, so the list **does not clip it**. Its static position (the card title row) is counted in the root element's scrollable overflow.
+- With 10 production Sessions, the last card's `.sr-only` lands at y≈1830, stretching the document to 1895 while the visible layout stays 837. The browser therefore paints the window scrollbar, and the page can scroll into the blank band below the two columns. The user's third scrollbar and blank band both come from this.
+
+Why it was missed before: the #415/#422 and m3 e2e synthetic data only has 4 Sessions; with 4 cards the last `.sr-only` is still inside 837, so the document stays 837. Production's 10 cards cross the viewport, so the #422 low-content fill never touched this overflow and the regression stayed green.
+
+The fix was validated in-memory on the production page: setting `position: relative` on `.session-card` changes `document.scrollHeight` from 1895 to 837 immediately, `scrollWidth = clientWidth = 1500`, only `.session-list` and `.overview` remain as scrollers, and `window.scrollTo(0, 600)` keeps `scrollY` at 0. Before / after:
+
+![Production re-check: document 1895 before the fix, window scrollbar present](https://github.com/Shadow-Azure/harness-evolution/releases/download/session-triple-scrollbar-evidence-20261120/session-third-scrollbar-prod-verify.png)
+
+![Production re-check: document 837 after injecting the fix, only the left and right scrollbars](https://github.com/Shadow-Azure/harness-evolution/releases/download/session-triple-scrollbar-evidence-20261120/session-third-scrollbar-prod-fixed.png)
 
 ## Goals
 
-- The production Session error view shows only the left list and right content vertical scrollbars at common desktop viewports (at least 1500×837, 1440×900, 1366×768); the document does not scroll and cannot reach the blank band below the columns.
-- Turn "document does not scroll plus exactly two scrollbars" from an implicit convention into a regression assertion, so the next breakage of the shell height chain turns the e2e red.
+- The production Session error view shows only the left list and right content vertical scrollbars at 1500×837, 1440×900 and 1366×768; the document does not scroll and cannot reach the blank band below the columns.
+- Turn "document does not scroll plus exactly two scrollbars" into a regression assertion covering 10+ Sessions, so an absolutely positioned element without a positioned ancestor cannot stretch the document again.
+- Audit the same `.sr-only` pattern so it does not reappear in other scroll containers.
 - Do not change API contracts, Session data or content structure; do not change the V2 prototype.
 
 ## Design authority
 
-- [08 §5.5 shell height and right-column fill](../../../plans/fullstack-design/08-frontend-implementation.md): `.session-browser` is fixed to the window height, the document does not scroll, and each column scrolls internally; when the right column has less than one screen of content, the last problem list fills the remainder.
+- [08 §5.5 shell height and right-column fill](../../../plans/fullstack-design/08-frontend-implementation.md): `.session-browser` is fixed to the window height, the document does not scroll, and each column scrolls internally.
 - V2 prototype `plans/ui-prototype-v2/harness-evolution.html` (`?u=admin&page=session&ws=ws-harness`): `.shell` is `calc(100vh / var(--ui-zoom) - 56px)`, the body has a fixed 56px top offset, `.session-list` and `.main` scroll internally, and the page itself does not scroll.
-- Current implementation: `main.workspace-main` in `apps/web/src/App.vue`; `.session-browser` in `apps/web/src/pages/sessions/Index.vue`; `.overview` in `apps/web/src/pages/sessions/components/SessionOverview.vue`.
-- Prior work: [#415](https://github.com/Shadow-Azure/harness-evolution/issues/415) recorded the blank band and the window-level scroll on the same page; [#422](https://github.com/Shadow-Azure/harness-evolution/issues/422) (m22-02) fixed the low-content fill and added the first "document does not scroll" e2e regression.
+- Affected implementation: `apps/web/src/pages/sessions/components/SessionCard.vue` (`.sr-only`), `apps/web/src/pages/sessions/Index.vue` (`.session-browser`), `apps/web/src/pages/sessions/components/SessionOverview.vue` (`.overview`).
+- Prior work: [#415](https://github.com/Shadow-Azure/harness-evolution/issues/415) recorded the blank band and window-level scroll on the same page; [#422](https://github.com/Shadow-Azure/harness-evolution/issues/422) (m22-02) fixed the low-content fill and added the "document does not scroll" regression, but its synthetic data has only 4 Sessions and does not cover this overflow.
 
 ## Comparison and reproduction
 
-Same page, same 1500×837 viewport, same low-content Session:
-
-| Item | Production (user screenshot) | V2 prototype | Current main |
+| Item | Production (measured) | V2 prototype | Current main (4-card fixture) |
 |---|---|---|---|
-| `document.scrollingElement.scrollHeight` / `innerHeight` | about 1.5–1.9 × | 837 / 837 | 837 / 837 |
+| `document.scrollHeight` / `innerHeight` | 1895 / 837 | 837 / 837 | 837 / 837 |
 | Vertical scroll containers | left list + right column + window | `.session-list` + `.main` | `.session-list` + `.overview` |
-| Document scrollable | yes (screenshot is scrolled) | no | no |
-| Blank band below both columns | yes (red box) | no | no (right column fills) |
+| Document scrollable | yes | no | no |
+| Blank band below both columns | yes | no | no |
 
 - V2 prototype at the same viewport (only the left and right bars; `document` 837 = viewport 837):
 
 ![V2 prototype at the same viewport: only two scrollbars](https://github.com/Shadow-Azure/harness-evolution/releases/download/session-triple-scrollbar-evidence-20261120/session-third-scrollbar-prototype.png)
 
-- Current main at the same viewport (fixture Session; document 837 = viewport 837; only two bars):
+- Current main at the same viewport with 4 fixture Sessions (`document` 837 = viewport 837):
 
-![Current main at the same viewport: only two scrollbars](https://github.com/Shadow-Azure/harness-evolution/releases/download/session-triple-scrollbar-evidence-20261120/session-third-scrollbar-current-main.png)
-
-Measured on current main (headless Chrome, 1500×837, fixture Session): `document.scrollHeight = 837 = innerHeight`, and only `.session-list` (scrollHeight 752 / clientHeight 607) and `.overview` (835 / 781) qualify as scroll containers. The prototype has `.session-list` (2237 / 554) and `.main` (824 / 756). Neither has a window scrollbar.
-
-The production screenshot therefore does not match current main: it still carries the pre-#422 blank band, while #422 was deployed at 2026-11-20 13:17 with `1890e2d7`. The first step is to rule out a stale production build (hard refresh, record the build hash). Regardless of that outcome, the third scrollbar shows that this invariant currently relies on the implicit cooperation of the page height chain and has no explicit assertion.
+![Current main at the same viewport: four Sessions, only two scrollbars](https://github.com/Shadow-Azure/harness-evolution/releases/download/session-triple-scrollbar-evidence-20261120/session-third-scrollbar-current-main.png)
 
 ## Implementation
 
-- Give the Session page height a single owner: `main.workspace-main` provides the `100dvh` (`100vh` fallback) height and `overflow: hidden`; `.session-browser` uses `height: 100%` instead of recomputing `calc(100vh/dvh - var(--shell-header-height))`, keeping `min-height: 0`. The ≤860px single-column breakpoint stays `height: auto; overflow: visible` so mobile may scroll the document.
-- Add explicit assertions to `tests/e2e/m3-session-browser.test.mjs`:
+- `SessionCard.vue`: add `position: relative` to `.session-card` so the card's `.sr-only` resolves its containing block to the card and is clipped again by `.session-list`'s `overflow-y: auto`; no visible layout or accessible text change.
+- Audit the other `.sr-only` sites (`AttributionReport.vue`, `VersionLabel.vue`): where they sit inside a scroll container without a positioned ancestor, apply the same containment (add `position: relative` to the nearest card/row container, or place the `.sr-only` inside an already positioned wrapper); add a line to 08 §5.5 that an `.sr-only` inside a scroll container must have a positioned ancestor.
+- `tests/e2e/m3-session-browser.test.mjs`: add a 10-Session list scenario (extend the fixture or seed the same way), and assert at 1500×837 and 1440×900:
   - `document.scrollingElement.scrollHeight === innerHeight`;
   - after `window.scrollTo(0, 500)`, `window.scrollY === 0`;
-  - walk all elements and require exactly two top-level scroll containers with `overflow-y: auto|scroll` and `scrollHeight > clientHeight + 1`, matching `.session-list` and `.overview`;
-  - cover 1500×837, 1440×900 and the scrolled-to-bottom (long content) state.
-- Update [08 §5.5](../../../plans/fullstack-design/08-frontend-implementation.md) and the Agent Note in the same PR with the "exactly two scrollbars, document does not scroll" contract and how it is verified.
-- If production still reproduces after a hard refresh, collect `document.scrollingElement.scrollHeight`, `innerHeight`, every scroll container with its rect, and the build hash, then change the layout.
+  - exactly two top-level `overflow-y: auto|scroll` containers with `scrollHeight > clientHeight + 1`, matching `.session-list` and `.overview`;
+  - no `.session-card .sr-only` has `offsetParent === document.body` (direct lock on this root cause).
+- Record the "an `.sr-only` inside a scroll container needs a positioned ancestor" contract and its verification in 08 §5.5 and the Agent Note in the same PR.
+- Re-verify production after the fix with a hard refresh, with before/after screenshots and the build hash.
 
 ## Implementation steps
 
-1. Reproduce with the production build (not the dev server) at 1500×837 and record the build hash; if a hard refresh makes it disappear, keep step 3 and step 4 and leave the layout unchanged.
-2. Collapse the height source: `main.workspace-main` owns the viewport height and clipping, `.session-browser` uses `height: 100%`.
-3. Add the m3 e2e assertions for "document does not scroll" and the scroll-container count.
-4. Update 08 §5.5 and the Agent Note with "one bar on each side, no page scroll".
-5. Run the gates, capture 1500×837 before/after screenshots (three bars → two), and re-verify production after a hard refresh.
+1. Add `position: relative` to `.session-card`; first validate on production by injecting it as above and confirming the document returns to 837.
+2. Audit the other `.sr-only` sites and apply the same containment.
+3. Extend m3 e2e with 10 Sessions: confirm it fails on the unfixed code, then passes after the fix.
+4. Update 08 §5.5 and the Agent Note.
+5. Run the gates, capture before/after screenshots, and re-verify production after a hard refresh.
 
 ## Dependencies and boundary
 
 - Depends on m22-02 (the Session page fill and "document does not scroll" regression baseline).
 - No API, data or Session content changes; no V2 prototype changes; production Session screenshots are not committed into the repository, evidence lives only in the issue/Release attachments.
-- If the production re-check proves the screenshot came from a stale build, this issue still delivers steps 1, 3 and 4 (reproduction record, regression assertions, contract docs) and does not re-layout the page just to look different.
+- The fix needs a redeploy and a hard-refresh production acceptance; `position: relative` does not change the visible layout.
 
 ## Verification
 
@@ -113,15 +126,15 @@ pnpm verify:flow
 pnpm lint:docs
 ```
 
-- The e2e passes at 1500×837 and 1440×900: document height equals viewport height, `scrollY` stays 0, and exactly two top-level vertical scroll containers qualify.
-- After a hard refresh, production at the same viewport shows only the left and right scrollbars; the build hash is recorded in the PR.
+- The e2e passes with 10 Sessions at 1500×837 and 1440×900: document height equals viewport height, `scrollY` stays 0, exactly two top-level vertical scroll containers qualify, and no `.sr-only` has `offsetParent === body`.
+- After a hard refresh, production at the same viewport shows only the left and right scrollbars, with `document.scrollingElement.scrollHeight` equal to `innerHeight`.
 
 ## Acceptance
 
 - The production Session error view shows only the left and right vertical scrollbars at 1500×837, 1440×900 and 1366×768, and the page does not scroll.
-- The third bar does not return; if it does, the e2e turns red.
-- Both low-content and long-content states hold; mobile ≤860px still scrolls the document normally.
-- The prototype comparison, the current-main reproduction record and the production build hash stay in the issue/PR.
+- The third bar does not return; the new 10-Session regression turns red on the unfixed code.
+- Low-content, long-content and 10-Session states all hold; mobile ≤860px still scrolls the document normally.
+- The other `.sr-only` sites are audited and the conclusion recorded.
 
 ## Gates and CI
 
@@ -131,6 +144,6 @@ pnpm lint:docs
 ## Non-goals
 
 - No Session page re-layout, no column width or visual style changes.
+- No `body { overflow: hidden }` style hiding of the third bar without fixing the root cause.
 - No V2 prototype or other page changes (the run detail scroll container is tracked by [#423](https://github.com/Shadow-Azure/harness-evolution/issues/423)).
-- No `body { overflow: hidden }` style hiding of the third bar without fixing the height chain.
 - No reopening or rewriting the closed #415 blank-band work.
