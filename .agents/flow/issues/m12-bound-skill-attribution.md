@@ -19,7 +19,8 @@ scope:
   - tests/**
   - scripts/**
   - deploy/**
-  - .github/workflows/deploy.yml
+  - .gitignore
+  - package.json
 adr:
   - ../../notes/implemented/feature/2026-11-18-attribution-skill-package-admin.md
 github:
