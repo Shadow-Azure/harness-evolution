@@ -1,7 +1,7 @@
 """Add structured attribution report and execution manifest fields.
 
-Revision ID: 0022
-Revises: 0021
+Revision ID: 0028a
+Revises: 0028
 Create Date: 2026-11-17
 """
 
@@ -14,8 +14,8 @@ from sqlalchemy import inspect
 
 from alembic import op
 
-revision: str = "0022"
-down_revision: str | None = "0021"
+revision: str = "0028a"
+down_revision: str | None = "0028"
 branch_labels: str | None = None
 depends_on: str | None = None
 
