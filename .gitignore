@@ -13,8 +13,16 @@ htmlcov/
 *.egg-info/
 node_modules/
 data/
+attribute/
+!/attribute/
+/attribute/*
+!/attribute/README.md
+!/attribute/README.en.md
+!/attribute/README.i18n.yaml
 coverage/
 dist/
 .vite/
 .pnpm-store/
 claude-code-sessions
+
+/apps/api/release-assets/

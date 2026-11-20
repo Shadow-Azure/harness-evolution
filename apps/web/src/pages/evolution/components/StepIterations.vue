@@ -38,6 +38,8 @@ function toggle(roundId: string): void {
 }
 
 function typeLabel(type: StepRound["category"]): string {
+  if (type === "flow") return "流程";
+  if (type === "context") return "上下文";
   return type === "prompt" ? "prompt" : type === "model" ? "模型" : "错误";
 }
 

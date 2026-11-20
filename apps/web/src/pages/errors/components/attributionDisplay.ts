@@ -20,6 +20,11 @@ const CONCLUSION_PRESENTATION: Record<
     badge: "非本对象",
     tone: "orange",
   },
+  inconclusive: {
+    label: "证据不足",
+    badge: "待补证据",
+    tone: "orange",
+  },
 };
 
 const CATEGORY_LABELS: Record<
@@ -29,6 +34,8 @@ const CATEGORY_LABELS: Record<
   model: "模型问题",
   prompt: "prompt缺失某些提示词",
   error: "错误",
+  flow: "流程",
+  context: "上下文",
 };
 
 const TRIGGER_ORDER_LABELS: Record<

@@ -19,6 +19,7 @@ import {
 } from "../../../api/overview";
 import { ApiError } from "../../../api/http";
 import { queryKeys } from "../../../api/queryKeys";
+import { useAttributionSkillPackages } from "../../../composables/useAttributionSkillPackages";
 import TargetFormDialog from "../../evolution/targets/components/TargetFormDialog.vue";
 import {
   targetServerError,
@@ -284,6 +285,7 @@ const formError = ref<TargetServerError | null>(null);
 const operationError = ref("");
 const submitting = ref(false);
 const editingTargetId = computed(() => editingTarget.value?.id ?? null);
+const skillLibrary = useAttributionSkillPackages(workspaceId);
 const versionsQuery = useEvolutionTargetVersions(workspaceId, editingTargetId);
 const versions = computed(() => versionsQuery.data.value?.versions ?? []);
 const versionsLoading = computed(
@@ -601,6 +603,7 @@ watch(
     <TargetFormDialog
       v-if="dialogOpen"
       v-model="dialogOpen"
+      :packages="skillLibrary.packages.data.value?.items"
       :server-error="formError"
       :submitting="submitting"
       :target="editingTarget"

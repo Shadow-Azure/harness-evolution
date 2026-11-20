@@ -23,6 +23,7 @@ import { useRunEvents } from "../../composables/useRunEvents";
 import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import { workspacePath } from "../../router/workspace";
 import { useAuthStore } from "../../stores/auth";
+import { canManageWorkspace } from "../../utils/workspaceDisplay";
 import RunStepContent from "./components/RunStepContent.vue";
 import RunStepper from "./components/RunStepper.vue";
 import RunLogPanel from "./components/RunLogPanel.vue";
@@ -37,8 +38,11 @@ defineOptions({ name: "EvolutionRunDetailPage" });
 const route = useRoute();
 const router = useRouter();
 const queryClient = useQueryClient();
-const workspaceId = useWorkspaceId();
 const auth = useAuthStore();
+const workspaceId = useWorkspaceId();
+const canWriteAttribution = computed(() =>
+  canManageWorkspace(auth.workspaceById(workspaceId.value)?.role),
+);
 
 const runId = computed(() => String(route.params.runId ?? ""));
 const {
@@ -349,6 +353,8 @@ const distribution = computed(() => {
   const items = [
     { key: "error", label: "错误", value: stats.error, color: "var(--red)" },
     { key: "prompt", label: "prompt", value: stats.prompt, color: "var(--orange)" },
+    { key: "flow", label: "流程", value: stats.flow ?? 0, color: "var(--blue)" },
+    { key: "context", label: "上下文", value: stats.context ?? 0, color: "var(--green)" },
     { key: "model", label: "模型", value: stats.model, color: "var(--purple)" },
   ];
   if (nonTargetCount.value !== null) {
@@ -732,6 +738,23 @@ function clearMissingClusterFocus(): void {
                 {{ panelAttributed }} <span class="muted">/ {{ nonTargetLabel }}</span>
               </div>
             </div>
+            <div
+              v-if="run.attributionSkill"
+              class="kv"
+              data-testid="run-attribution-skill"
+            >
+              <div class="k">
+                归因 Skill 快照
+              </div>
+              <div class="v">
+                <span class="mono">{{ run.attributionSkill.key }}@r{{ run.attributionSkill.revision }}</span>
+                <span class="muted"> · {{ run.attributionSkill.engine }}</span>
+                <span
+                  class="mono muted"
+                  :title="run.attributionSkill.contentHash"
+                > · sha256:{{ run.attributionSkill.contentHash.slice(0, 12) }}</span>
+              </div>
+            </div>
           </div>
           <p class="cb-label">
             潜在 bad case 的归因结论分布（{{ distributionTotal }} 条）
@@ -922,6 +945,7 @@ function clearMissingClusterFocus(): void {
           :is-pending="selectedStep?.clickable === true && stepPending"
           :is-unreached="selectedStep?.clickable !== true"
           :focus-cluster="focusCluster"
+          :can-write="canWriteAttribution"
           @page-change="stepPage = $event"
           @missing-cluster-focus="clearMissingClusterFocus"
         />

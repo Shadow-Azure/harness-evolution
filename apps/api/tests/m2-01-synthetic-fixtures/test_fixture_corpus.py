@@ -31,6 +31,7 @@ from app.fixtures_seed import SeedEnvironmentError, run_corpus_seed
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 CORPUS_PATH = REPOSITORY_ROOT / "fixtures" / "m2-synthetic" / "corpus.json"
+GOLDEN_PATH = REPOSITORY_ROOT / "fixtures" / "attribution-golden" / "cases.json"
 FIXTURE_OWNER_CREDENTIAL_DIGEST = "not-a-real-password-hash"
 
 
@@ -627,10 +628,22 @@ def test_fixture_check_command_reports_deterministic_counts(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """The Node gate has a real Python CLI contract rather than duplicating parsing."""
-    assert main(["fixtures-check", "--corpus", str(CORPUS_PATH)]) == 0
+    assert (
+        main(
+            [
+                "fixtures-check",
+                "--corpus",
+                str(CORPUS_PATH),
+                "--golden",
+                str(GOLDEN_PATH),
+            ],
+        )
+        == 0
+    )
     output = capsys.readouterr().out
     assert '"agents": 8' in output
     assert '"root_sessions": 4' in output
+    assert '"golden_cases": 10' in output
     assert '"status": "valid"' in output
 
 

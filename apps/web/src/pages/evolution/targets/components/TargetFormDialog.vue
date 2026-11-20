@@ -14,6 +14,7 @@ const props = withDefaults(
   defineProps<{
     modelValue: boolean;
     target: EvolutionTarget | null;
+    packages?: {id: string; skillName: string}[];
     versions?: string[];
     versionsLoading?: boolean;
     versionsError?: boolean;
@@ -21,6 +22,7 @@ const props = withDefaults(
     serverError?: TargetServerError | null;
   }>(),
   {
+    packages: () => [],
     versions: () => [],
     versionsLoading: false,
     versionsError: false,
@@ -73,6 +75,8 @@ const visibleServerError = computed<TargetServerError | null>(() => {
   return value?.summary ? value : null;
 });
 
+const legacySkill = computed(() => props.target?.attributionPackageId
+  ? null : props.target?.attributionSkillName);
 const title = computed(() => (props.target ? "编辑进化对象" : "新增进化对象"));
 const versionOptions = computed(() => {
   const values = new Set(props.versions);
@@ -133,6 +137,7 @@ function onFieldInput(field: TargetFormField, value: string): void {
 }
 
 function resetForm(): void {
+  form.attributionPackageId = props.target?.attributionPackageId ?? (legacySkill.value ? null : "default-attribute-badcases");
   form.objectType = props.target?.objectType ?? "skill";
   form.objectName = props.target?.objectName ?? "";
   form.repoUrl = props.target?.repoUrl ?? "";
@@ -207,6 +212,7 @@ function submit(): void {
     validationProjectId,
     testProjectId,
     enabled: form.enabled,
+    attributionPackageId: form.attributionPackageId,
   });
 }
 
@@ -285,6 +291,36 @@ watch(
           </p>
         </ElFormItem>
 
+        <ElFormItem label="归因 Skill">
+          <select
+            v-model="form.attributionPackageId"
+            aria-label="归因 Skill"
+            class="skill-select"
+          >
+            <option
+              v-if="legacySkill"
+              :value="null"
+            >
+              {{ legacySkill }}
+            </option>
+            <option
+              v-if="!packages.length"
+              value="default-attribute-badcases"
+            >
+              attribute-badcases
+            </option>
+            <option
+              v-for="item in packages"
+              :key="item.id"
+              :value="item.id"
+            >
+              {{ item.skillName }}
+            </option>
+          </select>
+          <p class="field-help">
+            保存绑定后，后台将分析当前与该对象关联的 Badcase。
+          </p>
+        </ElFormItem>
         <ElFormItem label="仓库地址">
           <ElInput
             v-model="form.repoUrl"

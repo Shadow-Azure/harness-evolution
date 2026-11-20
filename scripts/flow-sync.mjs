@@ -9,6 +9,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
+import { parseArgs } from "node:util";
 import { execFileSync } from "node:child_process";
 import { blobHash, pairPaths, renderPairRecord } from "./translation-pairing-lib.mjs";
 import { loadFlowTree } from "./flow-lib.mjs";
@@ -85,6 +86,21 @@ function gh(args) {
   return execFileSync("gh", args, { encoding: "utf8" }).trim();
 }
 
+/**
+ * Parse the state field returned by a GitHub CLI JSON command.
+ * @param {string} output Raw JSON emitted by `gh`.
+ * @returns {string} Non-empty remote state value.
+ */
+export function parseGithubState(output) {
+  return validatedState(JSON.parse(output));
+}
+
+function validatedState(value) {
+  if (typeof value?.state !== "string" || value.state.length === 0)
+    throw new Error("GitHub 状态响应缺少非空 state 字符串");
+  return value.state;
+}
+
 /** issue 的中文标题 = base 侧 H1。 */
 function titleOf(content) {
   const m = /^# (.+)$/m.exec(content);
@@ -99,11 +115,17 @@ function titleOf(content) {
  * @param {{milestones: Array, issues: Array}} tree 流程树
  * @param {{createMilestone: Function, createIssue: Function, backfill: Function,
  *   readMilestoneState: Function, updateMilestoneState: Function,
- *   readIssueState: Function, updateIssueState: Function}} io 远端与文件副作用
+ *   readIssue: Function, updateIssue: Function}} io 远端与文件副作用
+ * @param {number[] | undefined} issueNumbers 只发布这些已有编号的 issue，保留所有 milestone 和其他 issue。
  * @returns {Promise<{milestones: number, issues: number, stateUpdates: number}>} 新建与状态更新数量
  */
-export async function runSync(tree, io) {
-  const plan = planSync(tree);
+export async function runSync(tree, io, issueNumbers) {
+  const selected = issueNumbers && new Set(issueNumbers);
+  const issues = selected ? tree.issues.filter((i) => selected.has(i.data.github?.number)) : tree.issues;
+  if (selected && (!selected.size || selected.size !== issues.length))
+    throw new Error("指定的 issue 编号为空或未登记在本地流程树中");
+  const milestones = selected ? [] : tree.milestones;
+  const plan = planSync({ milestones, issues });
   for (const milestone of plan.milestones) {
     const { number, url } = await io.createMilestone(milestone);
     await io.backfill(milestone.file, number, url);
@@ -120,7 +142,7 @@ export async function runSync(tree, io) {
     console.log(`flow:sync: issue ${issue.name} → #${number}`);
   }
   let stateUpdates = 0;
-  for (const milestone of tree.milestones) {
+  for (const milestone of milestones) {
     const number = milestone.data.github?.number;
     if (!Number.isInteger(number)) continue;
     const desired = milestone.data.status === "done" ? "closed" : "open";
@@ -129,18 +151,21 @@ export async function runSync(tree, io) {
     stateUpdates += 1;
     console.log(`flow:sync: milestone ${milestone.data.id} → ${desired}`);
   }
-  for (const issue of tree.issues) {
+  for (const issue of issues) {
     const number = issue.data.github?.number;
     if (!Number.isInteger(number)) continue;
     const desired = issue.data.status === "done" ? "CLOSED" : "OPEN";
-    if ((await io.readIssueState(issue)) === desired) continue;
-    await io.updateIssueState(issue, desired);
+    const milestoneNumber = tree.milestones.find((m) => m.data.id === issue.data.milestone)?.data.github?.number;
+    if (!Number.isInteger(milestoneNumber)) throw new Error(`${issue.file}: 缺少远端 milestone 编号`);
+    const remote = await io.readIssue(issue);
+    if (remote.state.toUpperCase() === desired && remote.milestone?.number === milestoneNumber) continue;
+    await io.updateIssue(issue, desired, milestoneNumber);
     stateUpdates += 1;
     console.log(`flow:sync: issue ${issue.name} → #${number} ${desired}`);
   }
   let bodyUpdates = 0;
   if (io.issueBody) {
-    for (const issue of tree.issues) {
+    for (const issue of issues) {
       const desired = io.issueBody(issue);
       if ((await io.readIssueBody(issue)) === desired) continue;
       await io.updateIssueBody(issue, desired);
@@ -149,6 +174,61 @@ export async function runSync(tree, io) {
     }
   }
   return { milestones: plan.milestones.length, issues: plan.issues.length, stateUpdates, bodyUpdates };
+}
+
+/**
+ * Bind sync operations to the GitHub CLI transport.
+ * @param {string} repo Repository in owner/name form.
+ * @param {Function} gh Execute the supplied CLI arguments and return stdout.
+ * @returns {object} Remote and local operations consumed by runSync.
+ */
+export function githubSyncAdapter(repo, gh) {
+  return {
+    createMilestone(milestone) {
+      const out = gh(["api", `repos/${repo}/milestones`, "-f", `title=${milestone.data.title}`, "-f", "state=open"]);
+      const { number } = JSON.parse(out);
+      return { number, url: `https://github.com/${repo}/milestone/${number}` };
+    },
+    createIssue(issue, milestone) {
+      const { number, html_url: url } = JSON.parse(gh([
+        "api", `repos/${repo}/issues`,
+        "-f", `title=${titleOf(readFileSync(issue.file, "utf8"))}`,
+        "-F", `milestone=${milestone.data.github.number}`,
+        "-f", `body=${renderIssueBody(readFileSync(issue.file, "utf8"), repo)}`,
+      ]));
+      return { number, url };
+    },
+    backfill,
+    readMilestoneState(milestone) {
+      return parseGithubState(gh(["api", `repos/${repo}/milestones/${milestone.data.github.number}`]));
+    },
+    updateMilestoneState(milestone, state) {
+      return gh([
+        "api", "-X", "PATCH", `repos/${repo}/milestones/${milestone.data.github.number}`,
+        "-f", `state=${state}`,
+      ]);
+    },
+    readIssue(issue) {
+      const issueData = JSON.parse(gh(["api", `repos/${repo}/issues/${issue.data.github.number}`, "--jq", "{state, milestone: .milestone.number}"]));
+      const state = validatedState(issueData);
+      if (issueData.milestone !== null && !Number.isSafeInteger(issueData.milestone))
+        throw new Error("GitHub issue 缺少有效的 milestone 编号或 null");
+      return { state, milestone: issueData.milestone === null ? null : { number: issueData.milestone } };
+    },
+    updateIssue(issue, state, milestoneNumber) {
+      return gh([
+        "api", "-X", "PATCH", `repos/${repo}/issues/${issue.data.github.number}`,
+        "-f", `state=${state.toLowerCase()}`, "-F", `milestone=${milestoneNumber}`,
+      ]);
+    },
+    issueBody: (issue) => renderIssueBody(readFileSync(issue.file, "utf8"), repo),
+    readIssueBody(issue) {
+      return gh(["issue", "view", String(issue.data.github.number), "--repo", repo, "--json", "body", "--jq", ".body"]);
+    },
+    updateIssueBody(issue, body) {
+      return gh(["api", "-X", "PATCH", `repos/${repo}/issues/${issue.data.github.number}`, "-f", `body=${body}`]);
+    },
+  };
 }
 
 async function main() {
@@ -160,51 +240,15 @@ async function main() {
     console.error(`flow:sync: 流程树有错误，先修到 verify:flow 绿\n  ${errors.join("\n  ")}`);
     process.exit(1);
   }
-  const created = await runSync(tree, {
-    createMilestone(milestone) {
-      const out = gh(["api", `repos/${repo}/milestones`, "-f", `title=${milestone.data.title}`, "-f", "state=open"]);
-      const { number } = JSON.parse(out);
-      return { number, url: `https://github.com/${repo}/milestone/${number}` };
-    },
-    createIssue(issue, milestone) {
-      const url = gh([
-        "issue", "create", "--repo", repo,
-        "--title", titleOf(readFileSync(issue.file, "utf8")),
-        "--milestone", milestone.data.title,
-        "--body", renderIssueBody(readFileSync(issue.file, "utf8"), repo),
-      ]);
-      const number = Number.parseInt(url.match(/\/issues\/(\d+)/)?.[1] ?? "", 10);
-      if (!Number.isInteger(number)) throw new Error(`无法从 gh 输出解析 issue 编号：${url}`);
-      return { number, url };
-    },
-    backfill,
-    readMilestoneState(milestone) {
-      return gh(["api", `repos/${repo}/milestones/${milestone.data.github.number}`]).state;
-    },
-    updateMilestoneState(milestone, state) {
-      return gh([
-        "api", "-X", "PATCH", `repos/${repo}/milestones/${milestone.data.github.number}`,
-        "-f", `state=${state}`,
-      ]);
-    },
-    readIssueState(issue) {
-      return gh(["issue", "view", String(issue.data.github.number), "--repo", repo, "--json", "state"]).state;
-    },
-    updateIssueState(issue, state) {
-      return gh([
-        "api", "-X", "PATCH", `repos/${repo}/issues/${issue.data.github.number}`,
-        "-f", `state=${state.toLowerCase()}`,
-      ]);
-    },
-    issueBody: (issue) => renderIssueBody(readFileSync(issue.file, "utf8"), repo),
-    readIssueBody(issue) {
-      return gh(["issue", "view", String(issue.data.github.number), "--repo", repo, "--json", "body", "--jq", ".body"]);
-    },
-    updateIssueBody(issue, body) {
-      return gh(["api", "-X", "PATCH", `repos/${repo}/issues/${issue.data.github.number}`, "-f", `body=${body}`]);
-    },
+  const { values } = parseArgs({
+    args: process.argv.slice(2).filter((arg) => arg !== "--"),
+    options: { issues: { type: "string" }, "retire-missing": { type: "boolean" } },
   });
-  if (process.argv.includes("--retire-missing")) {
+  if (values.issues !== undefined && (values["retire-missing"] || !/^[1-9]\d*(,[1-9]\d*)*$/.test(values.issues)))
+    throw new Error("--issues 需要逗号分隔的 GitHub 编号，且不能与 --retire-missing 同时使用");
+  const issueNumbers = values.issues?.split(",").map(Number);
+  const created = await runSync(tree, githubSyncAdapter(repo, gh), issueNumbers);
+  if (values["retire-missing"]) {
     const remote = {
       milestones: JSON.parse(gh(["api", `repos/${repo}/milestones?state=open&per_page=100`])),
       issues: JSON.parse(gh(["issue", "list", "--repo", repo, "--state", "open", "--limit", "1000", "--json", "number,state"])),

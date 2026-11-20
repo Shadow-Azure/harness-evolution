@@ -149,6 +149,7 @@ function evolvable(item: TargetOverviewItem): number {
                 <span class="mono">@{{ primaryVersion(item) }}</span>
               </span>
             </span>
+            <span class="meta">归因 Skill · {{ item.attributionSkillName || "attribute-badcases" }}</span>
             <span class="meta">
               <span><b>{{ item.sessions }}</b> 关联 Session</span>
               <span><b>{{ item.potential }}</b> 潜在 bad case</span>

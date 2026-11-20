@@ -165,7 +165,8 @@ function hideVersionTip(): void {
   background: var(--green);
 }
 
-.ai-dot.non_target {
+.ai-dot.non_target,
+.ai-dot.inconclusive {
   background: var(--orange);
 }
 

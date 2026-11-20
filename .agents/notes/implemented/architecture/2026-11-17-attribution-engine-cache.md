@@ -10,9 +10,9 @@ Status: implemented
 
 ## Decision
 
-- 引擎是纯函数：`AttributionEngine` 只接收 `AttributionInput`（坏例标题/描述/元数据、命中原因、两个触发点、knowledge 文档证据、对象 revision），返回 `AttributionResult`。首版 `rule-v1` 使用确定性模板：自身上报且存在错误证据 → `attributed/error/0.8`，自身上报无错误证据 → `attributed/prompt/0.8`，`after_object` 且 discovery → `attributed/error/0.6`，证据不足或顺序不可比 → `non_target/None/0.7`。
+- 引擎是纯函数：`AttributionEngine` 只接收 `AttributionInput`（坏例标题/描述/元数据、命中原因、两个触发点、knowledge 文档证据、对象 revision），返回 `AttributionResult`。首版 `rule-v1` 使用确定性模板：自身上报且存在错误证据 → `attributed/error/0.8`，自身上报无错误证据 → `attributed/prompt/0.8`，`after_object` 且 discovery → `attributed/error/0.6`，证据不足或顺序不可比 → `inconclusive/None/0.0`。
 - 注册表只登记显式 key：`resolve_attribution_engine` 对未注册 key 抛 `ConfigError`；`create_app` 在启动时校验 `HE_ATTRIBUTION_ENGINE`，未知引擎直接启动失败。缓存键与引擎 key 绑定，换真实模型只需新增 Engine 子类并注册新 key。
-- 缓存键仍是七元组 `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`；`object_version` 分量使用解析后的 `targetRevision`。先把 `probe_reports.object_version` 从 64 扩到 96，使 `digest:<sha256>`（71 字符）与 `tag:` / `provider:` 形式无需截断或哈希映射。
+- V2 缓存键是不可变执行清单的规范 JSON SHA-256，除原七元身份外还覆盖 Skill、模型、上下文 snapshot 与输出 schema；没有清单的旧写入继续使用七元键。`object_version` 分量使用解析后的 `targetRevision`，`probe_reports.object_version` 长 96，使 `digest:<sha256>`（71 字符）与 `tag:` / `provider:` 形式无需截断。
 - `AttributionRunner` 负责缓存与写入：命中且 `cache_enabled` 时复用 `probe_id`、`reused_count` 每 run 只加一次、候选 `is_cached=true`；`cache_enabled=false` 时跳过读并覆盖同键行、更新 `created_run_id`，不清零历史复用计数；同键写入继续走 SQLite/MySQL 方言原子 upsert。
 - 新 repository 方法 `write_probe_and_link` 与 `reuse_probe_and_link` 在**一个事务**内完成 probe upsert、`bad_case_analysis` 关联和候选 `probe_id/is_cached` 指针；候选行缺失时整体回滚，避免孤立 probe。runner 用 `linked_probe_ids` 跳过已完成候选，因此失败重跑只补未完成项。
 - `non_target` 的 `attribute_type` 为 NULL，probe 与关联保留供错误详情读取；`list_clusterable_probe_ids` 只返回 `included=true` 且 `conclusion='attributed'` 的 probe，聚类输入不会混入 non-target 或被策略排除的行。
@@ -31,7 +31,7 @@ Status: implemented
 
 ## Consequences
 
-- 缓存键取决于 `attribution_engine` 与 `targetRevision`；同一对象的不同 revision、不同引擎各自一行，历史结论可保留但不会被新引擎命中。
+- 缓存键取决于完整执行清单；同一对象的不同 revision、引擎、Skill、模型、上下文或 schema 各自一行，历史结论可保留但不会被新执行配置命中。
 - `rule-v1` 是占位规则，reason/reasoning 是模板文案；它不声称最终模型质量，也不执行真实 LLM 排名。
 - 归因事件按批记录（每 20 条一条 `attribution_created/reused`）留给 m10-04 的 prepare 模板；本切片只返回 `processed/created/reused/non_target/skipped` 供其汇总。
 - `blocked(attribution)` 的 `/retry` 目前只验证「恢复状态 + 重新入队 prepare」；prepare 内的归因重入与状态机游标由 m10-04 接管。

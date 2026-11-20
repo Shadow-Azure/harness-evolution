@@ -455,7 +455,7 @@ class BadCaseService:
             return _empty_analysis()
         attribute_type: AttributeType | None = _literal(
             probe.attribute_type,
-            ("model", "prompt", "error"),
+            ("model", "prompt", "error", "flow", "context"),
         )
         if attribute_type is None:
             warnings.append(
@@ -523,7 +523,7 @@ class BadCaseService:
             )
         attribute_type: AttributeType | None = _literal(
             probe.attribute_type,
-            ("model", "prompt", "error"),
+            ("model", "prompt", "error", "flow", "context"),
         )
         if attribute_type is None:
             warnings.append(
@@ -562,7 +562,9 @@ class BadCaseService:
             )
             return ProbeReportLookup(model=None, warnings=(warning,))
         probe_type = _literal(row.probe_type, ("skill", "agent"))
-        attribute_type = _literal(row.attribute_type, ("model", "prompt", "error"))
+        attribute_type = _literal(
+            row.attribute_type, ("model", "prompt", "error", "flow", "context")
+        )
         if probe_type is None:
             warnings.append(
                 _warning(

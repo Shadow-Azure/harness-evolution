@@ -26,6 +26,7 @@ from app.db.models.evolution import (
     probe_cluster_probes,
     probe_clusters,
 )
+from app.db.models.jobs import job_runs
 from app.db.models.run_events import evolution_run_events
 from app.db.models.users import users
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
@@ -131,6 +132,9 @@ async def main() -> None:
                 delete(evolution_run_events).where(
                     evolution_run_events.c.run_id.in_(RUN_IDS),
                 ),
+            )
+            await session.execute(
+                delete(job_runs).where(job_runs.c.id == "job-v2-attribution-batch"),
             )
             await session.execute(
                 delete(evolution_finals).where(
@@ -321,6 +325,48 @@ async def main() -> None:
                         created_by=admin_id,
                     ),
                 ],
+            )
+            await session.execute(
+                insert(job_runs).values(
+                    id="job-v2-attribution-batch",
+                    kind="attribution_batch",
+                    ref_id="run-v2-blocked-attribution",
+                    status="failed",
+                    progress=0.5,
+                    executor="local",
+                    external_job_id=None,
+                    attempt=1,
+                    lease_owner=None,
+                    lease_expires_at=None,
+                    max_attempts=3,
+                    cancel_requested=False,
+                    payload={
+                        "runId": "run-v2-blocked-attribution",
+                        "source": "manual",
+                    },
+                    result={
+                        "total": 2,
+                        "completed": 1,
+                        "created": 1,
+                        "reused": 0,
+                        "failed": 1,
+                        "nonTarget": 0,
+                        "averageLatencyMs": 420.0,
+                        "p95LatencyMs": 780.0,
+                        "tokenCount": 128,
+                        "warningCount": 1,
+                        "evidenceCoverageRate": 0.5,
+                        "executor": "agent-skill-stub-v1",
+                        "skillRevision": "platform-default@r1",
+                        "contextHash": "abcdef1234567890abcdef1234567890",
+                    },
+                    error="rate limited",
+                    created_by=admin_id,
+                    created_at=BASE + timedelta(minutes=1),
+                    started_at=BASE + timedelta(minutes=1),
+                    finished_at=BASE + timedelta(minutes=2),
+                    updated_at=BASE + timedelta(minutes=2),
+                ),
             )
 
             source_rows: list[dict[str, Any]] = []

@@ -60,7 +60,7 @@ github: {number, url}
 
 ## GitHub 同步
 
-`pnpm flow:sync` 是唯一 GitHub 写入口。它按本地详细中文正文创建/更新 issue body，同步状态，并在显式 `-- --retire-missing` 时关闭不在本地流程树中的开放 issue/milestone。**远端对象只关闭，不物理删除。** 需要 gh 已登录；Projects v2 强校验需 `FLOW_TOKEN`。
+`pnpm flow:sync` 是唯一 GitHub 写入口。它按本地详细中文正文创建/更新 issue body，同步状态及所属里程碑。使用 `-- --issues 315,417` 仅发布指定已有 issue。全量同步仅在显式指定 `-- --retire-missing` 时关闭不在本地流程树中的开放 issue/milestone。**远端对象只关闭，不物理删除。** 需要 gh 已登录；Projects v2 强校验需 `FLOW_TOKEN`。
 
 ## 工具
 

@@ -45,7 +45,7 @@ function runDetail(status: string) {
       attributed: 2,
       reused: 0,
       clusters: 1,
-      byCategory: { model: 0, prompt: 2, error: 0 },
+      byCategory: { flow: 0, context: 0, model: 0, prompt: 2, error: 0 },
     },
     progress: {
       unit: 5,

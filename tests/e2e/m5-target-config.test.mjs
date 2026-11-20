@@ -15,6 +15,8 @@ import {
   waitForDocument,
 } from "../support/runtime.mjs";
 
+import { uploadSkill } from "./support/attribution-skill.mjs";
+
 const root = process.cwd();
 const apiDir = path.join(root, "apps/api");
 const python = path.join(
@@ -224,6 +226,7 @@ async function runTool(action, value) {
     env: {
       ...process.env,
       HE_DATA_DIR: dataDir,
+    HE_ATTRIBUTION_PACKAGE_DIR: path.join(dataDir, "attribute"),
       HE_DB_DIALECT: "sqlite",
       HE_JWT_SECRET: secret,
       PYTHONPATH: apiDir,
@@ -246,6 +249,7 @@ before(async () => {
     HE_ADMIN_PASSWORD: initialPassword,
     HE_ADMIN_USERNAME: "admin",
     HE_DATA_DIR: dataDir,
+    HE_ATTRIBUTION_PACKAGE_DIR: path.join(dataDir, "attribute"),
     HE_DB_DIALECT: "sqlite",
     HE_JWT_SECRET: secret,
     HE_PHASE: "demo",
@@ -316,7 +320,7 @@ before(async () => {
 
 after(cleanup);
 
-test("m5 target configuration supports admin CRUD, member read-only, validation and target entry", async () => {
+test("m5 target configuration and attribution-skill binding support admin CRUD and member read-only", async () => {
   const admin = await authenticate("admin", initialPassword, replacementPassword);
   const member = await apiJson("/api/users", admin.accessToken, {
     expectedStatus: 201,
@@ -333,6 +337,8 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
   const defaultWorkspace = workspaces.items.find((item) => item.id === "ws-default");
   assert.ok(defaultWorkspace);
   const workspaceBase = `/workspaces/${defaultWorkspace.id}`;
+  const packagesPath = `/api/workspaces/${defaultWorkspace.id}/attribution-skill-packages`;
+  const uploaded = await uploadSkill(python, `${apiUrl}${packagesPath}`, admin.accessToken, "e2e-attribution");
   await apiJson(
     `/api/workspaces/${defaultWorkspace.id}/members`,
     admin.accessToken,
@@ -685,6 +691,9 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       /验证集.*val-m5-e2e.*测试集.*test-m5-e2e/s,
     );
 
+    assert.equal(created.attributionSkillName, "attribute-badcases");
+    assert.equal(created.attributionPackageId, "default-attribute-badcases");
+
     await evaluate(
       page,
       `(() => {
@@ -698,6 +707,14 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       `document.querySelector(".target-form-dialog")?.textContent.includes("编辑进化对象")`,
       "edit dialog",
     );
+    await waitForDocument(page.session,
+      `[...document.querySelectorAll("select[aria-label='归因 Skill'] option")]
+         .some(option => option.value === ${JSON.stringify(uploaded.id)})`, "uploaded Skill option");
+    await evaluate(page, `(() => {
+      const select = document.querySelector("select[aria-label='归因 Skill']");
+      select.value = ${JSON.stringify(uploaded.id)};
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    })()`);
     await setInput(page, "input[name='repoUrl']", "https://git.example.com/agent-skills-updated.git");
     await evaluate(
       page,
@@ -709,6 +726,11 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
         .some((item) => item.textContent.includes("agent-skills-updated.git"))`,
       "updated target row",
     );
+    const updated = await apiJson("/api/evolution/targets", admin.accessToken);
+    assert.equal(updated.items.find(item => item.id === created.id).attributionPackageId, uploaded.id);
+    const detail = await apiJson(`${packagesPath}/${uploaded.id}`, admin.accessToken);
+    assert.ok(detail.targets.includes("m5-e2e-target"));
+
 
     await evaluate(
       page,
@@ -869,12 +891,14 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       page.session,
       `document.querySelector("h1")?.textContent === "进化对象配置" &&
         !document.querySelector(".target-create") &&
-        Boolean(document.querySelector(".target-table tbody tr"))`,
+        Boolean(document.querySelector(".target-table tbody tr")) &&
+        document.querySelector(".target-table thead").textContent.includes("归因 Skill")`,
       "member target page",
     );
     assert.equal(await evaluate(page, `Boolean(document.querySelector(".target-create"))`), false);
     assert.equal(await evaluate(page, `Boolean(document.querySelector(".target-table tbody tr"))`), true);
     assert.equal(await evaluate(page, `Boolean(document.querySelector(".edit-target, .delete-target, .toggle-target"))`), false);
+    assert.equal(await evaluate(page, `Boolean(document.querySelector(".target-form-dialog"))`), false);
 
     await page.session.send("Emulation.setDeviceMetricsOverride", {
       width: 390,

@@ -287,7 +287,7 @@ def test_algorithm_version_and_threshold_are_explicit_constants() -> None:
 
 def test_type_impact_mapping_is_the_fixed_policy() -> None:
     """Placeholder impact values are explicit and stable."""
-    assert TYPE_IMPACT == {"error": 9, "prompt": 7, "model": 5}
+    assert TYPE_IMPACT == {"error": 9, "prompt": 7, "model": 5, "flow": 7, "context": 7}
     mutable_view = cast(dict[str, int], TYPE_IMPACT)
     with pytest.raises(TypeError):
         mutable_view["error"] = 10

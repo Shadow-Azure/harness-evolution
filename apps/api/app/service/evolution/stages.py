@@ -51,7 +51,7 @@ StepKey = Literal[
     "final",
 ]
 StepStatus = Literal["done", "active", "pending"]
-ClusterType = Literal["model", "prompt", "error"]
+ClusterType = Literal["model", "prompt", "error", "flow", "context"]
 RoundStatus = Literal[
     "pending",
     "patching",
@@ -66,7 +66,7 @@ RoundStatus = Literal[
 RoundPushStatus = Literal["pending", "pushing", "succeeded", "skipped", "failed"]
 RoundEvalStatus = Literal["pending", "evaluating", "completed", "failed", "timeout"]
 AttributionSource = Literal["cached", "fresh"]
-_CLUSTER_TYPES: tuple[str, ...] = ("model", "prompt", "error")
+_CLUSTER_TYPES: tuple[str, ...] = ("model", "prompt", "error", "flow", "context")
 SESSIONS_PAGE_SIZE = 4
 _SESSION_SHORT_TITLE_LIMIT = 120
 POTENTIAL_PAGE_SIZE = 5

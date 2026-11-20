@@ -91,7 +91,7 @@ BUCKET_POLICY = (
 )
 """The exact bucket-time policy exposed through ``meta.bucketPolicy``."""
 
-CATEGORIES: frozenset[str] = frozenset({"model", "prompt", "error"})
+CATEGORIES: frozenset[str] = frozenset({"model", "prompt", "error", "flow", "context"})
 """The closed attribution category set; anything else is not projected."""
 
 _VERSION_PART = re.compile(r"(\d+)")
@@ -140,7 +140,7 @@ class TargetCaseEntry:
     created_at: datetime
     state: TargetState
     attribution_id: str | None
-    category: Literal["model", "prompt", "error"] | None
+    category: Literal["model", "prompt", "error", "flow", "context"] | None
     attributed_at: datetime | None
     display_version: str = ""
     """The ref shown to readers; falls back to the canonical key when unknown."""
@@ -575,11 +575,13 @@ def _newest_link_by_case(
     return found
 
 
-def _category(link: AttributionLinkRecord | None) -> Literal["model", "prompt", "error"] | None:
+def _category(
+    link: AttributionLinkRecord | None,
+) -> Literal["model", "prompt", "error", "flow", "context"] | None:
     """Project only the closed attribution category set."""
     if link is None or link.category not in CATEGORIES:
         return None
-    return cast(Literal["model", "prompt", "error"], link.category)
+    return cast(Literal["model", "prompt", "error", "flow", "context"], link.category)
 
 
 def _state(link: AttributionLinkRecord | None) -> TargetState:
@@ -1125,6 +1127,7 @@ def _version_options(analysis: TargetAnalysis) -> list[TargetVersionOption]:
 def _overview_item(analysis: TargetAnalysis) -> TargetOverviewItem:
     """Map one target analysis to its list contract."""
     return TargetOverviewItem(
+        attribution_skill_name=analysis.target.attribution_skill_name,
         target_id=analysis.target.id,
         object_type=analysis.target.object_type,
         object_name=analysis.target.object_name,

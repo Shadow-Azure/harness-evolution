@@ -9,6 +9,11 @@ from urllib.parse import urlsplit
 from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_API_DIR = Path(__file__).resolve().parents[1]
+# Sources run under <checkout>/apps/api or <release>/api.
+_ASSET_ROOT = _API_DIR.parents[1] if _API_DIR.parent.name == "apps" else _API_DIR / "release-assets"
+DEFAULT_ATTRIBUTION_GOLDEN_SET = _ASSET_ROOT / "fixtures" / "attribution-golden" / "cases.json"
+
 _COOKIE_TOKEN_CHARS = set(
     "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
 )
@@ -136,6 +141,8 @@ class Settings(BaseSettings):
     git_proxy_probe_interval_seconds: float = Field(default=60.0, ge=5, le=3_600)
     git_proxy_probe_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     attribution_engine: str = Field(default="rule-v1", min_length=1, max_length=64)
+    attribution_case_concurrency: int = Field(default=4, ge=1, le=32)
+    attribution_batch_concurrency: int = Field(default=2, ge=1, le=8)
     eval_scan_seconds: float = Field(default=30.0, gt=0, le=300)
     eval_poll_seconds: int = Field(default=300, gt=0)
     eval_timeout_seconds: int = Field(default=7_200, gt=0)
@@ -158,6 +165,17 @@ class Settings(BaseSettings):
     docs_enabled: bool = False
     log_level: Literal["critical", "error", "warning", "info", "debug"] = "info"
     data_dir: Path = Path("data")
+    attribution_package_dir: Path = Field(
+        default_factory=lambda data: (
+            (data["data_dir"] if data["production"] else _ASSET_ROOT) / "attribute"
+        ),
+    )
+    attribution_default_skill_path: Path = _ASSET_ROOT / "attribute-badcases" / "SKILL.md"
+    attribution_golden_set_path: Path = DEFAULT_ATTRIBUTION_GOLDEN_SET
+    attribution_agent: str | None = None
+    attribution_llm: str = "agent-native"
+    attribution_model: str = Field(default="haiku", min_length=1)
+    attribution_timeout_seconds: int = Field(default=600, ge=1, le=3600)
     db_dialect: DatabaseDialect = DatabaseDialect.MYSQL
     db_url: str | None = None
     db_pool_size: int = 10

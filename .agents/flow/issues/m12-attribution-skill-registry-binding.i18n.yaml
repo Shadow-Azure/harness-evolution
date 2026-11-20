@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/m12-attribution-skill-registry-binding.md
+m12-attribution-skill-registry-binding.md: 766fe5558984077cf3a41dfd4a068c95c658f61a
+m12-attribution-skill-registry-binding.en.md: 77d94469aca4977c9784b02e91312a71f493a070

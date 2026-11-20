@@ -21,7 +21,7 @@ from app.utils.time import as_shanghai
 
 _CASE_AGENT = agents.alias("case_agent")
 
-_ATTRIBUTE_TYPES: tuple[str, ...] = ("model", "prompt", "error")
+_ATTRIBUTE_TYPES: tuple[str, ...] = ("model", "prompt", "error", "flow", "context")
 
 
 @dataclass(frozen=True, slots=True)

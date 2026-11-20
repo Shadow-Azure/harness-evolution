@@ -85,6 +85,15 @@ describe("TargetFormDialog", () => {
     expect(wrapper.find(".target-dialog-foot .form-actions").exists()).toBe(true);
   });
 
+  it("preserves an existing prompt binding until a workspace package is selected", async () => {
+    const wrapper = await mountDialog({
+      target: { ...target, attributionSkillName: "legacy-prompt", attributionPackageId: null },
+    });
+    expect(wrapper.get("select[aria-label='归因 Skill'] option:checked").text()).toBe("legacy-prompt");
+    await wrapper.get("form").trigger("submit");
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({ attributionPackageId: null });
+  });
+
   it("submits trimmed create values", async () => {
     const wrapper = await mountDialog();
     await fillRequired(wrapper);
@@ -93,6 +102,7 @@ describe("TargetFormDialog", () => {
 
     expect(wrapper.emitted("submit")).toEqual([[
       {
+        attributionPackageId: "default-attribute-badcases",
         objectType: "skill",
         objectName: "deep-research",
         repoUrl: "https://example.com/skills.git",

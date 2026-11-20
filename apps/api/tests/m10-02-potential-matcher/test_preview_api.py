@@ -338,7 +338,7 @@ async def test_potential_preview_paginates_included_rows_and_reports_reasons(
 async def test_attribution_preview_counts_cache_and_non_target(
     preview_api: PreviewApi,
 ) -> None:
-    """Step 4 reports exact cache reuse and honors cacheEnabled=false."""
+    """Step 4 does not reuse legacy keys that lack an execution manifest."""
     session_id = "session-attribution-api"
     main_id = await seed_associated(preview_api, session_id=session_id)
     await seed_event(
@@ -397,11 +397,14 @@ async def test_attribution_preview_counts_cache_and_non_target(
 
     assert enabled.status_code == 200
     assert enabled.json() == {
+        "canRecompute": False,
         "summary": {
             "potential": 3,
             "reused": 2,
-            "fresh": 1,
-            "nonTargetKnown": 1,
+            "fresh": 0,
+            "missing": 1,
+            "bySkill": {"历史报告 · Skill 未记录": 2},
+            "nonTargetKnown": 0,
         },
         "targetRevision": "tag:v2.0.0",
     }

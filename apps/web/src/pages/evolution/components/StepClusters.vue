@@ -52,6 +52,8 @@ function toggle(clusterId: string): void {
 }
 
 function categoryLabel(category: StepCluster["category"]): string {
+  if (category === "flow") return "流程";
+  if (category === "context") return "上下文";
   return category === "prompt" ? "prompt" : category === "model" ? "模型" : "错误";
 }
 

@@ -1213,10 +1213,10 @@ class AttributionRunner:
             await self.candidates.link_probe(run.id, item.bad_case_id, row.probe_id, cached)
 ```
 
-- 缓存键 = `probe_reports.cache_key`：服务计算 `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`，按唯一键原子 upsert。V2 归因以解析后的 `targetRevision`（skill/agent/knowledge 均为归一化 body hash）作为该分量；`probe_reports.object_version` 为 `VARCHAR(96)`，可保存 `tag:` / `digest:` / `provider:` 形式。legacy path+body 键不复用；预览只读既有键。
+- 运行缓存通过 `bad_case_analysis` 关联查找同空间、对象身份与解析版本的报告，在每个候选 Badcase 内按分析完成时间及报告 ID 排序。执行清单和批次标识用于重算写入及幂等恢复。
 - 命中且 `cache_enabled` → 复用：`reused_count+1`、`last_reused_run_id=当前 run`、候选 `is_cached=true`，不再计算。
 - run 创建时固化 `attribution_engine / cache_enabled / potential_policy`；runner 只读 run 快照，不读全局配置或请求方当前值。历史 run 的 `attribution_engine` 默认 `legacy-probe-import`，不会被 V2 runner 误用。
-- `cache_enabled=false` → 跳过读，重算并覆盖同键行（`created_run_id` 更新）。
+- 关闭缓存时以本次选定 Skill 执行，在同一事务内保存新报告、来源 Skill 和 case 关联。
 - 并发同键 upsert 走方言原子语句（`ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO UPDATE`），不先查后写。
 - V2 首版引擎 `rule-v1`（规则占位）：自身上报 → `attributed`，`category` 按证据判 `error|prompt`，confidence 0.8；`after_object` 且 discovery → `attributed`/`error`，0.6；证据不足或顺序不可比 → `non_target`，0.7。`reason`/`reasoning` 为模板化占位文案；换真实归因只新增 Engine 子类并注册新 `key`，缓存键自动隔离。
 - **簇级 confidence 与归因 confidence 是两回事**：`probe_reports.confidence` 是引擎对该 bad case 的结论置信度；聚类步写入的 `probe_clusters.confidence` 是簇级占位值（按 `probe_cluster_type`：error 0.82 / prompt 0.74 / model 0.66），`severity = round(min(10, 簇 confidence × impact × reportWeight), 1)`。两者不互相推导，避免把「单条归因的把握」误当成「整个簇的把握」。
@@ -1233,7 +1233,7 @@ class AttributionRunner:
 - 预览与启动共用同一条件归一化（target 空间内 enabled、版本缺省 `defaultRef`、窗口合法、policy 合法）；启动再判 `NO_ASSOCIATED_SESSIONS`/`NO_POTENTIAL_MATCHED`。
 - 三条端点最低 `viewer`；无关联 Session → `409 NO_ASSOCIATED_SESSIONS`（三段都触发），`details.summary` 带 `reported/associated/skipped/versionUnresolved/pending`；有关联但 `potential=0` → `409 NO_POTENTIAL_MATCHED`（潜在段与归因段）。
 - 窗口按 `bad_cases.created_at` 的 Asia/Shanghai 日边界；无 `from/to` 默认最近 90 天，`from > to` 或超过 366 天 → `422 WINDOW_INVALID`。
-- 预览只读：只查 `probe_reports.cache_key`、`bad_case_analysis` 计数与历史 case，不写 probe、归因关联或候选行；归因预览不接收 `engineKey`，缓存键固定 `rule-v1`。
+- 预览只读，与缓存启动使用相同的最新报告查询，结果包含按 Skill 汇总的报告数量及缺失数量。
 - target 版本缺省 `defaultRef`，最长 96；knowledge target 的 `defaultRef` 接受 revision 形式，创建/更新跳过 git `ls-remote`、`versions` 返回空列表；catalog 与 target 表单暂不展示 knowledge（仅 API 配置，选择器与 run 接线归 m10-04）。
 - `cluster_only` 也走 0–4 步（聚类依赖归因），只有 `mode=full` 才建 rounds 与进入迭代。
 

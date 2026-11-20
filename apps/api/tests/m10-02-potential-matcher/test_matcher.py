@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import update
+
 from app.db.models.domain import bad_case_analysis, probe_reports
 from app.db.models.evolution import evolution_run_candidates
+from app.service.evolution.attribution_contracts import default_execution_manifest
 from app.service.evolution.potential import (
+    ATTRIBUTION_ENGINE,
+    POLICY_VERSION,
     HitReason,
     PotentialMatch,
     PotentialPolicy,
@@ -929,6 +934,32 @@ async def test_attribution_preview_counts_existing_keys_and_non_target(harness: 
     condition = harness.condition()
     association = await harness.matcher.associated_sessions(condition)
     match = await harness.matcher.potential_cases(condition, association, default_policy())
+    async with harness.database.transaction() as session:
+        for item in match.included[:2]:
+            manifest_hash = default_execution_manifest(
+                workspace_id=condition.workspace_id,
+                bad_case_id=item.bad_case_id,
+                target_type=condition.target_type,
+                target_name=condition.target_name,
+                target_version=condition.target_revision,
+                policy_version=POLICY_VERSION,
+                engine=ATTRIBUTION_ENGINE,
+                session_id=item.session_id,
+                hit_reason=item.hit_reason,
+                order_state=item.order_state,
+                object_trigger_at=item.object_trigger.triggered_at,
+                case_trigger_at=(
+                    item.case_trigger.triggered_at if item.case_trigger is not None else None
+                ),
+            ).content_hash
+            await session.execute(
+                update(probe_reports)
+                .where(probe_reports.c.probe_id == f"probe-{item.bad_case_id}")
+                .values(
+                    cache_key=manifest_hash,
+                    execution_manifest_hash=manifest_hash,
+                ),
+            )
     counts = await harness.matcher.attribution_preview(condition, match, cache_enabled=True)
     disabled = await harness.matcher.attribution_preview(condition, match, cache_enabled=False)
 

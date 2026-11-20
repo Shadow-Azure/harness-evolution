@@ -406,6 +406,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/evolution/runs/{run_id}/attribution-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Attribution Jobs
+         * @description Return sanitized attribution throughput and failure observations.
+         */
+        get: operations["list_attribution_jobs_api_evolution_runs__run_id__attribution_jobs_get"];
+        put?: never;
+        /**
+         * Create Attribution Job
+         * @description Start or join the run's manual attribution batch.
+         */
+        post: operations["create_attribution_job_api_evolution_runs__run_id__attribution_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evolution/runs/{run_id}/attribution-jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Attribution Job
+         * @description Cancel queued or running attribution work without deleting its audit row.
+         */
+        post: operations["cancel_attribution_job_api_evolution_runs__run_id__attribution_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evolution/runs/{run_id}/attribution-jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Attribution Job
+         * @description Retry only cases that still lack a durable report link.
+         */
+        post: operations["retry_attribution_job_api_evolution_runs__run_id__attribution_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/evolution/runs/{run_id}/events": {
         parameters: {
             query?: never;
@@ -882,6 +946,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{wid}/attribution-skill-packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Attribution Skill Packages
+         * @description List the built-in package and workspace uploads.
+         */
+        get: operations["list_attribution_skill_packages_api_workspaces__wid__attribution_skill_packages_get"];
+        put?: never;
+        /**
+         * Upload Attribution Skill Package
+         * @description Validate and store one custom Skill folder ZIP without activating it.
+         */
+        post: operations["upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/attribution-skill-packages/{packageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Package Detail
+         * @description Return the selected package prompt, file paths and target bindings.
+         */
+        get: operations["get_package_detail_api_workspaces__wid__attribution_skill_packages__packageId__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Attribution Skill Package
+         * @description Remove a custom package that has no target bindings.
+         */
+        delete: operations["delete_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/attribution-skill-packages/{packageId}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Attribution Skill Package
+         * @description Download a regenerated ZIP without exposing server filesystem paths.
+         */
+        get: operations["download_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{wid}/bad-cases": {
         parameters: {
             query?: never;
@@ -1057,6 +1189,174 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{wid}/evolution/attribution-skill-bindings/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Bind Workspace Default Skill
+         * @description Set the workspace fallback revision.
+         */
+        put: operations["bind_workspace_default_skill_api_workspaces__wid__evolution_attribution_skill_bindings_default_put"];
+        post?: never;
+        /**
+         * Unbind Workspace Default Skill
+         * @description Remove the workspace fallback and restore the platform default.
+         */
+        delete: operations["unbind_workspace_default_skill_api_workspaces__wid__evolution_attribution_skill_bindings_default_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/attribution-skill-bindings/default/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rollback Workspace Default Skill
+         * @description Restore the prior eligible revision or the protected platform rule.
+         */
+        post: operations["rollback_workspace_default_skill_api_workspaces__wid__evolution_attribution_skill_bindings_default_rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/attribution-skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Attribution Skills
+         * @description List bindable package IDs in agent mode or registry revision IDs in rule mode.
+         */
+        get: operations["list_attribution_skills_api_workspaces__wid__evolution_attribution_skills_get"];
+        put?: never;
+        /**
+         * Create Attribution Skill
+         * @description Create a workspace Skill and publish revision one.
+         */
+        post: operations["create_attribution_skill_api_workspaces__wid__evolution_attribution_skills_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/attribution-skills/revisions/{revisionId}/quality-decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Attribution Skill Quality
+         * @description Accept or reject one revision using an exact persisted evaluation.
+         */
+        post: operations["decide_attribution_skill_quality_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__quality_decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/attribution-skills/revisions/{revisionId}/quality-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Attribution Skill Quality Events
+         * @description Return the immutable evaluation and human-decision audit trail.
+         */
+        get: operations["list_attribution_skill_quality_events_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__quality_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/attribution-skills/revisions/{revisionId}/shadow-evaluations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate Attribution Skill Revision
+         * @description Evaluate a revision against sanitized Golden Cases without production writes.
+         */
+        post: operations["evaluate_attribution_skill_revision_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__shadow_evaluations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/attribution-skills/{skillId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Attribution Skill State
+         * @description Enable or disable a workspace Skill for future resolution.
+         */
+        patch: operations["set_attribution_skill_state_api_workspaces__wid__evolution_attribution_skills__skillId__patch"];
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/attribution-skills/{skillId}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Attribution Skill Revision
+         * @description Append a published immutable revision to a workspace Skill.
+         */
+        post: operations["publish_attribution_skill_revision_api_workspaces__wid__evolution_attribution_skills__skillId__revisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{wid}/evolution/cluster-previews": {
         parameters: {
             query?: never;
@@ -1181,6 +1481,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/attribution-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Attribution Jobs
+         * @description Return sanitized attribution observations for one workspace run.
+         */
+        get: operations["list_attribution_jobs_api_workspaces__wid__evolution_runs__run_id__attribution_jobs_get"];
+        put?: never;
+        /**
+         * Create Attribution Job
+         * @description Start or join one manual attribution batch.
+         */
+        post: operations["create_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/attribution-jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Attribution Job
+         * @description Cancel queued or running attribution work and retain its audit row.
+         */
+        post: operations["cancel_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/attribution-jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Attribution Job
+         * @description Retry only unfinished cases of one failed attribution batch.
+         */
+        post: operations["retry_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{wid}/evolution/runs/{run_id}/events": {
         parameters: {
             query?: never;
@@ -1284,6 +1648,34 @@ export interface paths {
          * @description Delete one unused target owned by this workspace.
          */
         delete: operations["delete_target_api_workspaces__wid__evolution_targets__targetId__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/targets/{targetId}/attribution-skill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve Target Attribution Skill
+         * @description Resolve the immutable revision currently effective for one target.
+         */
+        get: operations["resolve_target_attribution_skill_api_workspaces__wid__evolution_targets__targetId__attribution_skill_get"];
+        /**
+         * Bind Target Attribution Skill
+         * @description Set a target-level Skill override.
+         */
+        put: operations["bind_target_attribution_skill_api_workspaces__wid__evolution_targets__targetId__attribution_skill_put"];
+        post?: never;
+        /**
+         * Unbind Target Attribution Skill
+         * @description Remove a legacy rule override; agent-mode targets always have an explicit binding.
+         */
+        delete: operations["unbind_target_attribution_skill_api_workspaces__wid__evolution_targets__targetId__attribution_skill_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1662,10 +2054,20 @@ export interface components {
          */
         AttributeStats: {
             /**
+             * Context
+             * @default 0
+             */
+            context: number;
+            /**
              * Error
              * @default 0
              */
             error: number;
+            /**
+             * Flow
+             * @default 0
+             */
+            flow: number;
             /**
              * Model
              * @default 0
@@ -1683,6 +2085,16 @@ export interface components {
             prompt: number;
         };
         /**
+         * AttributionAnalysis
+         * @description Human-readable summary and detailed reasoning produced by the engine.
+         */
+        AttributionAnalysis: {
+            /** Reasoning */
+            reasoning: string;
+            /** Summary */
+            summary: string;
+        };
+        /**
          * AttributionDetail
          * @description One attribution with its reasoning, evidence warnings, and trigger compare.
          */
@@ -1694,12 +2106,12 @@ export interface components {
             /** Badcaseid */
             badCaseId: string;
             /** Category */
-            category: ("model" | "prompt" | "error") | null;
+            category: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Conclusion
              * @enum {string}
              */
-            conclusion: "attributed" | "non_target";
+            conclusion: "attributed" | "non_target" | "inconclusive";
             /** Confidence */
             confidence: number;
             /**
@@ -1707,6 +2119,9 @@ export interface components {
              * Format: date-time
              */
             createdAt: string;
+            executionManifest?: components["schemas"]["AttributionExecutionManifest"] | null;
+            /** Executionmanifesthash */
+            executionManifestHash?: string | null;
             /** Iscached */
             isCached: boolean;
             /** Objectcommit */
@@ -1728,6 +2143,9 @@ export interface components {
             reason: string;
             /** Reasoning */
             reasoning: string;
+            report?: components["schemas"]["AttributionReportV2"] | null;
+            /** Reportschemaversion */
+            reportSchemaVersion?: string | null;
             /** Reusedcount */
             reusedCount: number;
             /** Runid */
@@ -1740,6 +2158,53 @@ export interface components {
             updatedAt: string;
             /** Warnings */
             warnings: components["schemas"]["AttributionWarning"][];
+        };
+        /**
+         * AttributionEvidence
+         * @description One structured, non-raw evidence reference used by the analysis.
+         */
+        AttributionEvidence: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "bad_case" | "knowledge" | "trace" | "warning";
+            /** Reference */
+            reference?: string | null;
+            /** Summary */
+            summary: string;
+        };
+        /**
+         * AttributionExecutionManifest
+         * @description Immutable inputs that determine one attribution report and cache identity.
+         */
+        AttributionExecutionManifest: {
+            /** Badcaseid */
+            badCaseId: string;
+            /** Contextsnapshothash */
+            contextSnapshotHash: string;
+            /** Engine */
+            engine: string;
+            /**
+             * Manifestversion
+             * @default attribution-execution/v1
+             * @constant
+             */
+            manifestVersion: "attribution-execution/v1";
+            /** Modelconfigfingerprint */
+            modelConfigFingerprint: string;
+            /**
+             * Outputschemaversion
+             * @default probe-report/v2
+             * @constant
+             */
+            outputSchemaVersion: "probe-report/v2";
+            /** Policyversion */
+            policyVersion: string;
+            skill: components["schemas"]["app__service__evolution__attribution_contracts__AttributionSkillRevision"];
+            target: components["schemas"]["AttributionTargetRef"];
+            /** Workspaceid */
+            workspaceId: string;
         };
         /**
          * AttributionItem
@@ -1757,12 +2222,12 @@ export interface components {
             /** Badcaseid */
             badCaseId: string;
             /** Category */
-            category: ("model" | "prompt" | "error") | null;
+            category: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Conclusion
              * @enum {string}
              */
-            conclusion: "attributed" | "non_target";
+            conclusion: "attributed" | "non_target" | "inconclusive";
             /** Confidence */
             confidence: number;
             /**
@@ -1796,6 +2261,121 @@ export interface components {
             updatedAt: string;
         };
         /**
+         * AttributionJobList
+         * @description Newest-first attribution executions for one run.
+         */
+        AttributionJobList: {
+            /** Items */
+            items: components["schemas"]["AttributionJobView"][];
+        };
+        /**
+         * AttributionJobObservation
+         * @description Sanitized throughput, quality, cost, and runtime observations.
+         */
+        AttributionJobObservation: {
+            /**
+             * Averagelatencyms
+             * @default 0
+             */
+            averageLatencyMs: number;
+            /**
+             * Completed
+             * @default 0
+             */
+            completed: number;
+            /** Contexthash */
+            contextHash?: string | null;
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Evidencecoveragerate
+             * @default 0
+             */
+            evidenceCoverageRate: number;
+            /** Executor */
+            executor: string;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Nontarget
+             * @default 0
+             */
+            nonTarget: number;
+            /**
+             * P95Latencyms
+             * @default 0
+             */
+            p95LatencyMs: number;
+            /**
+             * Reused
+             * @default 0
+             */
+            reused: number;
+            /** Skillrevision */
+            skillRevision: string | null;
+            /**
+             * Tokencount
+             * @default 0
+             */
+            tokenCount: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Warningcount
+             * @default 0
+             */
+            warningCount: number;
+        };
+        /**
+         * AttributionJobView
+         * @description One durable attribution execution without raw trace or Skill content.
+         */
+        AttributionJobView: {
+            /** Attempt */
+            attempt: number;
+            /** Cancelrequested */
+            cancelRequested: boolean;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Error */
+            error: string | null;
+            /** Finishedat */
+            finishedAt: string | null;
+            /** Jobid */
+            jobId: string;
+            /** Maxattempts */
+            maxAttempts: number;
+            observation: components["schemas"]["AttributionJobObservation"];
+            /** Progress */
+            progress: number;
+            /** Runid */
+            runId: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "prepare" | "manual" | "schedule" | "retry";
+            /** Startedat */
+            startedAt: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "completed" | "failed" | "interrupted" | "cancelled";
+        };
+        /**
          * AttributionPage
          * @description One deterministic newest-first page of a case's attributions.
          */
@@ -1808,6 +2388,16 @@ export interface components {
             pageSize: number;
             /** Total */
             total: number;
+        };
+        /**
+         * AttributionPoint
+         * @description A bounded introduction or detection point in the selected Session.
+         */
+        AttributionPoint: {
+            /** Label */
+            label: string;
+            /** Occurredat */
+            occurredAt?: string | null;
         };
         /**
          * AttributionPreviewRequest
@@ -1836,9 +2426,11 @@ export interface components {
         };
         /**
          * AttributionPreviewResult
-         * @description Read-only attribution preview; it has no paged rows.
+         * @description Read-only counts and whether this deployment can run workspace Skill packages.
          */
         AttributionPreviewResult: {
+            /** Canrecompute */
+            canRecompute: boolean;
             summary: components["schemas"]["AttributionPreviewSummary"];
             /** Targetrevision */
             targetRevision?: string | null;
@@ -1848,14 +2440,254 @@ export interface components {
          * @description Cache reuse preview and the historical non-target reference count.
          */
         AttributionPreviewSummary: {
+            /** Byskill */
+            bySkill?: {
+                [key: string]: number;
+            };
             /** Fresh */
-            fresh: number;
+            fresh: number | null;
+            /**
+             * Missing
+             * @default 0
+             */
+            missing: number;
             /** Nontargetknown */
             nonTargetKnown: number;
             /** Potential */
             potential: number;
             /** Reused */
-            reused: number;
+            reused: number | null;
+        };
+        /**
+         * AttributionQualityDecisionWrite
+         * @description Human acceptance or rejection of one exact shadow evaluation.
+         */
+        AttributionQualityDecisionWrite: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accept" | "reject";
+            /** Evaluationeventid */
+            evaluationEventId: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * AttributionQualityEvaluation
+         * @description One persisted isolated shadow report and its audit identity.
+         */
+        AttributionQualityEvaluation: {
+            /** Actorid */
+            actorId: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Id */
+            id: string;
+            report: components["schemas"]["ShadowEvaluationReport"];
+            /** Skillrevisionid */
+            skillRevisionId: string;
+        };
+        /**
+         * AttributionQualityEvent
+         * @description Append-only evaluation, promotion, rejection, or rollback evidence.
+         */
+        AttributionQualityEvent: {
+            /** Actorid */
+            actorId: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Evaluationhash */
+            evaluationHash: string | null;
+            /** Eventtype */
+            eventType: string;
+            /** Id */
+            id: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Reason */
+            reason: string;
+            /** Skillrevisionid */
+            skillRevisionId: string;
+        };
+        /**
+         * AttributionQualityHistory
+         * @description Ordered quality audit trail for one revision.
+         */
+        AttributionQualityHistory: {
+            /** Items */
+            items: components["schemas"]["AttributionQualityEvent"][];
+        };
+        /**
+         * AttributionReportV2
+         * @description Structured V2 payload stored beside legacy report text columns.
+         */
+        AttributionReportV2: {
+            analysis: components["schemas"]["AttributionAnalysis"];
+            /** Category */
+            category?: ("model" | "prompt" | "error" | "flow" | "context") | null;
+            /**
+             * Conclusion
+             * @enum {string}
+             */
+            conclusion: "attributed" | "non_target" | "inconclusive";
+            detectionPoint?: components["schemas"]["AttributionPoint"] | null;
+            /** Evidence */
+            evidence?: components["schemas"]["AttributionEvidence"][];
+            introductionPoint?: components["schemas"]["AttributionPoint"] | null;
+            /**
+             * Schemaversion
+             * @default probe-report/v2
+             * @constant
+             */
+            schemaVersion: "probe-report/v2";
+            /** Sourcereport */
+            sourceReport?: {
+                [key: string]: unknown;
+            } | null;
+            /** Suggestionclues */
+            suggestionClues?: string[];
+            target: components["schemas"]["AttributionTargetRef"];
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * AttributionRollbackWrite
+         * @description Human reason attached to a workspace-default rollback.
+         */
+        AttributionRollbackWrite: {
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * AttributionSkillBindingWrite
+         * @description Select one published immutable revision for a binding.
+         */
+        AttributionSkillBindingWrite: {
+            /** Skillrevisionid */
+            skillRevisionId: string;
+        };
+        /**
+         * AttributionSkillCreate
+         * @description Create one Skill and publish its first revision.
+         */
+        AttributionSkillCreate: {
+            /** Content */
+            content: {
+                [key: string]: unknown;
+            };
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Displayname */
+            displayName: string;
+            /**
+             * Executortype
+             * @default agent_stub
+             * @enum {string}
+             */
+            executorType: "builtin_rule" | "agent_stub" | "agent";
+            /**
+             * Outputschemaversion
+             * @default probe-report/v2
+             */
+            outputSchemaVersion: string;
+            /** Skillkey */
+            skillKey: string;
+        };
+        /**
+         * AttributionSkillList
+         * @description All platform and workspace Skill revisions visible in one workspace.
+         */
+        AttributionSkillList: {
+            /** Items */
+            items: components["schemas"]["app__service__evolution__attribution_skills__AttributionSkillRevision"][];
+        };
+        /**
+         * AttributionSkillPackage
+         * @description Package metadata rendered by workspace administration.
+         */
+        AttributionSkillPackage: {
+            /** Archivename */
+            archiveName: string;
+            /** Builtin */
+            builtIn: boolean;
+            /** Contenthash */
+            contentHash: string;
+            /** Filecount */
+            fileCount: number;
+            /** Id */
+            id: string;
+            /** Sizebytes */
+            sizeBytes: number;
+            /** Skillname */
+            skillName: string;
+            /** Uploadedat */
+            uploadedAt: string | null;
+            /** Uploadername */
+            uploaderName: string;
+        };
+        /**
+         * AttributionSkillPackageList
+         * @description Workspace resources available for binding and one-off analysis.
+         */
+        AttributionSkillPackageList: {
+            /** Items */
+            items: components["schemas"]["AttributionSkillPackage"][];
+        };
+        /**
+         * AttributionSkillRevisionWrite
+         * @description Content and compatibility metadata for one immutable revision.
+         */
+        AttributionSkillRevisionWrite: {
+            /** Content */
+            content: {
+                [key: string]: unknown;
+            };
+            /**
+             * Executortype
+             * @default agent_stub
+             * @enum {string}
+             */
+            executorType: "builtin_rule" | "agent_stub" | "agent";
+            /**
+             * Outputschemaversion
+             * @default probe-report/v2
+             */
+            outputSchemaVersion: string;
+        };
+        /**
+         * AttributionSkillStateWrite
+         * @description Enable or disable a workspace-owned Skill.
+         */
+        AttributionSkillStateWrite: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /**
+         * AttributionTargetRef
+         * @description The exact evolution object revision evaluated by one report.
+         */
+        AttributionTargetRef: {
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent" | "knowledge";
+            /** Objectversion */
+            objectVersion?: string | null;
         };
         /**
          * AttributionTriggerCompare
@@ -2196,6 +3028,26 @@ export interface components {
          */
         BadCaseTraceStatus: "ready" | "pending" | "syncing" | "failed" | "unavailable";
         /**
+         * BindingFailure
+         * @description Last failed background analysis of the current binding.
+         */
+        BindingFailure: {
+            /** Attempts */
+            attempts: number;
+            /** Reason */
+            reason: string;
+            /** Willretry */
+            willRetry: boolean;
+        };
+        /** Body_upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post */
+        Body_upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post: {
+            /**
+             * File
+             * @description Attribution Skill folder ZIP
+             */
+            file: string;
+        };
+        /**
          * CatalogModel
          * @description One normalized model and its usage across the trace corpus.
          */
@@ -2299,6 +3151,49 @@ export interface components {
             ok: boolean;
         };
         /**
+         * EffectiveAttributionSkill
+         * @description Resolved Skill revision plus the precedence source that selected it.
+         */
+        EffectiveAttributionSkill: {
+            /** Builtin */
+            builtIn: boolean;
+            /** Content */
+            content: {
+                [key: string]: unknown;
+            };
+            /** Contenthash */
+            contentHash: string;
+            /** Description */
+            description: string;
+            /** Displayname */
+            displayName: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Executortype */
+            executorType: string;
+            /** Id */
+            id: string;
+            /** Outputschemaversion */
+            outputSchemaVersion: string;
+            /** Qualitystatus */
+            qualityStatus: string;
+            /** Revision */
+            revision: number;
+            /** Skillid */
+            skillId: string;
+            /** Skillkey */
+            skillKey: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "target" | "workspace" | "platform";
+            /** Status */
+            status: string;
+            /** Workspaceid */
+            workspaceId: string | null;
+        };
+        /**
          * ErrorBody
          * @description Error payload shared by browser and API clients.
          */
@@ -2316,7 +3211,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_PENDING" | "BAD_CASE_SESSION_UNAVAILABLE" | "BAD_CASE_SESSION_MISMATCH" | "ATTRIBUTION_NOT_FOUND" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "TARGET_CONTENT_UNRESOLVED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "EXTERNAL_SCHEMA_DRIFT" | "EXTERNAL_READ_FORBIDDEN" | "EXTERNAL_READ_FAILED" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_PENDING" | "BAD_CASE_SESSION_UNAVAILABLE" | "BAD_CASE_SESSION_MISMATCH" | "ATTRIBUTION_NOT_FOUND" | "ATTRIBUTION_SKILL_NOT_FOUND" | "ATTRIBUTION_SKILL_EXISTS" | "ATTRIBUTION_SKILL_INVALID" | "ATTRIBUTION_SKILL_PACKAGE_NOT_FOUND" | "ATTRIBUTION_SKILL_PACKAGE_EXISTS" | "ATTRIBUTION_SKILL_PACKAGE_INVALID" | "ATTRIBUTION_SKILL_PACKAGE_TOO_LARGE" | "ATTRIBUTION_QUALITY_GATE_FAILED" | "ATTRIBUTION_ENGINE_UNAVAILABLE" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "TARGET_CONTENT_UNRESOLVED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "EXTERNAL_SCHEMA_DRIFT" | "EXTERNAL_READ_FORBIDDEN" | "EXTERNAL_READ_FAILED" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -2352,10 +3247,20 @@ export interface components {
          */
         EvolutionRunAttributeStats: {
             /**
+             * Context
+             * @default 0
+             */
+            context: number;
+            /**
              * Error
              * @default 0
              */
             error: number;
+            /**
+             * Flow
+             * @default 0
+             */
+            flow: number;
             /**
              * Model
              * @default 0
@@ -2366,6 +3271,20 @@ export interface components {
              * @default 0
              */
             prompt: number;
+        };
+        /**
+         * EvolutionRunAttributionSkill
+         * @description Immutable attribution Skill identity frozen when the run was launched.
+         */
+        EvolutionRunAttributionSkill: {
+            /** Contenthash */
+            contentHash: string;
+            /** Engine */
+            engine: string;
+            /** Key */
+            key: string;
+            /** Revision */
+            revision: number;
         };
         /**
          * EvolutionRunCard
@@ -2410,6 +3329,7 @@ export interface components {
          * @description Complete shell consumed by the seven-step run-detail page.
          */
         EvolutionRunDetail: {
+            attributionSkill: components["schemas"]["EvolutionRunAttributionSkill"] | null;
             /** Blockedstage */
             blockedStage: ("patch" | "push" | "eval" | "attribution") | null;
             /** Cacheenabled */
@@ -2916,6 +3836,11 @@ export interface components {
          * @description Persisted target returned to clients.
          */
         EvolutionTarget: {
+            attributionFailure?: components["schemas"]["BindingFailure"] | null;
+            /** Attributionpackageid */
+            attributionPackageId?: string | null;
+            /** Attributionskillname */
+            attributionSkillName?: string | null;
             /** Defaultref */
             defaultRef: string;
             /**
@@ -2964,6 +3889,8 @@ export interface components {
          * @description Mutable target configuration accepted by create and update.
          */
         EvolutionTargetWrite: {
+            /** Attributionpackageid */
+            attributionPackageId?: string | null;
             /** Defaultref */
             defaultRef: string;
             /**
@@ -2986,6 +3913,55 @@ export interface components {
             testProjectId: string;
             /** Validationprojectid */
             validationProjectId: string;
+        };
+        /**
+         * GoldenExpected
+         * @description Expected semantic outcome and verifiable evidence constraints.
+         */
+        GoldenExpected: {
+            /** Category */
+            category?: ("model" | "prompt" | "error" | "flow" | "context") | null;
+            /**
+             * Conclusion
+             * @enum {string}
+             */
+            conclusion: "attributed" | "non_target" | "inconclusive";
+            /**
+             * Detectionpointrequired
+             * @default false
+             */
+            detectionPointRequired: boolean;
+            /**
+             * Introductionpointrequired
+             * @default false
+             */
+            introductionPointRequired: boolean;
+            /** Requiredevidencerefs */
+            requiredEvidenceRefs?: string[];
+        };
+        /**
+         * GoldenThresholds
+         * @description Closed promotion thresholds carried by one versioned Golden Set.
+         */
+        GoldenThresholds: {
+            /** Categoryaccuracy */
+            categoryAccuracy: number;
+            /** Conclusionaccuracy */
+            conclusionAccuracy: number;
+            /** Evidencevalidityrate */
+            evidenceValidityRate: number;
+            /** Maximumaveragetokens */
+            maximumAverageTokens: number;
+            /** Maximumfailurerate */
+            maximumFailureRate: number;
+            /** Maximump95Latencyms */
+            maximumP95LatencyMs: number;
+            /** Pointhitrate */
+            pointHitRate: number;
+            /** Safetyrate */
+            safetyRate: number;
+            /** Schemacompliancerate */
+            schemaComplianceRate: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -3024,7 +4000,7 @@ export interface components {
          */
         IssueBadCaseAnalysis: {
             /** Attributetype */
-            attributeType: ("model" | "prompt" | "error") | null;
+            attributeType: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Displaystate
              * @enum {string}
@@ -3046,6 +4022,8 @@ export interface components {
         JobResponse: {
             /** Attempt */
             attempt: number;
+            /** Cancelrequested */
+            cancelRequested: boolean;
             /**
              * Createdat
              * Format: date-time
@@ -3063,18 +4041,26 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "sync" | "pull" | "bad_case_root_sync" | "evolution_prepare" | "evolution_advance" | "evolution_apply" | "evolution_finalize" | "evolution_retry";
+            kind: "sync" | "pull" | "bad_case_root_sync" | "evolution_prepare" | "evolution_advance" | "evolution_apply" | "evolution_finalize" | "evolution_retry" | "attribution_batch";
+            /** Leaseexpiresat */
+            leaseExpiresAt: string | null;
+            /** Maxattempts */
+            maxAttempts: number;
             /** Progress */
             progress: number;
             /** Refid */
             refId: string | null;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            } | null;
             /** Startedat */
             startedAt: string | null;
             /**
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "completed" | "failed" | "interrupted";
+            status: "queued" | "running" | "completed" | "failed" | "interrupted" | "cancelled";
         };
         /**
          * LoginRequest
@@ -3113,7 +4099,7 @@ export interface components {
          */
         NonIssueBadCaseAnalysis: {
             /** Attributetype */
-            attributeType: ("model" | "prompt" | "error") | null;
+            attributeType: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Displaystate
              * @constant
@@ -3382,7 +4368,7 @@ export interface components {
              * Attributetype
              * @enum {string}
              */
-            attributeType: "model" | "prompt" | "error";
+            attributeType: "model" | "prompt" | "error" | "flow" | "context";
             /** Description */
             description: string;
             /** Model */
@@ -3407,6 +4393,8 @@ export interface components {
          * @description Wizard filter condition shared by preview and launch endpoints.
          */
         ProbeQueryRequest: {
+            /** Attributionpackageid */
+            attributionPackageId?: string | null;
             /**
              * Cacheenabled
              * @default true
@@ -3472,7 +4460,7 @@ export interface components {
          */
         ProbeReport: {
             /** Attributetype */
-            attributeType: ("model" | "prompt" | "error") | null;
+            attributeType: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Createdat
              * Format: date-time
@@ -3961,6 +4949,152 @@ export interface components {
             to?: string | null;
         };
         /**
+         * ShadowActual
+         * @description Normalized engine output stored separately from Probe Reports.
+         */
+        ShadowActual: {
+            /** Category */
+            category: ("model" | "prompt" | "error" | "flow" | "context") | null;
+            /**
+             * Conclusion
+             * @enum {string}
+             */
+            conclusion: "attributed" | "non_target" | "inconclusive";
+            /** Confidence */
+            confidence: number;
+            /** Evidencereferences */
+            evidenceReferences: string[];
+            /** Summary */
+            summary: string;
+            /** Warnings */
+            warnings: string[];
+        };
+        /**
+         * ShadowCandidate
+         * @description Exact engine and Skill snapshot evaluated without production writes.
+         */
+        ShadowCandidate: {
+            /** Engine */
+            engine: string;
+            /**
+             * Modelconfigfingerprint
+             * @default none
+             */
+            modelConfigFingerprint: string;
+            /** Skillcontent */
+            skillContent: {
+                [key: string]: unknown;
+            };
+            /** Skillcontenthash */
+            skillContentHash: string;
+            /** Skillexecutortype */
+            skillExecutorType: string;
+            /** Skillkey */
+            skillKey: string;
+            /** Skillrevision */
+            skillRevision: number;
+        };
+        /**
+         * ShadowCaseResult
+         * @description One isolated case comparison; it is never a production attribution.
+         */
+        ShadowCaseResult: {
+            actual: components["schemas"]["ShadowActual"] | null;
+            /** Caseid */
+            caseId: string;
+            /** Categorymatch */
+            categoryMatch: boolean;
+            /** Conclusionmatch */
+            conclusionMatch: boolean;
+            /** Detectionpointhit */
+            detectionPointHit: boolean;
+            /** Error */
+            error?: string | null;
+            /** Evidencevalid */
+            evidenceValid: boolean;
+            expected: components["schemas"]["GoldenExpected"];
+            /** Introductionpointhit */
+            introductionPointHit: boolean;
+            /** Latencyms */
+            latencyMs: number;
+            /** Safetypassed */
+            safetyPassed: boolean;
+            /** Scenario */
+            scenario: string;
+            /** Schemacompliant */
+            schemaCompliant: boolean;
+            /** Tokencount */
+            tokenCount: number;
+        };
+        /**
+         * ShadowEvaluationReport
+         * @description Immutable quality artifact produced without touching production state.
+         */
+        ShadowEvaluationReport: {
+            candidate: components["schemas"]["ShadowCandidate"];
+            /** Evaluationhash */
+            evaluationHash: string;
+            /** Failedgates */
+            failedGates: string[];
+            /** Goldensethash */
+            goldenSetHash: string;
+            /** Goldensetid */
+            goldenSetId: string;
+            metrics: components["schemas"]["ShadowMetrics"];
+            /** Passed */
+            passed: boolean;
+            /** Results */
+            results: components["schemas"]["ShadowCaseResult"][];
+            /**
+             * Schemaversion
+             * @default attribution-shadow-report/v1
+             * @constant
+             */
+            schemaVersion: "attribution-shadow-report/v1";
+            thresholds: components["schemas"]["GoldenThresholds"];
+        };
+        /**
+         * ShadowMetrics
+         * @description Aggregate quality, safety, cost, and runtime measurements.
+         */
+        ShadowMetrics: {
+            /** Averagelatencyms */
+            averageLatencyMs: number;
+            /** Averagetokens */
+            averageTokens: number;
+            /** Categoryaccuracy */
+            categoryAccuracy: number;
+            /** Conclusionaccuracy */
+            conclusionAccuracy: number;
+            /** Detectionpointhitrate */
+            detectionPointHitRate: number;
+            /** Evidencevalidityrate */
+            evidenceValidityRate: number;
+            /** Failurerate */
+            failureRate: number;
+            /** Introductionpointhitrate */
+            introductionPointHitRate: number;
+            /** P95Latencyms */
+            p95LatencyMs: number;
+            /** Pointhitrate */
+            pointHitRate: number;
+            /** Safetyrate */
+            safetyRate: number;
+            /** Schemacompliancerate */
+            schemaComplianceRate: number;
+            /** Totalcases */
+            totalCases: number;
+        };
+        /** SkillResourceDetail */
+        SkillResourceDetail: {
+            /** Files */
+            files: string[];
+            /** Prompt */
+            prompt: string;
+            /** Targets */
+            targets: string[];
+        };
+        /**
          * SourceListResponse
          * @description Source distribution ordered by total descending, then object name.
          */
@@ -4003,7 +5137,7 @@ export interface components {
             /** Badcaseid */
             badCaseId: string;
             /** Category */
-            category: ("model" | "prompt" | "error") | null;
+            category: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /** Confidence */
             confidence: number | null;
             /** Description */
@@ -4065,7 +5199,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "model" | "prompt" | "error";
+            category: "model" | "prompt" | "error" | "flow" | "context";
             /** Clusterid */
             clusterId: string;
             /** Confidence */
@@ -4114,7 +5248,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "model" | "prompt" | "error";
+            category: "model" | "prompt" | "error" | "flow" | "context";
             /** Clusterid */
             clusterId: string;
             /** Commit */
@@ -4314,7 +5448,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "model" | "prompt" | "error";
+            category: "model" | "prompt" | "error" | "flow" | "context";
             /** Clusterid */
             clusterId: string;
             /** Confidence */
@@ -4515,7 +5649,7 @@ export interface components {
              * Category
              * @description Attribution category; only present for the attributed state.
              */
-            category?: ("model" | "prompt" | "error") | null;
+            category?: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Createdat
              * Format: date-time
@@ -4649,6 +5783,8 @@ export interface components {
         TargetOverviewItem: {
             /** Attributed */
             attributed: number;
+            /** Attributionskillname */
+            attributionSkillName?: string | null;
             /**
              * Evolvable
              * @description Attributed plus unanalyzed potential rows; the list sort key.
@@ -4863,7 +5999,7 @@ export interface components {
          */
         UnanalyzedBadCaseAnalysis: {
             /** Attributetype */
-            attributeType: ("model" | "prompt" | "error") | null;
+            attributeType: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Displaystate
              * @constant
@@ -5099,6 +6235,56 @@ export interface components {
             name?: string | null;
             /** Quota */
             quota?: number | null;
+        };
+        /**
+         * AttributionSkillRevision
+         * @description Resolved Skill identity that can invalidate cached attribution output.
+         */
+        app__service__evolution__attribution_contracts__AttributionSkillRevision: {
+            /** Contenthash */
+            contentHash: string;
+            /** Key */
+            key: string;
+            /** Revision */
+            revision: string;
+        };
+        /**
+         * AttributionSkillRevision
+         * @description Public immutable Skill revision.
+         */
+        app__service__evolution__attribution_skills__AttributionSkillRevision: {
+            /** Builtin */
+            builtIn: boolean;
+            /** Content */
+            content: {
+                [key: string]: unknown;
+            };
+            /** Contenthash */
+            contentHash: string;
+            /** Description */
+            description: string;
+            /** Displayname */
+            displayName: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Executortype */
+            executorType: string;
+            /** Id */
+            id: string;
+            /** Outputschemaversion */
+            outputSchemaVersion: string;
+            /** Qualitystatus */
+            qualityStatus: string;
+            /** Revision */
+            revision: number;
+            /** Skillid */
+            skillId: string;
+            /** Skillkey */
+            skillKey: string;
+            /** Status */
+            status: string;
+            /** Workspaceid */
+            workspaceId: string | null;
         };
     };
     responses: never;
@@ -6173,6 +7359,240 @@ export interface operations {
                 };
             };
             /** @description Run is unknown */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_attribution_jobs_api_evolution_runs__run_id__attribution_jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobList"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_attribution_job_api_evolution_runs__run_id__attribution_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobView"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_attribution_job_api_evolution_runs__run_id__attribution_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobView"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_attribution_job_api_evolution_runs__run_id__attribution_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobView"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -7730,6 +9150,391 @@ export interface operations {
             };
         };
     };
+    list_attribution_skill_packages_api_workspaces__wid__attribution_skill_packages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionSkillPackageList"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Package or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill name already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ZIP package exceeds a safety limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ZIP or SKILL.md is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionSkillPackage"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Package or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill name already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ZIP package exceeds a safety limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ZIP or SKILL.md is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_package_detail_api_workspaces__wid__attribution_skill_packages__packageId__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                packageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillResourceDetail"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Package or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill name already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ZIP package exceeds a safety limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ZIP or SKILL.md is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                packageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Package or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill name already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ZIP package exceeds a safety limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ZIP or SKILL.md is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    download_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                packageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attribution Skill folder ZIP */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Package or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill name already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ZIP package exceeds a safety limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ZIP or SKILL.md is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_workspace_bad_cases_api_workspaces__wid__bad_cases_get: {
         parameters: {
             query?: {
@@ -8386,6 +10191,701 @@ export interface operations {
             };
         };
     };
+    bind_workspace_default_skill_api_workspaces__wid__evolution_attribution_skill_bindings_default_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttributionSkillBindingWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectiveAttributionSkill"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    unbind_workspace_default_skill_api_workspaces__wid__evolution_attribution_skill_bindings_default_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rollback_workspace_default_skill_api_workspaces__wid__evolution_attribution_skill_bindings_default_rollback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttributionRollbackWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectiveAttributionSkill"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_attribution_skills_api_workspaces__wid__evolution_attribution_skills_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionSkillList"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_attribution_skill_api_workspaces__wid__evolution_attribution_skills_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttributionSkillCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__service__evolution__attribution_skills__AttributionSkillRevision"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_attribution_skill_quality_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__quality_decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                revisionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttributionQualityDecisionWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__service__evolution__attribution_skills__AttributionSkillRevision"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_attribution_skill_quality_events_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__quality_events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                revisionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionQualityHistory"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    evaluate_attribution_skill_revision_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__shadow_evaluations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                revisionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionQualityEvaluation"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    set_attribution_skill_state_api_workspaces__wid__evolution_attribution_skills__skillId__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttributionSkillStateWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    publish_attribution_skill_revision_api_workspaces__wid__evolution_attribution_skills__skillId__revisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                skillId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttributionSkillRevisionWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__service__evolution__attribution_skills__AttributionSkillRevision"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     create_cluster_preview_api_workspaces__wid__evolution_cluster_previews_post: {
         parameters: {
             query?: never;
@@ -8821,6 +11321,244 @@ export interface operations {
                 };
             };
             /** @description Run is unknown or out of workspace */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_attribution_jobs_api_workspaces__wid__evolution_runs__run_id__attribution_jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobList"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown, out of workspace, or step not reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobView"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown, out of workspace, or step not reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                run_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobView"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown, out of workspace, or step not reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                run_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobView"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown, out of workspace, or step not reached */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -9297,6 +12035,212 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_target_attribution_skill_api_workspaces__wid__evolution_targets__targetId__attribution_skill_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                targetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectiveAttributionSkill"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    bind_target_attribution_skill_api_workspaces__wid__evolution_targets__targetId__attribution_skill_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                targetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttributionSkillBindingWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectiveAttributionSkill"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    unbind_target_attribution_skill_api_workspaces__wid__evolution_targets__targetId__attribution_skill_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                targetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

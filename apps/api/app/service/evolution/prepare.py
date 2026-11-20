@@ -102,6 +102,13 @@ class WorkspacePreparer(Protocol):
         """Prepare one isolated repository workspace."""
 
 
+class AttributionBatchDispatcher(Protocol):
+    """Durable attribution lane shared with manual and scheduled entrypoints."""
+
+    async def run_for_prepare(self, run: EvolutionRunRecord) -> AttributionRunSummary:
+        """Submit or join the run's idempotent attribution batch."""
+
+
 @dataclass(slots=True)
 class _PrepareContext:
     """Mutable facts shared across the seven prepare stages."""
@@ -123,6 +130,8 @@ class EvolutionPrepareService:
         workspaces: WorkspacePreparer,
         events: PrepareEventRecorder | EvolutionRunEventService | None = None,
         resolver: TargetVersionResolver | None = None,
+        *,
+        attribution_jobs: AttributionBatchDispatcher | None = None,
     ) -> None:
         """Bind persistence, the shared matcher, the runner, and git workspaces."""
         self._runs = runs
@@ -132,6 +141,7 @@ class EvolutionPrepareService:
         self._attribution = attribution
         self._workspaces = workspaces
         self._events = events
+        self._attribution_jobs = attribution_jobs
         self._resolver = resolver
 
     async def handle(self, job: JobRunRecord) -> Mapping[str, Any]:
@@ -252,11 +262,15 @@ class EvolutionPrepareService:
         if run.progress_unit < 4:
             candidates = await self._candidates_from_rows(run)
             try:
-                summary = await self._attribution.run(
-                    run,
-                    candidates,
-                    run.cache_enabled,
-                    target_revision=resolved.target_revision,
+                summary = (
+                    await self._attribution_jobs.run_for_prepare(run)
+                    if self._attribution_jobs is not None
+                    else await self._attribution.run(
+                        run,
+                        candidates,
+                        run.cache_enabled,
+                        target_revision=resolved.target_revision,
+                    )
                 )
             except RunBlocked:
                 raise
@@ -583,7 +597,7 @@ class EvolutionPrepareService:
     async def _category_counts(self, run: EvolutionRunRecord) -> dict[str, int]:
         """Count attributed probes by their closed category."""
         rows = await self._attributions.list_clusterable_probes(run.id)
-        counts = {"model": 0, "prompt": 0, "error": 0}
+        counts = dict.fromkeys(TYPE_CONFIDENCE, 0)
         for _, attribute_type, _ in rows:
             if attribute_type in counts:
                 counts[attribute_type] += 1

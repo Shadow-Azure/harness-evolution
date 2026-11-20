@@ -159,6 +159,58 @@ export type EvolutionTargetList = components["schemas"]["EvolutionTargetList"];
 export type EvolutionTargetVersions =
   components["schemas"]["EvolutionTargetVersions"];
 
+/** One immutable Attribution Skill revision visible to a workspace. */
+export type AttributionSkillRevision =
+  components["schemas"]["app__service__evolution__attribution_skills__AttributionSkillRevision"];
+
+/** Platform and workspace Attribution Skill revisions visible to a workspace. */
+export type AttributionSkillList = components["schemas"]["AttributionSkillList"];
+
+/** Effective target Skill plus target/workspace/platform precedence source. */
+export type EffectiveAttributionSkill =
+  components["schemas"]["EffectiveAttributionSkill"];
+
+/** Request selecting one immutable Attribution Skill revision. */
+export type AttributionSkillBindingWrite =
+  components["schemas"]["AttributionSkillBindingWrite"];
+
+/** Persisted isolated Golden Set result for one immutable Skill revision. */
+export type AttributionQualityEvaluation =
+  components["schemas"]["AttributionQualityEvaluation"];
+
+/** Human acceptance or rejection backed by one exact shadow evaluation. */
+export type AttributionQualityDecisionWrite =
+  components["schemas"]["AttributionQualityDecisionWrite"];
+
+/** Append-only evaluation and promotion audit trail. */
+export type AttributionQualityHistory =
+  components["schemas"]["AttributionQualityHistory"];
+
+/** Human reason attached to a workspace-default rollback. */
+export type AttributionRollbackWrite =
+  components["schemas"]["AttributionRollbackWrite"];
+
+/** One built-in or uploaded attribution Skill ZIP package. */
+export type AttributionSkillPackage =
+  components["schemas"]["AttributionSkillPackage"];
+
+/** Workspace packages plus the currently effective prompt. */
+export type SkillResourceDetail = components["schemas"]["SkillResourceDetail"];
+
+/** Immutable built-in and uploaded resources visible to this workspace. */
+export type AttributionSkillPackageList =
+  components["schemas"]["AttributionSkillPackageList"];
+
+/** Sanitized metrics for one durable attribution batch. */
+export type AttributionJobObservation =
+  components["schemas"]["AttributionJobObservation"];
+
+/** One durable attribution execution and its retry/cancellation state. */
+export type AttributionJobView = components["schemas"]["AttributionJobView"];
+
+/** Newest-first attribution executions for one evolution run. */
+export type AttributionJobList = components["schemas"]["AttributionJobList"];
+
 /** One enabled target exposed to the wizard catalog. */
 export type CatalogTarget = components["schemas"]["CatalogTarget"];
 

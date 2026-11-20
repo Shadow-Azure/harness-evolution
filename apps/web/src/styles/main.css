@@ -70,3 +70,13 @@ a {
     padding: 8px 24px 0;
   }
 }
+
+.type-chip.type-flow,
+.state-chip.flow {
+  color: var(--blue);
+}
+
+.type-chip.type-context,
+.state-chip.context {
+  color: var(--green);
+}

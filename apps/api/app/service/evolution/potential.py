@@ -18,7 +18,7 @@ from typing import Literal
 from pydantic import Field, field_validator
 
 from app.constants import POST_PROCESS_EVENT_INDEX
-from app.db.crud.attributions import attribution_cache_key
+from app.db.crud.attributions import AttributionRepository
 from app.db.crud.evolution_targets import EvolutionTargetRecord
 from app.db.crud.potential import (
     AgentNodeRecord,
@@ -30,6 +30,7 @@ from app.db.crud.potential import (
     window_day_boundaries,
 )
 from app.errors import AppError, ErrorCode
+from app.service.evolution.attribution_contracts import default_execution_manifest
 from app.service.evolution.target_content import (
     TargetVersionResolver,
     resolve_legacy_target_version,
@@ -316,13 +317,17 @@ class AttributionPreviewSummary(IdentityModel):
     """Cache reuse preview and the historical non-target reference count."""
 
     potential: int = Field(ge=0)
-    reused: int = Field(ge=0)
-    fresh: int = Field(ge=0)
+    reused: int | None = Field(ge=0)
+    fresh: int | None = Field(ge=0)
+    by_skill: dict[str, int] = Field(default_factory=dict)
+    missing: int = Field(default=0, ge=0)
     non_target_known: int = Field(ge=0)
 
 
 class AttributionPreviewResult(IdentityModel):
-    """Read-only attribution preview; it has no paged rows."""
+    """Read-only counts and whether this deployment can run workspace Skill packages."""
+
+    can_recompute: bool
 
     summary: AttributionPreviewSummary
     target_revision: str | None = None
@@ -794,15 +799,22 @@ class PotentialMatcher:
         reused = 0
         if cache_enabled and match.included:
             keys = tuple(
-                attribution_cache_key(
-                    condition.workspace_id,
-                    item.bad_case_id,
-                    condition.target_type,
-                    condition.target_name,
-                    condition.target_revision,
-                    POLICY_VERSION,
-                    ATTRIBUTION_ENGINE,
-                )
+                default_execution_manifest(
+                    workspace_id=condition.workspace_id,
+                    bad_case_id=item.bad_case_id,
+                    target_type=condition.target_type,
+                    target_name=condition.target_name,
+                    target_version=condition.target_revision,
+                    policy_version=POLICY_VERSION,
+                    engine=ATTRIBUTION_ENGINE,
+                    session_id=item.session_id,
+                    hit_reason=item.hit_reason,
+                    order_state=item.order_state,
+                    object_trigger_at=item.object_trigger.triggered_at,
+                    case_trigger_at=(
+                        item.case_trigger.triggered_at if item.case_trigger is not None else None
+                    ),
+                ).content_hash
                 for item in match.included
             )
             reused = len(await self._repository.existing_cache_keys(keys))
@@ -828,11 +840,16 @@ class PotentialPreviewService:
         targets: EvolutionTargetService,
         matcher: PotentialMatcher,
         resolver: TargetVersionResolver,
+        *,
+        local_agent: bool = False,
+        reports: AttributionRepository | None = None,
     ) -> None:
         """Bind target configuration validation, the matcher, and content resolution."""
         self._targets = targets
         self._matcher = matcher
         self._resolver = resolver
+        self._reports = reports
+        self._local_agent = local_agent
 
     async def sessions(
         self,
@@ -926,16 +943,41 @@ class PotentialPreviewService:
         match = await self._matcher.potential_cases(condition, association, policy)
         if not match.included:
             raise _no_potential_matched()
+        if self._reports:
+            rows = await self._reports.latest_reports(
+                workspace_id,
+                condition.target_type,
+                condition.target_name,
+                condition.target_revision,
+                tuple(case.bad_case_id for case in match.included),
+            )
+            groups: dict[str, int] = {}
+            for _, skill, _ in rows.values():
+                groups[skill] = groups.get(skill, 0) + 1
+            return AttributionPreviewResult(
+                can_recompute=self._local_agent,
+                summary=AttributionPreviewSummary(
+                    potential=match.potential,
+                    reused=len(rows) if body.cache_enabled else 0,
+                    fresh=0 if body.cache_enabled else match.potential,
+                    missing=match.potential - len(rows),
+                    by_skill=groups,
+                    non_target_known=sum(row[2] == "non_target" for row in rows.values()),
+                ),
+                target_revision=condition.target_revision,
+            )
+        deferred = self._local_agent and body.cache_enabled
         counts = await self._matcher.attribution_preview(
             condition,
             match,
-            cache_enabled=body.cache_enabled,
+            cache_enabled=body.cache_enabled and not deferred,
         )
         return AttributionPreviewResult(
+            can_recompute=self._local_agent,
             summary=AttributionPreviewSummary(
                 potential=counts.potential,
-                reused=counts.reused,
-                fresh=counts.fresh,
+                reused=None if deferred else counts.reused,
+                fresh=None if deferred else counts.fresh,
                 non_target_known=counts.non_target_known,
             ),
             target_revision=condition.target_revision,

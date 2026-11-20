@@ -5,12 +5,16 @@ import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  cancelAttributionJob,
   getEvolutionRunStep,
+  listAttributionJobs,
   listEvolutionRunEvents,
   listEvolutionRuns,
   previewAttribution,
   previewPotential,
   previewSessions,
+  retryAttributionJob,
+  startAttributionJob,
 } from "./evolutionRuns";
 import { server } from "../test/server";
 
@@ -217,5 +221,78 @@ describe("evolution run API", () => {
 
     expect(page.nextSeq).toBe(12);
     expect(query).toBe("?afterSeq=12&limit=50&level=warn");
+  });
+
+  it("uses workspace-scoped attribution job control endpoints", async () => {
+    const calls: string[] = [];
+    const job = {
+      jobId: "job-1",
+      runId: "run jobs",
+      source: "manual",
+      status: "queued",
+      progress: 0,
+      attempt: 0,
+      maxAttempts: 3,
+      cancelRequested: false,
+      observation: {
+        total: 0,
+        completed: 0,
+        created: 0,
+        reused: 0,
+        failed: 0,
+        nonTarget: 0,
+        averageLatencyMs: 0,
+        p95LatencyMs: 0,
+        tokenCount: 0,
+        warningCount: 0,
+        evidenceCoverageRate: 0,
+        executor: "rule-v1",
+        skillRevision: null,
+        contextHash: null,
+      },
+      error: null,
+      createdAt: "2026-11-18T10:00:00+08:00",
+      startedAt: null,
+      finishedAt: null,
+    };
+    server.use(
+      http.get("/api/workspaces/:wid/evolution/runs/:runId/attribution-jobs", ({ request }) => {
+        calls.push(`${request.method} ${new URL(request.url).pathname}`);
+        return HttpResponse.json({ items: [job] });
+      }),
+      http.post(
+        "/api/workspaces/:wid/evolution/runs/:runId/attribution-jobs",
+        ({ request }) => {
+          calls.push(`${request.method} ${new URL(request.url).pathname}`);
+          return HttpResponse.json(job, { status: 202 });
+        },
+      ),
+      http.post(
+        "/api/workspaces/:wid/evolution/runs/:runId/attribution-jobs/:jobId/retry",
+        ({ request }) => {
+          calls.push(`${request.method} ${new URL(request.url).pathname}`);
+          return HttpResponse.json(job, { status: 202 });
+        },
+      ),
+      http.post(
+        "/api/workspaces/:wid/evolution/runs/:runId/attribution-jobs/:jobId/cancel",
+        ({ request }) => {
+          calls.push(`${request.method} ${new URL(request.url).pathname}`);
+          return HttpResponse.json({ ...job, status: "cancelled" });
+        },
+      ),
+    );
+
+    await listAttributionJobs(workspaceId, "run jobs");
+    await startAttributionJob(workspaceId, "run jobs");
+    await retryAttributionJob(workspaceId, "run jobs", "job 1");
+    await cancelAttributionJob(workspaceId, "run jobs", "job 1");
+
+    expect(calls).toEqual([
+      "GET /api/workspaces/ws-test/evolution/runs/run%20jobs/attribution-jobs",
+      "POST /api/workspaces/ws-test/evolution/runs/run%20jobs/attribution-jobs",
+      "POST /api/workspaces/ws-test/evolution/runs/run%20jobs/attribution-jobs/job%201/retry",
+      "POST /api/workspaces/ws-test/evolution/runs/run%20jobs/attribution-jobs/job%201/cancel",
+    ]);
   });
 });

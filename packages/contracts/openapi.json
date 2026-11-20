@@ -111,9 +111,19 @@
         "additionalProperties": false,
         "description": "Probe counts by attribution type shown in the wizard distribution bar.",
         "properties": {
+          "context": {
+            "default": 0,
+            "title": "Context",
+            "type": "integer"
+          },
           "error": {
             "default": 0,
             "title": "Error",
+            "type": "integer"
+          },
+          "flow": {
+            "default": 0,
+            "title": "Flow",
             "type": "integer"
           },
           "model": {
@@ -133,6 +143,26 @@
           }
         },
         "title": "AttributeStats",
+        "type": "object"
+      },
+      "AttributionAnalysis": {
+        "additionalProperties": false,
+        "description": "Human-readable summary and detailed reasoning produced by the engine.",
+        "properties": {
+          "reasoning": {
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary",
+          "reasoning"
+        ],
+        "title": "AttributionAnalysis",
         "type": "object"
       },
       "AttributionDetail": {
@@ -160,7 +190,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -173,7 +205,8 @@
           "conclusion": {
             "enum": [
               "attributed",
-              "non_target"
+              "non_target",
+              "inconclusive"
             ],
             "title": "Conclusion",
             "type": "string"
@@ -188,6 +221,28 @@
             "format": "date-time",
             "title": "Createdat",
             "type": "string"
+          },
+          "executionManifest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttributionExecutionManifest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "executionManifestHash": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executionmanifesthash"
           },
           "isCached": {
             "title": "Iscached",
@@ -257,6 +312,28 @@
             "title": "Reasoning",
             "type": "string"
           },
+          "report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttributionReportV2"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reportSchemaVersion": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reportschemaversion"
+          },
           "reusedCount": {
             "minimum": 0.0,
             "title": "Reusedcount",
@@ -312,6 +389,118 @@
         "title": "AttributionDetail",
         "type": "object"
       },
+      "AttributionEvidence": {
+        "additionalProperties": false,
+        "description": "One structured, non-raw evidence reference used by the analysis.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "bad_case",
+              "knowledge",
+              "trace",
+              "warning"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "summary": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "summary"
+        ],
+        "title": "AttributionEvidence",
+        "type": "object"
+      },
+      "AttributionExecutionManifest": {
+        "additionalProperties": false,
+        "description": "Immutable inputs that determine one attribution report and cache identity.",
+        "properties": {
+          "badCaseId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Badcaseid",
+            "type": "string"
+          },
+          "contextSnapshotHash": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Contextsnapshothash",
+            "type": "string"
+          },
+          "engine": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Engine",
+            "type": "string"
+          },
+          "manifestVersion": {
+            "const": "attribution-execution/v1",
+            "default": "attribution-execution/v1",
+            "title": "Manifestversion",
+            "type": "string"
+          },
+          "modelConfigFingerprint": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Modelconfigfingerprint",
+            "type": "string"
+          },
+          "outputSchemaVersion": {
+            "const": "probe-report/v2",
+            "default": "probe-report/v2",
+            "title": "Outputschemaversion",
+            "type": "string"
+          },
+          "policyVersion": {
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Policyversion",
+            "type": "string"
+          },
+          "skill": {
+            "$ref": "#/components/schemas/app__service__evolution__attribution_contracts__AttributionSkillRevision"
+          },
+          "target": {
+            "$ref": "#/components/schemas/AttributionTargetRef"
+          },
+          "workspaceId": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Workspaceid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "badCaseId",
+          "target",
+          "policyVersion",
+          "engine",
+          "skill",
+          "modelConfigFingerprint",
+          "contextSnapshotHash"
+        ],
+        "title": "AttributionExecutionManifest",
+        "type": "object"
+      },
       "AttributionItem": {
         "additionalProperties": false,
         "description": "One object/revision-scoped attribution shown in the error-detail list.\n\n``attributionId`` is the stable deep-link id and maps ``probe_reports.probe_id``;\n``runId`` prefers the last run that reused the conclusion so a deep link\nopens the run that produced the currently displayed row. ``objectRef`` and\n``objectCommit`` are display-only evidence from that run; clients fall back\nto ``objectVersion`` when they are absent.",
@@ -332,7 +521,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -345,7 +536,8 @@
           "conclusion": {
             "enum": [
               "attributed",
-              "non_target"
+              "non_target",
+              "inconclusive"
             ],
             "title": "Conclusion",
             "type": "string"
@@ -455,6 +647,229 @@
         "title": "AttributionItem",
         "type": "object"
       },
+      "AttributionJobList": {
+        "additionalProperties": false,
+        "description": "Newest-first attribution executions for one run.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttributionJobView"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AttributionJobList",
+        "type": "object"
+      },
+      "AttributionJobObservation": {
+        "additionalProperties": false,
+        "description": "Sanitized throughput, quality, cost, and runtime observations.",
+        "properties": {
+          "averageLatencyMs": {
+            "default": 0.0,
+            "title": "Averagelatencyms",
+            "type": "number"
+          },
+          "completed": {
+            "default": 0,
+            "title": "Completed",
+            "type": "integer"
+          },
+          "contextHash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contexthash"
+          },
+          "created": {
+            "default": 0,
+            "title": "Created",
+            "type": "integer"
+          },
+          "evidenceCoverageRate": {
+            "default": 0.0,
+            "title": "Evidencecoveragerate",
+            "type": "number"
+          },
+          "executor": {
+            "title": "Executor",
+            "type": "string"
+          },
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "nonTarget": {
+            "default": 0,
+            "title": "Nontarget",
+            "type": "integer"
+          },
+          "p95LatencyMs": {
+            "default": 0.0,
+            "title": "P95Latencyms",
+            "type": "number"
+          },
+          "reused": {
+            "default": 0,
+            "title": "Reused",
+            "type": "integer"
+          },
+          "skillRevision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skillrevision"
+          },
+          "tokenCount": {
+            "default": 0,
+            "title": "Tokencount",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "warningCount": {
+            "default": 0,
+            "title": "Warningcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "executor",
+          "skillRevision"
+        ],
+        "title": "AttributionJobObservation",
+        "type": "object"
+      },
+      "AttributionJobView": {
+        "additionalProperties": false,
+        "description": "One durable attribution execution without raw trace or Skill content.",
+        "properties": {
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "cancelRequested": {
+            "title": "Cancelrequested",
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "jobId": {
+            "title": "Jobid",
+            "type": "string"
+          },
+          "maxAttempts": {
+            "title": "Maxattempts",
+            "type": "integer"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/AttributionJobObservation"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "number"
+          },
+          "runId": {
+            "title": "Runid",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "prepare",
+              "manual",
+              "schedule",
+              "retry"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "interrupted",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "runId",
+          "source",
+          "status",
+          "progress",
+          "attempt",
+          "maxAttempts",
+          "cancelRequested",
+          "observation",
+          "error",
+          "createdAt",
+          "startedAt",
+          "finishedAt"
+        ],
+        "title": "AttributionJobView",
+        "type": "object"
+      },
       "AttributionPage": {
         "additionalProperties": false,
         "description": "One deterministic newest-first page of a case's attributions.",
@@ -489,6 +904,35 @@
           "pageSize"
         ],
         "title": "AttributionPage",
+        "type": "object"
+      },
+      "AttributionPoint": {
+        "additionalProperties": false,
+        "description": "A bounded introduction or detection point in the selected Session.",
+        "properties": {
+          "label": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "occurredAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurredat"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "AttributionPoint",
         "type": "object"
       },
       "AttributionPreviewRequest": {
@@ -571,8 +1015,12 @@
       },
       "AttributionPreviewResult": {
         "additionalProperties": false,
-        "description": "Read-only attribution preview; it has no paged rows.",
+        "description": "Read-only counts and whether this deployment can run workspace Skill packages.",
         "properties": {
+          "canRecompute": {
+            "title": "Canrecompute",
+            "type": "boolean"
+          },
           "summary": {
             "$ref": "#/components/schemas/AttributionPreviewSummary"
           },
@@ -589,6 +1037,7 @@
           }
         },
         "required": [
+          "canRecompute",
           "summary"
         ],
         "title": "AttributionPreviewResult",
@@ -598,9 +1047,29 @@
         "additionalProperties": false,
         "description": "Cache reuse preview and the historical non-target reference count.",
         "properties": {
+          "bySkill": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Byskill",
+            "type": "object"
+          },
           "fresh": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fresh"
+          },
+          "missing": {
+            "default": 0,
             "minimum": 0.0,
-            "title": "Fresh",
+            "title": "Missing",
             "type": "integer"
           },
           "nonTargetKnown": {
@@ -614,9 +1083,16 @@
             "type": "integer"
           },
           "reused": {
-            "minimum": 0.0,
-            "title": "Reused",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reused"
           }
         },
         "required": [
@@ -626,6 +1102,529 @@
           "nonTargetKnown"
         ],
         "title": "AttributionPreviewSummary",
+        "type": "object"
+      },
+      "AttributionQualityDecisionWrite": {
+        "additionalProperties": false,
+        "description": "Human acceptance or rejection of one exact shadow evaluation.",
+        "properties": {
+          "decision": {
+            "enum": [
+              "accept",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "evaluationEventId": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Evaluationeventid",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evaluationEventId",
+          "decision",
+          "reason"
+        ],
+        "title": "AttributionQualityDecisionWrite",
+        "type": "object"
+      },
+      "AttributionQualityEvaluation": {
+        "additionalProperties": false,
+        "description": "One persisted isolated shadow report and its audit identity.",
+        "properties": {
+          "actorId": {
+            "title": "Actorid",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "report": {
+            "$ref": "#/components/schemas/ShadowEvaluationReport"
+          },
+          "skillRevisionId": {
+            "title": "Skillrevisionid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "skillRevisionId",
+          "actorId",
+          "createdAt",
+          "report"
+        ],
+        "title": "AttributionQualityEvaluation",
+        "type": "object"
+      },
+      "AttributionQualityEvent": {
+        "additionalProperties": false,
+        "description": "Append-only evaluation, promotion, rejection, or rollback evidence.",
+        "properties": {
+          "actorId": {
+            "title": "Actorid",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "evaluationHash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluationhash"
+          },
+          "eventType": {
+            "title": "Eventtype",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "skillRevisionId": {
+            "title": "Skillrevisionid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "skillRevisionId",
+          "eventType",
+          "evaluationHash",
+          "payload",
+          "actorId",
+          "reason",
+          "createdAt"
+        ],
+        "title": "AttributionQualityEvent",
+        "type": "object"
+      },
+      "AttributionQualityHistory": {
+        "additionalProperties": false,
+        "description": "Ordered quality audit trail for one revision.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttributionQualityEvent"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AttributionQualityHistory",
+        "type": "object"
+      },
+      "AttributionReportV2": {
+        "additionalProperties": false,
+        "description": "Structured V2 payload stored beside legacy report text columns.",
+        "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/AttributionAnalysis"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "model",
+                  "prompt",
+                  "error",
+                  "flow",
+                  "context"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "conclusion": {
+            "enum": [
+              "attributed",
+              "non_target",
+              "inconclusive"
+            ],
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "detectionPoint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttributionPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/AttributionEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "introductionPoint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttributionPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schemaVersion": {
+            "const": "probe-report/v2",
+            "default": "probe-report/v2",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "sourceReport": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcereport"
+          },
+          "suggestionClues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggestionclues",
+            "type": "array"
+          },
+          "target": {
+            "$ref": "#/components/schemas/AttributionTargetRef"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "target",
+          "conclusion",
+          "analysis"
+        ],
+        "title": "AttributionReportV2",
+        "type": "object"
+      },
+      "AttributionRollbackWrite": {
+        "additionalProperties": false,
+        "description": "Human reason attached to a workspace-default rollback.",
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "AttributionRollbackWrite",
+        "type": "object"
+      },
+      "AttributionSkillBindingWrite": {
+        "additionalProperties": false,
+        "description": "Select one published immutable revision for a binding.",
+        "properties": {
+          "skillRevisionId": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Skillrevisionid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skillRevisionId"
+        ],
+        "title": "AttributionSkillBindingWrite",
+        "type": "object"
+      },
+      "AttributionSkillCreate": {
+        "additionalProperties": false,
+        "description": "Create one Skill and publish its first revision.",
+        "properties": {
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Description",
+            "type": "string"
+          },
+          "displayName": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Displayname",
+            "type": "string"
+          },
+          "executorType": {
+            "default": "agent_stub",
+            "enum": [
+              "builtin_rule",
+              "agent_stub",
+              "agent"
+            ],
+            "title": "Executortype",
+            "type": "string"
+          },
+          "outputSchemaVersion": {
+            "default": "probe-report/v2",
+            "maxLength": 32,
+            "title": "Outputschemaversion",
+            "type": "string"
+          },
+          "skillKey": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Skillkey",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content",
+          "skillKey",
+          "displayName"
+        ],
+        "title": "AttributionSkillCreate",
+        "type": "object"
+      },
+      "AttributionSkillList": {
+        "additionalProperties": false,
+        "description": "All platform and workspace Skill revisions visible in one workspace.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/app__service__evolution__attribution_skills__AttributionSkillRevision"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AttributionSkillList",
+        "type": "object"
+      },
+      "AttributionSkillPackage": {
+        "additionalProperties": false,
+        "description": "Package metadata rendered by workspace administration.",
+        "properties": {
+          "archiveName": {
+            "title": "Archivename",
+            "type": "string"
+          },
+          "builtIn": {
+            "title": "Builtin",
+            "type": "boolean"
+          },
+          "contentHash": {
+            "title": "Contenthash",
+            "type": "string"
+          },
+          "fileCount": {
+            "minimum": 1.0,
+            "title": "Filecount",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "minimum": 0.0,
+            "title": "Sizebytes",
+            "type": "integer"
+          },
+          "skillName": {
+            "title": "Skillname",
+            "type": "string"
+          },
+          "uploadedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploadedat"
+          },
+          "uploaderName": {
+            "title": "Uploadername",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "skillName",
+          "uploaderName",
+          "archiveName",
+          "fileCount",
+          "sizeBytes",
+          "contentHash",
+          "builtIn",
+          "uploadedAt"
+        ],
+        "title": "AttributionSkillPackage",
+        "type": "object"
+      },
+      "AttributionSkillPackageList": {
+        "additionalProperties": false,
+        "description": "Workspace resources available for binding and one-off analysis.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttributionSkillPackage"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AttributionSkillPackageList",
+        "type": "object"
+      },
+      "AttributionSkillRevisionWrite": {
+        "additionalProperties": false,
+        "description": "Content and compatibility metadata for one immutable revision.",
+        "properties": {
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "executorType": {
+            "default": "agent_stub",
+            "enum": [
+              "builtin_rule",
+              "agent_stub",
+              "agent"
+            ],
+            "title": "Executortype",
+            "type": "string"
+          },
+          "outputSchemaVersion": {
+            "default": "probe-report/v2",
+            "maxLength": 32,
+            "title": "Outputschemaversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "AttributionSkillRevisionWrite",
+        "type": "object"
+      },
+      "AttributionSkillStateWrite": {
+        "additionalProperties": false,
+        "description": "Enable or disable a workspace-owned Skill.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "AttributionSkillStateWrite",
+        "type": "object"
+      },
+      "AttributionTargetRef": {
+        "additionalProperties": false,
+        "description": "The exact evolution object revision evaluated by one report.",
+        "properties": {
+          "objectName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "objectVersion": {
+            "anyOf": [
+              {
+                "maxLength": 96,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectversion"
+          }
+        },
+        "required": [
+          "objectType",
+          "objectName"
+        ],
+        "title": "AttributionTargetRef",
         "type": "object"
       },
       "AttributionTriggerCompare": {
@@ -1422,6 +2421,46 @@
         "title": "BadCaseTraceStatus",
         "type": "string"
       },
+      "BindingFailure": {
+        "additionalProperties": false,
+        "description": "Last failed background analysis of the current binding.",
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "willRetry": {
+            "title": "Willretry",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "attempts",
+          "reason",
+          "willRetry"
+        ],
+        "title": "BindingFailure",
+        "type": "object"
+      },
+      "Body_upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "Attribution Skill folder ZIP",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post",
+        "type": "object"
+      },
       "CatalogModel": {
         "additionalProperties": false,
         "description": "One normalized model and its usage across the trace corpus.",
@@ -1657,6 +2696,109 @@
         "title": "DatabaseHealthResponse",
         "type": "object"
       },
+      "EffectiveAttributionSkill": {
+        "additionalProperties": false,
+        "description": "Resolved Skill revision plus the precedence source that selected it.",
+        "properties": {
+          "builtIn": {
+            "title": "Builtin",
+            "type": "boolean"
+          },
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "contentHash": {
+            "title": "Contenthash",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "displayName": {
+            "title": "Displayname",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "executorType": {
+            "title": "Executortype",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "outputSchemaVersion": {
+            "title": "Outputschemaversion",
+            "type": "string"
+          },
+          "qualityStatus": {
+            "title": "Qualitystatus",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "skillId": {
+            "title": "Skillid",
+            "type": "string"
+          },
+          "skillKey": {
+            "title": "Skillkey",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "target",
+              "workspace",
+              "platform"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "workspaceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspaceid"
+          }
+        },
+        "required": [
+          "id",
+          "skillId",
+          "workspaceId",
+          "skillKey",
+          "displayName",
+          "description",
+          "builtIn",
+          "enabled",
+          "revision",
+          "content",
+          "contentHash",
+          "executorType",
+          "outputSchemaVersion",
+          "status",
+          "qualityStatus",
+          "source"
+        ],
+        "title": "EffectiveAttributionSkill",
+        "type": "object"
+      },
       "ErrorBody": {
         "additionalProperties": false,
         "description": "Error payload shared by browser and API clients.",
@@ -1703,6 +2845,15 @@
           "BAD_CASE_SESSION_UNAVAILABLE",
           "BAD_CASE_SESSION_MISMATCH",
           "ATTRIBUTION_NOT_FOUND",
+          "ATTRIBUTION_SKILL_NOT_FOUND",
+          "ATTRIBUTION_SKILL_EXISTS",
+          "ATTRIBUTION_SKILL_INVALID",
+          "ATTRIBUTION_SKILL_PACKAGE_NOT_FOUND",
+          "ATTRIBUTION_SKILL_PACKAGE_EXISTS",
+          "ATTRIBUTION_SKILL_PACKAGE_INVALID",
+          "ATTRIBUTION_SKILL_PACKAGE_TOO_LARGE",
+          "ATTRIBUTION_QUALITY_GATE_FAILED",
+          "ATTRIBUTION_ENGINE_UNAVAILABLE",
           "PROBE_NOT_FOUND",
           "JOB_NOT_FOUND",
           "RUN_NOT_FOUND",
@@ -1843,9 +2994,19 @@
         "additionalProperties": false,
         "description": "Case counts by the closed attribution category.",
         "properties": {
+          "context": {
+            "default": 0,
+            "title": "Context",
+            "type": "integer"
+          },
           "error": {
             "default": 0,
             "title": "Error",
+            "type": "integer"
+          },
+          "flow": {
+            "default": 0,
+            "title": "Flow",
             "type": "integer"
           },
           "model": {
@@ -1860,6 +3021,36 @@
           }
         },
         "title": "EvolutionRunAttributeStats",
+        "type": "object"
+      },
+      "EvolutionRunAttributionSkill": {
+        "additionalProperties": false,
+        "description": "Immutable attribution Skill identity frozen when the run was launched.",
+        "properties": {
+          "contentHash": {
+            "title": "Contenthash",
+            "type": "string"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "revision",
+          "contentHash",
+          "engine"
+        ],
+        "title": "EvolutionRunAttributionSkill",
         "type": "object"
       },
       "EvolutionRunCard": {
@@ -1981,6 +3172,16 @@
         "additionalProperties": false,
         "description": "Complete shell consumed by the seven-step run-detail page.",
         "properties": {
+          "attributionSkill": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvolutionRunAttributionSkill"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "blockedStage": {
             "anyOf": [
               {
@@ -2152,7 +3353,8 @@
           "evalStatus",
           "workspace",
           "lastEventSeq",
-          "steps"
+          "steps",
+          "attributionSkill"
         ],
         "title": "EvolutionRunDetail",
         "type": "object"
@@ -3252,6 +4454,40 @@
         "additionalProperties": false,
         "description": "Persisted target returned to clients.",
         "properties": {
+          "attributionFailure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BindingFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attributionPackageId": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributionpackageid"
+          },
+          "attributionSkillName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributionskillname"
+          },
           "defaultRef": {
             "title": "Defaultref",
             "type": "string"
@@ -3355,6 +4591,19 @@
         "additionalProperties": false,
         "description": "Mutable target configuration accepted by create and update.",
         "properties": {
+          "attributionPackageId": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributionpackageid"
+          },
           "defaultRef": {
             "title": "Defaultref",
             "type": "string"
@@ -3406,6 +4655,132 @@
           "testProjectId"
         ],
         "title": "EvolutionTargetWrite",
+        "type": "object"
+      },
+      "GoldenExpected": {
+        "additionalProperties": false,
+        "description": "Expected semantic outcome and verifiable evidence constraints.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "model",
+                  "prompt",
+                  "error",
+                  "flow",
+                  "context"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "conclusion": {
+            "enum": [
+              "attributed",
+              "non_target",
+              "inconclusive"
+            ],
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "detectionPointRequired": {
+            "default": false,
+            "title": "Detectionpointrequired",
+            "type": "boolean"
+          },
+          "introductionPointRequired": {
+            "default": false,
+            "title": "Introductionpointrequired",
+            "type": "boolean"
+          },
+          "requiredEvidenceRefs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Requiredevidencerefs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "conclusion"
+        ],
+        "title": "GoldenExpected",
+        "type": "object"
+      },
+      "GoldenThresholds": {
+        "additionalProperties": false,
+        "description": "Closed promotion thresholds carried by one versioned Golden Set.",
+        "properties": {
+          "categoryAccuracy": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Categoryaccuracy",
+            "type": "number"
+          },
+          "conclusionAccuracy": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Conclusionaccuracy",
+            "type": "number"
+          },
+          "evidenceValidityRate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Evidencevalidityrate",
+            "type": "number"
+          },
+          "maximumAverageTokens": {
+            "minimum": 0.0,
+            "title": "Maximumaveragetokens",
+            "type": "number"
+          },
+          "maximumFailureRate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Maximumfailurerate",
+            "type": "number"
+          },
+          "maximumP95LatencyMs": {
+            "exclusiveMinimum": 0.0,
+            "title": "Maximump95Latencyms",
+            "type": "number"
+          },
+          "pointHitRate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Pointhitrate",
+            "type": "number"
+          },
+          "safetyRate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Safetyrate",
+            "type": "number"
+          },
+          "schemaComplianceRate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Schemacompliancerate",
+            "type": "number"
+          }
+        },
+        "required": [
+          "conclusionAccuracy",
+          "categoryAccuracy",
+          "evidenceValidityRate",
+          "pointHitRate",
+          "schemaComplianceRate",
+          "safetyRate",
+          "maximumFailureRate",
+          "maximumP95LatencyMs",
+          "maximumAverageTokens"
+        ],
+        "title": "GoldenThresholds",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -3484,7 +4859,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -3542,6 +4919,10 @@
             "title": "Attempt",
             "type": "integer"
           },
+          "cancelRequested": {
+            "title": "Cancelrequested",
+            "type": "boolean"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
@@ -3594,10 +4975,28 @@
               "evolution_advance",
               "evolution_apply",
               "evolution_finalize",
-              "evolution_retry"
+              "evolution_retry",
+              "attribution_batch"
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "leaseExpiresAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leaseexpiresat"
+          },
+          "maxAttempts": {
+            "minimum": 1.0,
+            "title": "Maxattempts",
+            "type": "integer"
           },
           "progress": {
             "maximum": 1.0,
@@ -3615,6 +5014,18 @@
               }
             ],
             "title": "Refid"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
           },
           "startedAt": {
             "anyOf": [
@@ -3634,7 +5045,8 @@
               "running",
               "completed",
               "failed",
-              "interrupted"
+              "interrupted",
+              "cancelled"
             ],
             "title": "Status",
             "type": "string"
@@ -3647,6 +5059,10 @@
           "status",
           "progress",
           "attempt",
+          "maxAttempts",
+          "leaseExpiresAt",
+          "cancelRequested",
+          "result",
           "createdBy",
           "createdAt",
           "startedAt",
@@ -3737,7 +5153,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -4314,7 +5732,9 @@
             "enum": [
               "model",
               "prompt",
-              "error"
+              "error",
+              "flow",
+              "context"
             ],
             "title": "Attributetype",
             "type": "string"
@@ -4399,6 +5819,18 @@
         "additionalProperties": false,
         "description": "Wizard filter condition shared by preview and launch endpoints.",
         "properties": {
+          "attributionPackageId": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributionpackageid"
+          },
           "cacheEnabled": {
             "default": true,
             "title": "Cacheenabled",
@@ -4573,7 +6005,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -5824,6 +7258,379 @@
         "title": "SessionsPreviewRequest",
         "type": "object"
       },
+      "ShadowActual": {
+        "additionalProperties": false,
+        "description": "Normalized engine output stored separately from Probe Reports.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "model",
+                  "prompt",
+                  "error",
+                  "flow",
+                  "context"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "conclusion": {
+            "enum": [
+              "attributed",
+              "non_target",
+              "inconclusive"
+            ],
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "evidenceReferences": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidencereferences",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "conclusion",
+          "category",
+          "confidence",
+          "summary",
+          "evidenceReferences",
+          "warnings"
+        ],
+        "title": "ShadowActual",
+        "type": "object"
+      },
+      "ShadowCandidate": {
+        "additionalProperties": false,
+        "description": "Exact engine and Skill snapshot evaluated without production writes.",
+        "properties": {
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "modelConfigFingerprint": {
+            "default": "none",
+            "title": "Modelconfigfingerprint",
+            "type": "string"
+          },
+          "skillContent": {
+            "additionalProperties": true,
+            "title": "Skillcontent",
+            "type": "object"
+          },
+          "skillContentHash": {
+            "title": "Skillcontenthash",
+            "type": "string"
+          },
+          "skillExecutorType": {
+            "title": "Skillexecutortype",
+            "type": "string"
+          },
+          "skillKey": {
+            "title": "Skillkey",
+            "type": "string"
+          },
+          "skillRevision": {
+            "title": "Skillrevision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "engine",
+          "skillKey",
+          "skillRevision",
+          "skillContentHash",
+          "skillExecutorType",
+          "skillContent"
+        ],
+        "title": "ShadowCandidate",
+        "type": "object"
+      },
+      "ShadowCaseResult": {
+        "additionalProperties": false,
+        "description": "One isolated case comparison; it is never a production attribution.",
+        "properties": {
+          "actual": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShadowActual"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "categoryMatch": {
+            "title": "Categorymatch",
+            "type": "boolean"
+          },
+          "conclusionMatch": {
+            "title": "Conclusionmatch",
+            "type": "boolean"
+          },
+          "detectionPointHit": {
+            "title": "Detectionpointhit",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "evidenceValid": {
+            "title": "Evidencevalid",
+            "type": "boolean"
+          },
+          "expected": {
+            "$ref": "#/components/schemas/GoldenExpected"
+          },
+          "introductionPointHit": {
+            "title": "Introductionpointhit",
+            "type": "boolean"
+          },
+          "latencyMs": {
+            "minimum": 0.0,
+            "title": "Latencyms",
+            "type": "number"
+          },
+          "safetyPassed": {
+            "title": "Safetypassed",
+            "type": "boolean"
+          },
+          "scenario": {
+            "title": "Scenario",
+            "type": "string"
+          },
+          "schemaCompliant": {
+            "title": "Schemacompliant",
+            "type": "boolean"
+          },
+          "tokenCount": {
+            "minimum": 0.0,
+            "title": "Tokencount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "caseId",
+          "scenario",
+          "expected",
+          "actual",
+          "conclusionMatch",
+          "categoryMatch",
+          "evidenceValid",
+          "introductionPointHit",
+          "detectionPointHit",
+          "schemaCompliant",
+          "safetyPassed",
+          "latencyMs",
+          "tokenCount"
+        ],
+        "title": "ShadowCaseResult",
+        "type": "object"
+      },
+      "ShadowEvaluationReport": {
+        "additionalProperties": false,
+        "description": "Immutable quality artifact produced without touching production state.",
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/ShadowCandidate"
+          },
+          "evaluationHash": {
+            "title": "Evaluationhash",
+            "type": "string"
+          },
+          "failedGates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Failedgates",
+            "type": "array"
+          },
+          "goldenSetHash": {
+            "title": "Goldensethash",
+            "type": "string"
+          },
+          "goldenSetId": {
+            "title": "Goldensetid",
+            "type": "string"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/ShadowMetrics"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ShadowCaseResult"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "schemaVersion": {
+            "const": "attribution-shadow-report/v1",
+            "default": "attribution-shadow-report/v1",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "thresholds": {
+            "$ref": "#/components/schemas/GoldenThresholds"
+          }
+        },
+        "required": [
+          "candidate",
+          "goldenSetId",
+          "goldenSetHash",
+          "thresholds",
+          "metrics",
+          "passed",
+          "failedGates",
+          "evaluationHash",
+          "results"
+        ],
+        "title": "ShadowEvaluationReport",
+        "type": "object"
+      },
+      "ShadowMetrics": {
+        "additionalProperties": false,
+        "description": "Aggregate quality, safety, cost, and runtime measurements.",
+        "properties": {
+          "averageLatencyMs": {
+            "title": "Averagelatencyms",
+            "type": "number"
+          },
+          "averageTokens": {
+            "title": "Averagetokens",
+            "type": "number"
+          },
+          "categoryAccuracy": {
+            "title": "Categoryaccuracy",
+            "type": "number"
+          },
+          "conclusionAccuracy": {
+            "title": "Conclusionaccuracy",
+            "type": "number"
+          },
+          "detectionPointHitRate": {
+            "title": "Detectionpointhitrate",
+            "type": "number"
+          },
+          "evidenceValidityRate": {
+            "title": "Evidencevalidityrate",
+            "type": "number"
+          },
+          "failureRate": {
+            "title": "Failurerate",
+            "type": "number"
+          },
+          "introductionPointHitRate": {
+            "title": "Introductionpointhitrate",
+            "type": "number"
+          },
+          "p95LatencyMs": {
+            "title": "P95Latencyms",
+            "type": "number"
+          },
+          "pointHitRate": {
+            "title": "Pointhitrate",
+            "type": "number"
+          },
+          "safetyRate": {
+            "title": "Safetyrate",
+            "type": "number"
+          },
+          "schemaComplianceRate": {
+            "title": "Schemacompliancerate",
+            "type": "number"
+          },
+          "totalCases": {
+            "title": "Totalcases",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "totalCases",
+          "conclusionAccuracy",
+          "categoryAccuracy",
+          "evidenceValidityRate",
+          "introductionPointHitRate",
+          "detectionPointHitRate",
+          "pointHitRate",
+          "schemaComplianceRate",
+          "safetyRate",
+          "failureRate",
+          "averageLatencyMs",
+          "p95LatencyMs",
+          "averageTokens"
+        ],
+        "title": "ShadowMetrics",
+        "type": "object"
+      },
+      "SkillResourceDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "prompt",
+          "files",
+          "targets"
+        ],
+        "title": "SkillResourceDetail",
+        "type": "object"
+      },
       "SourceListResponse": {
         "additionalProperties": false,
         "description": "Source distribution ordered by total descending, then object name.",
@@ -5921,7 +7728,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -6038,7 +7847,9 @@
             "enum": [
               "model",
               "prompt",
-              "error"
+              "error",
+              "flow",
+              "context"
             ],
             "title": "Category",
             "type": "string"
@@ -6185,7 +7996,9 @@
             "enum": [
               "model",
               "prompt",
-              "error"
+              "error",
+              "flow",
+              "context"
             ],
             "title": "Category",
             "type": "string"
@@ -6622,7 +8435,9 @@
             "enum": [
               "model",
               "prompt",
-              "error"
+              "error",
+              "flow",
+              "context"
             ],
             "title": "Category",
             "type": "string"
@@ -7110,7 +8925,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -7442,6 +9259,17 @@
             "minimum": 0.0,
             "title": "Attributed",
             "type": "integer"
+          },
+          "attributionSkillName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributionskillname"
           },
           "evolvable": {
             "description": "Attributed plus unanalyzed potential rows; the list sort key.",
@@ -7920,7 +9748,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -8483,6 +10313,130 @@
           }
         },
         "title": "WorkspaceUpdateRequest",
+        "type": "object"
+      },
+      "app__service__evolution__attribution_contracts__AttributionSkillRevision": {
+        "additionalProperties": false,
+        "description": "Resolved Skill identity that can invalidate cached attribution output.",
+        "properties": {
+          "contentHash": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Contenthash",
+            "type": "string"
+          },
+          "key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "revision": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Revision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "revision",
+          "contentHash"
+        ],
+        "title": "AttributionSkillRevision",
+        "type": "object"
+      },
+      "app__service__evolution__attribution_skills__AttributionSkillRevision": {
+        "additionalProperties": false,
+        "description": "Public immutable Skill revision.",
+        "properties": {
+          "builtIn": {
+            "title": "Builtin",
+            "type": "boolean"
+          },
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "contentHash": {
+            "title": "Contenthash",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "displayName": {
+            "title": "Displayname",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "executorType": {
+            "title": "Executortype",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "outputSchemaVersion": {
+            "title": "Outputschemaversion",
+            "type": "string"
+          },
+          "qualityStatus": {
+            "title": "Qualitystatus",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "skillId": {
+            "title": "Skillid",
+            "type": "string"
+          },
+          "skillKey": {
+            "title": "Skillkey",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "workspaceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspaceid"
+          }
+        },
+        "required": [
+          "id",
+          "skillId",
+          "workspaceId",
+          "skillKey",
+          "displayName",
+          "description",
+          "builtIn",
+          "enabled",
+          "revision",
+          "content",
+          "contentHash",
+          "executorType",
+          "outputSchemaVersion",
+          "status",
+          "qualityStatus"
+        ],
+        "title": "AttributionSkillRevision",
         "type": "object"
       }
     },
@@ -9950,6 +11904,334 @@
           }
         ],
         "summary": "Read Run",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/attribution-jobs": {
+      "get": {
+        "description": "Return sanitized attribution throughput and failure observations.",
+        "operationId": "list_attribution_jobs_api_evolution_runs__run_id__attribution_jobs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Attribution Jobs",
+        "tags": [
+          "evolution-runs"
+        ]
+      },
+      "post": {
+        "description": "Start or join the run's manual attribution batch.",
+        "operationId": "create_attribution_job_api_evolution_runs__run_id__attribution_jobs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Attribution Job",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/attribution-jobs/{job_id}/cancel": {
+      "post": {
+        "description": "Cancel queued or running attribution work without deleting its audit row.",
+        "operationId": "cancel_attribution_job_api_evolution_runs__run_id__attribution_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Cancel Attribution Job",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/attribution-jobs/{job_id}/retry": {
+      "post": {
+        "description": "Retry only cases that still lack a durable report link.",
+        "operationId": "retry_attribution_job_api_evolution_runs__run_id__attribution_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Retry Attribution Job",
         "tags": [
           "evolution-runs"
         ]
@@ -12115,6 +14397,539 @@
         ]
       }
     },
+    "/api/workspaces/{wid}/attribution-skill-packages": {
+      "get": {
+        "description": "List the built-in package and workspace uploads.",
+        "operationId": "list_attribution_skill_packages_api_workspaces__wid__attribution_skill_packages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionSkillPackageList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Package or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill name already exists"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP package exceeds a safety limit"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP or SKILL.md is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Attribution Skill Packages",
+        "tags": [
+          "attribution-skill-packages"
+        ]
+      },
+      "post": {
+        "description": "Validate and store one custom Skill folder ZIP without activating it.",
+        "operationId": "upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionSkillPackage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Package or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill name already exists"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP package exceeds a safety limit"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP or SKILL.md is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Upload Attribution Skill Package",
+        "tags": [
+          "attribution-skill-packages"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/attribution-skill-packages/{packageId}": {
+      "delete": {
+        "description": "Remove a custom package that has no target bindings.",
+        "operationId": "delete_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "packageId",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Packageid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Package or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill name already exists"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP package exceeds a safety limit"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP or SKILL.md is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Delete Attribution Skill Package",
+        "tags": [
+          "attribution-skill-packages"
+        ]
+      },
+      "get": {
+        "description": "Return the selected package prompt, file paths and target bindings.",
+        "operationId": "get_package_detail_api_workspaces__wid__attribution_skill_packages__packageId__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "packageId",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Packageid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillResourceDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Package or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill name already exists"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP package exceeds a safety limit"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP or SKILL.md is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Package Detail",
+        "tags": [
+          "attribution-skill-packages"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/attribution-skill-packages/{packageId}/download": {
+      "get": {
+        "description": "Download a regenerated ZIP without exposing server filesystem paths.",
+        "operationId": "download_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "packageId",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Packageid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Attribution Skill folder ZIP"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Package or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill name already exists"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP package exceeds a safety limit"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP or SKILL.md is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Download Attribution Skill Package",
+        "tags": [
+          "attribution-skill-packages"
+        ]
+      }
+    },
     "/api/workspaces/{wid}/bad-cases": {
       "get": {
         "description": "Return one filtered page of this workspace's reported cases.",
@@ -13193,6 +16008,1003 @@
         ]
       }
     },
+    "/api/workspaces/{wid}/evolution/attribution-skill-bindings/default": {
+      "delete": {
+        "description": "Remove the workspace fallback and restore the platform default.",
+        "operationId": "unbind_workspace_default_skill_api_workspaces__wid__evolution_attribution_skill_bindings_default_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill, target, or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill identity or revision conflicts"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill contract is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Unbind Workspace Default Skill",
+        "tags": [
+          "attribution-skills"
+        ]
+      },
+      "put": {
+        "description": "Set the workspace fallback revision.",
+        "operationId": "bind_workspace_default_skill_api_workspaces__wid__evolution_attribution_skill_bindings_default_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttributionSkillBindingWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectiveAttributionSkill"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill, target, or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill identity or revision conflicts"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill contract is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Bind Workspace Default Skill",
+        "tags": [
+          "attribution-skills"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/attribution-skill-bindings/default/rollback": {
+      "post": {
+        "description": "Restore the prior eligible revision or the protected platform rule.",
+        "operationId": "rollback_workspace_default_skill_api_workspaces__wid__evolution_attribution_skill_bindings_default_rollback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttributionRollbackWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectiveAttributionSkill"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill, target, or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill identity or revision conflicts"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill contract is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Rollback Workspace Default Skill",
+        "tags": [
+          "attribution-skills"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/attribution-skills": {
+      "get": {
+        "description": "List bindable package IDs in agent mode or registry revision IDs in rule mode.",
+        "operationId": "list_attribution_skills_api_workspaces__wid__evolution_attribution_skills_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionSkillList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill, target, or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill identity or revision conflicts"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill contract is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Attribution Skills",
+        "tags": [
+          "attribution-skills"
+        ]
+      },
+      "post": {
+        "description": "Create a workspace Skill and publish revision one.",
+        "operationId": "create_attribution_skill_api_workspaces__wid__evolution_attribution_skills_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttributionSkillCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__service__evolution__attribution_skills__AttributionSkillRevision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill, target, or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill identity or revision conflicts"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill contract is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Attribution Skill",
+        "tags": [
+          "attribution-skills"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/attribution-skills/revisions/{revisionId}/quality-decisions": {
+      "post": {
+        "description": "Accept or reject one revision using an exact persisted evaluation.",
+        "operationId": "decide_attribution_skill_quality_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__quality_decisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revisionId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Revisionid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttributionQualityDecisionWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__service__evolution__attribution_skills__AttributionSkillRevision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill, target, or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill identity or revision conflicts"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill contract is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Decide Attribution Skill Quality",
+        "tags": [
+          "attribution-skills"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/attribution-skills/revisions/{revisionId}/quality-events": {
+      "get": {
+        "description": "Return the immutable evaluation and human-decision audit trail.",
+        "operationId": "list_attribution_skill_quality_events_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__quality_events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revisionId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Revisionid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionQualityHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill, target, or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill identity or revision conflicts"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill contract is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Attribution Skill Quality Events",
+        "tags": [
+          "attribution-skills"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/attribution-skills/revisions/{revisionId}/shadow-evaluations": {
+      "post": {
+        "description": "Evaluate a revision against sanitized Golden Cases without production writes.",
+        "operationId": "evaluate_attribution_skill_revision_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__shadow_evaluations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revisionId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Revisionid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionQualityEvaluation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill, target, or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill identity or revision conflicts"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill contract is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Evaluate Attribution Skill Revision",
+        "tags": [
+          "attribution-skills"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/attribution-skills/{skillId}": {
+      "patch": {
+        "description": "Enable or disable a workspace Skill for future resolution.",
+        "operationId": "set_attribution_skill_state_api_workspaces__wid__evolution_attribution_skills__skillId__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "skillId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Skillid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttributionSkillStateWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill, target, or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill identity or revision conflicts"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill contract is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Set Attribution Skill State",
+        "tags": [
+          "attribution-skills"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/attribution-skills/{skillId}/revisions": {
+      "post": {
+        "description": "Append a published immutable revision to a workspace Skill.",
+        "operationId": "publish_attribution_skill_revision_api_workspaces__wid__evolution_attribution_skills__skillId__revisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "skillId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Skillid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttributionSkillRevisionWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__service__evolution__attribution_skills__AttributionSkillRevision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill, target, or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill identity or revision conflicts"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill contract is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Publish Attribution Skill Revision",
+        "tags": [
+          "attribution-skills"
+        ]
+      }
+    },
     "/api/workspaces/{wid}/evolution/cluster-previews": {
       "post": {
         "description": "Admit one cluster-only preview run owned by this workspace.",
@@ -13837,6 +17649,386 @@
           }
         ],
         "summary": "Read Run",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/attribution-jobs": {
+      "get": {
+        "description": "Return sanitized attribution observations for one workspace run.",
+        "operationId": "list_attribution_jobs_api_workspaces__wid__evolution_runs__run_id__attribution_jobs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown, out of workspace, or step not reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Attribution Jobs",
+        "tags": [
+          "workspace-evolution"
+        ]
+      },
+      "post": {
+        "description": "Start or join one manual attribution batch.",
+        "operationId": "create_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown, out of workspace, or step not reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Attribution Job",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/attribution-jobs/{job_id}/cancel": {
+      "post": {
+        "description": "Cancel queued or running attribution work and retain its audit row.",
+        "operationId": "cancel_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown, out of workspace, or step not reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Cancel Attribution Job",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/attribution-jobs/{job_id}/retry": {
+      "post": {
+        "description": "Retry only unfinished cases of one failed attribution batch.",
+        "operationId": "retry_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown, out of workspace, or step not reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Retry Attribution Job",
         "tags": [
           "workspace-evolution"
         ]
@@ -14611,6 +18803,308 @@
         "summary": "Update Target",
         "tags": [
           "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/targets/{targetId}/attribution-skill": {
+      "delete": {
+        "description": "Remove a legacy rule override; agent-mode targets always have an explicit binding.",
+        "operationId": "unbind_target_attribution_skill_api_workspaces__wid__evolution_targets__targetId__attribution_skill_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "targetId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Targetid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill, target, or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill identity or revision conflicts"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill contract is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Unbind Target Attribution Skill",
+        "tags": [
+          "attribution-skills"
+        ]
+      },
+      "get": {
+        "description": "Resolve the immutable revision currently effective for one target.",
+        "operationId": "resolve_target_attribution_skill_api_workspaces__wid__evolution_targets__targetId__attribution_skill_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "targetId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Targetid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectiveAttributionSkill"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill, target, or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill identity or revision conflicts"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill contract is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Resolve Target Attribution Skill",
+        "tags": [
+          "attribution-skills"
+        ]
+      },
+      "put": {
+        "description": "Set a target-level Skill override.",
+        "operationId": "bind_target_attribution_skill_api_workspaces__wid__evolution_targets__targetId__attribution_skill_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "targetId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Targetid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttributionSkillBindingWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectiveAttributionSkill"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill, target, or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill identity or revision conflicts"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill contract is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Bind Target Attribution Skill",
+        "tags": [
+          "attribution-skills"
         ]
       }
     },

@@ -94,6 +94,8 @@ function run(overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard {
       reused: 9,
       clusters: 2,
       byCategory: {
+        flow: 0,
+        context: 0,
         model: 6,
         prompt: 5,
         error: 5,
@@ -324,6 +326,12 @@ function detail(
       pushedAt: "2026-10-27T12:00:00+08:00",
       pushError: null,
     },
+    attributionSkill: {
+      key: "root-cause-agent",
+      revision: 2,
+      contentHash: "b".repeat(64),
+      engine: "agent-skill-stub-v1",
+    },
     lastEventSeq: 0,
     steps: detailSteps(statuses),
     ...overrides,
@@ -496,6 +504,9 @@ describe("evolution run detail page", () => {
     expect(wrapper.text()).toContain("默认策略");
     expect(wrapper.text()).toContain("复用缓存归因");
     expect(wrapper.text()).toContain("潜在 bad case");
+    expect(wrapper.get("[data-testid='run-attribution-skill']").text()).toContain(
+      "root-cause-agent@r2",
+    );
     expect(wrapper.text()).toContain("可归因 / 非该对象");
     expect(wrapper.text()).not.toContain("模型（多选）");
     expect(wrapper.find(".workspace-panel").exists()).toBe(false);
@@ -898,6 +909,8 @@ describe("evolution run detail page", () => {
                 reused: 9,
                 clusters: 1,
                 byCategory: {
+                  flow: 0,
+                  context: 0,
                   model: 6,
                   prompt: 5,
                   error: 5,
@@ -1042,7 +1055,7 @@ describe("evolution run detail page", () => {
                 attributed: 3,
                 reused: 0,
                 clusters: 0,
-                byCategory: { model: 0, prompt: 0, error: 2 },
+                byCategory: { model: 0, prompt: 0, error: 2, flow: 0, context: 0 },
               },
             }),
             ["done", "done", "done", "done", "done", "done", "done"],

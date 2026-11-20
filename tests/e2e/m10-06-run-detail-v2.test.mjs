@@ -635,7 +635,7 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
   }
 });
 
-test("m10-06 blocked attribution shows retry facts and does not request unreached steps", async () => {
+test("m12 attribution-jobs UI shows sanitized metrics and retries unfinished work", async () => {
   const page = await createBrowserPage();
   const violations = browserViolations(page.session);
   const stepRequests = [];
@@ -657,7 +657,9 @@ test("m10-06 blocked attribution shows retry facts and does not request unreache
       page.session,
       `(() => {
         const banner = document.querySelector("[data-testid='blocked-banner']");
-        if (!banner) return null;
+        const runtime = document.querySelector("[data-testid='attribution-job-runtime']");
+        const text = document.body.textContent;
+        if (!banner || !runtime || !text.includes("v2-blocked-probe-1")) return null;
         return {
           banner: banner.textContent,
           current: document.querySelector("[aria-current='step']")?.getAttribute("data-step-key"),
@@ -665,7 +667,7 @@ test("m10-06 blocked attribution shows retry facts and does not request unreache
             document.querySelector("[data-step-key='clusters']")?.disabled ?? null,
           nextRetry: Boolean(document.querySelector("[data-testid='next-retry-at']")),
           retry: document.querySelector("[data-testid='run-retry']")?.textContent?.trim() ?? "",
-          text: document.body.textContent,
+          text,
         };
       })()`,
       "blocked attribution detail",
@@ -687,7 +689,26 @@ test("m10-06 blocked attribution shows retry facts and does not request unreache
       "blocked attribution step content",
     );
     assert.match(blockedContent, /v2-blocked-probe-1/);
+    assert.match(blockedContent, /失败 · 第 1\/3 次/);
+    assert.match(blockedContent, /agent-skill-stub-v1/);
+    assert.match(blockedContent, /P95 780ms/);
+    assert.match(blockedContent, /Token 128/);
+    assert.match(blockedContent, /证据覆盖 50%/);
+    assert.match(blockedContent, /上下文 abcdef123456/);
+    assert.doesNotMatch(blockedContent, /Authorization|Skill content|raw trace/i);
     await screenshot(page, "06-after-blocked-attribution.png");
+
+    await clickButton(page, "重试未完成项");
+    const completed = await waitForDocument(
+      page.session,
+      `(() => {
+        const panel = document.querySelector("[data-testid='attribution-job-runtime']");
+        if (!panel?.textContent.includes("已完成")) return null;
+        return panel.textContent;
+      })()`,
+      "completed attribution retry",
+    );
+    assert.match(completed, /已完成 · 第 2\/3 次/);
 
     const requestedKeys = [
       ...new Set(

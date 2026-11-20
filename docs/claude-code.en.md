@@ -33,3 +33,7 @@ ssh deploy@<host> '~/.local/bin/claude -p "只回复 OK"'
 ## Rollback
 
 Point `~/.local/bin/claude` back at the previous version directory, or rerun `Deploy` with the desired `CLAUDE_CODE_VERSION`. `~/.claude/settings.json` and `api-key` are written atomically, so a failure keeps the previous copy. See [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md) for the steps.
+
+## Local attribution
+
+For local attribution, set `HE_ATTRIBUTION_AGENT=claude` and `HE_ATTRIBUTION_MODEL` in the API environment. The worker needs Claude Code, Python 3 and Seatbelt (macOS) or bubblewrap (Linux). Set `HE_ATTRIBUTION_PACKAGE_DIR` to a writable persistent directory. Deployment extensions can select an installed `module:Class` for `HE_ATTRIBUTION_AGENT` or `HE_ATTRIBUTION_LLM`; implementations derive from `AgentBackend` or `ModelBackend`. The bare worker accepts provider credentials from the API process environment or the Claude settings environment of its service account.
