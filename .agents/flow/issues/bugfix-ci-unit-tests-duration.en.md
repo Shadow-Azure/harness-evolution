@@ -19,6 +19,7 @@ scope:
   - pnpm-lock.yaml
   - apps/web/vitest.config.ts
   - docs/**
+  - plans/**
   - .agents/**
   - AGENTS.md
 adr: []
