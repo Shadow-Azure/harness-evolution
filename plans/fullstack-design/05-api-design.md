@@ -1251,7 +1251,7 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 
 | 端点 | 用途 | 关键参数 |
 |---|---|---|
-| `POST …/evolution/preview/sessions` | 第 2 步：关联 Session 分页 | `{targetType,targetName,targetVersion?,from?,to?,page,pageSize=4}` → `{summary:{reported,associated,skipped,versionUnresolved,pending},items:[{sessionId,title,objectTriggerAt,badCaseCount}],total,page,pageSize}`；第 2 步只做关联，不算潜在 |
+| `POST …/evolution/preview/sessions` | 第 2 步：关联 Session 分页 | `{targetType,targetName,targetVersion?,from?,to?,page,pageSize=4}` → `{summary:{reported,associated,skipped,versionUnresolved,pending},items:[{sessionId,short,title,objectTriggerAt,badCaseCount}],total,page,pageSize}`；`short` 取 `session_families.short_title`，`title` 是完整标题供 UI 悬停；第 2 步只做关联，不算潜在 |
 | `POST …/evolution/preview/potential` | 第 3 步：潜在 bad case 分页 | 同上 + `policy`、`pageSize=5` → `{summary{badCases,potential,byReason},items:[PotentialRow],total,page,pageSize}`；`items` 只含纳入潜在的 case |
 | `POST …/evolution/preview/attribution` | 第 4 步：归因预览（**不执行归因**） | 同条件 + `policy`、`cacheEnabled=true` → `{summary{potential,reused,fresh,nonTargetKnown}}`；不接收 `engineKey` 或分页 |
 | `POST …/evolution/runs` | 启动完整自进化 | 条件 + `policy` + `cacheEnabled` + `mode:"full"` + 可选 `engineKey`/`eval` → `202 {runId,jobId,status:"preparing"}` |

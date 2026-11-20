@@ -37,6 +37,9 @@ let baseUrl;
 let apiLogs = "";
 let webLogs = "";
 const keepScreenshots = process.env.HE_KEEP_SCREENSHOTS === "1";
+const longSessionTitle =
+  "You are an autonomous software engineer working in the repository at /testbed. " +
+  "Solve the issue by editing the repository and running the test suite until it passes.";
 
 async function cleanup() {
   await stop(web);
@@ -196,7 +199,7 @@ async function reachStep4(page) {
   await click(page, "wizard-next");
   await waitForDocument(
     page.session,
-    `document.querySelector("[data-testid='wizard-session-table']")?.textContent.includes("示例会话三：技能分叉")`,
+    `document.querySelector("[data-testid='wizard-session-table']")?.textContent.includes("You are an autonomous software engineer")`,
     "associated Session row",
   );
   await click(page, "wizard-step2-next");
@@ -280,6 +283,7 @@ before(async () => {
       dataDir,
       "--repo-url",
       originDir,
+      "--long-title",
     ],
     {
       cwd: root,
@@ -356,8 +360,8 @@ test("m10-05 four-step wizard previews and exits into both run routes", async ()
   try {
     await installCookie(page, await loginCookie());
     await page.session.send("Emulation.setDeviceMetricsOverride", {
-      width: 1408,
-      height: 960,
+      width: 1440,
+      height: 1100,
       deviceScaleFactor: 1,
       mobile: false,
     });
@@ -375,7 +379,7 @@ test("m10-05 four-step wizard previews and exits into both run routes", async ()
     await click(page, "wizard-next");
     await waitForDocument(
       page.session,
-      `document.querySelector("[data-testid='wizard-session-table']")?.textContent.includes("示例会话三：技能分叉")`,
+      `document.querySelector("[data-testid='wizard-session-table']")?.textContent.includes("You are an autonomous software engineer")`,
       "associated Session row",
     );
     const step2 = await evaluate(
@@ -383,6 +387,48 @@ test("m10-05 four-step wizard previews and exits into both run routes", async ()
       `document.querySelector(".wz-stats")?.textContent`,
     );
     assert.match(step2, /对象出现 · 已关联/);
+
+    const sessionLayout = await evaluate(
+      page,
+      `(() => {
+        const table = document.querySelector("[data-testid='wizard-session-table']");
+        const scroll = table.closest(".rep-scroll");
+        const title = document.querySelector("[data-testid='wizard-session-title']");
+        const bounds = scroll.getBoundingClientRect();
+        return {
+          headers: [...table.querySelectorAll("thead th")].map((th) => {
+            const rect = th.getBoundingClientRect();
+            return { text: th.textContent.trim(), left: rect.left, right: rect.right };
+          }),
+          bounds: { left: bounds.left, right: bounds.right },
+          overflow: scroll.scrollWidth - scroll.clientWidth,
+          titleText: title.textContent,
+          title: title.getAttribute("title"),
+          clipped: title.scrollWidth > title.clientWidth,
+          sessionId: table.querySelector(".cell-sub").textContent,
+        };
+      })()`,
+    );
+    assert.equal(sessionLayout.headers.length, 4);
+    for (const header of sessionLayout.headers) {
+      assert.ok(
+        header.left >= sessionLayout.bounds.left - 1,
+        `${header.text} starts inside the table viewport`,
+      );
+      assert.ok(
+        header.right <= sessionLayout.bounds.right + 1,
+        `${header.text} ends inside the table viewport`,
+      );
+    }
+    assert.ok(
+      sessionLayout.overflow <= 1,
+      `table overflows by ${sessionLayout.overflow}px`,
+    );
+    assert.equal(sessionLayout.titleText, longSessionTitle.slice(0, 120));
+    assert.equal(sessionLayout.title, longSessionTitle);
+    assert.ok(sessionLayout.clipped, "long Session title is visually clamped");
+    assert.match(sessionLayout.sessionId, /^#.{4}….{4}$/);
+
     await screenshot(page, "02-wizard-step2.png");
 
     await click(page, "wizard-step2-next");

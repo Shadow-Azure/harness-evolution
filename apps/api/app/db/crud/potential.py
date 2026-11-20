@@ -53,6 +53,7 @@ class SessionMetaRecord:
     """The session facts association and birth anchors need."""
 
     id: str
+    short_title: str
     title: str
     started_at: datetime
 
@@ -164,6 +165,7 @@ class PotentialRepository:
         for chunk in _chunks(tuple(dict.fromkeys(session_ids))):
             statement = select(
                 session_families.c.id,
+                session_families.c.short_title,
                 session_families.c.title,
                 session_families.c.started_at,
             ).where(session_families.c.id.in_(chunk))
@@ -172,6 +174,7 @@ class PotentialRepository:
             for row in rows:
                 found[str(row["id"])] = SessionMetaRecord(
                     id=str(row["id"]),
+                    short_title=str(row["short_title"]),
                     title=str(row["title"]),
                     started_at=as_shanghai(row["started_at"]),
                 )
