@@ -79,6 +79,8 @@ function run(overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard {
       to: "2026-09-10",
     },
     models: ["glm-5.3"],
+    policy: { preset: "default" },
+    cacheEnabled: false,
     createdBy: "Ada",
     createdAt: "2026-10-19T18:42:00+08:00",
     status: "preparing",
