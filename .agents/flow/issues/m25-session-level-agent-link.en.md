@@ -34,12 +34,15 @@ The directly verified causes:
 - `BaseTraceParser` only has the single-transcript `normalize(payload)`; `ClaudeCodeTraceParser` cannot see other transcripts of the same root; `agent_tree` can only use the envelope's `parent_tool_use_id` / `parent_agent_id` and falls back to `append_synthetic_parent_event` when they are absent.
 - This does not match the intended design (“the subclass sees the whole session; the base class adds an interface and the subclass implements it”): there is no session-level link hook, so cross-agent runtime evidence has nowhere to go. The missing upstream `toolUseId` is the primary cause; this issue closes the HE design gap and adds a verifiable derived fallback.
 
+This issue turns that intent into an explicit contract: `link_transcripts(transcripts)` receives **all** `ParsedTranscript`s of one root (the main Agent plus every nested subagent) **in a single call**, so `ClaudeCodeTraceParser` sees the whole session at that step; per-transcript `normalize` is unchanged and `agent_tree` only applies the returned links.
+
 ## Goals
 
 - Add a session-level `link_transcripts` hook to `BaseTraceParser`, returning empty by default and leaving other runtimes unchanged.
 - Implement the hook in `ClaudeCodeTraceParser`: prefer the envelope `toolUseId` (the existing authoritative path); when it is absent, derive links from the parent `toolUseResult.agentId` ↔ child JSONL top-level `agentId`.
 - Call the hook per root from `assemble_agent_trees` and apply its links in `_assemble_root`; keep `synthetic` for missing or ambiguous links instead of inventing a parent.
 - Do not change the upstream envelope, the database schema, shared contracts, or the frontend; rebuild existing roots by raising `parser_version` and replaying.
+- Make the visibility contract explicit: `link_transcripts` is called once per root with the complete transcript set (main plus every subagent); the subclass performs the cross-transcript join there and `agent_tree` only applies the result.
 
 ## Design authority
 
@@ -52,6 +55,7 @@ The directly verified causes:
 - `parsers/base.py`: add `AgentLink` (`child_agent_id`, `parent_tool_use_id`, `confidence`) and a default empty `BaseTraceParser.link_transcripts(transcripts)`; add typed fields to `ParsedTranscript` for the native `agentId` and the parent `tool_result.agentId` map (`native_agent_id`, `agent_result_ids`).
 - `parsers/claude_code.py`: write the child transcript's top-level `agentId` into `native_agent_id`; map the parent `toolUseResult.agentId` by `tool_use_id` into `agent_result_ids`; implement `link_transcripts` to return only uniquely resolvable `derived` links and drop conflicts/missing values; raise `parser_version` from 6 to 7.
 - `agent_tree.py`: `assemble_agent_trees` creates the parser by each root's `runtime_key` and calls `link_transcripts`; `_assemble_root` looks up the link when `parent_tool is None`, sets `parent_tool`, and marks `derived`; otherwise keeps `synthetic`.
+- Call contract: `assemble_agent_trees` calls `parser.link_transcripts(transcripts)` exactly once per root with every transcript of that root in a stable order; `agent_tree` reads no Claude-specific `agentId` / `toolUseResult` fields and only consumes `AgentLink`.
 - Preserve precedence: the envelope `toolUseId` / authoritative relation is unchanged; derived only fills gaps; `synthetic` still covers missing and ambiguous cases and never overrides an existing authoritative link.
 - Tests: a main + 3 subagents fixture, missing/duplicate/ambiguous/no-link branches, and API tree assertions; production verification reads 226504ab only and does not commit its content.
 
@@ -59,7 +63,7 @@ The directly verified causes:
 
 1. Define `AgentLink`, the `ParsedTranscript` fields, and the default `BaseTraceParser.link_transcripts` in `parsers/base.py`.
 2. Extract both `agentId` values in `parsers/claude_code.py`, implement `link_transcripts`, and raise `parser_version`.
-3. Call the hook from `assemble_agent_trees` in `agent_tree.py` and pass its links into `_assemble_root`.
+3. In `assemble_agent_trees`, call `link_transcripts` once per root with the complete transcript set, then pass the links into `_assemble_root`.
 4. Apply derived links in `_assemble_root` while preserving the authoritative / derived / synthetic precedence.
 5. Add unit and API tests, run the focused gates, then replay/backfill after deploy and verify 226504ab.
 6. Update the Agent Note and flow status; include before/after application captures in the PR.
@@ -87,6 +91,7 @@ pnpm verify:flow-online
 - `ClaudeCodeTraceParser` extracts 3/3 `agentId` values from the raw JSONL and produces unique derived links; `agent_tree` attaches the three subagents to the real `call_…` triggers, and neither the tree nor the lane DAG shows `synthetic-agent`.
 - Missing links, duplicate `agentId`, and one `agentId` with multiple parents (ambiguous) keep `synthetic` and record a stable issue instead of mis-attaching.
 - Raising `parser_version` lets replay rebuild existing trees; no DB / contract / frontend diff; focused tests and flow/document gates pass; the PR contains before/after evidence.
+- A unit test asserts `link_transcripts` is called once with the complete root set (main + 3 subagents) and the subclass implementation sees all four transcripts; a runtime without the hook returns empty and behaves unchanged.
 
 ## Gates and CI
 
