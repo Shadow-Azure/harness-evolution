@@ -2,4 +2,4 @@
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/milestones/m25-milestone.md
 m25-milestone.md: 47d73e5393c0caeb4d4ef57d46e719c99fccb6e3
-m25-milestone.en.md: 5bdde16b23d85244f4303b4cb7b2424ec2fe46ce
+m25-milestone.en.md: edf194b6e9921d8d186f70b09288d2df0f6a18f2

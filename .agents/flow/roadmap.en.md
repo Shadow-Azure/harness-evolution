@@ -59,7 +59,7 @@ Harness Evolution connects traceable Claude Code sessions, reported problems, an
 - **m20 Launch-wizard Session association display**: short labels with full-title tooltips, four columns on one row; association and counting stay unchanged.
 - **m21 Run detail aligned with the prototype**: the run detail page follows the V2 prototype for goal-and-input, workspace collapse, and the execution-log tab.
 - **m23 Run list aligned with the prototype**: history cards gain workspace, potential-policy, and cache labels, and the creator leaves the list meta.
-- **m25 Session-level trace parent links**: the base parser exposes a session-level link hook; `ClaudeCodeTraceParser` implements it with the Claude agent-id evidence, and `agent_tree` only applies the result.
+- **m25 Session-scoped parser and trace selection**: can_parse selection and subclass session links.
 
 ## Delivery rules
 

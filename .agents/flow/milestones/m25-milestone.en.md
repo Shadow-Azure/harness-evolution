@@ -5,7 +5,7 @@ English | [中文](m25-milestone.md)
 ```yaml flow
 kind: milestone
 id: m25
-title: M25 Session-level trace parent links
+title: M25 轨迹父子关系会话级链接
 status: planned
 github:
   number: 35
