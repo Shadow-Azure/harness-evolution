@@ -75,6 +75,8 @@ const visibleServerError = computed<TargetServerError | null>(() => {
   return value?.summary ? value : null;
 });
 
+const legacySkill = computed(() => props.target?.attributionPackageId
+  ? null : props.target?.attributionSkillName);
 const title = computed(() => (props.target ? "编辑进化对象" : "新增进化对象"));
 const versionOptions = computed(() => {
   const values = new Set(props.versions);
@@ -135,7 +137,7 @@ function onFieldInput(field: TargetFormField, value: string): void {
 }
 
 function resetForm(): void {
-  form.attributionPackageId = props.target?.attributionPackageId ?? "default-attribute-badcases";
+  form.attributionPackageId = props.target?.attributionPackageId ?? (legacySkill.value ? null : "default-attribute-badcases");
   form.objectType = props.target?.objectType ?? "skill";
   form.objectName = props.target?.objectName ?? "";
   form.repoUrl = props.target?.repoUrl ?? "";
@@ -295,6 +297,12 @@ watch(
             aria-label="归因 Skill"
             class="skill-select"
           >
+            <option
+              v-if="legacySkill"
+              :value="null"
+            >
+              {{ legacySkill }}
+            </option>
             <option
               v-if="!packages.length"
               value="default-attribute-badcases"

@@ -33,7 +33,7 @@ def upgrade() -> None:
         for name, typ in fields.items():
             if name not in existing:
                 op.add_column(table, sa.Column(name, typ, nullable=True))
-    t, b, r, p, w = [
+    t, b, r, p, w, skills = [
         sa.Table(name, metadata, autoload_with=db)
         for name in (
             "evolution_targets",
@@ -41,15 +41,27 @@ def upgrade() -> None:
             "attribution_skill_revisions",
             "attribution_skill_packages",
             "attribution_skill_package_bindings",
+            "attribution_skills",
         )
     ]
     for row in db.execute(sa.select(t.c.id, t.c.workspace_id)).all():
-        content = db.execute(
-            sa.select(r.c.content)
-            .select_from(b.join(r, b.c.skill_revision_id == r.c.id))
+        binding = db.execute(
+            sa.select(r.c.content, skills.c.skill_key)
+            .select_from(
+                b.join(r, b.c.skill_revision_id == r.c.id).join(skills, r.c.skill_id == skills.c.id)
+            )
             .where(b.c.target_id == row.id, b.c.workspace_id == row.workspace_id)
-        ).scalar_one_or_none()
-        if content and "packageId" not in content:
+        ).one_or_none()
+        content = binding.content if binding else None
+        if (
+            binding
+            and content
+            and isinstance(content.get("instructions"), str)
+            and "packageId" not in content
+        ):
+            db.execute(
+                t.update().where(t.c.id == row.id).values(attribution_skill_name=binding.skill_key)
+            )
             continue
         pid = (
             content.get("packageId")

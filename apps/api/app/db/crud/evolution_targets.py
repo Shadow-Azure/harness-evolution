@@ -294,20 +294,19 @@ class EvolutionTargetRepository:
                 )
                 if existing is None:
                     raise LookupError("evolution target not found")
-                package = (
-                    values.get("attribution_package_id")
-                    or existing["attribution_package_id"]
-                    or "default-attribute-badcases"
-                )
-                if package != existing["attribution_package_id"] or any(
-                    existing[k] != values[k]
-                    for k in (
-                        "enabled",
-                        "default_ref",
-                        "repo_url",
-                        "sub_dir",
-                        "object_type",
-                        "object_name",
+                package = values.get("attribution_package_id") or existing["attribution_package_id"]
+                if package and (
+                    package != existing["attribution_package_id"]
+                    or any(
+                        existing[k] != values[k]
+                        for k in (
+                            "enabled",
+                            "default_ref",
+                            "repo_url",
+                            "sub_dir",
+                            "object_type",
+                            "object_name",
+                        )
                     )
                 ):
                     statement = statement.values(
