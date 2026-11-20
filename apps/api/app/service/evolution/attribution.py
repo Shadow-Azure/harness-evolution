@@ -562,6 +562,23 @@ class AttributionSkillSnapshotResolver(Protocol):
         """Return the exact revision selected when the run was launched."""
 
 
+@dataclass(frozen=True)
+class BindingBatch:
+    id: str
+    owner: str
+    workspace_id: str
+    target_type: str
+    target_name: str
+    target_version: str
+    target_revision: str
+    repo_url: str
+    sub_dir: str
+    attribution_engine: str
+    attribution_skill_key: str
+    attribution_skill_revision: int
+    attribution_skill_content_hash: str
+
+
 class AttributionStore(Protocol):
     """Persistence operations consumed by the runner."""
 
@@ -586,6 +603,18 @@ class AttributionStore(Protocol):
     ) -> dict[str, tuple[str, ...]]:
         """Batch-load historical report references per root session."""
 
+    async def latest_reports(
+        self,
+        workspace: str,
+        kind: str,
+        name: str,
+        version: str,
+        cases: Sequence[str],
+        *,
+        generation: str | None = None,
+    ) -> dict[str, tuple[str, str, str]]:
+        """Find latest completed reports for cache-only runs."""
+
     async def get_probe_by_cache_key(self, cache_key: str) -> ProbeCacheRecord | None:
         """Return the cached probe for one seven-part identity."""
 
@@ -601,7 +630,7 @@ class AttributionStore(Protocol):
     async def write_probe_and_link(
         self,
         write: ProbeWrite,
-        run_id: str,
+        run_id: str | None,
         now: datetime,
     ) -> str:
         """Persist a fresh probe, its link, and its candidate pointer."""
@@ -632,7 +661,7 @@ class AttributionRunner:
 
     async def run(
         self,
-        run: EvolutionRunRecord,
+        run: EvolutionRunRecord | BindingBatch,
         candidates: Sequence[PotentialCase],
         cache_enabled: bool,
         *,
@@ -668,7 +697,9 @@ class AttributionRunner:
             return AttributionRunSummary(processed=0, created=0, reused=0, non_target=0, skipped=0)
 
         try:
-            linked = await self._store.linked_probe_ids(run.id)
+            linked = (
+                {} if isinstance(run, BindingBatch) else await self._store.linked_probe_ids(run.id)
+            )
         except Exception as exc:
             raise self._blocked(run.id, None, exc) from exc
         pending = tuple(candidate for candidate in included if candidate.bad_case_id not in linked)
@@ -683,6 +714,27 @@ class AttributionRunner:
             )
 
         case_ids = tuple(candidate.bad_case_id for candidate in pending)
+        if (
+            cache_enabled
+            and isinstance(run, EvolutionRunRecord)
+            and (run.potential_policy or {}).get("latestReportsOnly")
+        ):
+            reports = await self._store.latest_reports(
+                run.workspace_id,
+                run.target_type,
+                run.target_name,
+                target_revision or run.target_revision or run.target_version,
+                case_ids,
+            )
+            for case_id, (probe_id, _, _) in reports.items():
+                await self._store.reuse_probe_and_link(probe_id, run.id, case_id, self._now())
+            return AttributionRunSummary(
+                processed=len(reports),
+                created=0,
+                reused=len(reports),
+                non_target=sum(row[2] == "non_target" for row in reports.values()),
+                skipped=len(included) - len(reports),
+            )
         session_ids = tuple(dict.fromkeys(candidate.session_id for candidate in pending))
         try:
             bad_cases = await self._store.load_bad_case_evidence(case_ids)
@@ -772,6 +824,7 @@ class AttributionRunner:
                             0,
                         )
                 result = await engine.attribute(item)
+                now = self._now()
                 manifest = item.execution_manifest
                 report = build_attribution_report(item, result)
                 await self._store.write_probe_and_link(
@@ -799,11 +852,21 @@ class AttributionRunner:
                         ),
                         execution_manifest=manifest.model_dump(mode="json", by_alias=True),
                         execution_manifest_hash=manifest.content_hash,
-                        created_run_id=run.id,
+                        attribution_skill_name=manifest.skill.key,
+                        binding_generation=run.id if isinstance(run, BindingBatch) else None,
+                        binding_owner=run.owner if isinstance(run, BindingBatch) else None,
+                        analysis_id=run.id
+                        if isinstance(run, BindingBatch)
+                        or (
+                            not cache_enabled
+                            and item.attribution_skill_executor_type == "local_agent"
+                        )
+                        else None,
+                        created_run_id=None if isinstance(run, BindingBatch) else run.id,
                         created_at=now,
                         updated_at=now,
                     ),
-                    run.id,
+                    None if isinstance(run, BindingBatch) else run.id,
                     now,
                 )
                 return (
@@ -897,7 +960,7 @@ class AttributionRunner:
 
     def _build_input(
         self,
-        run: EvolutionRunRecord,
+        run: EvolutionRunRecord | BindingBatch,
         candidate: PotentialCase,
         bad_cases: Mapping[str, BadCaseEvidenceRecord],
         knowledge: Mapping[str, tuple[KnowledgeEvidenceRecord, ...]],
@@ -960,7 +1023,7 @@ class AttributionRunner:
 
     async def _resolve_skill_snapshot(
         self,
-        run: EvolutionRunRecord,
+        run: EvolutionRunRecord | BindingBatch,
         engine: AttributionEngine,
     ) -> AttributionSkillSnapshot | None:
         """Load executor content by the immutable identity frozen into the run."""

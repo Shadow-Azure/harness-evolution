@@ -52,6 +52,7 @@ class EvolutionTargetWrite(IdentityModel):
     default_ref: str
     validation_project_id: str = Field(max_length=128)
     test_project_id: str = Field(max_length=128)
+    attribution_package_id: str | None = Field(default=None, min_length=1, max_length=64)
     enabled: bool = True
 
     @model_validator(mode="before")
@@ -72,6 +73,7 @@ class EvolutionTarget(EvolutionTargetWrite):
     """Persisted target returned to clients."""
 
     id: str
+    attribution_skill_name: str | None = None
 
 
 class EvolutionTargetList(IdentityModel):
@@ -340,6 +342,7 @@ def _normalize_write(body: EvolutionTargetWrite) -> EvolutionTargetWrite:
             field="testProjectId",
         ),
         enabled=body.enabled,
+        attribution_package_id=body.attribution_package_id,
     )
 
 
@@ -347,6 +350,8 @@ def _public(record: EvolutionTargetRecord) -> EvolutionTarget:
     """Map one persistence row to the public model."""
     return EvolutionTarget(
         id=record.id,
+        attribution_package_id=record.attribution_package_id,
+        attribution_skill_name=record.attribution_skill_name,
         object_type=record.object_type,
         object_name=record.object_name,
         repo_url=record.repo_url,

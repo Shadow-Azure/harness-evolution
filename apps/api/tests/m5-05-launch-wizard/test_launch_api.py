@@ -425,6 +425,7 @@ def _query_body(**overrides: Any) -> dict[str, Any]:
     """Build one probe query body aimed at the seeded target."""
     body: dict[str, Any] = {
         "targetType": "skill",
+        "cacheEnabled": False,
         "targetName": "deep-research",
         "targetVersion": "v2.0.0",
         "from": "2026-08-01",
@@ -754,7 +755,7 @@ async def test_start_run_accepts_and_snapshots_query(
     assert str(row["window_from"]) == "2026-08-01"
     assert str(row["window_to"]) == "2026-09-30"
     assert row["models"] == []
-    assert row["cache_enabled"] is True
+    assert row["cache_enabled"] is False
     assert row["attribution_skill_key"] == "platform-default"
     assert row["attribution_skill_revision"] == 1
     assert row["attribution_skill_content_hash"] == (
@@ -973,13 +974,57 @@ async def test_local_attribution_from_wizard_to_cluster(
         files={"file": ("custom.zip", archive.getvalue(), "application/zip")},
     )
     assert uploaded.status_code == 201
-    binding = await launch_api.put(
-        f"{workspace}/evolution/targets/target-enabled/attribution-skill",
-        json={"skillRevisionId": uploaded.json()["id"]},
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    # Exercise the same atomic create used by the overview form.
+    old = await launch_api.get(f"{workspace}/evolution/targets")
+    target = next(t for t in old.json()["items"] if t["id"] == "target-enabled")
+    deleted = await launch_api.delete(f"{workspace}/evolution/targets/target-enabled")
+    assert deleted.status_code == 204
+    monkeypatch.setattr(app.state.evolution_targets._git_remote, "validate", AsyncMock())
+    body = {k: v for k, v in target.items() if k not in {"id", "attributionSkillName"}}
+    body["attributionPackageId"] = uploaded.json()["id"]
+    created = await launch_api.post(f"{workspace}/evolution/targets", json=body)
+    assert created.status_code == 201, created.text
+    target_id = created.json()["id"]
+    assert created.json()["attributionSkillName"] == "acceptance-skill"
+    protected = await launch_api.delete(
+        f"{workspace}/attribution-skill-packages/{uploaded.json()['id']}"
     )
-    assert binding.status_code == 200
-    assert binding.json()["source"] == "target"
-    accepted = await launch_api.post("/api/evolution/runs", json=_query_body())
+    assert protected.status_code == 409
+    async with asyncio.timeout(600 if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") else 15):
+        while True:
+            async with app.state.database.session() as session:
+                due = await session.scalar(
+                    select(evolution_targets.c.attribution_due).where(
+                        evolution_targets.c.id == target_id
+                    )
+                )
+            if due is None:
+                break
+            await asyncio.sleep(0.2)
+    before = await launch_api.get("/api/evolution/runs")
+    assert before.json()["running"] == before.json()["history"] == []
+    preview_body = {
+        key: value
+        for key, value in _query_body(cacheEnabled=True).items()
+        if key in {"targetType", "targetName", "targetVersion", "from", "to", "cacheEnabled"}
+    }
+    cached = await launch_api.post(f"{workspace}/evolution/preview/attribution", json=preview_body)
+    assert cached.status_code == 200, cached.text
+    counts = cached.json()["summary"]
+    assert counts["bySkill"] == {"acceptance-skill": counts["potential"]}
+    assert counts["potential"] > 0 and counts["missing"] == counts["fresh"] == 0
+    cache_run = await launch_api.post(
+        f"{workspace}/evolution/cluster-previews",
+        json=_query_body(mode="cluster_only", cacheEnabled=True),
+    )
+    assert cache_run.status_code == 202, cache_run.text
+    assert (await app.state.jobs.wait(cache_run.json()["jobId"])).status == "completed"
+    accepted = await launch_api.post(
+        "/api/evolution/runs", json=_query_body(attributionPackageId="default-attribute-badcases")
+    )
     assert accepted.status_code == 202
     job = await app.state.jobs.wait(accepted.json()["jobId"])
     assert job.status == "completed", job.error
@@ -996,7 +1041,11 @@ async def test_local_attribution_from_wizard_to_cluster(
             .all()
         )
     assert reports
+    assert (
+        await launch_api.get(f"{workspace}/evolution/targets/{target_id}/attribution-skill")
+    ).json()["id"] == uploaded.json()["id"]
     for report in reports:
+        assert report["attribution_skill_name"] == "attribute-badcases"
         assert report["attribution_engine"] == "local-agent-skill-v1"
         canonical = report["report_payload"]["sourceReport"]
         assert canonical["attribute_type"] in {
@@ -1013,3 +1062,7 @@ async def test_local_attribution_from_wizard_to_cluster(
             assert report["attribute_type"] is None
         if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") != "1":
             assert canonical["attribute_type"] == "flow"
+    refreshed = await launch_api.post(
+        f"{workspace}/evolution/preview/attribution", json=preview_body
+    )
+    assert refreshed.json()["summary"]["bySkill"] == {"attribute-badcases": counts["potential"]}

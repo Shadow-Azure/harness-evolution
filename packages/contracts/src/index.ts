@@ -195,12 +195,11 @@ export type AttributionSkillPackage =
   components["schemas"]["AttributionSkillPackage"];
 
 /** Workspace packages plus the currently effective prompt. */
+export type SkillResourceDetail = components["schemas"]["SkillResourceDetail"];
+
+/** Immutable built-in and uploaded resources visible to this workspace. */
 export type AttributionSkillPackageList =
   components["schemas"]["AttributionSkillPackageList"];
-
-/** Effective package metadata and its exact SKILL.md content. */
-export type EffectiveAttributionSkillPackage =
-  components["schemas"]["EffectiveAttributionSkillPackage"];
 
 /** Sanitized metrics for one durable attribution batch. */
 export type AttributionJobObservation =

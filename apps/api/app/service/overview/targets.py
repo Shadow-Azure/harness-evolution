@@ -1127,6 +1127,7 @@ def _version_options(analysis: TargetAnalysis) -> list[TargetVersionOption]:
 def _overview_item(analysis: TargetAnalysis) -> TargetOverviewItem:
     """Map one target analysis to its list contract."""
     return TargetOverviewItem(
+        attribution_skill_name=analysis.target.attribution_skill_name,
         target_id=analysis.target.id,
         object_type=analysis.target.object_type,
         object_name=analysis.target.object_name,

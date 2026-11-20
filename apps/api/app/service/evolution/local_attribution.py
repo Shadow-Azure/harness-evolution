@@ -19,6 +19,7 @@ from typing import Any, Literal, cast
 from app.config import Settings
 from app.db.base import Database
 from app.db.crud.acquisition_replay import list_root_payloads
+from app.db.crud.evolution_targets import EvolutionTargetRepository
 from app.db.crud.read_scope import WorkspaceReadScope
 from app.db.crud.sessions import SessionRepository
 from app.errors import AppError, ErrorCode
@@ -36,7 +37,6 @@ from app.service.evolution.attribution_skill_packages import (
     AttributionSkillPackageService,
 )
 from app.service.evolution.attribution_skills import (
-    AttributionSkillCreate,
     AttributionSkillList,
     AttributionSkillRevision,
     AttributionSkillService,
@@ -99,6 +99,7 @@ class LocalAttribution:
         self.packages = packages
         self.registry = registry
         self.database = database
+        self.targets = EvolutionTargetRepository(database)
         self.sessions = SessionRepository(database)
         self.source = source
 
@@ -144,74 +145,40 @@ class LocalAttribution:
         )
 
     async def effective(self, workspace: str, target: str) -> EffectiveAttributionSkill:
-        binding = await self.registry.resolve(workspace, target)
-        catalog = await self.packages.list(workspace)
-        package = next((p for p in catalog.items if p.id == binding.content.get("packageId")), None)
-        if binding.source == "target" or (
-            binding.source == "workspace" and catalog.effective.built_in
-        ):
-            if binding.built_in:
-                package = next(p for p in catalog.items if p.built_in)
-            if package:
-                return EffectiveAttributionSkill(
-                    **self._package_revision(workspace, package).model_dump(), source=binding.source
-                )
-            if "packageId" not in binding.content:
-                return binding.model_copy(update={"executor_type": "local_agent"})
-        return EffectiveAttributionSkill(
-            **self._package_revision(workspace, catalog.effective).model_dump(),
-            source="platform" if catalog.effective.built_in else "workspace",
+        record = await self.targets.get(target, workspace_ids=(workspace,)) if target else None
+        if target and record is None:
+            raise AppError(
+                status_code=404, code=ErrorCode.TARGET_NOT_CONFIGURED, message="target not found"
+            )
+        if record and not record.attribution_package_id:
+            legacy = await self.registry.resolve(workspace, target)
+            if legacy.source == "target" and isinstance(legacy.content.get("instructions"), str):
+                return legacy.model_copy(update={"executor_type": "local_agent"})
+        package = await self.package(
+            workspace,
+            (record.attribution_package_id if record else None) or "default-attribute-badcases",
         )
+        return EffectiveAttributionSkill(
+            **package.model_dump(), source="target" if record else "platform"
+        )
+
+    async def package(self, workspace: str, package_id: str) -> AttributionSkillRevision:
+        record = await self.packages.metadata(workspace, package_id)
+        return self._package_revision(workspace, record)
 
     async def bind(
         self, workspace: str, target: str, selected_id: str
     ) -> EffectiveAttributionSkill:
-        catalog = await self.packages.list(workspace)
-        package = next((p for p in catalog.items if p.id == selected_id), None)
-        revision_id = selected_id
-        if package:
-            key = f"package-{package.id}".lower()
-            revisions = await self.registry.list(workspace)
-            rev = next(
-                (
-                    r
-                    for r in revisions.items
-                    if r.skill_key == key and r.content.get("packageId") == package.id
-                ),
-                None,
-            )
-            if rev is None:
-                try:
-                    rev = await self.registry.create(
-                        workspace,
-                        AttributionSkillCreate(
-                            skill_key=key,
-                            display_name=package.skill_name,
-                            executor_type="agent",
-                            content={"packageId": package.id},
-                        ),
-                    )
-                except AppError as exc:
-                    if exc.code != ErrorCode.ATTRIBUTION_SKILL_EXISTS:
-                        raise
-                    revisions = await self.registry.list(workspace)
-                    rev = next(
-                        (
-                            r
-                            for r in revisions.items
-                            if r.skill_key == key and r.content.get("packageId") == package.id
-                        ),
-                        None,
-                    )
-                    if rev is None:
-                        raise
-            revision_id = rev.id
-        await self.registry.bind(workspace, revision_id, target_id=target)
+        await self.targets.bind_package(workspace, target, selected_id)
         return await self.effective(workspace, target)
 
     async def resolve(self, workspace_id: str, target_id: str) -> FrozenSkill:
-        """Resolve object overrides first, then the selected workspace package."""
-        binding = await self.effective(workspace_id, target_id)
+        return await self.freeze(workspace_id, await self.effective(workspace_id, target_id))
+
+    async def resolve_package(self, workspace_id: str, package_id: str) -> FrozenSkill:
+        return await self.freeze(workspace_id, await self.package(workspace_id, package_id))
+
+    async def freeze(self, workspace_id: str, binding: AttributionSkillRevision) -> FrozenSkill:
         revision = binding.revision
         package_id = binding.content.get("packageId")
         if package_id:

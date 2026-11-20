@@ -362,6 +362,9 @@ probe_reports = Table(
     Column("report_schema_version", String(32), nullable=True),
     Column("report_payload", JSON, nullable=True),
     Column("execution_manifest", JSON, nullable=True),
+    Column("attribution_skill_name", String(128), nullable=True),
+    Column("analyzed_at", DateTime(timezone=True), nullable=True),
+    Column("binding_generation", String(36), nullable=True),
     Column("execution_manifest_hash", CHAR(64), nullable=True),
     # ``created_run_id`` / ``last_reused_run_id`` carry migration-owned foreign
     # keys. Declaring them here would require the evolution metadata during
@@ -472,6 +475,13 @@ evolution_targets = Table(
         nullable=False,
         server_default=DEFAULT_WORKSPACE_ID,
     ),
+    Column("attribution_package_id", String(64), nullable=True),
+    Column("attribution_skill_name", String(128), nullable=True),
+    Column("attribution_generation", String(36), nullable=True),
+    Column("attribution_owner", String(36), nullable=True),
+    Column("attribution_snapshot", JSON, nullable=True),
+    Column("attribution_due", DateTime(timezone=True), nullable=True),
+    Column("attribution_cutoff", DateTime(timezone=True), nullable=True),
     Column("object_type", String(16), nullable=False),
     Column("object_name", String(128), nullable=False),
     Column("repo_url", String(1024), nullable=False),

@@ -121,14 +121,14 @@ async def test_package_isolation_and_oversized_prompt(
 
 
 @pytest.mark.asyncio
-async def test_default_upload_activate_download_and_delete_fallback(
+async def test_upload_inspect_download_and_delete_resource(
     package_client: tuple[FastAPI, httpx.AsyncClient, Path],
 ) -> None:
     """The full package lifecycle is explicit and active deletion restores default."""
     _, client, package_root = package_client
     initial = await client.get(_base())
     assert initial.status_code == 200
-    assert initial.json()["effective"]["skillName"] == "attribute-badcases"
+    assert initial.json()["items"][0]["skillName"] == "attribute-badcases"
     assert initial.json()["items"][0]["uploaderName"] == "default"
     assert initial.json()["items"][0]["fileCount"] == 2
     default_zip = await client.get(f"{_base()}/default-attribute-badcases/download")
@@ -152,7 +152,6 @@ async def test_default_upload_activate_download_and_delete_fallback(
     assert uploaded.status_code == 201, uploaded.text
     package_id = uploaded.json()["id"]
     assert uploaded.json()["fileCount"] == 2
-    assert uploaded.json()["isActive"] is False
     assert (
         package_root
         / DEFAULT_WORKSPACE_ID
@@ -162,10 +161,13 @@ async def test_default_upload_activate_download_and_delete_fallback(
         / "refs/check.md"
     ).is_file()
 
-    activated = await client.post(f"{_base()}/{package_id}/activate")
-    assert activated.status_code == 200
-    assert activated.json()["prompt"] == prompt
-    assert activated.json()["isActive"] is True
+    detail = await client.get(f"{_base()}/{package_id}")
+    assert detail.status_code == 200
+    assert detail.json() == {
+        "prompt": prompt,
+        "files": ["incident-attribution/SKILL.md", "refs/check.md"],
+        "targets": [],
+    }
 
     downloaded = await client.get(f"{_base()}/{package_id}/download")
     assert downloaded.status_code == 200
@@ -178,8 +180,7 @@ async def test_default_upload_activate_download_and_delete_fallback(
         package_root / DEFAULT_WORKSPACE_ID / "attribute_skill" / "uploads" / package_id
     ).exists()
     fallback = await client.get(_base())
-    assert fallback.json()["effective"]["skillName"] == "attribute-badcases"
-    assert fallback.json()["effective"]["isActive"] is True
+    assert [item["skillName"] for item in fallback.json()["items"]] == ["attribute-badcases"]
 
 
 @pytest.mark.asyncio

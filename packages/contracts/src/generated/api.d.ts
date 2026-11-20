@@ -977,7 +977,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get Package Detail
+         * @description Return the selected package prompt, file paths and target bindings.
+         */
+        get: operations["get_package_detail_api_workspaces__wid__attribution_skill_packages__packageId__get"];
         put?: never;
         post?: never;
         /**
@@ -985,26 +989,6 @@ export interface paths {
          * @description Delete one custom package and fall back to default when it was active.
          */
         delete: operations["delete_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workspaces/{wid}/attribution-skill-packages/{packageId}/activate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Activate Attribution Skill Package
-         * @description Make one package effective for this workspace's package configuration.
-         */
-        post: operations["activate_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__activate_post"];
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2444,8 +2428,17 @@ export interface components {
          * @description Cache reuse preview and the historical non-target reference count.
          */
         AttributionPreviewSummary: {
+            /** Byskill */
+            bySkill?: {
+                [key: string]: number;
+            };
             /** Fresh */
             fresh: number | null;
+            /**
+             * Missing
+             * @default 0
+             */
+            missing: number;
             /** Nontargetknown */
             nonTargetKnown: number;
             /** Potential */
@@ -2623,8 +2616,6 @@ export interface components {
             fileCount: number;
             /** Id */
             id: string;
-            /** Isactive */
-            isActive: boolean;
             /** Sizebytes */
             sizeBytes: number;
             /** Skillname */
@@ -2639,7 +2630,6 @@ export interface components {
          * @description All workspace packages and the currently effective prompt.
          */
         AttributionSkillPackageList: {
-            effective: components["schemas"]["EffectiveAttributionSkillPackage"];
             /** Items */
             items: components["schemas"]["AttributionSkillPackage"][];
         };
@@ -3178,34 +3168,6 @@ export interface components {
             status: string;
             /** Workspaceid */
             workspaceId: string | null;
-        };
-        /**
-         * EffectiveAttributionSkillPackage
-         * @description The effective package plus its exact SKILL.md prompt.
-         */
-        EffectiveAttributionSkillPackage: {
-            /** Archivename */
-            archiveName: string;
-            /** Builtin */
-            builtIn: boolean;
-            /** Contenthash */
-            contentHash: string;
-            /** Filecount */
-            fileCount: number;
-            /** Id */
-            id: string;
-            /** Isactive */
-            isActive: boolean;
-            /** Prompt */
-            prompt: string;
-            /** Sizebytes */
-            sizeBytes: number;
-            /** Skillname */
-            skillName: string;
-            /** Uploadedat */
-            uploadedAt: string | null;
-            /** Uploadername */
-            uploaderName: string;
         };
         /**
          * ErrorBody
@@ -3832,6 +3794,10 @@ export interface components {
          * @description Persisted target returned to clients.
          */
         EvolutionTarget: {
+            /** Attributionpackageid */
+            attributionPackageId?: string | null;
+            /** Attributionskillname */
+            attributionSkillName?: string | null;
             /** Defaultref */
             defaultRef: string;
             /**
@@ -3880,6 +3846,8 @@ export interface components {
          * @description Mutable target configuration accepted by create and update.
          */
         EvolutionTargetWrite: {
+            /** Attributionpackageid */
+            attributionPackageId?: string | null;
             /** Defaultref */
             defaultRef: string;
             /**
@@ -4382,6 +4350,8 @@ export interface components {
          * @description Wizard filter condition shared by preview and launch endpoints.
          */
         ProbeQueryRequest: {
+            /** Attributionpackageid */
+            attributionPackageId?: string | null;
             /**
              * Cacheenabled
              * @default true
@@ -5072,6 +5042,15 @@ export interface components {
             /** Totalcases */
             totalCases: number;
         };
+        /** SkillResourceDetail */
+        SkillResourceDetail: {
+            /** Files */
+            files: string[];
+            /** Prompt */
+            prompt: string;
+            /** Targets */
+            targets: string[];
+        };
         /**
          * SourceListResponse
          * @description Source distribution ordered by total descending, then object name.
@@ -5759,6 +5738,8 @@ export interface components {
         TargetOverviewItem: {
             /** Attributed */
             attributed: number;
+            /** Attributionskillname */
+            attributionSkillName?: string | null;
             /**
              * Evolvable
              * @description Attributed plus unanalyzed potential rows; the list sort key.
@@ -9280,7 +9261,7 @@ export interface operations {
             };
         };
     };
-    delete_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__delete: {
+    get_package_detail_api_workspaces__wid__attribution_skill_packages__packageId__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -9293,11 +9274,13 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SkillResourceDetail"];
+                };
             };
             /** @description Authentication is required */
             401: {
@@ -9355,7 +9338,7 @@ export interface operations {
             };
         };
     };
-    activate_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__activate_post: {
+    delete_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -9368,13 +9351,11 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["EffectiveAttributionSkillPackage"];
-                };
+                content?: never;
             };
             /** @description Authentication is required */
             401: {

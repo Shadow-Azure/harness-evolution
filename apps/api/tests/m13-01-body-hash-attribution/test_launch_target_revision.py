@@ -108,6 +108,7 @@ async def test_launch_persists_target_revision_and_returns_it_on_the_run_card(
             "targetName": TARGET_NAME,
             "targetVersion": TARGET_VERSION,
             "mode": "cluster_only",
+            "cacheEnabled": False,
         },
     )
 

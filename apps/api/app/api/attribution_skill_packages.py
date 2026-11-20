@@ -23,7 +23,7 @@ from app.service.evolution.attribution_skill_packages import (
     AttributionSkillPackage,
     AttributionSkillPackageList,
     AttributionSkillPackageService,
-    EffectiveAttributionSkillPackage,
+    SkillResourceDetail,
 )
 from app.service.identity.principals import Principal
 from app.service.workspaces.service import WorkspaceAccess
@@ -63,7 +63,7 @@ async def list_attribution_skill_packages(
     wid: WorkspaceId,
     access: ViewerAccess,
 ) -> AttributionSkillPackageList:
-    """List the built-in package, custom uploads, and effective prompt."""
+    """List the built-in package and workspace uploads."""
     del access
     return await packages_from(request).list(wid)
 
@@ -96,21 +96,12 @@ async def upload_attribution_skill_package(
     )
 
 
-@router.post(
-    "/{packageId}/activate",
-    dependencies=[Security(BEARER_AUTH)],
-    responses=RESPONSES,
-)
-async def activate_attribution_skill_package(
-    request: Request,
-    wid: WorkspaceId,
-    packageId: PackageId,
-    access: AdminAccess,
-) -> EffectiveAttributionSkillPackage:
-    """Make one package effective for this workspace's package configuration."""
-    del access
-    principal = cast(Principal, request.state.principal)
-    return await packages_from(request).activate(wid, packageId, principal.user_id)
+@router.get("/{packageId}", dependencies=[Security(BEARER_AUTH)], responses=RESPONSES)
+async def get_package_detail(
+    request: Request, wid: WorkspaceId, packageId: PackageId, access: ViewerAccess
+) -> SkillResourceDetail:
+    """Return the selected package prompt, file paths and target bindings."""
+    return await packages_from(request).detail(wid, packageId)
 
 
 @router.get(
@@ -153,7 +144,7 @@ async def delete_attribution_skill_package(
     packageId: PackageId,
     access: AdminAccess,
 ) -> Response:
-    """Delete one custom package and fall back to default when it was active."""
+    """Remove a custom package that has no target bindings."""
     del access
     await packages_from(request).delete(wid, packageId)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

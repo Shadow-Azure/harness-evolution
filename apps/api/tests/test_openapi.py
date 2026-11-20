@@ -115,7 +115,6 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/workspaces/{wid}/credentials/{cid}",
         "/api/workspaces/{wid}/attribution-skill-packages",
         "/api/workspaces/{wid}/attribution-skill-packages/{packageId}",
-        "/api/workspaces/{wid}/attribution-skill-packages/{packageId}/activate",
         "/api/workspaces/{wid}/attribution-skill-packages/{packageId}/download",
         "/api/workspaces/{wid}/bad-cases",
         "/api/workspaces/{wid}/sessions",

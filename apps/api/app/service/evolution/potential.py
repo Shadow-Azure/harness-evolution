@@ -18,6 +18,7 @@ from typing import Literal
 from pydantic import Field, field_validator
 
 from app.constants import POST_PROCESS_EVENT_INDEX
+from app.db.crud.attributions import AttributionRepository
 from app.db.crud.evolution_targets import EvolutionTargetRecord
 from app.db.crud.potential import (
     AgentNodeRecord,
@@ -318,6 +319,8 @@ class AttributionPreviewSummary(IdentityModel):
     potential: int = Field(ge=0)
     reused: int | None = Field(ge=0)
     fresh: int | None = Field(ge=0)
+    by_skill: dict[str, int] = Field(default_factory=dict)
+    missing: int = Field(default=0, ge=0)
     non_target_known: int = Field(ge=0)
 
 
@@ -837,11 +840,13 @@ class PotentialPreviewService:
         resolver: TargetVersionResolver,
         *,
         local_agent: bool = False,
+        reports: AttributionRepository | None = None,
     ) -> None:
         """Bind target configuration validation, the matcher, and content resolution."""
         self._targets = targets
         self._matcher = matcher
         self._resolver = resolver
+        self._reports = reports
         self._local_agent = local_agent
 
     async def sessions(
@@ -936,6 +941,28 @@ class PotentialPreviewService:
         match = await self._matcher.potential_cases(condition, association, policy)
         if not match.included:
             raise _no_potential_matched()
+        if self._reports:
+            rows = await self._reports.latest_reports(
+                workspace_id,
+                condition.target_type,
+                condition.target_name,
+                condition.target_revision,
+                tuple(case.bad_case_id for case in match.included),
+            )
+            groups: dict[str, int] = {}
+            for _, skill, _ in rows.values():
+                groups[skill] = groups.get(skill, 0) + 1
+            return AttributionPreviewResult(
+                summary=AttributionPreviewSummary(
+                    potential=match.potential,
+                    reused=len(rows) if body.cache_enabled else 0,
+                    fresh=0 if body.cache_enabled else match.potential,
+                    missing=match.potential - len(rows),
+                    by_skill=groups,
+                    non_target_known=sum(row[2] == "non_target" for row in rows.values()),
+                ),
+                target_revision=condition.target_revision,
+            )
         deferred = self._local_agent and body.cache_enabled
         counts = await self._matcher.attribution_preview(
             condition,

@@ -28,7 +28,7 @@ Health, login, refresh, the IdP callback, ticket SSE, and credential ingest are 
 
 Web restores `auth/session` first; identity stays in memory, concurrent 401s share one refresh, and logout clears caches. Pages under `/workspaces/:wid` scope resources by workspace and role; unscoped routes redirect to the remembered workspace, sole workspace, or chooser.
 
-Sessions default to the latest 10 and search on Enter; errors group by case with `case/tab/at` deep links; targets and the wizard are workspace-scoped, default Skills require Golden promotion while targets may bind experimental revisions, and seven-step runs show the frozen revision; lifespan recovers jobs and `sync_lock` before scheduling.
+Sessions default to the latest 10 and search on Enter; errors group by case with `case/tab/at` deep links; targets and the wizard are workspace-scoped, and seven-step runs show the frozen revision; lifespan recovers jobs and `sync_lock` before scheduling.
 
 A trace that is not ready is not a 404.
 
@@ -37,7 +37,7 @@ A trace that is not ready is not a 404.
 - Production MySQL 8, local/test SQLite; `HE_DB_DIALECT` is the only selection point. `Database` owns connections, read sessions, write transactions, and health; Alembic maintains dual-dialect migrations, and business code depends only on `db/crud/` and `Database`.
 - Workspaces: `workspaces`, `workspace_members`, `workspace_ingest_credentials`; bad cases, target configuration, and runs carry `workspace_id`. Traces are global, and workspace Sessions are projected from bad cases.
 - Ingest: a credential writes only the URL workspace, quota is checked inside the write transaction, and re-reporting an ID upserts idempotently without double counting.
-- Attribution freezes the object override, workspace choice or built-in `attribute-badcases` at launch. `HE_ATTRIBUTION_AGENT=claude` selects the local CLI and `HE_ATTRIBUTION_MODEL` selects its model. Each workspace stores packages in `attribute_skill`, target definitions in `attribute_source` and canonical per-case reports in `attribute_output`. The worker validates the platform writer’s output, writes V2 with the original report to `probe_reports`, and links the candidate transactionally.
+- Each target binds one workspace Skill, initially `attribute-badcases`. Saving a binding schedules background attribution. The wizard reuses the latest report per case and target revision or selects a Skill for this run. `HE_ATTRIBUTION_AGENT=claude` selects the local CLI and `HE_ATTRIBUTION_MODEL` selects its model. Each workspace stores packages in `attribute_skill`, target definitions in `attribute_source` and canonical per-case reports in `attribute_output`. The worker validates the platform writer’s output, writes V2 with the original report to `probe_reports`, and links the candidate transactionally.
 - External problem tables follow the 06 §4 contract; schema/row drift emits structured logs, read failures map to stable codes, and the path issues SELECT only.
 - Evidence: parent/child relations are `authoritative/derived/synthetic/unresolved`; `execution_outcome` is independent of parse status; object revision comes from `path + body hash` or a tag, and an unknown revision is never guessed by name.
 - Knowledge triggers: `kind=knowledge` accepts only workspace-root or Provider/Collection documents and stores identity, revision, source, and retrieval evidence, never the body.

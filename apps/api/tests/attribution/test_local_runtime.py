@@ -39,13 +39,14 @@ class ScriptAgent(AgentBackend):
     async def execute(self, directory: Path, prompt: str, model: str, timeout_seconds: int) -> int:
         import asyncio
 
-        assert prompt == "/acceptance-skill input_badcase.json，请分析并生成归因报告"  # noqa: RUF001
+        skill = next((directory / ".claude/skills").iterdir()).name
+        assert prompt == f"/{skill} input_badcase.json，请分析并生成归因报告"  # noqa: RUF001
         assert (directory / "session_tree.json").is_file()
         assert (directory / "attribute_source.md").is_file()
         row = json.loads((directory / "input_badcase.json").read_bytes())["bad_cases"][0]
         proc = await asyncio.create_subprocess_exec(
             sys.executable,
-            ".claude/skills/acceptance-skill/make_probe_report.py",
+            f".claude/skills/{skill}/make_probe_report.py",
             "--input-badcase",
             "input_badcase.json",
             "--bad-case-id",
@@ -112,7 +113,6 @@ async def test_local_skill_report_to_sqlite(
         archive_name="acceptance.zip",
         archive=zipout.getvalue(),
     )
-    await packages.activate(run.workspace_id, package.id, user_id)
     async with db.transaction() as session:
         await session.execute(
             insert(evolution_targets).values(
@@ -132,11 +132,14 @@ async def test_local_skill_report_to_sqlite(
     assert (
         await service.resolve(run.workspace_id, "acceptance-target")
     ).skill_key == default.skill_key
-    await service.registry.unbind(run.workspace_id, target_id="acceptance-target")
-    assert (await service.effective(run.workspace_id, "acceptance-target")).source == "workspace"
+    assert (await packages.detail(run.workspace_id, "default-attribute-badcases")).targets == [
+        run.target_name
+    ]
     await service.bind(run.workspace_id, "acceptance-target", package.id)
     selected = await service.resolve(run.workspace_id, "acceptance-target")
     assert selected.skill_key == "acceptance-skill"
+    assert (await packages.detail(run.workspace_id, package.id)).targets == [run.target_name]
+    await service.bind(run.workspace_id, "acceptance-target", "default-attribute-badcases")
     await packages.delete(run.workspace_id, package.id)
     assert (await service.resolve(run.workspace_id, "")).content_hash == default.content_hash
     if os.environ.get("HE_TEST_PLATFORM_SKILL") == "1":

@@ -47,22 +47,20 @@ class AttributionSkillPackage(IdentityModel):
     file_count: int = Field(ge=1)
     size_bytes: int = Field(ge=0)
     content_hash: str
-    is_active: bool
     built_in: bool
     uploaded_at: datetime | None
 
 
-class EffectiveAttributionSkillPackage(AttributionSkillPackage):
-    """The effective package plus its exact SKILL.md prompt."""
-
+class SkillResourceDetail(IdentityModel):
     prompt: str
+    files: list[str]
+    targets: list[str]
 
 
 class AttributionSkillPackageList(IdentityModel):
-    """All workspace packages and the currently effective prompt."""
+    """Workspace resources available for binding and one-off analysis."""
 
     items: list[AttributionSkillPackage]
-    effective: EffectiveAttributionSkillPackage
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,18 +89,38 @@ class AttributionSkillPackageService:
 
     async def list(self, workspace_id: str) -> AttributionSkillPackageList:
         """List the immutable default and every custom package in one workspace."""
-        records, active_id, default = await asyncio.gather(
-            self._repository.list(workspace_id),
-            self._repository.active_id(workspace_id),
-            asyncio.to_thread(self._default),
+        records, default = await asyncio.gather(
+            self._repository.list(workspace_id), asyncio.to_thread(self._default)
         )
-        if not any(record.id == active_id for record in records):
-            active_id = None
-        items = [self._public(default, active_id is None)]
-        items.extend(self._public(record, record.id == active_id) for record in records)
-        effective_record = next((record for record in records if record.id == active_id), default)
-        effective = self._effective(effective_record, active_id)
-        return AttributionSkillPackageList(items=items, effective=effective)
+        return AttributionSkillPackageList(
+            items=[self._public(default), *(self._public(record) for record in records)]
+        )
+
+    async def metadata(self, workspace: str, package: str) -> AttributionSkillPackage:
+        record = (
+            await asyncio.to_thread(self._default)
+            if package == DEFAULT_PACKAGE_ID
+            else await self._required(workspace, package)
+        )
+        return self._public(record)
+
+    async def detail(self, workspace: str, package: str) -> SkillResourceDetail:
+        if package == DEFAULT_PACKAGE_ID:
+            record = await asyncio.to_thread(self._default)
+            files = sorted(self._default_files())
+        else:
+            record = await self._required(workspace, package)
+            root = self._storage_path(record.storage_path)
+            files = await asyncio.to_thread(
+                lambda: sorted(
+                    path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()
+                )
+            )
+        return SkillResourceDetail(
+            prompt=record.prompt_text,
+            files=files,
+            targets=await self._repository.bound_targets(workspace, package),
+        )
 
     async def upload(
         self,
@@ -151,21 +169,7 @@ class AttributionSkillPackageService:
         except Exception:
             await asyncio.to_thread(shutil.rmtree, storage, True)
             raise
-        return self._public(record, False)
-
-    async def activate(
-        self,
-        workspace_id: str,
-        package_id: str,
-        actor_id: str,
-    ) -> EffectiveAttributionSkillPackage:
-        """Select a custom package, or clear the binding for the built-in default."""
-        if package_id == DEFAULT_PACKAGE_ID:
-            await self._repository.activate(workspace_id, None, actor_id)
-            return self._effective(await asyncio.to_thread(self._default), None)
-        record = await self._required(workspace_id, package_id)
-        await self._repository.activate(workspace_id, package_id, actor_id)
-        return self._effective(record, package_id)
+        return self._public(record)
 
     async def download(self, workspace_id: str, package_id: str) -> tuple[str, bytes]:
         """Return a regenerated ZIP for the default or one workspace package."""
@@ -178,7 +182,7 @@ class AttributionSkillPackageService:
         return f"{record.skill_name}.zip", data
 
     async def delete(self, workspace_id: str, package_id: str) -> None:
-        """Delete one custom package; an active deletion falls back to default."""
+        """Delete a custom package once every bound target has been reassigned."""
         if package_id == DEFAULT_PACKAGE_ID:
             raise AppError(
                 status_code=HTTPStatus.CONFLICT,
@@ -225,7 +229,6 @@ class AttributionSkillPackageService:
     @staticmethod
     def _public(
         record: AttributionSkillPackageRecord,
-        active: bool,
     ) -> AttributionSkillPackage:
         built_in = record.id == DEFAULT_PACKAGE_ID
         return AttributionSkillPackage(
@@ -236,19 +239,8 @@ class AttributionSkillPackageService:
             file_count=record.file_count,
             size_bytes=record.size_bytes,
             content_hash=record.content_hash,
-            is_active=active,
             built_in=built_in,
             uploaded_at=None if built_in else record.created_at,
-        )
-
-    def _effective(
-        self,
-        record: AttributionSkillPackageRecord,
-        active_id: str | None,
-    ) -> EffectiveAttributionSkillPackage:
-        return EffectiveAttributionSkillPackage(
-            **self._public(record, record.id == active_id or active_id is None).model_dump(),
-            prompt=record.prompt_text,
         )
 
     def _storage_path(self, relative: str) -> Path:

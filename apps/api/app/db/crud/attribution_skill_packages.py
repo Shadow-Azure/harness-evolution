@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -13,8 +14,9 @@ from app.db.crud.integrity import is_unique_violation
 from app.db.models.domain import (
     attribution_skill_package_bindings,
     attribution_skill_packages,
+    evolution_targets,
 )
-from app.utils.time import now_shanghai
+from app.errors import AppError, ErrorCode
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,37 +124,18 @@ class AttributionSkillPackageRepository:
                     raise AttributionSkillPackageConflict from exc
                 raise
 
-    async def active_id(self, workspace_id: str) -> str | None:
-        """Return the active custom package id, or ``None`` for the default."""
-        statement = select(attribution_skill_package_bindings.c.package_id).where(
-            attribution_skill_package_bindings.c.workspace_id == workspace_id,
-        )
+    async def bound_targets(self, workspace: str, package: str) -> builtins.list[str]:
+        t = evolution_targets.c
         async with self._database.session() as session:
-            value = (await session.execute(statement)).scalar_one_or_none()
-        return str(value) if value is not None else None
-
-    async def activate(
-        self,
-        workspace_id: str,
-        package_id: str | None,
-        actor_id: str,
-    ) -> None:
-        """Replace the custom binding atomically; ``None`` restores the default."""
-        async with self._database.transaction() as session:
-            await session.execute(
-                delete(attribution_skill_package_bindings).where(
-                    attribution_skill_package_bindings.c.workspace_id == workspace_id,
-                ),
+            return list(
+                (
+                    await session.scalars(
+                        select(t.object_name)
+                        .where(t.workspace_id == workspace, t.attribution_package_id == package)
+                        .order_by(t.object_name)
+                    )
+                ).all()
             )
-            if package_id is not None:
-                await session.execute(
-                    insert(attribution_skill_package_bindings).values(
-                        workspace_id=workspace_id,
-                        package_id=package_id,
-                        updated_by=actor_id,
-                        updated_at=now_shanghai(),
-                    ),
-                )
 
     async def delete(
         self,
@@ -164,6 +147,25 @@ class AttributionSkillPackageRepository:
         if record is None:
             return None
         async with self._database.transaction() as session:
+            await session.execute(
+                select(attribution_skill_packages.c.id)
+                .where(attribution_skill_packages.c.id == package_id)
+                .with_for_update()
+            )
+            if await session.scalar(
+                select(evolution_targets.c.id)
+                .where(
+                    evolution_targets.c.workspace_id == workspace_id,
+                    evolution_targets.c.attribution_package_id == package_id,
+                )
+                .limit(1)
+                .with_for_update()
+            ):
+                raise AppError(
+                    status_code=409,
+                    code=ErrorCode.ATTRIBUTION_SKILL_PACKAGE_INVALID,
+                    message="Skill is bound to an evolution target",
+                )
             await session.execute(
                 delete(attribution_skill_package_bindings).where(
                     attribution_skill_package_bindings.c.workspace_id == workspace_id,

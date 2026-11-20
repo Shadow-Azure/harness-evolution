@@ -399,9 +399,11 @@ async def test_attribution_preview_counts_cache_and_non_target(
     assert enabled.json() == {
         "summary": {
             "potential": 3,
-            "reused": 0,
-            "fresh": 3,
-            "nonTargetKnown": 1,
+            "reused": 2,
+            "fresh": 0,
+            "missing": 1,
+            "bySkill": {"历史报告 · Skill 未记录": 2},
+            "nonTargetKnown": 0,
         },
         "targetRevision": "tag:v2.0.0",
     }

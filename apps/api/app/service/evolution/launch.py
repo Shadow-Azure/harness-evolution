@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, Protocol, cast
 
+from app.db.crud.attributions import AttributionRepository
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.potential import ObjectType, window_day_boundaries
 from app.errors import AppError, ErrorCode
@@ -118,6 +119,7 @@ class EvolutionLaunchService:
         events: EvolutionRunEventService | None,
         resolver: TargetVersionResolver,
         *,
+        reports: AttributionRepository | None = None,
         attribution_skills: LaunchAttributionSkillResolver | None = None,
     ) -> None:
         """Bind launch collaborators for both run modes."""
@@ -127,6 +129,7 @@ class EvolutionLaunchService:
         self._jobs = jobs
         self._events = events
         self._attribution_skills = attribution_skills
+        self._reports = reports
         self._resolver = resolver
 
     async def request_run(
@@ -172,11 +175,20 @@ class EvolutionLaunchService:
             body.target_name,
             workspace_ids=workspace_ids,
         )
-        effective_skill = (
-            await self._attribution_skills.resolve(config.workspace_id, config.id)
-            if self._attribution_skills is not None
-            else None
-        )
+        effective_skill = None
+        if body.attribution_package_id:
+            resolve_package = getattr(self._attribution_skills, "resolve_package", None)
+            if body.cache_enabled or resolve_package is None:
+                raise AppError(
+                    status_code=422,
+                    code=ErrorCode.VALIDATION_INVALID,
+                    message="select a Skill only for recomputation using a configured agent",
+                )
+            effective_skill = await resolve_package(
+                config.workspace_id, body.attribution_package_id
+            )
+        elif self._attribution_skills and not (self._reports and body.cache_enabled):
+            effective_skill = await self._attribution_skills.resolve(config.workspace_id, config.id)
         query = normalized_query(
             body,
             default_version=config.default_ref,
@@ -185,7 +197,23 @@ class EvolutionLaunchService:
         resolved = await self._resolve_version(body, query.target_version, config)
         policy = resolve_policy(body.policy)
         condition = _match_condition(query, config.workspace_id, resolved)
-        await self._require_potential(condition, policy)
+        cases = await self._require_potential(condition, policy)
+        if (
+            self._reports
+            and body.cache_enabled
+            and not await self._reports.latest_reports(
+                config.workspace_id,
+                body.target_type,
+                body.target_name,
+                resolved.target_revision,
+                cases,
+            )
+        ):
+            raise AppError(
+                status_code=409,
+                code=ErrorCode.NO_POTENTIAL_MATCHED,
+                message="no cached attribution reports for these cases",
+            )
         run = await self._runs.create_run(
             self._run_values(
                 body,
@@ -223,7 +251,7 @@ class EvolutionLaunchService:
         self,
         condition: MatchCondition,
         policy: Any,
-    ) -> None:
+    ) -> tuple[str, ...]:
         """Fail the launch before any write when nothing can be attributed.
 
         Args:
@@ -264,6 +292,8 @@ class EvolutionLaunchService:
                 },
             )
 
+        return tuple(case.bad_case_id for case in match.included)
+
     def _run_values(
         self,
         body: ProbeQueryRequest,
@@ -294,7 +324,10 @@ class EvolutionLaunchService:
             "mode": body.mode,
             "engine_key": body.engine_key or body.mode,
             "eval_config": _snapshot_eval(body.eval),
-            "potential_policy": policy.snapshot(),
+            "potential_policy": {
+                **policy.snapshot(),
+                **({"latestReportsOnly": True} if self._reports and body.cache_enabled else {}),
+            },
             "cache_enabled": body.cache_enabled,
             "attribution_engine": _attribution_engine(effective_skill),
             "attribution_skill_key": (

@@ -60,6 +60,7 @@ class TargetOverviewItem(IdentityModel):
 
     target_id: str = Field(max_length=36)
     object_type: EvolutionObjectType
+    attribution_skill_name: str | None = None
     object_name: str = Field(min_length=1, max_length=128)
     versions: list[str] = Field(
         description=(

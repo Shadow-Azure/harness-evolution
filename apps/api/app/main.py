@@ -41,6 +41,7 @@ from app.db.crud.bad_case_catalog_sync import BadCaseCatalogSyncRepository
 from app.db.crud.bad_case_ingest import BadCaseIngestRepository
 from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
 from app.db.crud.bad_cases import BadCaseRepository
+from app.db.crud.binding_batches import BindingQueue
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.evolution_targets import EvolutionTargetRepository
 from app.db.crud.jobs import JobRepository
@@ -94,6 +95,7 @@ from app.service.evolution.attribution_jobs import (
 )
 from app.service.evolution.attribution_skill_packages import AttributionSkillPackageService
 from app.service.evolution.attribution_skills import AttributionSkillService
+from app.service.evolution.binding_worker import BindingWorker
 from app.service.evolution.blocked_sweeper import EvolutionBlockedSweeper
 from app.service.evolution.engine.contracts import EngineDeps
 from app.service.evolution.engine.factory import EngineFactory
@@ -307,7 +309,8 @@ def create_app(
         runner=cast(Any, proxy_runner.run_remote),
     )
     git_content = SubprocessGitContent(
-        cache_root=resolved_settings.data_dir / "target-content", runner=cast(Any, proxy_runner.run),
+        cache_root=resolved_settings.data_dir / "target-content",
+        runner=cast(Any, proxy_runner.run),
     )
     resolver = target_version_resolver or TargetContentResolver(git_content)
     evolution_targets = EvolutionTargetService(target_repository, resolved_git_remote)
@@ -320,15 +323,16 @@ def create_app(
         resolved_settings.attribution_default_skill_path,
     )
     potential_repository = PotentialRepository(resolved_database)
+    attribution_repository = AttributionRepository(resolved_database)
     potential_preview = PotentialPreviewService(
         evolution_targets,
         PotentialMatcher(potential_repository),
         resolver,
+        reports=attribution_repository,
         local_agent=bool(resolved_settings.attribution_agent),
     )
     probe_query_repository = ProbeQueryRepository(resolved_database)
     evolution_runs = EvolutionRunService(evolution_repository, run_event_store)
-    attribution_repository = AttributionRepository(resolved_database)
     run_candidate_repository = EvolutionRunCandidateRepository(resolved_database)
     potential_matcher = PotentialMatcher(potential_repository)
     target_overview = TargetOverviewService(
@@ -352,6 +356,15 @@ def create_app(
         prepare_input=local_attribution.prepare_input,
         max_concurrency=resolved_settings.attribution_case_concurrency,
     )
+    binding_worker = BindingWorker(
+        BindingQueue(resolved_database),
+        bad_case_sync,
+        local_attribution,
+        resolver,
+        potential_matcher,
+        attribution_repository,
+        attribution_runner,
+    )
     attribution_jobs = AttributionJobService(
         jobs,
         evolution_repository,
@@ -372,6 +385,7 @@ def create_app(
         jobs,
         evolution_events,
         resolver,
+        reports=attribution_repository,
         attribution_skills=local_attribution
         if resolved_settings.attribution_agent
         else attribution_skills,
@@ -540,6 +554,8 @@ def create_app(
             evolution_eval_poller.start()
             phase = "blocked-sweeper"
             evolution_blocked_sweeper.start()
+            if resolved_settings.attribution_agent:
+                binding_worker.start()
         except Exception as exc:
             logger.error(
                 "database initialization failed",
@@ -553,6 +569,7 @@ def create_app(
         try:
             yield
         finally:
+            await binding_worker.stop()
             await proxy_controller.stop()
             await external_contract.stop()
             try:

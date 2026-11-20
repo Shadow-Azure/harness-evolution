@@ -49,6 +49,7 @@ class ProbeQueryRequest(IdentityModel):
     engine_key: str | None = Field(default=None, max_length=64)
     eval: dict[str, Any] | None = None
     policy: PotentialPolicy | None = None
+    attribution_package_id: str | None = Field(default=None, max_length=64)
     cache_enabled: bool = True
 
     @field_validator("models")

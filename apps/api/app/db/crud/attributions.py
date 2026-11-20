@@ -21,6 +21,7 @@ from app.db.models.domain import (
     agents,
     bad_case_analysis,
     bad_cases,
+    evolution_targets,
     probe_reports,
 )
 from app.db.models.evolution import (
@@ -99,6 +100,10 @@ class ProbeWrite:
     created_run_id: str | None
     created_at: datetime
     updated_at: datetime
+    attribution_skill_name: str | None = None
+    binding_generation: str | None = None
+    binding_owner: str | None = None
+    analysis_id: str | None = None
     report_schema_version: str | None = None
     report_payload: Mapping[str, object] | None = None
     execution_manifest: Mapping[str, object] | None = None
@@ -121,6 +126,10 @@ class ProbeWrite:
     @property
     def cache_key(self) -> str:
         """Derive the cache key from the persisted identity fields."""
+        if self.analysis_id and self.execution_manifest_hash:
+            return hashlib.sha256(
+                f"{self.analysis_id}:{self.execution_manifest_hash}".encode()
+            ).hexdigest()
         if self.execution_manifest_hash is not None:
             return self.execution_manifest_hash
         return attribution_cache_key(
@@ -368,6 +377,62 @@ class AttributionRepository:
             await session.execute(statement)
             return await self._select_probe_id(session, write.cache_key)
 
+    async def latest_reports(
+        self,
+        workspace: str,
+        kind: str,
+        name: str,
+        version: str,
+        cases: Sequence[str],
+        *,
+        generation: str | None = None,
+    ) -> dict[str, tuple[str, str, str]]:
+        """Return one successful analysis per case, ignoring reuse timestamps."""
+        p = probe_reports.c
+        case = bad_case_analysis.c.bad_case_id
+        result: dict[str, tuple[str, str, str]] = {}
+        async with self._database.session() as session:
+            for chunk in _chunks(cases):
+                statement = (
+                    select(case, p.probe_id, p.attribution_skill_name, p.conclusion)
+                    .select_from(self._attribution_join())
+                    .where(
+                        p.workspace_id == workspace,
+                        p.probe_type == kind,
+                        p.probe_object == name,
+                        p.object_version == version,
+                        case.in_(chunk),
+                        p.conclusion.in_(("attributed", "non_target", "inconclusive")),
+                    )
+                )
+                if generation:
+                    statement = statement.where(p.binding_generation == generation)
+                rank = (
+                    func.row_number()
+                    .over(
+                        partition_by=case,
+                        order_by=(
+                            func.coalesce(p.analyzed_at, p.created_at).desc(),
+                            p.probe_id.desc(),
+                        ),
+                    )
+                    .label("rank")
+                )
+                ranked = statement.add_columns(rank).subquery()
+                latest = select(
+                    ranked.c.bad_case_id,
+                    ranked.c.probe_id,
+                    ranked.c.attribution_skill_name,
+                    ranked.c.conclusion,
+                ).where(ranked.c.rank == 1)
+                for key, probe, skill, conclusion in await session.execute(latest):
+                    result[str(key)] = (
+                        str(probe),
+                        str(skill or "历史报告 · Skill 未记录"),
+                        str(conclusion),
+                    )
+        return result
+
     async def get_probe_by_cache_key(self, cache_key: str) -> ProbeCacheRecord | None:
         """Return the one probe owning a cache key, or ``None`` on a miss."""
         statement = select(probe_reports).where(probe_reports.c.cache_key == cache_key).limit(1)
@@ -378,7 +443,7 @@ class AttributionRepository:
     async def write_probe_and_link(
         self,
         write: ProbeWrite,
-        run_id: str,
+        run_id: str | None,
         now: datetime,
     ) -> str:
         """Write a fresh probe, its case link, and its candidate pointer atomically.
@@ -402,9 +467,23 @@ class AttributionRepository:
         values, updates = self._probe_upsert_parts(write)
         statement = self._probe_upsert_statement(values, updates)
         async with self._database.transaction() as session:
+            if write.binding_generation:
+                current = await session.scalar(
+                    select(evolution_targets.c.id)
+                    .where(
+                        evolution_targets.c.attribution_generation == write.binding_generation,
+                        evolution_targets.c.attribution_owner == write.binding_owner,
+                        evolution_targets.c.enabled.is_(True),
+                    )
+                    .with_for_update()
+                )
+                if current is None:
+                    raise LookupError("target binding changed during attribution")
             await session.execute(statement)
             probe_id = await self._select_probe_id(session, write.cache_key)
             await session.execute(self._link_statement(write.bad_case_id, probe_id, now))
+            if run_id is None:
+                return probe_id
             result = await session.execute(
                 self._candidate_update_statement(
                     run_id,
@@ -620,6 +699,9 @@ class AttributionRepository:
             "probe_type": write.probe_type,
             "probe_object": write.probe_object,
             "object_version": write.object_version,
+            "attribution_skill_name": write.attribution_skill_name,
+            "binding_generation": write.binding_generation,
+            "analyzed_at": write.updated_at,
             "attribute_type": write.attribute_type,
             "conclusion": write.conclusion,
             "confidence": write.confidence,
@@ -643,6 +725,9 @@ class AttributionRepository:
             "updated_at": write.updated_at,
         }
         updates: dict[str, object] = {
+            "attribution_skill_name": write.attribution_skill_name,
+            "binding_generation": write.binding_generation,
+            "analyzed_at": write.updated_at,
             "attribute_type": write.attribute_type,
             "conclusion": write.conclusion,
             "confidence": write.confidence,

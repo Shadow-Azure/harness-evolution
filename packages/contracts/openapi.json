@@ -994,6 +994,13 @@
         "additionalProperties": false,
         "description": "Cache reuse preview and the historical non-target reference count.",
         "properties": {
+          "bySkill": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Byskill",
+            "type": "object"
+          },
           "fresh": {
             "anyOf": [
               {
@@ -1005,6 +1012,12 @@
               }
             ],
             "title": "Fresh"
+          },
+          "missing": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Missing",
+            "type": "integer"
           },
           "nonTargetKnown": {
             "minimum": 0.0,
@@ -1417,10 +1430,6 @@
             "title": "Id",
             "type": "string"
           },
-          "isActive": {
-            "title": "Isactive",
-            "type": "boolean"
-          },
           "sizeBytes": {
             "minimum": 0.0,
             "title": "Sizebytes",
@@ -1455,7 +1464,6 @@
           "fileCount",
           "sizeBytes",
           "contentHash",
-          "isActive",
           "builtIn",
           "uploadedAt"
         ],
@@ -1466,9 +1474,6 @@
         "additionalProperties": false,
         "description": "All workspace packages and the currently effective prompt.",
         "properties": {
-          "effective": {
-            "$ref": "#/components/schemas/EffectiveAttributionSkillPackage"
-          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/AttributionSkillPackage"
@@ -1478,8 +1483,7 @@
           }
         },
         "required": [
-          "items",
-          "effective"
+          "items"
         ],
         "title": "AttributionSkillPackageList",
         "type": "object"
@@ -2715,81 +2719,6 @@
           "source"
         ],
         "title": "EffectiveAttributionSkill",
-        "type": "object"
-      },
-      "EffectiveAttributionSkillPackage": {
-        "additionalProperties": false,
-        "description": "The effective package plus its exact SKILL.md prompt.",
-        "properties": {
-          "archiveName": {
-            "title": "Archivename",
-            "type": "string"
-          },
-          "builtIn": {
-            "title": "Builtin",
-            "type": "boolean"
-          },
-          "contentHash": {
-            "title": "Contenthash",
-            "type": "string"
-          },
-          "fileCount": {
-            "minimum": 1.0,
-            "title": "Filecount",
-            "type": "integer"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "isActive": {
-            "title": "Isactive",
-            "type": "boolean"
-          },
-          "prompt": {
-            "title": "Prompt",
-            "type": "string"
-          },
-          "sizeBytes": {
-            "minimum": 0.0,
-            "title": "Sizebytes",
-            "type": "integer"
-          },
-          "skillName": {
-            "title": "Skillname",
-            "type": "string"
-          },
-          "uploadedAt": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Uploadedat"
-          },
-          "uploaderName": {
-            "title": "Uploadername",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "skillName",
-          "uploaderName",
-          "archiveName",
-          "fileCount",
-          "sizeBytes",
-          "contentHash",
-          "isActive",
-          "builtIn",
-          "uploadedAt",
-          "prompt"
-        ],
-        "title": "EffectiveAttributionSkillPackage",
         "type": "object"
       },
       "ErrorBody": {
@@ -4412,6 +4341,30 @@
         "additionalProperties": false,
         "description": "Persisted target returned to clients.",
         "properties": {
+          "attributionPackageId": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributionpackageid"
+          },
+          "attributionSkillName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributionskillname"
+          },
           "defaultRef": {
             "title": "Defaultref",
             "type": "string"
@@ -4515,6 +4468,19 @@
         "additionalProperties": false,
         "description": "Mutable target configuration accepted by create and update.",
         "properties": {
+          "attributionPackageId": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributionpackageid"
+          },
           "defaultRef": {
             "title": "Defaultref",
             "type": "string"
@@ -5730,6 +5696,18 @@
         "additionalProperties": false,
         "description": "Wizard filter condition shared by preview and launch endpoints.",
         "properties": {
+          "attributionPackageId": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributionpackageid"
+          },
           "cacheEnabled": {
             "default": true,
             "title": "Cacheenabled",
@@ -7500,6 +7478,36 @@
         "title": "ShadowMetrics",
         "type": "object"
       },
+      "SkillResourceDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "prompt",
+          "files",
+          "targets"
+        ],
+        "title": "SkillResourceDetail",
+        "type": "object"
+      },
       "SourceListResponse": {
         "additionalProperties": false,
         "description": "Source distribution ordered by total descending, then object name.",
@@ -9117,6 +9125,17 @@
             "minimum": 0.0,
             "title": "Attributed",
             "type": "integer"
+          },
+          "attributionSkillName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributionskillname"
           },
           "evolvable": {
             "description": "Attributed plus unanalyzed potential rows; the list sort key.",
@@ -14554,12 +14573,10 @@
         "tags": [
           "attribution-skill-packages"
         ]
-      }
-    },
-    "/api/workspaces/{wid}/attribution-skill-packages/{packageId}/activate": {
-      "post": {
-        "description": "Make one package effective for this workspace's package configuration.",
-        "operationId": "activate_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__activate_post",
+      },
+      "get": {
+        "description": "Return the selected package prompt, file paths and target bindings.",
+        "operationId": "get_package_detail_api_workspaces__wid__attribution_skill_packages__packageId__get",
         "parameters": [
           {
             "in": "path",
@@ -14589,7 +14606,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EffectiveAttributionSkillPackage"
+                  "$ref": "#/components/schemas/SkillResourceDetail"
                 }
               }
             },
@@ -14661,7 +14678,7 @@
             "BearerAuth": []
           }
         ],
-        "summary": "Activate Attribution Skill Package",
+        "summary": "Get Package Detail",
         "tags": [
           "attribution-skill-packages"
         ]

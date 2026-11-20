@@ -291,5 +291,9 @@ async def unbind_target_attribution_skill(
 ) -> Response:
     """Remove the target override and restore workspace/platform fallback."""
     del access
-    await skills_from(request).unbind(wid, target_id=targetId)
+    runtime: LocalAttribution | None = request.app.state.local_attribution
+    if runtime:
+        await runtime.bind(wid, targetId, "default-attribute-badcases")
+    else:
+        await skills_from(request).unbind(wid, target_id=targetId)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -10,9 +10,10 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.base import Database
 from app.db.crud.integrity import is_unique_violation
-from app.db.models.domain import agents, bad_cases, evolution_targets
+from app.db.models.domain import agents, attribution_skill_packages, bad_cases, evolution_targets
 from app.db.models.evolution import evolution_runs
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
+from app.errors import AppError, ErrorCode
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
 
@@ -36,6 +37,8 @@ class EvolutionTargetRecord:
     test_project_id: str
     enabled: bool
     workspace_id: str = DEFAULT_WORKSPACE_ID
+    attribution_package_id: str | None = None
+    attribution_skill_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +78,8 @@ def _record(row: RowMapping) -> EvolutionTargetRecord:
         validation_project_id=row["validation_project_id"],
         test_project_id=row["test_project_id"],
         enabled=bool(row["enabled"]),
+        attribution_package_id=row["attribution_package_id"],
+        attribution_skill_name=row["attribution_skill_name"],
         workspace_id=(str(workspace_id) if workspace_id is not None else DEFAULT_WORKSPACE_ID),
     )
 
@@ -155,6 +160,60 @@ class EvolutionTargetRepository:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(_record(row) for row in rows)
 
+    async def _binding(
+        self, session: Any, workspace: str, package: str, enabled: bool
+    ) -> dict[str, Any]:
+        name = "attribute-badcases"
+        if package != "default-attribute-badcases":
+            name = (
+                await session.execute(
+                    select(attribution_skill_packages.c.skill_name)
+                    .where(
+                        attribution_skill_packages.c.workspace_id == workspace,
+                        attribution_skill_packages.c.id == package,
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if name is None:
+                raise AppError(
+                    status_code=422,
+                    code=ErrorCode.ATTRIBUTION_SKILL_PACKAGE_INVALID,
+                    message="Skill package does not exist in this workspace",
+                )
+        now = now_shanghai()
+        return dict(
+            attribution_package_id=package,
+            attribution_skill_name=name,
+            attribution_generation=new_id(),
+            attribution_owner=None,
+            attribution_snapshot=None,
+            attribution_due=now if enabled else None,
+            attribution_cutoff=now,
+        )
+
+    async def bind_package(self, workspace: str, target: str, package: str) -> None:
+        async with self._database.transaction() as session:
+            table = evolution_targets
+            query = table.c.workspace_id == workspace, table.c.id == target
+            row = (
+                (await session.execute(select(table).where(*query).with_for_update()))
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                raise AppError(
+                    status_code=404,
+                    code=ErrorCode.TARGET_NOT_CONFIGURED,
+                    message="target not found",
+                )
+            if row["attribution_package_id"] != package:
+                await session.execute(
+                    update(table)
+                    .where(*query)
+                    .values(**await self._binding(session, workspace, package, row["enabled"]))
+                )
+
     async def insert(self, values: Mapping[str, object]) -> EvolutionTargetRecord:
         """Insert one configured target and surface only the stable conflict type."""
         target_id = new_id()
@@ -162,8 +221,15 @@ class EvolutionTargetRepository:
         workspace_id = str(values.get("workspace_id", DEFAULT_WORKSPACE_ID))
         async with self._database.transaction() as session:
             try:
+                binding = await self._binding(
+                    session,
+                    workspace_id,
+                    str(values.get("attribution_package_id") or "default-attribute-badcases"),
+                    bool(values["enabled"]),
+                )
                 await session.execute(
                     insert(evolution_targets).values(
+                        **binding,
                         id=target_id,
                         workspace_id=workspace_id,
                         object_type=values["object_type"],
@@ -212,6 +278,43 @@ class EvolutionTargetRepository:
         )
         async with self._database.transaction() as session:
             try:
+                existing = (
+                    (
+                        await session.execute(
+                            _scoped(
+                                select(evolution_targets).where(
+                                    evolution_targets.c.id == target_id
+                                ),
+                                workspace_ids,
+                            ).with_for_update()
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if existing is None:
+                    raise LookupError("evolution target not found")
+                package = (
+                    values.get("attribution_package_id")
+                    or existing["attribution_package_id"]
+                    or "default-attribute-badcases"
+                )
+                if package != existing["attribution_package_id"] or any(
+                    existing[k] != values[k]
+                    for k in (
+                        "enabled",
+                        "default_ref",
+                        "repo_url",
+                        "sub_dir",
+                        "object_type",
+                        "object_name",
+                    )
+                ):
+                    statement = statement.values(
+                        **await self._binding(
+                            session, existing["workspace_id"], str(package), bool(values["enabled"])
+                        )
+                    )
                 result = cast(CursorResult[object], await session.execute(statement))
             except IntegrityError as exc:
                 if not is_unique_violation(exc):

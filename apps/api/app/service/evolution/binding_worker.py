@@ -1,0 +1,146 @@
+"""Analyze the finite set of workspace cases present when a target was bound."""
+
+import asyncio
+import logging
+from dataclasses import replace
+from datetime import datetime, timedelta
+
+from app.db.crud.attributions import AttributionRepository
+from app.db.crud.binding_batches import BindingClaim, BindingQueue
+from app.service.acquisition.bad_case_sync_coordinator import BadCaseRootSyncCoordinator
+from app.service.evolution.attribution import (
+    AttributionRunner,
+    AttributionRunProgress,
+    BindingBatch,
+)
+from app.service.evolution.local_attribution import ENGINE, LocalAttribution
+from app.service.evolution.potential import MatchCondition, PotentialMatcher, resolve_policy
+from app.service.evolution.target_content import TargetVersionResolver
+from app.utils.time import SHANGHAI, now_shanghai
+
+logger = logging.getLogger(__name__)
+
+
+class BindingWorker:
+    def __init__(
+        self,
+        queue: BindingQueue,
+        acquisition: BadCaseRootSyncCoordinator,
+        runtime: LocalAttribution,
+        resolver: TargetVersionResolver,
+        matcher: PotentialMatcher,
+        reports: AttributionRepository,
+        runner: AttributionRunner,
+    ):
+        self.queue = queue
+        self.acquisition = acquisition
+        self.runtime = runtime
+        self.resolver = resolver
+        self.matcher = matcher
+        self.reports = reports
+        self.runner = runner
+        self.task: asyncio.Task[None] | None = None
+
+    def start(self) -> None:
+        self.task = asyncio.create_task(self.loop(), name="bound-skill-attribution")
+
+    async def stop(self) -> None:
+        if self.task:
+            self.task.cancel()
+            await asyncio.gather(self.task, return_exceptions=True)
+            self.task = None
+
+    async def loop(self) -> None:
+        while True:
+            try:
+                if await self.tick():
+                    continue
+            except Exception:
+                logger.exception("Target attribution queue unavailable")
+            await asyncio.sleep(2)
+
+    async def tick(self) -> bool:
+        claim = await self.queue.claim(self.runtime.settings.attribution_timeout_seconds + 180)
+        if claim is None:
+            return False
+        retry = True
+        try:
+            retry = await self.analyze(claim)
+        except Exception:
+            logger.exception("Target attribution batch failed", extra={"target_id": claim.target})
+        finally:
+            await self.queue.release(claim, retry=retry)
+        return True
+
+    async def analyze(self, claim: BindingClaim) -> bool:
+        workspace = claim.workspace
+        target = await self.runtime.targets.get(claim.target, workspace_ids=(workspace,))
+        if target is None or not target.enabled or not target.attribution_package_id:
+            return False
+        snapshot = claim.snapshot
+        if not snapshot:
+            resolved = await self.resolver.resolve(
+                object_type=target.object_type,
+                repo_url=target.repo_url,
+                sub_dir=target.sub_dir,
+                version=target.default_ref,
+            )
+            skill = await self.runtime.resolve_package(workspace, target.attribution_package_id)
+            snapshot = dict(
+                version=resolved.target_version,
+                revision=resolved.target_revision,
+                skill=skill.skill_key,
+                skillRevision=skill.revision,
+                hash=skill.content_hash,
+            )
+            if not await self.queue.update_claim(claim, attribution_snapshot=snapshot):
+                return False
+        condition = MatchCondition(
+            workspace,
+            target.object_type,
+            target.object_name,
+            snapshot["version"],
+            snapshot["revision"],
+            datetime(1970, 1, 1, tzinfo=SHANGHAI),
+            claim.cutoff,
+        )
+        association = await self.matcher.associated_sessions(condition)
+        if association.pending:
+            await self.acquisition.trigger("target_binding")
+        match = await self.matcher.potential_cases(condition, association, resolve_policy(None))
+        completed = await self.reports.latest_reports(
+            workspace,
+            target.object_type,
+            target.object_name,
+            snapshot["revision"],
+            tuple(c.bad_case_id for c in match.cases),
+            generation=claim.generation,
+        )
+        pending = [replace(c, included=True) for c in match.cases if c.bad_case_id not in completed]
+        if not pending:
+            return association.pending > 0
+        batch = BindingBatch(
+            claim.generation,
+            claim.owner,
+            workspace,
+            target.object_type,
+            target.object_name,
+            snapshot["version"],
+            snapshot["revision"],
+            target.repo_url,
+            target.sub_dir,
+            ENGINE,
+            snapshot["skill"],
+            snapshot["skillRevision"],
+            snapshot["hash"],
+        )
+
+        async def renew(_: AttributionRunProgress) -> None:
+            due = now_shanghai() + timedelta(
+                seconds=self.runtime.settings.attribution_timeout_seconds + 180
+            )
+            if not await self.queue.update_claim(claim, attribution_due=due):
+                raise LookupError("target attribution claim was superseded")
+
+        await self.runner.run(batch, pending, False, on_progress=renew)
+        return association.pending > 0
