@@ -6,7 +6,7 @@
 kind: milestone
 id: bugfix
 title: Bugfix 问题修复
-status: done
+status: active
 github:
   number: 34
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/34
