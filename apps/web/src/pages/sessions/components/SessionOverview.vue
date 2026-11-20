@@ -3,6 +3,7 @@ import type { BadCase, SessionListItem, SessionTree } from "@harness/contracts";
 import {
   computed,
   defineAsyncComponent,
+  h,
   nextTick,
   ref,
   watch,
@@ -19,9 +20,36 @@ import {
   formatTokens,
 } from "../../../utils/sessionDisplay";
 
-const AgentFlow = defineAsyncComponent(
-  () => import("../../../components/agent-tree/AgentFlow.vue"),
-);
+const AgentFlowLoading = {
+  name: "AgentFlowLoading",
+  render: () => h("div", {
+    class: "tree-loading",
+    "data-testid": "tree-loading",
+  }, [
+    h(LoadingSkeleton, {
+      label: "正在加载 Agent 执行流视图",
+      rows: 8,
+    }),
+  ]),
+};
+
+const AgentFlowError = {
+  name: "AgentFlowError",
+  render: () => h("div", {
+    class: "tree-loading tree-loading-error",
+    "data-testid": "tree-load-error",
+  }, [
+    h("strong", "Agent 执行流视图加载失败"),
+    h("span", "请刷新页面后重试。"),
+  ]),
+};
+
+const AgentFlow = defineAsyncComponent({
+  loader: () => import("../../../components/agent-tree/AgentFlow.vue"),
+  loadingComponent: AgentFlowLoading,
+  errorComponent: AgentFlowError,
+  delay: 0,
+});
 
 const props = defineProps({
   wid: {
@@ -241,17 +269,26 @@ const stats = computed<Array<{
           <strong id="agent-tree-title">Agent 执行流</strong>
           <span>默认执行序 lane DAG；结构树保留为切换视图。</span>
         </header>
-        <LoadingSkeleton
+        <div
           v-if="treeLoading"
-          label="正在读取 Agent 执行流"
-          :rows="4"
-        />
-        <ErrorState
+          class="tree-loading"
+          data-testid="tree-loading"
+        >
+          <LoadingSkeleton
+            label="正在读取 Agent 执行流"
+            :rows="4"
+          />
+        </div>
+        <div
           v-else-if="treeError"
-          code="SESSION_TREE_UNAVAILABLE"
-          message="执行流读取失败，请重试。"
-          @retry="emit('tree-retry')"
-        />
+          class="tree-loading"
+        >
+          <ErrorState
+            code="SESSION_TREE_UNAVAILABLE"
+            message="执行流读取失败，请重试。"
+            @retry="emit('tree-retry')"
+          />
+        </div>
         <template v-else-if="tree">
           <AgentFlow
             ref="agentFlowRef"
@@ -318,14 +355,29 @@ const stats = computed<Array<{
 
 <style scoped>
 .overview {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
   padding: 18px 20px;
 }
 
+.overview > :deep(.loading-state),
+.overview > :deep(.error-state) {
+  flex: 1 0 auto;
+}
+
 .overview-content {
-  display: grid;
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
   gap: 14px;
+  min-height: 0;
+}
+
+.overview-content > :deep(.problem-list) {
+  flex: 1 0 auto;
 }
 
 .overview-head {
@@ -506,6 +558,31 @@ const stats = computed<Array<{
   text-align: center;
 }
 
+.tree-panel :deep(.tree-loading) {
+  display: grid;
+  align-content: center;
+  min-height: 720px;
+  padding: 12px;
+}
+
+.tree-panel :deep(.tree-loading-error) {
+  place-content: center;
+  gap: 4px;
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: center;
+}
+
+.tree-panel :deep(.tree-loading-error strong) {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.tree-panel :deep(.tree-loading-error span) {
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
 .tree-placeholder strong {
   color: var(--text-dim);
   font-size: 13px;
@@ -520,6 +597,7 @@ const stats = computed<Array<{
 .overview-empty {
   display: grid;
   place-content: center;
+  flex: 1 0 auto;
   min-height: 320px;
   padding: 20px;
   color: var(--text-faint);
@@ -543,5 +621,8 @@ const stats = computed<Array<{
     min-height: 420px;
   }
 
+  .tree-panel :deep(.tree-loading) {
+    min-height: 420px;
+  }
 }
 </style>

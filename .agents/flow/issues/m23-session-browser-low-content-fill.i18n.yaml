@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/m23-session-browser-low-content-fill.md
+m23-session-browser-low-content-fill.md: a0fe8af84b74516cbcc8fbbae31e893af52889e3
+m23-session-browser-low-content-fill.en.md: 3be15fb5f7fa1d9e85e9e27bb63f8017dfb88c2e
