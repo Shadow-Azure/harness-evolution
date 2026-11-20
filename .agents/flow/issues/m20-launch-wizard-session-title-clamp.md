@@ -9,7 +9,7 @@ milestone: m20
 depends:
   - m10-05
 priority: P2
-status: ready
+status: done
 scope:
   - apps/web/src/pages/evolution/**
   - apps/api/app/service/evolution/**
