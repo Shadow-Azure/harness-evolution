@@ -22,6 +22,7 @@ export type ChainItem =
   | {
       kind: SessionEvent["kind"];
       name: string;
+      title?: string;
       evIdx: number;
       line: number;
       w: number;

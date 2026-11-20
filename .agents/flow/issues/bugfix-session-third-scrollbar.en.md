@@ -4,7 +4,7 @@ English | [中文](bugfix-session-third-scrollbar.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-02
+id: bugfix-04
 milestone: bugfix
 depends:
   - m22-02

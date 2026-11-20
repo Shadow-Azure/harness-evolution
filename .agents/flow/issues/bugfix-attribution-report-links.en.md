@@ -4,7 +4,7 @@ English | [中文](bugfix-attribution-report-links.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-04
+id: bugfix-06
 milestone: bugfix
 depends:
   - m21-01

@@ -82,6 +82,42 @@ describe("agent-tree chain layout", () => {
     expect(chain.items[3]).toMatchObject({ kind: "agent", line: 12, evIdx: 1 });
   });
 
+  it("labels skill and subagent triggers with their names", () => {
+    const chain = chainOf(
+      [
+        {
+          kind: "skill",
+          line: 4,
+          messageOffset: 3,
+          name: "deep-research",
+          desc: "research",
+          toolUseId: "s",
+        },
+        {
+          kind: "agent",
+          line: 12,
+          messageOffset: 7,
+          name: "code-generator",
+          desc: "Implement sliced WCS world_to_pixel fix",
+          toolUseId: "a",
+        },
+      ],
+      12,
+      measure,
+    );
+
+    expect(chain.items.find((item) => item.kind === "skill")).toMatchObject({
+      name: "deep-research",
+      title: "deep-research",
+    });
+    const agent = chain.items.find((item) => item.kind === "agent");
+    expect(agent).toMatchObject({ name: "code-generator" });
+    if (!agent || agent.kind === "gap") {
+      throw new Error("missing agent chain item");
+    }
+    expect(agent.title).toContain("Implement sliced WCS world_to_pixel fix");
+  });
+
   it("keeps a single message gap when an agent has no trigger events", () => {
     const chain = chainOf([], 17, measure);
     expect(chain.items).toEqual([{ kind: "gap", n: 17, w: expect.any(Number) }]);
