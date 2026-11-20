@@ -355,6 +355,7 @@ function move(direction: -1 | 1): void {
 
 <style scoped>
 .attribution {
+  position: relative;
   display: grid;
   gap: 13px;
   padding: 12px 18px 18px;

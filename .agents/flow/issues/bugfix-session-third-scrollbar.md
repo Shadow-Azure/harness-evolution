@@ -93,7 +93,7 @@ github:
 
 - `SessionCard.vue`：给 `.session-card` 加 `position: relative`，让卡片里的 `.sr-only` 以卡片为包含块，重新被 `.session-list` 的 `overflow-y: auto` 裁剪；不改可见布局与无障碍文案。
 - 审计 `AttributionReport.vue`、`VersionLabel.vue` 等使用 `.sr-only` 的位置：若它们位于滚动容器内且同样没有定位祖先，按相同方式收口（给最近的卡片/行容器加 `position: relative`，或把 `.sr-only` 放进一个已定位的包裹节点）；在 08 §5.5 补一句「滚动容器内的 `.sr-only` 必须有定位祖先」。
-- `tests/e2e/m3-session-browser.test.mjs`：新增 10 条 Session 的列表场景（扩 fixture 或按现有 seed 方式造数），在 1500×837 与 1440×900 断言：
+- `tests/e2e/m3-session-browser.test.mjs`：在现有 4 条 Session 的 1500×837 场景克隆到 10 张卡片（测完移除，不改共享 fixture），断言：
   - `document.scrollingElement.scrollHeight === innerHeight`；
   - `window.scrollTo(0, 500)` 后 `window.scrollY === 0`；
   - 顶层 `overflow-y: auto|scroll` 且 `scrollHeight > clientHeight + 1` 的容器恰为 `.session-list` 与 `.overview` 两个；
@@ -105,7 +105,7 @@ github:
 
 1. 给 `.session-card` 增加 `position: relative`，先在生产页面上按上述注入方式复验 `document` 回到 837。
 2. 审计其它 `.sr-only` 用法，按同一规则收口。
-3. 用 10 条 Session 扩 m3 e2e：先在未修复代码上确认变红，再修复转绿。
+3. 在 m3 e2e 克隆到 10 张卡片（测完移除）：先在未修复代码上确认变红，再修复转绿。
 4. 更新 08 §5.5 与 Agent Note。
 5. 跑门禁、取 Before / After 截图，生产硬刷新复验。
 

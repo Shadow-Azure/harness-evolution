@@ -93,7 +93,7 @@ The fix was validated in-memory on the production page: setting `position: relat
 
 - `SessionCard.vue`: add `position: relative` to `.session-card` so the card's `.sr-only` resolves its containing block to the card and is clipped again by `.session-list`'s `overflow-y: auto`; no visible layout or accessible text change.
 - Audit the other `.sr-only` sites (`AttributionReport.vue`, `VersionLabel.vue`): where they sit inside a scroll container without a positioned ancestor, apply the same containment (add `position: relative` to the nearest card/row container, or place the `.sr-only` inside an already positioned wrapper); add a line to 08 §5.5 that an `.sr-only` inside a scroll container must have a positioned ancestor.
-- `tests/e2e/m3-session-browser.test.mjs`: add a 10-Session list scenario (extend the fixture or seed the same way), and assert at 1500×837 and 1440×900:
+- `tests/e2e/m3-session-browser.test.mjs`: in the existing 4-Session 1500×837 scenario, clone the list up to 10 cards (removed after the measurement, shared fixture untouched), and assert:
   - `document.scrollingElement.scrollHeight === innerHeight`;
   - after `window.scrollTo(0, 500)`, `window.scrollY === 0`;
   - exactly two top-level `overflow-y: auto|scroll` containers with `scrollHeight > clientHeight + 1`, matching `.session-list` and `.overview`;
@@ -105,7 +105,7 @@ The fix was validated in-memory on the production page: setting `position: relat
 
 1. Add `position: relative` to `.session-card`; first validate on production by injecting it as above and confirming the document returns to 837.
 2. Audit the other `.sr-only` sites and apply the same containment.
-3. Extend m3 e2e with 10 Sessions: confirm it fails on the unfixed code, then passes after the fix.
+3. Clone the m3 list to 10 cards (removed after the measurement): confirm the assertion fails on the unfixed code, then passes after the fix.
 4. Update 08 §5.5 and the Agent Note.
 5. Run the gates, capture before/after screenshots, and re-verify production after a hard refresh.
 
