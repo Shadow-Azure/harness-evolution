@@ -1502,7 +1502,7 @@ V2 新增映射（2026-11-11）：
 }
 ```
 
-- `runtime` 与 parser 的 `runtime_key` 同一词汇表，决定 `agentMeta` 的闭集解释；未知 runtime 直接失败，不回退 Claude。
+- `runtime` 与 parser 的 `runtime_key` 同一词汇表，用于解释 `agentMeta` 的闭集；未知 runtime 的 `agentMeta` 解释直接失败，不回退 Claude。parser 仍按轨迹 `can_parse` 选型；与预声明不一致时记诊断，不按 runtime 强行选 parser。
 - `trajectory.content` 按 §10.1 的 NDJSON 规则规范化（重序列化、重复 key 拒绝、64 MiB / 单行 1 MiB / 100 万行上限）；`lineCount` 必须与规范化后的 object 数一致。
 - `schemaVersion` 主版本不匹配是稳定错误；`sessionId` 回显、`agentKind=subagent` 时的 `parentSessionId` 必须与请求和遍历父节点一致。
 - `childSessionIds` 只给一层直接子会话；BFS 的 visited、深度、数量与时间预算沿用现有 root-sync 限额。

@@ -66,7 +66,6 @@ _CLAUDE_SHAPE_MARKERS = (
     "uuid",
     "parentUuid",
     "type",
-    "message",
     "toolUseResult",
     "isSidechain",
     "agentId",
@@ -551,7 +550,10 @@ class ClaudeCodeTraceParser(BaseTraceParser):
             result_agent_id = _string(result.get("agentId"))
             for tool_use_id, block in tool_results:
                 tool_name, tool_input = ctx.tool_inputs.get(tool_use_id, (None, {}))
-                if result_agent_id is not None:
+                if (
+                    result_agent_id is not None
+                    and ctx.tool_trigger_kinds.get(tool_use_id) == "agent"
+                ):
                     ctx.agent_result_ids[tool_use_id] = result_agent_id
                 if result:
                     evidence = _file_evidence(

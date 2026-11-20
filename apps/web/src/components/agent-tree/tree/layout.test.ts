@@ -160,6 +160,43 @@ describe("agent-tree graph layout", () => {
     expect(nodes.get("main")?.data.relationConfidence ?? null).toBeNull();
   });
 
+  it("does not flag a completed child as missing its report just because the link is derived", () => {
+    const tree = {
+      sessionId: "derived-completed",
+      agents: [
+        agent({
+          agentId: "main",
+          events: [
+            {
+              kind: "agent",
+              line: 20,
+              messageOffset: 20,
+              name: "子 Agent",
+              desc: "子任务",
+              toolUseId: "tool-a",
+              relationConfidence: "derived",
+            },
+          ],
+        }),
+        agent({
+          agentId: "agent-a",
+          parentAgentId: "main",
+          kind: "subagent",
+          label: "子 Agent",
+          toolUseId: "tool-a",
+          executionOutcome: "completed",
+          endReason: "end_turn",
+        }),
+      ],
+      badCases: [],
+    };
+
+    const nodes = nodeMap(buildGraph(tree, new Set(["main"]), measure));
+
+    expect(nodes.get("agent-a")?.data.relationConfidence).toBe("derived");
+    expect(nodes.get("agent-a")?.data.completionWarning).toBeNull();
+  });
+
   it("collapses more than eight siblings until the parent is expanded", () => {
     const collapsed = buildGraph(demoNestedTree, new Set(), measure);
     const collapsedNodes = nodeMap(collapsed);

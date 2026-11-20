@@ -14,6 +14,7 @@ status: ready
 scope:
   - apps/api/app/service/acquisition/**
   - apps/api/tests/**
+  - apps/web/src/components/agent-tree/**
   - tests/**
   - docs/**
   - plans/**

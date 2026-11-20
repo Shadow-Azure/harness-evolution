@@ -198,7 +198,7 @@ agent 写入时一并落 `model` / `requested_model` / `name` / `skill_name` / `
 ```
 
 - `Workflow` 调用建 `kind=workflow` 的合成节点（`agent_id=wf_...`、`lines=0`、`messages_count=0`）；workflow 内部的子 agent 是 `kind=subagent`、`agent_type=workflow-subagent`，`parent_agent_id` 指向 workflow 节点。
-- 普通子 agent 的父调用来自 `meta.toolUseId`；teammate（`task_kind=in_process_teammate`）没有 toolUseId，挂到 main 并保留 `team_name`；forked skill（`task_kind=forked_skill`）用 `skillName` 找父 Skill 事件。
+- 普通子 agent 的父调用优先来自 `meta.toolUseId`；envelope 缺 `toolUseId` 时用父 `toolUseResult.agentId` ↔ 子 JSONL `agentId` 生成 derived 链接，仍无/歧义才走 synthetic；teammate（`task_kind=in_process_teammate`）没有 toolUseId，挂到 main 并保留 `team_name`；forked skill（`task_kind=forked_skill`）用 `skillName` 找父 Skill 事件。
 - 普通 skill 不建节点：`Skill` 调用只写 `agent_events`；仅 forked skill（有独立转录）建 `agents` 行，`task_kind=forked_skill`、`skill_name` 非空、`name` 为空。
 - 子 agent 的 `sessionId` 与主 agent 相同，不能靠 sessionId 找父；必须用 meta / `agentId`。
 
@@ -223,7 +223,7 @@ async def run_sync(job_id: str) -> SyncResult:
                 upsert_derived(sr, transcript)             # 业务表
                 await source_records.mark_processed(
                     sr.id, p.content_hash, parser.parser_version, job_id)
-            await upsert_links(result.links)               # 父子链接/关系置信度
+            # 父子链接随 assembled tree 写入业务表，不单独落表。
         await jobs.update_progress(job_id, (i + 1) / max(len(roots), 1))
 
 async def pull(job_id: str, session_ids: list[str] | None = None,
@@ -234,6 +234,7 @@ async def pull(job_id: str, session_ids: list[str] | None = None,
     return await run_sync(job_id)                           # 走同一管线
 ```
 
+- 真实实现入口是 `replay.py`：取齐 root payloads 后 `for_trace` + `normalize_session`，把 `{root: links}` 传给 `assemble_agent_trees` 后整体持久化；上面的 `run_sync` 是服务层伪代码，`upsert_links` 一类辅助名不是现有函数。
 - **payload 只存一份**：`trajectory_payloads`；`source_records` 不再有 `payload/content_hash/source_ref`。
 - 单条失败不中断整批（记 `errors`），全部完成 `status=completed`（有错误也 completed）。
 - 进度每 5 条或 500ms 发一次。

@@ -254,6 +254,7 @@ class ParseContext:
     last_stop_reason: str | None = None
     open_tool_uses: dict[str, int] = field(default_factory=dict)
     tool_inputs: dict[str, tuple[str | None, dict[str, object]]] = field(default_factory=dict)
+    tool_trigger_kinds: dict[str, str] = field(default_factory=dict)
     tool_call_positions: dict[str, ToolCallPosition] = field(default_factory=dict)
     knowledge_tool_ids: set[str] = field(default_factory=set)
     evidence: list[TraceEvidence] = field(default_factory=list)
@@ -460,6 +461,8 @@ class ParseContext:
             message_offset=message_offset,
             triggered_at=triggered_at,
         )
+        if tool_use_id is not None and trigger_kind is not None:
+            self.tool_trigger_kinds[tool_use_id] = trigger_kind
         if trigger_kind is None:
             return
         self.events.append(
@@ -655,12 +658,18 @@ class BaseTraceParser(ABC):
                 "MODEL_EVIDENCE_CONFLICT",
                 "Requested and reported models disagree; both were kept separately",
             )
+        if payload.runtime_key != self.runtime_key:
+            ctx.issue(
+                0,
+                "RUNTIME_SHAPE_MISMATCH",
+                f"Payload runtime {payload.runtime_key} was parsed by {self.runtime_key}",
+            )
         events = _resolve_event_revisions(_ordered_events(tuple(ctx.events)), ctx)
         return ParsedTranscript(
             root_session_id=payload.root_session_id,
             agent_id=payload.agent_id,
             agent_kind=payload.agent_kind,
-            runtime_key=self.runtime_key,
+            runtime_key=payload.runtime_key,
             parser_version=self.parser_version,
             agent_type=ctx.facts.agent_type,
             task_kind=ctx.facts.task_kind,

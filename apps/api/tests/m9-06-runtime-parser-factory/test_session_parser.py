@@ -231,6 +231,13 @@ def test_claude_can_parse_accepts_claude_shape_and_rejects_others() -> None:
     with pytest.raises(UnsupportedTraceRuntime):
         TraceParserFactory.for_trace((arbitrary,))
 
+    generic_message = payload(
+        jsonl({"type": "message", "message": {"content": "not Claude"}}),
+        runtime_key="codex",
+    )
+    with pytest.raises(UnsupportedTraceRuntime):
+        TraceParserFactory.for_trace((generic_message,))
+
     malformed = payload(jsonl("{not-json}", 42))
     with pytest.raises(UnsupportedTraceRuntime):
         TraceParserFactory.for_trace((malformed,))
@@ -242,6 +249,17 @@ def test_for_trace_selects_by_content_not_runtime_key() -> None:
         parser = TraceParserFactory.for_trace((event_payload(),))
     assert isinstance(parser, EventTraceParser)
     assert parser.runtime_key == "event-runtime"
+
+
+def test_trace_shape_selection_keeps_payload_identity_and_reports_mismatch() -> None:
+    """A shape-selected parser records a diagnostic when the payload runtime differs."""
+    item = payload(claude_main(), runtime_key="codex")
+    parser = TraceParserFactory.for_trace((item,))
+
+    result = parser.normalize_session()
+
+    assert result.transcripts[0].runtime_key == "codex"
+    assert any(issue.code == "RUNTIME_SHAPE_MISMATCH" for issue in result.transcripts[0].issues)
 
 
 def test_for_trace_rejects_ambiguity_without_registration_order_fallback() -> None:
@@ -352,6 +370,52 @@ def test_three_subagents_attach_to_real_parent_calls_as_derived() -> None:
         if event.name == "synthetic-agent" or (event.tool_use_id or "").startswith("synthetic-")
     ]
     assert not [issue for issue in assembled.issues if issue.code == "MISSING_PARENT_TOOL_USE_ID"]
+
+
+def test_agent_id_on_a_non_agent_tool_result_is_not_a_link() -> None:
+    """Only Agent calls may turn a record-level agentId into a parent claim."""
+    main = payload(
+        jsonl(
+            {
+                "type": "assistant",
+                "sessionId": ROOT_ID,
+                "message": {
+                    "id": "main-message",
+                    "model": "claude-main",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "tool-read",
+                            "name": "Read",
+                            "input": {"file_path": "/workspace/read.md"},
+                        },
+                    ],
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            },
+            {
+                "type": "user",
+                "sessionId": ROOT_ID,
+                "toolUseResult": {"agentId": CALLS["call_agent_codegen"]},
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "tool-read",
+                            "content": "ok",
+                        },
+                    ],
+                },
+            },
+        ),
+    )
+    child = claude_child(CALLS["call_agent_codegen"])
+    parser = TraceParserFactory.create("claude-code", (main, child))
+
+    result = parser.normalize_session()
+
+    assert result.links == ()
+    assert result.transcripts[0].agent_result_ids == {}
 
 
 def test_existing_authoritative_parent_is_not_overridden() -> None:
