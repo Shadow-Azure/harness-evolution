@@ -299,9 +299,13 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
         const workspace = page?.querySelector("[data-testid='run-workspace']");
         const head = page?.querySelector(".detail-head");
         if (!page || !info || !progress || !workspace || !head) return null;
+        const infoText = info.textContent;
+        // The info panel first renders run stats, then fills the attribution
+        // rows (non-target / cached / fresh) from the step request.
+        if (!infoText.includes("5 / 1") || !infoText.includes("本次新增 3")) return null;
         return {
           head: head.textContent,
-          infoText: info.textContent,
+          infoText,
           infoBeforeProgress: Boolean(
             info.compareDocumentPosition(progress) & Node.DOCUMENT_POSITION_FOLLOWING,
           ),
