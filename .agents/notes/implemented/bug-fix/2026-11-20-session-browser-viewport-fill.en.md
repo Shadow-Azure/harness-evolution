@@ -14,7 +14,7 @@ The current main Session shell already fixes its height to `100vh - header`, the
 
 The Session page owns the viewport height: `.session-browser` uses `100dvh` minus the shell header (with a `100vh` fallback) and keeps `min-height: 0` and `overflow: hidden`. Document scrolling stays disabled; the left `.sidebar` and right `.overview` remain the only scroll containers.
 
-The right `.overview` becomes a column flex container whose `.overview-content` fills the available height, and the trailing problem list fills the remaining height while the content is shorter than the viewport. When content is taller, the list keeps its natural height and `.overview` scrolls. The fill applies to containers, not to problem-card bodies.
+The right `.overview` stays a block scroll container; `.overview-content` becomes a column flex container that fills the available height with `min-height: 100%`, and the trailing problem list fills the remaining height while the content is shorter than the viewport. When content is taller, the list keeps its natural height and `.overview` scrolls. The fill applies to containers, not to problem-card bodies.
 
 The async execution-flow chunk gets loading and failure components, both keeping a prototype-scale full-height placeholder (720px desktop, 420px narrow); the data loading, failure, and no-data branches of the flow itself use the same placeholder. The right column therefore never ends early while the chunk is pending, after a request failure, or when no flow exists. At ≤860px the page keeps its single-column natural height without the fixed viewport.
 
@@ -31,4 +31,5 @@ The async execution-flow chunk gets loading and failure components, both keeping
 - While the flow chunk is pending on first paint, a full-height skeleton is shown instead of blank; a failed chunk shows "execution flow view failed to load" instead of silently collapsing.
 - The flow placeholder is 720px, so a low-content first paint is briefly taller than the final layout and the page contracts once the chunk arrives; this is the cost of keeping prototype-scale space.
 - The full-page scroll and 300–550px band in the production capture do not reproduce on current main; this change fixes the reproducible right-column collapse and low-content fill. The production build and hash still need confirmation on the deployment side.
+- The parent `.workspace-main` still uses `100vh`; on dynamic-toolbar browsers wider than 860px the Session page and the shell can differ by one background strip. Unifying them needs a shell-level change, which was left out of scope.
 - Mobile behavior is unchanged; problem-list data, filters, and card structure are unchanged.

@@ -48,9 +48,9 @@ github:
 
 - `apps/web/src/pages/sessions/Index.vue`：`.session-browser` 增加 `100dvh` 高度（保留 `100vh` 回退）与 `min-height: 0`；右栏兜底错误态补 `min-height: 0`。
 - `apps/web/src/pages/sessions/components/SessionOverview.vue`：`.overview` 改纵向 flex 且 `min-height: 0`；`.overview-content` 占满可用高度；最后一个 `.problem-list` 用 `flex: 1 0 auto` 在内容不足一屏时填满剩余高度；整体骨架 / 错误态与空态也参与填充。
-- 同一组件：AgentFlow 的异步分片增加 loading / error 组件；执行流接口加载、失败与无数据分支统一使用桌面 720px、窄屏 420px 的 `.tree-loading` 占位，异步分片失败时显示失败提示而不是空白。
+- 同一组件：AgentFlow 的异步分片增加 loading / error 组件，抽到 `agentFlowPlaceholder.ts` 并补组件测试；执行流接口加载、失败与无数据分支统一使用桌面 720px、窄屏 420px 的 `.tree-loading` 占位，异步分片失败时显示失败提示而不是空白。
 - `tests/e2e/m3-session-browser.test.mjs`：把低内容布局断言并入现有 Session 浏览器用例，断言 1500×837 文档不滚动、两栏底边贴视口、滚到底后最后内容距视口底 ≤24px；切到 1500×1100 后问题列表填满剩余高度且同样 ≤24px。
-- `plans/fullstack-design/08-frontend-implementation.md`、V2 原型与 Agent Note 同步壳层与填充口径。
+- `plans/fullstack-design/08-frontend-implementation.md` 与 Agent Note 同步壳层与填充口径；V2 原型作为参考，未改动。
 
 ## 实施步骤
 
@@ -58,7 +58,7 @@ github:
 2. 把右栏改为可填充的纵向 flex 容器，最后一个问题列表在低内容时占满剩余高度。
 3. 为执行流的异步分片、接口加载、接口失败与无数据状态补齐全高占位。
 4. 在 `tests/e2e/m3-session-browser.test.mjs` 增加 1500×837 与 1500×1100 的低内容回归。
-5. 更新设计文档、V2 原型口径与 Agent Note，生成 Before / After 与原型对照证据。
+5. 更新设计文档与 Agent Note，生成 Before / After 与原型对照证据；V2 原型作为参考，未改动。
 
 ## 依赖与交付边界
 
@@ -95,7 +95,7 @@ pnpm lint:docs
 - `pnpm typecheck:web`、`pnpm lint:web`、`pnpm test:web`。
 - `node --test tests/e2e/m3-session-browser.test.mjs` 与 CI 全量 E2E。
 - `pnpm verify:flow`、`pnpm lint:docs`、`pnpm verify:web-style`。
-- 提交与 PR 标题挂本 issue 的 `(#N)`；PR 关联 M23 milestone。
+- 提交与 PR 标题挂本 issue 的 `(#N)`；PR 关联 M22 milestone。
 
 ## 非目标
 

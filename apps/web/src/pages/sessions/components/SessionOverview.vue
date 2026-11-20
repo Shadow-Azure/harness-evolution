@@ -3,7 +3,6 @@ import type { BadCase, SessionListItem, SessionTree } from "@harness/contracts";
 import {
   computed,
   defineAsyncComponent,
-  h,
   nextTick,
   ref,
   watch,
@@ -13,36 +12,16 @@ import BadCaseList from "../../../components/bad-cases/BadCaseList.vue";
 import { workspacePath } from "../../../router/workspace";
 import ErrorState from "../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
+import {
+  AgentFlowError,
+  AgentFlowLoading,
+} from "./agentFlowPlaceholder";
 import StatStrip from "../../../components/ui/StatStrip.vue";
 import {
   formatDuration,
   formatStartedAt,
   formatTokens,
 } from "../../../utils/sessionDisplay";
-
-const AgentFlowLoading = {
-  name: "AgentFlowLoading",
-  render: () => h("div", {
-    class: "tree-loading",
-    "data-testid": "tree-loading",
-  }, [
-    h(LoadingSkeleton, {
-      label: "正在加载 Agent 执行流视图",
-      rows: 8,
-    }),
-  ]),
-};
-
-const AgentFlowError = {
-  name: "AgentFlowError",
-  render: () => h("div", {
-    class: "tree-loading tree-loading-error",
-    "data-testid": "tree-load-error",
-  }, [
-    h("strong", "Agent 执行流视图加载失败"),
-    h("span", "请刷新页面后重试。"),
-  ]),
-};
 
 const AgentFlow = defineAsyncComponent({
   loader: () => import("../../../components/agent-tree/AgentFlow.vue"),
@@ -165,7 +144,7 @@ async function selectBadCase(badCaseId: string) {
   activeBadCaseId.value = badCaseId;
   emit("badcase-select", badCaseId);
   await nextTick();
-  await agentFlowRef.value?.locateBadCase(badCaseId);
+  await agentFlowRef.value?.locateBadCase?.(badCaseId);
   await nextTick();
   badCaseListRef.value?.scrollToProblem(badCaseId);
 }
@@ -355,8 +334,6 @@ const stats = computed<Array<{
 
 <style scoped>
 .overview {
-  display: flex;
-  flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
@@ -365,15 +342,14 @@ const stats = computed<Array<{
 
 .overview > :deep(.loading-state),
 .overview > :deep(.error-state) {
-  flex: 1 0 auto;
+  min-height: 100%;
 }
 
 .overview-content {
   display: flex;
-  flex: 1 0 auto;
   flex-direction: column;
   gap: 14px;
-  min-height: 0;
+  min-height: 100%;
 }
 
 .overview-content > :deep(.problem-list) {
@@ -597,8 +573,7 @@ const stats = computed<Array<{
 .overview-empty {
   display: grid;
   place-content: center;
-  flex: 1 0 auto;
-  min-height: 320px;
+  min-height: 100%;
   padding: 20px;
   color: var(--text-faint);
   font-size: 12px;

@@ -48,9 +48,9 @@ The current main Session shell already fixes its height to `100vh - header`, the
 
 - `apps/web/src/pages/sessions/Index.vue`: add a `100dvh` height to `.session-browser` (keeping the `100vh` fallback) and `min-height: 0`; add `min-height: 0` to the right-column fallback error state.
 - `apps/web/src/pages/sessions/components/SessionOverview.vue`: make `.overview` a column flex container with `min-height: 0`; `.overview-content` fills the available height; the trailing `.problem-list` uses `flex: 1 0 auto` to fill the remaining height when content is short; the top-level skeleton / error and empty states also participate in the fill.
-- Same component: add loading / error components to the async AgentFlow chunk; use one `.tree-loading` placeholder at 720px desktop and 420px narrow for request loading, failure, and no-data; a failed chunk shows a failure message instead of blank.
+- Same component: add loading / error components to the async AgentFlow chunk, extracted to `agentFlowPlaceholder.ts` with component tests; use one `.tree-loading` placeholder at 720px desktop and 420px narrow for request loading, failure, and no-data; a failed chunk shows a failure message instead of blank.
 - `tests/e2e/m3-session-browser.test.mjs`: fold the low-content layout assertions into the existing Session browser case, asserting that at 1500×837 the document does not scroll, both column bottoms match the viewport, and the last content after scrolling to the bottom is within 24px of the viewport bottom; after switching to 1500×1100, the problem list fills the remaining height with the same 24px spacing.
-- Sync the shell and fill rules in `plans/fullstack-design/08-frontend-implementation.md`, the V2 prototype, and the Agent Note.
+- Sync the shell and fill rules in `plans/fullstack-design/08-frontend-implementation.md` and the Agent Note; the V2 prototype is the reference and is unchanged.
 
 ## Implementation steps
 
@@ -58,7 +58,7 @@ The current main Session shell already fixes its height to `100vh - header`, the
 2. Make the right column a fillable column flex container so the trailing problem list fills the remaining height at low content.
 3. Add the full-height placeholder for the flow async chunk, request loading, failure, and no-data states.
 4. Add the 1500×837 and 1500×1100 low-content regressions in `tests/e2e/m3-session-browser.test.mjs`.
-5. Update the design document, V2 prototype rules, and Agent Note; produce Before / After and prototype-reference evidence.
+5. Update the design document and Agent Note; produce Before / After and prototype-reference evidence. The V2 prototype is the reference and is unchanged.
 
 ## Dependencies and boundary
 
@@ -95,7 +95,7 @@ pnpm lint:docs
 - `pnpm typecheck:web`, `pnpm lint:web`, `pnpm test:web`.
 - `node --test tests/e2e/m3-session-browser.test.mjs` and the full CI E2E suite.
 - `pnpm verify:flow`, `pnpm lint:docs`, `pnpm verify:web-style`.
-- Commit and PR titles carry this issue's `(#N)`; the PR is linked to the M23 milestone.
+- Commit and PR titles carry this issue's `(#N)`; the PR is linked to the M22 milestone.
 
 ## Non-goals
 

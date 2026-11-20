@@ -450,6 +450,7 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
       })()`,
       "low-content Session layout",
     );
+    assert.equal(lowContent.innerHeight, 837, JSON.stringify(lowContent));
     assert.equal(
       lowContent.documentScrollHeight,
       lowContent.innerHeight,
@@ -507,6 +508,7 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
       })()`,
       "tall viewport layout",
     );
+    assert.equal(tallContent.innerHeight, 1100, JSON.stringify(tallContent));
     assert.equal(
       tallContent.documentScrollHeight,
       tallContent.innerHeight,

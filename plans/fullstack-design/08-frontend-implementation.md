@@ -481,9 +481,9 @@ Index.vue
 
 会话浏览页根节点 `.session-browser` 固定为窗口高度：`calc(100dvh - var(--shell-header-height))`，以 `100vh` 作为旧浏览器回退，并保持 `min-height: 0; overflow: hidden`。文档本身不滚动，左栏 `.sidebar` 与右栏 `.overview` 各自是唯一的滚动容器。
 
-右栏 `.overview` 是纵向 flex 容器，`.overview-content` 撑满可用高度；最后一个问题列表在内容不足一屏时占满剩余高度，底部与视口保持 24px 以内间距；内容超过一屏时问题列表保持自然高度，由 `.overview` 内部滚动。Agent 执行流在数据加载、请求失败与无数据三种状态下都保留与原型 `rf-canvas` 同量级的全高占位（桌面 720px、窄屏 420px），异步分片加载失败时显示失败提示；执行流数据到达后按自身高度渲染，不因异步分片未到而提前结束内容。
+右栏 `.overview` 保持块级滚动容器，`.overview-content` 是纵向 flex 容器并以 `min-height: 100%` 撑满可用高度；最后一个问题列表在内容不足一屏时占满剩余高度，底部与视口保持 24px 以内间距；内容超过一屏时问题列表保持自然高度，由 `.overview` 内部滚动。Agent 执行流在接口加载、接口失败、无数据，以及异步分片加载、异步分片失败五种状态下都保留与原型 `rf-canvas` 同量级的全高占位（桌面 720px、窄屏 420px）；分片失败显示可读的失败提示。执行流数据到达后按自身高度渲染，不因异步分片未到而提前结束内容。
 
-移动端（≤860px）保持单列、自然高度与 `overflow: visible`，与原型窄屏行为一致。
+移动端（≤860px）保持单列、自然高度与 `overflow: visible`，与原型窄屏行为一致。父级 `.workspace-main` 仍按 `100vh` 约束：桌面 `dvh` 与 `vh` 一致，移动端由窄屏规则接管，本次不改共享壳层。
 
 ## 6. 工作空间总览页（`pages/overview/Index.vue`，V2）
 
