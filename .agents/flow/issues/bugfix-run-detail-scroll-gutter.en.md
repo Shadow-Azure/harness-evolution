@@ -13,6 +13,7 @@ status: ready
 scope:
   - apps/web/**
   - tests/e2e/**
+  - plans/**
   - scripts/doc-budgets.manifest.json
   - .agents/**
 adr: []
