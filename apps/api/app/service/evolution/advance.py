@@ -279,7 +279,7 @@ class EvolutionJobLifecycle:
             active = {
                 summary.run.id
                 for summary in summaries
-                if summary.run.status in {"preparing", "running", "blocked"}
+                if summary.run.status in {"preparing", "running", "blocked", "interrupted"}
             }
             self._workspaces.cleanup_workspaces(
                 active_run_ids=active,
