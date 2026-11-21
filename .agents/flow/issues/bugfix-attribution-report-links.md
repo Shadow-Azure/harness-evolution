@@ -9,7 +9,7 @@ milestone: bugfix
 depends:
   - m21-01
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - apps/web/**
@@ -103,3 +103,9 @@ pnpm lint:docs
 - 不重排第 4 步表格，不改列顺序、统计口径或 styles token。
 - 不把生产截图或 Session 内容提交进仓库；证据只放 issue / Release / PR 描述。
 - 不为历史缺失 Session 的数据伪造链接；legacy 行只使用真实 `probe_session_id`。
+
+## 闭环记录
+
+- PR [#448](https://github.com/Shadow-Azure/harness-evolution/pull/448) 已合入（merge commit `cde61ac0`）；第 4 步两列深链、组件/API/E2E 回归与视觉证据随合并进入 `main`。
+- `main` 的 CI 与 Deploy 均通过；2026-11-21 将本流程条目标为 `done` 并关闭 GitHub #443。
+

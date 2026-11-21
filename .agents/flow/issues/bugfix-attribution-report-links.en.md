@@ -9,7 +9,7 @@ milestone: bugfix
 depends:
   - m21-01
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - apps/web/**
@@ -103,3 +103,9 @@ pnpm lint:docs
 - Do not rearrange the step-4 table, column order, statistic definitions or style tokens.
 - Do not commit production screenshots or Session content; evidence stays in the issue / Release / PR description.
 - Do not fabricate links for historical rows without a Session; legacy rows use only the real `probe_session_id`.
+
+## Closure record
+
+- PR [#448](https://github.com/Shadow-Azure/harness-evolution/pull/448) merged (merge commit `cde61ac0`); the two step-4 deep-link columns, the component/API/E2E regressions and the visual evidence are on `main`.
+- `main` CI and Deploy both pass; on 2026-11-21 this flow entry is marked `done` and GitHub #443 is closed.
+
