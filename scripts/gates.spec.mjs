@@ -656,12 +656,19 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   assert.match(rootPackage.scripts["verify:local-data"], /verify-local-data\.mjs/);
   assert.match(rootPackage.scripts["test:all"], /test:e2e/);
   assert.match(rootPackage.scripts["test:all"], /fixtures:check/);
+  assert.match(rootPackage.scripts["test:api"], /run-api\.mjs test$/);
+  assert.match(rootPackage.scripts["test:api:serial"], /run-api\.mjs test:serial/);
   assert.match(webPackage.scripts.test, /--coverage/);
   assert.match(rootPackage.scripts["lint:web"], /filter @harness\/web lint/);
   assert.match(rootPackage.scripts["typecheck:web"], /filter @harness\/web typecheck/);
   assert.match(rootPackage.scripts["verify:web-style"], /verify-web-style\.mjs/);
   assert.match(rootPackage.scripts["verify:bundle"], /verify-bundle\.mjs/);
-  assert.match(ci, /run: pnpm test$/m);
+  assert.match(ci, /^\s+pnpm test:web$/m);
+  assert.match(ci, /pnpm test:api -- -n \d+/);
+  assert.ok(ci.includes("unit-tests-api:"), "API 单测 lane 必须存在");
+  const ciOkNeeds = ci.slice(ci.indexOf("ci-ok:"));
+  assert.match(ciOkNeeds, /unit-tests-web/);
+  assert.match(ciOkNeeds, /unit-tests-api/);
   assert.match(ci, /run: pnpm test:db$/m);
   assert.match(ci, /run: pnpm test:db:mysql$/m);
   assert.match(ci, /run: pnpm test:integration$/m);
@@ -700,6 +707,11 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   }
   const backendThreshold = Number(/fail_under = (\d+)/.exec(apiCoverage)?.[1]);
   assert.ok(backendThreshold >= 80);
+  assert.match(apiCoverage, /pytest-xdist/);
+  assert.match(apiCoverage, /pytest-cov/);
+  assert.match(apiRunner, /--cov=app/);
+  assert.match(apiRunner, /--cov-fail-under=90/);
+  assert.match(apiRunner, /--durations=25/);
   assert.match(apiRunner, /HE_DOCS_ENABLED.*true/);
 });
 

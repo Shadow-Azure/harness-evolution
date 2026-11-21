@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import subprocess
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +25,7 @@ from app.third_party_api.git.workspace import (
     GitProcessResult,
     GitWorkspaceManager,
     Patch,
+    _run_process,
     retry_push,
 )
 
@@ -1057,34 +1060,66 @@ async def test_git_timeout_terminates_the_process_group_before_returning(
     tmp_path: Path,
 ) -> None:
     """A timed-out command cannot keep producing side effects during a later retry."""
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init")
+    started = tmp_path / "process-started"
     marker = tmp_path / "late-side-effect"
     script = tmp_path / "slow-git"
     script.write_text(
         (
             "#!/bin/sh\n"
-            'touch "$(dirname "$0")/process-started"\n'
+            f'echo $$ > "{started}"\n'
             "trap '' HUP PIPE TERM\n"
-            '(sleep 4; touch "$(dirname "$0")/late-side-effect") &\n'
+            f'(sleep 3; touch "{marker}") &\n'
             "wait\n"
         ),
         encoding="utf-8",
     )
     script.chmod(0o755)
-    _git(repo, "config", "alias.delayed", f"!{script}")
+
+    async def runner(_argv: Sequence[str], cwd: Path | None) -> GitProcessResult:
+        return await _run_process((str(script),), cwd)
+
     manager = GitWorkspaceManager(
         repos_root=tmp_path / "repos",
         workspaces_root=tmp_path / "workspaces",
+        runner=runner,
         timeout_seconds=2.0,
     )
+    loop = asyncio.get_running_loop()
+    command = asyncio.create_task(
+        manager._git(tmp_path, ("git", "delayed"), stage="workspace"),
+    )
+    try:
+        # Poll for readiness instead of sleeping a fixed interval: under a loaded
+        # xdist worker the shell may start later than the 2 s command timeout.
+        deadline = loop.time() + 10.0
+        while not started.exists():
+            assert loop.time() < deadline, "the timed-out command never started"
+            await asyncio.sleep(0.01)
+        ready_at = loop.time()
 
-    with pytest.raises(GitOperationError, match="workspace operation failed"):
-        await manager._git(repo, ("git", "delayed"), stage="workspace")
-    await asyncio.sleep(4.5)
+        with pytest.raises(GitOperationError, match="workspace operation failed"):
+            await command
+    finally:
+        if not command.done():
+            command.cancel()
 
-    assert (tmp_path / "process-started").exists()
+    process_group = int(started.read_text(encoding="utf-8").strip())
+
+    # Timeout returns only after the whole process group is gone, so the
+    # background `sleep 3` child of the script cannot touch the marker.
+    deadline = loop.time() + 5.0
+    while True:
+        try:
+            os.killpg(process_group, 0)
+        except ProcessLookupError:
+            break
+        assert loop.time() < deadline, "timed-out process group survived before returning"
+        await asyncio.sleep(0.01)
+    # The side effect was due 3 s after the script started; observe that full
+    # window so a surviving child would be caught, not just the return moment.
+    while loop.time() < ready_at + 3.5:
+        assert not marker.exists(), "a timed-out command kept producing side effects"
+        await asyncio.sleep(0.02)
     assert not marker.exists()
 
 

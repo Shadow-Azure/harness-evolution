@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/bugfix-ci-unit-tests-duration.md
+bugfix-ci-unit-tests-duration.md: 4f3a7f3306c5b3618bea2dabf2ebed04e03f2eee
+bugfix-ci-unit-tests-duration.en.md: d2c0b5294ec005f761da37cdeaa39b98db4ad023
