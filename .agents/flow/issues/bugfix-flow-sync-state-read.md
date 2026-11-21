@@ -13,7 +13,9 @@ scope:
   - scripts/flow-sync.mjs
   - scripts/gates.spec.mjs
   - .agents/**
-adr: []
+  - plans/**
+adr:
+  - ../../notes/implemented/bug-fix/2026-11-21-flow-sync-state-read.md
 github:
   number: 458
   url: https://github.com/Shadow-Azure/harness-evolution/issues/458

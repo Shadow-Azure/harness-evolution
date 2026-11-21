@@ -85,6 +85,42 @@ function gh(args) {
   return execFileSync("gh", args, { encoding: "utf8" }).trim();
 }
 
+/** 调用 gh 并解析 JSON 输出；需要字段时从返回对象取，别再对字符串取属性。 */
+function ghJson(args) {
+  return JSON.parse(gh(args));
+}
+
+/**
+ * 解析 gh 输出的状态：必须解析出字符串 `state`，否则抛错。缺字段时静默退化为
+ * `undefined` 会让同步把每个对象都判成漂移、重复 PATCH。
+ * @param {string} output gh 原始 JSON stdout。
+ * @returns {string} 远端状态（issue 为 OPEN/CLOSED，milestone 为 open/closed）。
+ */
+function parseState(output) {
+  const { state } = JSON.parse(output);
+  if (typeof state !== "string" || state === "") throw new Error(`gh 状态输出缺 state 字段：${output.slice(0, 200)}`);
+  return state;
+}
+
+/**
+ * 构造远端状态读取器：gh 返回的是 JSON 字符串，必须先解析再取 `state`。
+ * 直接对字符串取 `.state` 恒为 undefined，会让 runSync 对每个带编号对象都
+ * 判成漂移并重复 PATCH。`run` 可注入，供门禁自测喂入原始 gh 输出。
+ * @param {string} repo owner/name 形式的仓库名。
+ * @param {(args: string[]) => string} [run] 返回 gh 原始 stdout 的执行器。
+ * @returns {{readMilestoneState: (milestone: object) => string, readIssueState: (issue: object) => string}} 状态读取器。
+ */
+export function githubStateReaders(repo, run = gh) {
+  return {
+    readMilestoneState(milestone) {
+      return parseState(run(["api", `repos/${repo}/milestones/${milestone.data.github.number}`]));
+    },
+    readIssueState(issue) {
+      return parseState(run(["issue", "view", String(issue.data.github.number), "--repo", repo, "--json", "state"]));
+    },
+  };
+}
+
 /** issue 的中文标题 = base 侧 H1。 */
 function titleOf(content) {
   const m = /^# (.+)$/m.exec(content);
@@ -162,8 +198,7 @@ async function main() {
   }
   const created = await runSync(tree, {
     createMilestone(milestone) {
-      const out = gh(["api", `repos/${repo}/milestones`, "-f", `title=${milestone.data.title}`, "-f", "state=open"]);
-      const { number } = JSON.parse(out);
+      const { number } = ghJson(["api", `repos/${repo}/milestones`, "-f", `title=${milestone.data.title}`, "-f", "state=open"]);
       return { number, url: `https://github.com/${repo}/milestone/${number}` };
     },
     createIssue(issue, milestone) {
@@ -178,17 +213,12 @@ async function main() {
       return { number, url };
     },
     backfill,
-    readMilestoneState(milestone) {
-      return gh(["api", `repos/${repo}/milestones/${milestone.data.github.number}`]).state;
-    },
+    ...githubStateReaders(repo),
     updateMilestoneState(milestone, state) {
       return gh([
         "api", "-X", "PATCH", `repos/${repo}/milestones/${milestone.data.github.number}`,
         "-f", `state=${state}`,
       ]);
-    },
-    readIssueState(issue) {
-      return gh(["issue", "view", String(issue.data.github.number), "--repo", repo, "--json", "state"]).state;
     },
     updateIssueState(issue, state) {
       return gh([
@@ -206,8 +236,8 @@ async function main() {
   });
   if (process.argv.includes("--retire-missing")) {
     const remote = {
-      milestones: JSON.parse(gh(["api", `repos/${repo}/milestones?state=open&per_page=100`])),
-      issues: JSON.parse(gh(["issue", "list", "--repo", repo, "--state", "open", "--limit", "1000", "--json", "number,state"])),
+      milestones: ghJson(["api", `repos/${repo}/milestones?state=open&per_page=100`]),
+      issues: ghJson(["issue", "list", "--repo", repo, "--state", "open", "--limit", "1000", "--json", "number,state"]),
     };
     const retire = planRetirements(tree, remote);
     for (const number of retire.issues) {
