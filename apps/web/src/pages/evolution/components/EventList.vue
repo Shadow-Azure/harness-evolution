@@ -34,6 +34,7 @@ const icons: Record<string, string> = {
   cluster_rejected: "×",
   run_failed: "!",
   run_interrupted: "!",
+  job_recovered: "↻",
   run_blocked: "△",
 };
 

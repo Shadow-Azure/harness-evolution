@@ -375,8 +375,11 @@ erDiagram
 | `error` | `TEXT` | 失败原因 |
 | `created_by` | `VARCHAR(36)` NULL | FK → `users.id` |
 | `created_at` / `started_at` / `finished_at` / `updated_at` | DATETIME | — |
+| `lease_owner` | `VARCHAR(64)` NULL | 持有执行权的实例/worker 标识；历史行为 NULL 视为已过期 |
+| `lease_expires_at` | DATETIME NULL | 租约到期时间；到期 running 可被重新领取 |
+| `heartbeat_at` | DATETIME NULL | 最近一次续租时间 |
 
-索引：`INDEX(status)`、`INDEX(kind, created_at DESC)`、`INDEX(ref_id)`。
+索引：`INDEX(status)`、`INDEX(kind, created_at DESC)`、`INDEX(ref_id)`、`INDEX(status, lease_expires_at)`。
 
 ### 3.10 `workspaces` —— 工作空间（V2）
 

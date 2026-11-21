@@ -2491,7 +2491,7 @@ export interface components {
              * Eventtype
              * @enum {string}
              */
-            eventType: "run_created" | "prepare_started" | "sessions_linked" | "potential_computed" | "attribution_created" | "attribution_reused" | "workspace_prepared" | "clusters_created" | "step_advanced" | "run_blocked" | "run_resumed" | "final_completed" | "run_failed" | "run_interrupted" | "candidate_committed" | "candidate_pushed" | "eval_submitted" | "eval_polled" | "eval_completed" | "eval_failed" | "eval_timeout" | "cluster_accepted" | "cluster_rejected" | "push_started" | "push_retry_scheduled" | "push_succeeded" | "push_failed";
+            eventType: "run_created" | "prepare_started" | "sessions_linked" | "potential_computed" | "attribution_created" | "attribution_reused" | "workspace_prepared" | "clusters_created" | "step_advanced" | "run_blocked" | "run_resumed" | "final_completed" | "run_failed" | "run_interrupted" | "job_recovered" | "candidate_committed" | "candidate_pushed" | "eval_submitted" | "eval_polled" | "eval_completed" | "eval_failed" | "eval_timeout" | "cluster_accepted" | "cluster_rejected" | "push_started" | "push_retry_scheduled" | "push_succeeded" | "push_failed";
             /** Jobid */
             jobId: string | null;
             /**

@@ -169,7 +169,14 @@ class EvolutionRetryService:
         if run is None:
             raise LookupError("evolution run not found")
         automatic = job.payload.get("automatic") is True
+        if run.status == "interrupted":
+            await self._runs.mark_recovered(run.id)
+            refreshed = await self._runs.get_run(run.id)
+            if refreshed is not None:
+                run = refreshed
         if run.status != "blocked" or run.blocked_stage is None:
+            if job.payload.get("recovery") is True and run.status == "running":
+                return await self._recover_running(run, job)
             return {
                 "runId": run.id,
                 "resumed": False,
@@ -245,6 +252,28 @@ class EvolutionRetryService:
             if active is None:
                 return await self._schedule_next(run, job)
             return await self._regenerate_round(run, active, job)
+        final = await self._runs.get_final(run.id)
+        if final is not None:
+            return await self._finalize(run, job)
+        evaluated = await self._undecided_evaluated_round(run.id)
+        if evaluated is not None:
+            return await self._apply(run, evaluated, job)
+        active = await self._active_round(run.id)
+        if active is not None:
+            if active.status in {"pushing", "evaluating"}:
+                return await self._republish_push(run, active, job)
+            return await self._regenerate_round(run, active, job)
+        rounds = await self._runs.list_rounds(run.id)
+        if rounds and all(round_.status in _TERMINAL_ROUND_STATUSES for round_ in rounds):
+            return await self._finalize(run, job)
+        return await self._schedule_next(run, job)
+
+    async def _recover_running(
+        self,
+        run: EvolutionRunRecord,
+        job: JobRunRecord,
+    ) -> Mapping[str, Any]:
+        """Resume an interrupted retry job from its durable round/final facts."""
         final = await self._runs.get_final(run.id)
         if final is not None:
             return await self._finalize(run, job)

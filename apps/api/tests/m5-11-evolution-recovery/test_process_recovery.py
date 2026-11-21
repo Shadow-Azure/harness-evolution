@@ -155,7 +155,7 @@ async def test_recover_interrupts_running_job_and_publishes_sse(state: State) ->
 
     try:
         await runner.recover()
-        notifications = [subscription.queue.get_nowait() for _ in range(2)]
+        notifications = [subscription.queue.get_nowait() for _ in range(3)]
     finally:
         await subscription.close()
         await runner.close()
@@ -172,16 +172,28 @@ async def test_recover_interrupts_running_job_and_publishes_sse(state: State) ->
     assert run.status == "interrupted"
     assert run.error_stage == "step"
     assert run.error_message == "job interrupted by process restart"
-    assert [item.event_type for item in page.items] == ["run_interrupted"]
+    assert run.finished_at is not None
+    assert [item.event_type for item in page.items] == ["run_interrupted", "job_recovered"]
     assert page.items[0].stage == "step"
     assert page.items[0].job_id == job.id
     assert page.items[0].level == "error"
-    assert [item.event for item in notifications] == ["run.event", "run.interrupted"]
+    assert [item.event for item in notifications] == [
+        "run.event",
+        "run.interrupted",
+        "run.event",
+    ]
     assert notifications[1].data["runId"] == "run-recover"
     assert notifications[1].data["stage"] == "step"
     assert notifications[1].data["message"] == "job interrupted by process restart"
     assert notifications[1].data["eventSeq"] == page.items[0].seq
-    assert queued == []
+    assert len(queued) == 1
+    assert queued[0].kind == "evolution_advance"
+    assert queued[0].ref_id == "run-recover"
+    assert queued[0].payload == {"runId": "run-recover"}
+    assert page.items[1].payload == {
+        "previousJobId": job.id,
+        "source": "process-restart",
+    }
 
 
 async def test_sweeper_enqueues_only_due_automatic_push_backoff(state: State) -> None:

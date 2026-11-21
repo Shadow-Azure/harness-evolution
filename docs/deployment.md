@@ -55,6 +55,7 @@
 - 触发：push main → CI 全绿 → `Deploy`；支持 `workflow_dispatch` 手动触发。
 - 行为：[deploy/release.sh](../deploy/release.sh) 校验数据目录 → 安装依赖 → `alembic upgrade head` → 切换 `current` 软链 → `systemctl restart harness-api` → 探活 `/api/health`（最长 60 秒）。
 - 回滚：探活失败时先恢复 `.env`，再将软链退回上一 release 并重启；本地保留最近 5 个 release 与 5 份 `.env` 备份。
+- 重启排水：unit 用 `KillMode=mixed` + `TimeoutStopSec=45` 先发 SIGTERM；应用在 `HE_JOB_DRAIN_TIMEOUT_SECONDS`（默认 25 秒）内等在跑 job，超时释放租约并标 `interrupted`，下次启动续跑。
 - 迁移幂等：连续发布对已应用的迁移零副作用。
 
 ## 数据目录与可写校验

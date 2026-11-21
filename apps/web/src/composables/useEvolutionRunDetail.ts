@@ -26,8 +26,8 @@ export interface EvolutionRunDetailOptions {
  * Choose the REST polling fallback for one run status.
  *
  * SSE stays the primary live channel for active runs; polling only closes the
- * gaps when the stream is reconnecting. Blocked runs are not subscribed, so
- * they poll faster to pick up the sweeper's automatic retry.
+ * gaps when the stream is reconnecting. Blocked and interrupted runs are not
+ * subscribed, so they poll faster to pick up automatic retry or recovery.
  * @param run Latest run snapshot, or undefined before the first response.
  * @returns Poll interval in milliseconds, or false for terminal states.
  */
@@ -36,6 +36,7 @@ export function runDetailRefetchInterval(
 ): number | false {
   switch (run?.status) {
     case "blocked":
+    case "interrupted":
       return 5_000;
     case "preparing":
     case "running":

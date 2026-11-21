@@ -2229,6 +2229,7 @@
               "final_completed",
               "run_failed",
               "run_interrupted",
+              "job_recovered",
               "candidate_committed",
               "candidate_pushed",
               "eval_submitted",

@@ -18,6 +18,11 @@ StateDirectoryMode=0750
 ExecStart=/opt/harness/shared/venv/bin/python -m app
 Restart=always
 RestartSec=3
+# Drain in-flight jobs before the process exits. TimeoutStopSec must exceed
+# HE_JOB_DRAIN_TIMEOUT_SECONDS (default 25s) so systemd does not SIGKILL the
+# git child process while the application is still releasing the job lease.
+KillMode=mixed
+TimeoutStopSec=45
 NoNewPrivileges=true
 PrivateTmp=true
 

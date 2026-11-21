@@ -178,7 +178,14 @@ def create_app(
         event_bus,
     )
     job_repository = JobRepository(resolved_database)
-    jobs = JobRunner(job_repository, event_bus, evolution_events)
+    jobs = JobRunner(
+        job_repository,
+        event_bus,
+        evolution_events,
+        lease_seconds=resolved_settings.job_lease_seconds,
+        heartbeat_seconds=resolved_settings.job_heartbeat_seconds,
+        drain_timeout_seconds=resolved_settings.job_drain_timeout_seconds,
+    )
     upstream_client: httpx.AsyncClient | None = None
     resolved_source = trajectory_source
     if resolved_source is None and resolved_settings.upstream_configured:

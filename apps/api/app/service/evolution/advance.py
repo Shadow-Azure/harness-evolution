@@ -89,6 +89,11 @@ class EvolutionAdvanceService:
         run = await self._runs.get_run(run_id)
         if run is None:
             raise LookupError("evolution run not found")
+        if run.status == "interrupted":
+            await self._runs.mark_recovered(run.id)
+            refreshed = await self._runs.get_run(run.id)
+            if refreshed is not None:
+                run = refreshed
         if run.mode != "full" or run.status != "running":
             return {
                 "runId": run.id,
@@ -101,6 +106,37 @@ class EvolutionAdvanceService:
         for round_ in rounds:
             if round_.status in {"accepted", "rejected"}:
                 continue
+            if round_.status in {"patching", "pushing"}:
+                # A process restart re-enters the same durable stage. Reuse the
+                # committed candidate when the checkpoint exists; otherwise
+                # regenerate it from the persisted trace and patch source.
+                trace = await self._trace(run, round_)
+                if round_.candidate_ref and round_.candidate_commit:
+                    current = await self._candidates.repush_existing(
+                        run,
+                        round_,
+                        job_id=job.id,
+                    )
+                else:
+                    current = await self._candidates.publish(
+                        run,
+                        round_,
+                        trace,
+                        job_id=job.id,
+                    )
+                return await self._submit_evaluation(run, current)
+            if round_.status == "evaluating":
+                current = round_
+                if self._eval_submitter is not None and current.eval_external_id is None:
+                    current = await self._eval_submitter.submit(run, current)
+                return {
+                    "runId": run.id,
+                    "roundId": current.id,
+                    "status": current.status,
+                    "candidateRef": current.candidate_ref,
+                    "published": True,
+                    "resumed": True,
+                }
             if round_.status != "pending":
                 return {
                     "runId": run.id,
@@ -130,33 +166,21 @@ class EvolutionAdvanceService:
                 "published": False,
                 "reason": "pending round was already claimed",
             }
-        cluster = next(
-            (
-                item
-                for item in await self._runs.list_clusters(run.id)
-                if item.probe_cluster_id == target.probe_cluster_id
-            ),
-            None,
-        )
-        if cluster is None:
-            raise LookupError("round cluster not found")
-        links = tuple(
-            link.probe_id
-            for link in await self._runs.list_cluster_probes(run.id)
-            if link.probe_cluster_id == cluster.probe_cluster_id
-        )
-        rows = await self._probes.list_rows_by_ids(links)
+        trace = await self._trace(run, target)
         current = await self._candidates.publish(
             run,
             target,
-            build_candidate_trace(
-                cluster.probe_cluster_id,
-                cluster.probe_cluster_description,
-                links,
-                rows,
-            ),
+            trace,
             job_id=job.id,
         )
+        return await self._submit_evaluation(run, current)
+
+    async def _submit_evaluation(
+        self,
+        run: Any,
+        current: Any,
+    ) -> Mapping[str, Any]:
+        """Submit the published candidate's evaluation and report the round."""
         if (
             self._eval_submitter is not None
             and current.status == "evaluating"
@@ -170,6 +194,31 @@ class EvolutionAdvanceService:
             "candidateRef": current.candidate_ref,
             "published": True,
         }
+
+    async def _trace(self, run: Any, round_: Any) -> CandidateTrace:
+        """Rebuild the immutable trace for one persisted round."""
+        cluster = next(
+            (
+                item
+                for item in await self._runs.list_clusters(run.id)
+                if item.probe_cluster_id == round_.probe_cluster_id
+            ),
+            None,
+        )
+        if cluster is None:
+            raise LookupError("round cluster not found")
+        links = tuple(
+            link.probe_id
+            for link in await self._runs.list_cluster_probes(run.id)
+            if link.probe_cluster_id == cluster.probe_cluster_id
+        )
+        rows = await self._probes.list_rows_by_ids(links)
+        return build_candidate_trace(
+            cluster.probe_cluster_id,
+            cluster.probe_cluster_description,
+            links,
+            rows,
+        )
 
 
 class EvolutionJobLifecycle:

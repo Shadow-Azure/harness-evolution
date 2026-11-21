@@ -344,6 +344,7 @@ class EvolutionCandidateService:
                 next_retry_at=retry_at,
                 retry_attempts=0,
                 retryable=exc.retryable,
+                detail=exc.detail,
             ) from None
 
         pushed = await self._runs.mark_round_push_succeeded(
