@@ -19,7 +19,7 @@ scope:
   - deploy/**
   - .github/workflows/**
   - docs/**
-  - plans/fullstack-design/**
+  - plans/**
   - .agents/**
   - scripts/**
 adr: []
