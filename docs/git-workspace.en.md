@@ -15,7 +15,7 @@ During prepare, an evolution run builds a local bare cache for the target ref an
 ## Push
 
 - `HE_GIT_PUSH` controls every remote write and defaults to true; when false, the candidate is still created locally but is not pushed or evaluated.
-- A target/run's `pushRepoUrl` / `evalRepoUrl` selects the write and evaluation target; when both are empty, they fall back to `HE_GIT_PUSH_URL` and then `repoUrl`. Push and eval must point at the same fetchable repository.
+- A target's `pushRepoUrl` / `evalRepoUrl` are optional overrides; the normal path leaves them empty, the provider creates the fork, and eval uses the same source, so the frontend does not need to fill them. The run snapshot records the derived targets, falling back to `HE_GIT_PUSH_URL` and then `repoUrl`. Push and eval must point at the same fetchable repository.
 - `HE_GIT_PUSH_URL` is an optional global fork / push URL fallback. When set, fetches stay on `origin`, while pushes, candidate-tag `ls-remote`, and deletion use a separate `push` remote; when unset, pushes go to `origin`.
 - Credentials come only from the run environment or a credential helper; HTTP(S) URLs must not embed credentials, and neither the repository nor the database stores push credentials.
 - Third-party public repositories usually have no write access: disable `HE_GIT_PUSH` or configure a writable fork. A push failure surfaces as `blocked(push)` and is never recorded as a silent success.

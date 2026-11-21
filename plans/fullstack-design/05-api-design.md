@@ -982,7 +982,7 @@ V1 的 `POST /api/evolution/probes/query` 进入兼容期，V2 页面不调用�
 - `GET /api/evolution/runs/{rid}` → `RunDetail`
   - `status`：`preparing | running | blocked | completed | failed | interrupted`
   - 额外字段：`blockedStage`、`retryAttempts`、`nextRetryAt`、`evalStatus`
-  - `workspace`：`repoUrl/pushProvider/pushRepoUrl/evalRepoUrl/repoPath/baseRef/baseCommit/branchName/workspacePath`
+  - `workspace`：`repoUrl/pushProvider/pushRepoUrl/evalRepoUrl/repoPath/baseRef/baseCommit/branchName/workspacePath`；`pushProvider` / `pushRepoUrl` / `evalRepoUrl` 是 run 的服务端派生快照，不是 target 的必填输入
 - `GET /api/evolution/runs/{rid}/steps/{key}` 七个独立端点（`range` / `sessions` / `potential` / `attribution` / `clusters` / `iteration` / `final`）→ `EvolutionStep`（§3.6；未到达 → `404 STEP_NOT_READY`；`preparing` 时 `range` 可返回准备态）
 - `POST /api/evolution/runs/{rid}/retry` → `202 { "jobId": "job-...", "reused": false }`
   - 需要当前空间的 `space_admin` 或全局管理员；只允许 `status=blocked`
@@ -1025,7 +1025,7 @@ POST /runs（同步校验）
 | 端点 | 说明 |
 |---|---|
 | `GET /api/evolution/targets` | V2 路径为 `/api/workspaces/{wid}/evolution/targets`；列出本空间配置 |
-| `POST /api/evolution/targets` | V2 生效路径同上；空间管理员或全局管理员可新增，body 含 `repoUrl/subDir/defaultRef/pushRepoUrl/evalRepoUrl/validationProjectId/testProjectId/enabled`；`409 TARGET_EXISTS`、`422 PROJECT_ID_INVALID` |
+| `POST /api/evolution/targets` | V2 生效路径同上；空间管理员或全局管理员可新增，body 含 `repoUrl/subDir/defaultRef/validationProjectId/testProjectId/enabled`；`pushRepoUrl`/`evalRepoUrl` 是可选覆盖，正常留空由 provider 自动 fork，前端不需要填；`409 TARGET_EXISTS`、`422 PROJECT_ID_INVALID` |
 | `PUT /api/evolution/targets/{id}` | 空间管理员或全局管理员修改；`404 TARGET_NOT_FOUND` |
 | `DELETE /api/evolution/targets/{id}` | 空间管理员或全局管理员删除；有进行中 run 时 `409 TARGET_IN_USE` |
 | `GET /api/evolution/targets/{id}/versions` | V2 路径为 `/api/workspaces/{wid}/evolution/targets/{id}/versions`；读取 tag 列表作为版本建议，不枚举分支或 commit；仓库不可用 → `422 REPO_INVALID` |
@@ -1048,14 +1048,14 @@ POST /runs（同步校验）
 ```json
 { "objectType": "skill", "objectName": "deep-research",
   "repoUrl": "https://git.example.com/agent-skills.git", "subDir": "skills/deep-research",
-  "defaultRef": "main", "pushRepoUrl": "", "evalRepoUrl": "",
+  "defaultRef": "main",
   "validationProjectId": "val-2026-q3", "testProjectId": "test-2026-q3", "enabled": true }
 ```
 
 `POST` → `201` 创建后的 target；`PUT` → `200` 更新后的 target；`DELETE` → `204`。
 
 - `repoUrl` 支持 https/ssh；**不要**把 token 写进 URL（用 SSH agent / 凭据助手），错误信息脱敏。
-- `pushRepoUrl` / `evalRepoUrl` 可选，分别指向可写 fork / 评测仓库；为空时按 provider 推导 fork 并回退 `repoUrl`。两者必须指向同一个可 fetch 的仓；凭据由部署级 `HE_GIT_PUSH_PROVIDER` / `HE_GIT_PUSH_TOKEN` 与 `GIT_ASKPASS` 提供，不写进 URL。
+- `pushRepoUrl` / `evalRepoUrl` 是可选覆盖，正常不需要前端传入：provider 用 `repoUrl` + PAT 用户自动创建/定位 fork，`evalRepoUrl` 默认与 push 同源。只有 target 已有可写 mirror、或评测必须从另一个仓取数时才填；两者必须指向同一个可 fetch 的仓。凭据由部署级 `HE_GIT_PUSH_PROVIDER` / `HE_GIT_PUSH_TOKEN` 与 `GIT_ASKPASS` 提供，不写进 URL。
 - `subDir` 必须是仓库内相对路径，禁止 `..` 越界；保存时只校验格式，目录存在性在创建 run 的准备阶段校验。
 - `validationProjectId` / `testProjectId` 是不透明字符串，trim 后非空、不含空白或控制字符；超过 128 由请求校验返回 `422 VALIDATION_INVALID`（前端 `maxlength` 拦截），空值与空白/控制字符失败返回 `422 PROJECT_ID_INVALID`，`details` 为 `{ "field": "validationProjectId" | "testProjectId", "reason": "project_id_required" | "project_id_format" }`。本服务不校验工程是否存在。
 - `REPO_INVALID` 的 `details` 只出现在 admin 的 create/update 响应：`{ "field": "objectName" | "repoUrl" | "subDir" | "defaultRef", "reason": "<见下表>", "command"?: { "name": "git ls-remote", "exitCode": 128 }, "output"?: "<有界脱敏输出>" }`。member 可读的 versions 接口继续返回空 `details`，不暴露命令输出。

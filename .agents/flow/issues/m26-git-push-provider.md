@@ -42,7 +42,7 @@ github:
 
 - 用 `HE_GIT_PUSH_PROVIDER` + `HE_GIT_PUSH_TOKEN` 两个核心配置切换 GitHub / GitLab：类型可选 `github`、`gitlab`，PAT 由 GitHub Secrets 注入服务器 `.env`；换机器重新部署即可，不手工配置凭据。
 - 建立 `GitPushProvider` 父类（公共接口与公共 git 执行）和 `GitHubProvider` / `GitLabProvider` 子类；工厂按 `.env` 的类型实例化；新增托管平台只需新增子类 + 注册项，不改 `GitWorkspaceManager`、candidate、retry、eval 业务代码。
-- prepare / candidate / final 使用同一个 per-run push 目标；评测使用同一个 per-run eval 目标；target 可以独立配置 `pushRepoUrl` / `evalRepoUrl`，空值时按 provider 推导 fork 或回退 `repoUrl`。
+- prepare / candidate / final 使用同一个 per-run push 目标；评测使用同一个 per-run eval 目标；target 的 `pushRepoUrl` / `evalRepoUrl` 只是可选覆盖，正常留空由 provider 自动 fork 并让 eval 与 push 同源，前端不需要填写。
 - 第三方只读上游可以推到可写 fork（personal PAT 或后续机器账号），并在 fork 上评测；不再把错误推迟到 eval 阶段。
 - PAT/凭据只来自 Secrets / 服务器 `.env`（0600），不进入 URL、数据库、事件、日志；push 失败、token 过期、scope 不足都进入明确的 blocked 状态并可重试。
 - 保持现有 GitHub 单仓行为与 API/契约/前端/评测契约兼容；补工厂、子类、凭据、target/run 快照与失败重试测试。
@@ -112,7 +112,7 @@ class GitPushProvider(ABC):
 
 ### 4. target / run 数据与迁移
 
-- `evolution_targets` 新增：`push_repo_url`（空 = 自动推导）、`eval_repo_url`（空 = 与 push 同源）、`push_credential_ref`（空 = 用全局 `HE_GIT_PUSH_TOKEN`；为后续 per-target 凭据留位）。
+- `evolution_targets` 新增可选覆盖：`push_repo_url`（空 = 自动推导）、`eval_repo_url`（空 = 与 push 同源）、`push_credential_ref`（空 = 用全局 `HE_GIT_PUSH_TOKEN`；为后续 per-target 凭据留位）。正常路径不要求前端填。
 - `evolution_runs` 快照同上；`LaunchService._run_values` 写入；历史行默认空串。
 - target API/contracts/UI 增加字段与校验：URL 不得内嵌凭据；provider 仍由部署级 env 选择（本 issue 不做 per-target provider）。
 - UI：target 列表/详情显示 provider、push/eval URL、PAT 状态（已配置/缺失/过期），缺配置时给“配置 PAT”说明；run 详情显示 push/eval 目标与 blocked 原因。完整 fork 自动准备/授权状态可作为 follow-up，但字段与只读展示在本 issue 落地。
@@ -139,7 +139,7 @@ class GitPushProvider(ABC):
 1. 增加 `HE_GIT_PUSH_PROVIDER` / `HE_GIT_PUSH_TOKEN` / 可选 URL 配置与校验；实现 `GitPushProvider` 父类、`GitHubProvider`、`GitPushProviderFactory`；补工厂与配置单测。
 2. 实现 `GitLabProvider`（fork、API base、oauth2 认证、URL 编码）；用本地 mock HTTP / 本地 bare remote 覆盖；补自托管 URL 测试。
 3. 重构 `GitWorkspaceManager` 的 push 路径：按 run 解析 push URL、provider 注入认证、`push_candidate` / `publish_run_branch` 去全局状态；补 prepare/candidate/final 的本地 bare remote 测试。
-4. 增加 target/run 的 `push_repo_url` / `eval_repo_url` / `push_credential_ref` 字段与迁移；`LaunchService` 快照；`eval_poller` 使用 eval 目标；补 API/契约测试。
+4. 增加 target/run 的 `push_repo_url` / `eval_repo_url` / `push_credential_ref` 可选字段与迁移；`LaunchService` 快照；`eval_poller` 使用 eval 目标；补 API/契约测试。
 5. Deploy 注入两个核心配置 + `GIT_ASKPASS`；文档写明 PAT 创建、轮换、换机器与新托管平台扩展步骤。
 6. target/run UI 的字段与状态展示；补前端测试；跑全仓门禁。
 7. 新增 Agent Note，记录 provider seam、配置、凭据与扩展新平台的方法。

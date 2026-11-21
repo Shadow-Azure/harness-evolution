@@ -42,7 +42,7 @@ A related but separate defect should be recorded: a retry job is rejected as `RU
 
 - Switch between GitHub and GitLab with two core settings, `HE_GIT_PUSH_PROVIDER` and `HE_GIT_PUSH_TOKEN`: the type accepts `github` and `gitlab`; the PAT is injected from GitHub Secrets into the server `.env`; a new machine only needs a redeploy, not manual credential setup.
 - Introduce a `GitPushProvider` parent class (common public contract and common git execution) and `GitHubProvider` / `GitLabProvider` subclasses. The factory instantiates the subclass selected by `.env`; adding a host requires one subclass plus a registry entry, with no changes to `GitWorkspaceManager`, candidates, retry, or eval business code.
-- prepare, candidate, and final use the same per-run push target; evaluation uses the same per-run eval target. A target can configure `pushRepoUrl` / `evalRepoUrl`; empty values derive a fork from the provider or fall back to `repoUrl`.
+- prepare, candidate, and final use the same per-run push target; evaluation uses the same per-run eval target. A target's `pushRepoUrl` / `evalRepoUrl` are optional overrides only: the normal path leaves them empty, the provider creates the fork, and evaluation uses the same source; the frontend does not need to fill them.
 - A read-only third-party upstream can push to a writable fork (personal PAT now, machine account later) and be evaluated from that fork, instead of deferring the failure to eval.
 - PAT/credentials come only from Secrets or the server `.env` (0600), never from URLs, the database, events, or logs. Push failures, expired tokens, and insufficient scope become explicit blocked states with retry.
 - Keep the existing single-repository GitHub behavior and the API, contract, frontend, and evaluation contracts compatible; add tests for the factory, both subclasses, credentials, target/run snapshots, and failure retry.
@@ -112,7 +112,7 @@ class GitPushProvider(ABC):
 
 ### 4. Target/run data and migration
 
-- `evolution_targets` gains `push_repo_url` (empty = derive), `eval_repo_url` (empty = same as push), and `push_credential_ref` (empty = global `HE_GIT_PUSH_TOKEN`; reserved for per-target credentials).
+- `evolution_targets` gains optional overrides: `push_repo_url` (empty = derive), `eval_repo_url` (empty = same as push), and `push_credential_ref` (empty = global `HE_GIT_PUSH_TOKEN`; reserved for per-target credentials). The normal path does not require frontend input.
 - `evolution_runs` snapshots the same values; `LaunchService._run_values` writes them; historical rows default to empty strings.
 - Target API/contracts/UI add the fields and validation: URLs must not embed credentials; the provider remains deployment-level in this issue and is not selectable per target.
 - UI: target list/detail show provider, push/eval URLs, and PAT status (configured / missing / expired) with a "configure PAT" explanation when missing; run detail shows push/eval targets and the blocked reason. Full automatic fork provisioning/authorization status can be a follow-up, but the fields and read-only display land here.
@@ -139,7 +139,7 @@ class GitPushProvider(ABC):
 1. Add `HE_GIT_PUSH_PROVIDER` / `HE_GIT_PUSH_TOKEN` / optional URL settings and validation; implement the `GitPushProvider` parent, `GitHubProvider`, and `GitPushProviderFactory`; add factory and configuration tests.
 2. Implement `GitLabProvider` (fork, API base, `oauth2` authentication, URL encoding); cover it with local mock HTTP / local bare remotes; add self-hosted URL tests.
 3. Refactor the `GitWorkspaceManager` push path: resolve the per-run push URL, inject provider authentication, remove mutable global state from `push_candidate` / `publish_run_branch`; add prepare/candidate/final local bare-remote tests.
-4. Add `push_repo_url` / `eval_repo_url` / `push_credential_ref` to target/run with migrations; snapshot them in `LaunchService`; make `eval_poller` use the eval target; add API/contract tests.
+4. Add optional `push_repo_url` / `eval_repo_url` / `push_credential_ref` to target/run with migrations; snapshot them in `LaunchService`; make `eval_poller` use the eval target; add API/contract tests.
 5. Inject the two core settings and `GIT_ASKPASS` in Deploy; document PAT creation, rotation, machine replacement, and adding a new host.
 6. Add target/run UI fields and status; add frontend tests; run the full gates.
 7. Add an Agent Note describing the provider seam, configuration, credentials, and how to add a host.
