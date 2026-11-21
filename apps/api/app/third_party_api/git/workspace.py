@@ -43,11 +43,13 @@ class GitOperationError(RuntimeError):
         *,
         stage: GitStage,
         retryable: bool = False,
+        detail: str | None = None,
     ) -> None:
-        """Store safe diagnostics without retaining raw process output."""
+        """Store safe diagnostics without retaining credential-bearing output."""
         super().__init__(message)
         self.stage = stage
         self.retryable = retryable
+        self.detail = detail
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +176,15 @@ class GitWorkspaceManager:
 
     async def prepare(self, run: EvolutionRunRecord) -> PreparedWorkspace:
         """Fetch one target ref into a cache and create the uniquely named run branch."""
+        return await self.prepare_with_checkpoint(run)
+
+    async def prepare_with_checkpoint(
+        self,
+        run: EvolutionRunRecord,
+        *,
+        checkpoint: Callable[[PreparedWorkspace], Awaitable[None]] | None = None,
+    ) -> PreparedWorkspace:
+        """Prepare the workspace and publish its durable checkpoint before push."""
         self.repos_root.mkdir(parents=True, exist_ok=True)
         self.workspaces_root.mkdir(parents=True, exist_ok=True)
         ref = _checked_ref(run.target_version)
@@ -246,6 +257,8 @@ class GitWorkspaceManager:
             push_url=push_url,
         )
         await self.validate_for_push(prepared, run)
+        if checkpoint is not None:
+            await checkpoint(prepared)
         if self._push_enabled:
             await self._push_run_branch(workspace_path, branch, push_url=push_url)
         return prepared
@@ -259,8 +272,11 @@ class GitWorkspaceManager:
         patch: Patch,
         message: str,
         expected_run_id: str | None = None,
+        reset_workspace: bool = False,
     ) -> CandidateWorkspace:
-        """Create one candidate commit from the clean, current run branch."""
+        """Create one candidate commit, optionally resetting a resumed worktree."""
+        if reset_workspace:
+            await self._reset_candidate_workspace(prepared.path, run_branch)
         await self._require_clean(prepared.path)
         await self._git_checked(
             prepared.path,
@@ -337,6 +353,25 @@ class GitWorkspaceManager:
             push_url=prepared.push_url,
         )
 
+    async def _reset_candidate_workspace(
+        self,
+        workspace_path: Path,
+        run_branch: str,
+    ) -> None:
+        """Discard a half-finished candidate attempt before regenerating it."""
+        await self._git_checked(
+            workspace_path,
+            ("git", "switch", "--force", run_branch),
+            stage="workspace",
+            failure="stale candidate worktree could not return to the run branch",
+        )
+        await self._git_checked(
+            workspace_path,
+            ("git", "clean", "-fd"),
+            stage="workspace",
+            failure="stale candidate worktree could not be cleaned",
+        )
+
     async def push_candidate(
         self,
         candidate: CandidateWorkspace,
@@ -380,7 +415,23 @@ class GitWorkspaceManager:
                 remote,
                 f"{candidate.commit}:refs/tags/{candidate.ref}",
             )
-        await self._push_checked(candidate.workspace_path, args)
+        try:
+            await self._push_checked(candidate.workspace_path, args)
+        except GitOperationError as exc:
+            try:
+                reconciled = (
+                    await self.remote_tag_commit(
+                        candidate.workspace_path,
+                        remote,
+                        candidate.ref,
+                    )
+                    == candidate.commit
+                )
+            except GitOperationError:
+                reconciled = False
+            if reconciled:
+                return
+            raise exc
 
     async def accept_candidate(
         self,
@@ -739,6 +790,11 @@ class GitWorkspaceManager:
                 failure="run branch commit could not be resolved",
             )
         ).stdout.strip()
+        if remote_commit == head:
+            # The ref already matches the checkpoint. This is the normal
+            # recovery path after a previous push wrote the remote ref but the
+            # client was killed before it could report success.
+            return
         if remote_commit is not None and remote_commit != head:
             if not await self._commit_present(workspace_path, remote_commit):
                 # The single-ref cache does not carry the run branch, so fetch
@@ -760,10 +816,30 @@ class GitWorkspaceManager:
                     "run branch update is not a fast-forward",
                     stage="push",
                 )
-        await self._push_checked(
-            workspace_path,
-            ("git", "push", remote, f"{head}:refs/heads/{branch}"),
-        )
+        try:
+            await self._push_checked(
+                workspace_path,
+                ("git", "push", remote, f"{head}:refs/heads/{branch}"),
+            )
+        except GitOperationError as exc:
+            # A killed client can exit non-zero after the server accepted the
+            # ref update. Reconcile once before classifying a real failure.
+            if await self._remote_branch_matches(workspace_path, remote, branch, head):
+                return
+            raise exc
+
+    async def _remote_branch_matches(
+        self,
+        workspace_path: Path,
+        remote: str,
+        branch: str,
+        commit: str,
+    ) -> bool:
+        """Return whether one remote branch already points at the commit."""
+        try:
+            return await self.remote_ref_commit(workspace_path, remote, branch) == commit
+        except GitOperationError:
+            return False
 
     async def _delete_remote_tag(
         self,
@@ -1356,7 +1432,13 @@ class GitWorkspaceManager:
         """Classify transient transport failures without exposing command output."""
         diagnostic = sanitize_message(result.stderr, limit=500).lower()
         is_retryable = retryable or any(marker in diagnostic for marker in self._TRANSIENT_MARKERS)
-        return GitOperationError(failure, stage=stage, retryable=is_retryable)
+        detail = sanitize_message(result.stderr, limit=1_000).strip() or None
+        return GitOperationError(
+            failure,
+            stage=stage,
+            retryable=is_retryable,
+            detail=detail,
+        )
 
     @staticmethod
     def _write_patch(workspace_path: Path, patch: Patch) -> None:

@@ -534,7 +534,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0024"
+        assert result.scalar_one() == "0025"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -587,11 +587,15 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             "started_at",
             "finished_at",
             "updated_at",
+            "lease_owner",
+            "lease_expires_at",
+            "heartbeat_at",
         }
         assert {
             "ix_job_runs_status",
             "ix_job_runs_kind_created_at",
             "ix_job_runs_ref_id",
+            "ix_job_runs_status_lease_expires_at",
         }.issubset({index["name"] for index in job_indexes if index["name"] is not None})
         assert {
             foreign_key["name"]
@@ -830,7 +834,7 @@ async def test_v2_workspace_foundation_backfills_default_workspace(
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-            assert revision == "0024"
+            assert revision == "0025"
             workspace_rows = (
                 (await session.execute(text("SELECT * FROM workspaces"))).mappings().all()
             )
@@ -1084,7 +1088,7 @@ async def test_bad_case_title_migration_backfills_legacy_rows(tmp_path: Path) ->
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-        assert revision == "0024"
+        assert revision == "0025"
         assert [dict(row) for row in rows] == [
             {
                 "bad_case_id": "legacy-long",
@@ -1255,7 +1259,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0024"
+        assert result.scalar_one() == "0025"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -1308,11 +1312,15 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "started_at",
             "finished_at",
             "updated_at",
+            "lease_owner",
+            "lease_expires_at",
+            "heartbeat_at",
         }
         assert {
             "ix_job_runs_status",
             "ix_job_runs_kind_created_at",
             "ix_job_runs_ref_id",
+            "ix_job_runs_status_lease_expires_at",
         }.issubset({index["name"] for index in job_indexes if index["name"] is not None})
         async with database.engine.connect() as connection:
             knowledge_columns, knowledge_indexes, workspace_columns = await connection.run_sync(

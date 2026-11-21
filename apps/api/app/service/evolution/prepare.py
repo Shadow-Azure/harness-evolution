@@ -140,6 +140,11 @@ class EvolutionPrepareService:
         run = await self._runs.get_run(run_id)
         if run is None:
             raise LookupError("evolution run not found")
+        if run.status == "interrupted":
+            await self._runs.mark_recovered(run.id)
+            refreshed = await self._runs.get_run(run.id)
+            if refreshed is not None:
+                run = refreshed
         if await self._already_prepared(run):
             return {
                 "runId": run.id,
@@ -463,7 +468,7 @@ class EvolutionPrepareService:
                 target_host=_repo_host(run.repo_url),
             ) as scope:
                 collector = scope
-                workspace = await self._workspaces.prepare(run)
+                workspace = await self._prepare_workspace_with_checkpoint(run)
         except GitOperationError as exc:
             disposition = classify_git_failure(exc)
             if disposition.action == "blocked" and disposition.blocked_stage is not None:
@@ -477,6 +482,7 @@ class EvolutionPrepareService:
                     "run branch publication failed",
                     stage=disposition.blocked_stage,
                     error_stage=disposition.error_stage,
+                    detail=exc.detail,
                 ) from None
             raise
         operations: list[dict[str, object]] = []
@@ -503,6 +509,28 @@ class EvolutionPrepareService:
             },
         )
         return workspace
+
+    async def _prepare_workspace_with_checkpoint(
+        self,
+        run: EvolutionRunRecord,
+    ) -> PreparedWorkspace:
+        """Use the checkpoint-capable preparer when the bound manager offers it."""
+        prepare_with_checkpoint = getattr(self._workspaces, "prepare_with_checkpoint", None)
+        if not callable(prepare_with_checkpoint):
+            return await self._workspaces.prepare(run)
+
+        async def persist(workspace: PreparedWorkspace) -> None:
+            await self._runs.write_workspace_checkpoint(
+                run.id,
+                repo_path=str(workspace.repo_path),
+                base_ref=workspace.ref,
+                base_commit=workspace.base_commit,
+                branch_name=workspace.branch,
+                workspace_path=str(workspace.path),
+                push_repo_url=workspace.push_url or "",
+            )
+
+        return cast(PreparedWorkspace, await prepare_with_checkpoint(run, checkpoint=persist))
 
     async def _build_rounds(self, run: EvolutionRunRecord) -> None:
         """Create one pending round per cluster for a full run exactly once."""

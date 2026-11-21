@@ -16,14 +16,14 @@ eval 与 patch 的阻塞不进入自动退避，只接受 `POST /runs/{rid}/retr
 
 `EvolutionRetryService` 先清掉 blocked 并写 `run.resumed`，再按 `blocked_stage` 与现场耐久事实分发，而不是按阶段名盲目重跑。push 阶段若终评已落库就继续 finalize，若本轮已有已完成评测就交给 apply，否则只重推已持久化的 candidate 并补交评测。eval 阶段清空旧 external id 后重新 submit，旧 id 留在事件 payload 里可追溯。patch 阶段从 `patching` 重新生成，而不是跳到 push 或 eval 接着跑。自动与手动共用同一个 handler，区别只在手动会重置阶梯、自动必须命中 push 且每次只做一次 push。
 
-进程重启把残留 running job 标为 interrupted 并写 `run_interrupted`，不自动续跑；只有 blocked run 的 `next_retry_at` 是跨重启的持久事实，由 sweeper 重新接手。于是“重启后继续”只发生在能从数据库重新推导的路径上，一条已经中断的执行链不会被悄悄接回半完成的 git 状态。
+进程重启把残留 running job 标为 interrupted、写 `run_interrupted`，随后以 `job_recovered` 事件把同一阶段重新入队。`job_runs` 用 `lease_owner`/`lease_expires_at`/`heartbeat_at` 表达执行归属，worker 在 handler 运行期间续租，终结写入时清租。恢复之所以安全，是因为每个阶段都能从持久事实重新推导：prepare 复用已有 workspace 并在重推前对账远端 run ref，advance 优先重推已提交的 candidate，只在 candidate 检查点缺失时重建，apply/finalize 回到已落库的 round/final 状态。停机先停止接单，在有限窗口内等待在跑 handler，超时后释放租约并标 interrupted，交给下次启动接管。
 
 实时面以 `evolution_run_events.seq` 为游标：SSE 首连与重连都从该 seq 之后回放，再转入实时；游标失效时发 `reset`，前端重拉 REST 快照。前端只在 `preparing/running` 订阅，blocked 改走 5 秒轮询，completed/failed/interrupted 关闭流；`run.blocked` 与 `run.resumed` 只是通知，页面展示的阶段、次数与时间仍以 REST 快照为准。
 
 ## Alternatives considered
 
-用高频 job 轮询或独立队列承担退避被否：前者让每个等待中的 run 反复排队，占住唯一 worker；后者为一个 30 秒的轻量扫描再引入一套调度与运维面。把重试计数放进内存被否：进程一退就丢失“已经退避到第几次”，重启后无法接着计时。让 eval 自动重试被否：评测失败通常意味着外部配置或实现本身有问题，自动重提只会放大成本并掩盖原因，人工修复后的显式重试才可控。对 interrupted job 自动续跑被否：中断点可能落在 git 写入的半完成状态，接回会制造无法解释的分支历史。全局常驻 SSE 被否：为已完成 run 长期持有连接与鉴权上下文，流量与权限面都不划算。
+用高频 job 轮询或独立队列承担退避被否：前者让每个等待中的 run 反复排队，占住唯一 worker；后者为一个 30 秒的轻量扫描再引入一套调度与运维面。把重试计数放进内存被否：进程一退就丢失“已经退避到第几次”，重启后无法接着计时。让 eval 自动重试被否：评测失败通常意味着外部配置或实现本身有问题，自动重提只会放大成本并掩盖原因，人工修复后的显式重试才可控。无条件续跑 interrupted job 被否：中断点可能落在 git 写入的半完成状态，直接接回会制造无法解释的分支历史。现在只重入能由数据库检查点与只读远端对账证明下一步的阶段，真实 blocked 失败仍停住等人。全局常驻 SSE 被否：为已完成 run 长期持有连接与鉴权上下文，流量与权限面都不划算。
 
 ## Consequences
 
-push 的自动退避与手动重试已交付：瞬时故障能让 blocked run 自行恢复，永久故障则稳定停住等人处理。JSON 列上的 Python `None` 曾被写成 JSON `null`，使 `eval_result IS NULL` 守卫失效、已完成的轮次永远停在 evaluating；新写入改为落 SQL NULL，历史行由 `0009` 迁移在升级时回填。真实 patch 与真实评测仍是占位，恢复层只保证已有持久事实被正确续接，不判断外部系统为何失败。sweeper 是进程内循环，多实例部署时需要单飞，V1 以单进程为前提；跨实例抢占要等 JobRunner 支持 `SKIP LOCKED` 之后再补。占位闭环本身的决策见[占位评测与自动逐轮闭环](2026-10-28-placeholder-evaluation-loop.md)。
+push 的自动退避与手动重试已交付：瞬时故障能让 blocked run 自行恢复，永久故障则稳定停住等人处理。JSON 列上的 Python `None` 曾被写成 JSON `null`，使 `eval_result IS NULL` 守卫失效、已完成的轮次永远停在 evaluating；新写入改为落 SQL NULL，历史行由 `0009` 迁移在升级时回填。真实 patch 与真实评测仍是占位，恢复层只保证已有持久事实被正确续接，不判断外部系统为何失败。sweeper 是进程内循环，多实例部署时需要单飞，V1 以单进程为前提；`claim` 已能接管过期租约，但真正的跨实例并发仍要等 JobRunner 支持 `SKIP LOCKED` 之后再补。占位闭环本身的决策见[占位评测与自动逐轮闭环](2026-10-28-placeholder-evaluation-loop.md)。
