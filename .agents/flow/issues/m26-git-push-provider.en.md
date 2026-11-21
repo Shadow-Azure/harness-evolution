@@ -42,7 +42,7 @@ A related but separate defect should be recorded: a retry job is rejected as `RU
 
 - Switch between GitHub and GitLab with two core settings, `HE_GIT_PUSH_PROVIDER` and `HE_GIT_PUSH_TOKEN`: the type accepts `github` and `gitlab`; the PAT is injected from GitHub Secrets into the server `.env`; a new machine only needs a redeploy, not manual credential setup.
 - Introduce a `GitPushProvider` parent class (common public contract and common git execution) and `GitHubProvider` / `GitLabProvider` subclasses. The factory instantiates the subclass selected by `.env`; adding a host requires one subclass plus a registry entry, with no changes to `GitWorkspaceManager`, candidates, retry, or eval business code.
-- prepare, candidate, and final use the same per-run push target; evaluation uses the same per-run eval target. A target's `pushRepoUrl` / `evalRepoUrl` are optional overrides only: the normal path leaves them empty, the provider creates the fork, and evaluation uses the same source; the frontend does not need to fill them.
+- prepare, candidate, and final use the same per-run push target; evaluation reuses it. The provider creates the fork, no target fields are added, and the frontend does not need to fill anything.
 - A read-only third-party upstream can push to a writable fork (personal PAT now, machine account later) and be evaluated from that fork, instead of deferring the failure to eval.
 - PAT/credentials come only from Secrets or the server `.env` (0600), never from URLs, the database, events, or logs. Push failures, expired tokens, and insufficient scope become explicit blocked states with retry.
 - Keep the existing single-repository GitHub behavior and the API, contract, frontend, and evaluation contracts compatible; add tests for the factory, both subclasses, credentials, target/run snapshots, and failure retry.
@@ -105,17 +105,17 @@ class GitPushProvider(ABC):
 
 ### 3. GitWorkspaceManager and per-run targets
 
-- `GitWorkspaceManager` no longer stores a single `_push_url`. `prepare` resolves the push URL from `run.push_repo_url`, the provider-derived fork, `HE_GIT_PUSH_URL`, then `run.repo_url`; `push_candidate` and `publish_run_branch` receive the run or an explicit push URL and never read mutable global state.
+- `GitWorkspaceManager` no longer stores a single `_push_url`. `prepare` resolves the push URL from the provider-derived fork, `HE_GIT_PUSH_URL`, then `run.repo_url`, and writes the result to `run.push_repo_url`; `push_candidate` and `publish_run_branch` receive the run or an explicit push URL and never read mutable global state.
 - Authentication: `GIT_ASKPASS` uses the provider default username (GitHub `x-access-token`, GitLab `oauth2`) with `HE_GIT_PUSH_TOKEN`; the provider's `auth_environment` injects it into git subprocesses. Tokens never enter URLs; logs and events record only host and ref, not tokens.
 - Push failures still go through `classify_git_failure` to `blocked(push)`; retry semantics are unchanged. This issue does not fix the retry self-block.
-- Evaluation: `evalRepoUrl = run.eval_repo_url or run.push_repo_url or run.repo_url`; `EvalRequest.repo_url` uses it so push and eval share one source.
+- Evaluation: `EvalRequest.repo_url = run.push_repo_url or run.repo_url`; evaluation reuses the push target so both share one source.
 
 ### 4. Target/run data and migration
 
-- `evolution_targets` gains optional overrides: `push_repo_url` (empty = derive), `eval_repo_url` (empty = same as push), and `push_credential_ref` (empty = global `HE_GIT_PUSH_TOKEN`; reserved for per-target credentials). The normal path does not require frontend input.
-- `evolution_runs` snapshots the same values; `LaunchService._run_values` writes them; historical rows default to empty strings.
-- Target API/contracts/UI add the fields and validation: URLs must not embed credentials; the provider remains deployment-level in this issue and is not selectable per target.
-- UI: target list/detail show provider, push/eval URLs, and PAT status (configured / missing / expired) with a "configure PAT" explanation when missing; run detail shows push/eval targets and the blocked reason. Full automatic fork provisioning/authorization status can be a follow-up, but the fields and read-only display land here.
+- `evolution_targets` gains no push/eval/credential fields; targets keep their existing `repoUrl/subDir/defaultRef` configuration, and the provider stays deployment-level.
+- `evolution_runs` adds `push_repo_url`, derived at prepare and reused by evaluation; historical rows default to an empty string and fall back to `repo_url`.
+- Target API/contracts do not change; target UI adds no input fields and only shows PAT status (configured / missing / expired) with a "configure PAT" explanation when missing.
+- Run detail shows the derived `pushRepoUrl` and the blocked reason; full fork provisioning/authorization status can be a follow-up with no extra fields.
 
 ### 5. Deploy and Secrets
 
@@ -136,19 +136,19 @@ class GitPushProvider(ABC):
 
 ## Implementation steps
 
-1. Add `HE_GIT_PUSH_PROVIDER` / `HE_GIT_PUSH_TOKEN` / optional URL settings and validation; implement the `GitPushProvider` parent, `GitHubProvider`, and `GitPushProviderFactory`; add factory and configuration tests.
+1. Add the two settings, `HE_GIT_PUSH_PROVIDER` / `HE_GIT_PUSH_TOKEN`, with validation; implement the `GitPushProvider` parent, `GitHubProvider`, and `GitPushProviderFactory`; add factory and configuration tests.
 2. Implement `GitLabProvider` (fork, API base, `oauth2` authentication, URL encoding); cover it with local mock HTTP / local bare remotes; add self-hosted URL tests.
 3. Refactor the `GitWorkspaceManager` push path: resolve the per-run push URL, inject provider authentication, remove mutable global state from `push_candidate` / `publish_run_branch`; add prepare/candidate/final local bare-remote tests.
-4. Add optional `push_repo_url` / `eval_repo_url` / `push_credential_ref` to target/run with migrations; snapshot them in `LaunchService`; make `eval_poller` use the eval target; add API/contract tests.
+4. Add the derived `push_repo_url` to run with a migration; write it in prepare; make `eval_poller` reuse it; add no target fields; add API/contract tests.
 5. Inject the two core settings and `GIT_ASKPASS` in Deploy; document PAT creation, rotation, machine replacement, and adding a new host.
-6. Add target/run UI fields and status; add frontend tests; run the full gates.
+6. Show target PAT status and the run push target; add frontend tests; run the full gates.
 7. Add an Agent Note describing the provider seam, configuration, credentials, and how to add a host.
 
 ## Dependencies and boundary
 
 - Depends on m24-01 (single-ref workspace and push target), m5-09 (candidate commit/ref/push), and m5-11 (blocked recovery).
-- Boundary: only the Git push provider abstraction, PAT/Secrets delivery, target/run push/eval targets, and minimal UI status. No interactive OAuth/App authorization, automatic PR, per-target provider, GitLab CI, or full automatic fork provisioning.
-- Keep `HE_GIT_PUSH` / `HE_GIT_PUSH_URL` compatible; behavior stays unchanged when the new fields are absent.
+- Boundary: only the Git push provider abstraction, PAT/Secrets delivery, the run-derived push target, and minimal UI status. No interactive OAuth/App authorization, automatic PR, per-target provider, target-level push/eval overrides, GitLab CI, or full automatic fork provisioning.
+- Keep `HE_GIT_PUSH` / `HE_GIT_PUSH_URL` compatible; behavior stays unchanged when the new logic is not triggered.
 - The retry self-block is a separate defect. This issue does not change its scheduling; it must be fixed separately before rollout, otherwise a failed push can still leave a run in running.
 
 ## Verification
@@ -167,7 +167,7 @@ pnpm test:gates
 - Factory: `HE_GIT_PUSH_PROVIDER=github` yields `GitHubProvider`, `gitlab` yields `GitLabProvider`, and an unknown value fails startup; a new test subclass selected only by a registry entry works without business changes.
 - GitHub: local bare remote plus mock/real fork URL; prepare/candidate/final push to the per-run fork; the token is injected through `GIT_ASKPASS`; URLs, events, and logs never contain the token.
 - GitLab: local bare remote plus a mock API; `POST /projects/{encoded}/fork`, `PRIVATE-TOKEN`, the `oauth2` username, and a self-hosted API base are covered; push/eval URLs are correct.
-- Target/run: `push_repo_url` / `eval_repo_url` snapshots; eval uses the eval target; historical runs fall back to `repo_url`; rows are readable before and after the migration.
+- Run: the derived `push_repo_url` snapshot; eval reuses it; historical runs fall back to `repo_url`; rows are readable before and after the migration; targets gain no fields.
 - Failures: push 403/401/expiry enter `blocked(push)` with a locating message; after fixing the credential, retrying the current stage does not rerun iterations.
 - Regression: GitHub single-repository behavior without the new fields matches existing tests; `HE_GIT_PUSH=false` still skips push and evaluation.
 
@@ -175,16 +175,16 @@ pnpm test:gates
 
 - The two core settings, `HE_GIT_PUSH_PROVIDER` and `HE_GIT_PUSH_TOKEN`, switch between GitHub and GitLab; Deploy writes `.env` and restarts, and a new machine only needs a redeploy.
 - The `GitPushProvider` parent defines the common contract; `GitHubProvider` / `GitLabProvider` implement host differences; adding a host needs only a subclass plus a registry entry, with no business state-machine changes.
-- prepare / candidate / final use the per-run push target; evaluation uses the per-run eval target; a read-only upstream can push to a fork and be evaluated from that fork.
+- prepare / candidate / final use the per-run push target; evaluation reuses it; a read-only upstream can push to a fork and be evaluated from that fork.
 - The PAT never enters URLs, the database, events, or logs; missing/expired/insufficient scope becomes an explicit blocked state with retry.
-- Target/run API, contracts, UI, and migrations are complete; historical runs stay compatible; existing GitHub single-repository behavior does not regress.
+- Run migration and API fields are complete; target APIs/contracts are unchanged; historical runs stay compatible; existing GitHub single-repository behavior does not regress.
 - Documentation, the Agent Note, tests, and gates are complete; `pnpm verify:flow` is green.
 
 ## Gates and CI
 
 - `pnpm test:api`, `pnpm test:web`, `pnpm typecheck`, `pnpm contract:check`, `pnpm verify:flow`, `pnpm lint:docs`, `pnpm test:gates`.
 - `verify:flow --diff` validates the PR title, commit `(#N)` markers, and scope coverage.
-- New tests cover the factory, both subclasses, the authentication environment, forks, per-run push/eval, migrations, and failure retry; credential redaction is asserted.
+- New tests cover the factory, both subclasses, the authentication environment, forks, per-run push/eval, the run migration, and failure retry; credential redaction is asserted.
 
 ## Non-goals
 

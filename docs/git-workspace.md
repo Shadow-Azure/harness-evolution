@@ -15,7 +15,7 @@
 ## 推送
 
 - `HE_GIT_PUSH` 控制全部远端写入，默认 true；设为 false 时仍生成本地 candidate，但不推送、不评测。
-- target 的 `pushRepoUrl` / `evalRepoUrl` 是可选覆盖，正常留空：provider 自动 fork，eval 与 push 同源；前端不需要填写。run 快照记录实际派生目标，回退顺序为 `HE_GIT_PUSH_URL`、`repoUrl`。push 与 eval 必须指向同一个可 fetch 的仓。
+- provider 自动 fork；prepare 把派生出的 push 目标写入 run 快照，eval 复用同一目标。`HE_GIT_PUSH_URL` 仍是全局兜底，target 不接受 push/eval URL 输入，前端不需要填写。push 与 eval 必须指向同一个可 fetch 的仓。
 - `HE_GIT_PUSH_URL` 是可选的全局 fork / push URL 兜底。配置后 fetch 仍走 `origin`，push、候选 tag 的 `ls-remote` 与删除走独立 `push` remote；未配置时 push `origin`。
 - 凭据只来自运行环境或 credential helper；HTTP(S) 地址不得内嵌凭据，仓库与数据库不保存推送凭据。
 - 第三方公共仓库通常没有写权限：关闭 `HE_GIT_PUSH`，或配置可写 fork。push 失败按 `blocked(push)` 暴露，不静默记为成功。

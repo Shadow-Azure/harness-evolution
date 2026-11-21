@@ -18,7 +18,7 @@ Status: proposed
 
 PAT 通过 `HE_GIT_PUSH_TOKEN` 从 GitHub Secrets 注入服务器 `.env`（0600），Deploy 同时注入绝对路径的 `GIT_ASKPASS` 脚本；git 子进程从环境拿凭据，token 不进入 URL、数据库、事件或日志。API base、网页根与 git 用户名由子类按 `repo_url` host 推导（GitHub：`api.github.com` / `x-access-token`；GitLab：`/api/v4` / `oauth2`；自托管用同 host 的 `/api/v3` 或 `/api/v4`），特殊反向代理/非标准用户名在子类覆盖，不新增环境配置。
 
-target 可选覆盖 `push_repo_url`、`eval_repo_url`、`push_credential_ref`；正常留空，provider 自动 fork，前端不需要填；run 快照实际派生的 push/eval 目标与 `push_provider`，回退 `HE_GIT_PUSH_URL` 与 `repo_url`。prepare、candidate、final 使用 per-run push 目标，评测使用 per-run eval 目标，保证 push 与 eval 同源。`HE_GIT_PUSH` 与 `HE_GIT_PUSH_URL` 保持兼容；同一次部署只选择一个 provider，per-target provider、OAuth/App、自动 PR 与 GitLab CI 不在本决策内。
+不新增 target 的 push/eval/凭据字段：provider 自动 fork，prepare 把派生的 push 目标写入 `run.push_repo_url`，回退 `HE_GIT_PUSH_URL` 与 `repo_url`；eval 复用同一目标。prepare、candidate、final 使用 per-run push 目标，保证 push 与 eval 同源。`HE_GIT_PUSH` 与 `HE_GIT_PUSH_URL` 保持兼容；同一次部署只选择一个 provider，per-target provider、OAuth/App、自动 PR 与 GitLab CI 不在本决策内。
 
 ## Alternatives considered
 
