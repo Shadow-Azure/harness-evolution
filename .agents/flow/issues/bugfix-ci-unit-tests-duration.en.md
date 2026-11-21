@@ -7,8 +7,8 @@ kind: issue
 id: bugfix-07
 milestone: bugfix
 depends: []
-priority: P1
-status: ready
+priority: P2
+status: done
 scope:
   - .github/workflows/**
   - apps/api/pyproject.toml
