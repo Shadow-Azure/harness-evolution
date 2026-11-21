@@ -8,7 +8,7 @@ id: m27-01
 milestone: m27
 depends: []
 priority: P2
-status: ready
+status: done
 scope:
   - README.md
   - README.en.md
@@ -101,3 +101,9 @@ pnpm verify:flow
 - Do not rewrite the architecture, deployment or development docs under `docs/`; only remove the duplicated deployment section from the README and keep the link.
 - Do not add badges, a GIF, a video or multiple screenshots; do not alter or fabricate production data.
 - Do not adjust bilingual documents outside the README.
+
+## Closure record
+
+- PR [#462](https://github.com/Shadow-Azure/harness-evolution/pull/462) merged (merge commit `a2a09cf5`); the bilingual README, key screenshot, Agent Note and budget adjustments are on `main`.
+- `main` CI passes 11/11; on 2026-11-21 this flow entry is marked `done` and GitHub #461 is closed.
+- The standing bugfix bucket moves to the end of the roadmap sequence so its long-open acceptance issue cannot block later milestones through P2 cross-milestone serialization.
