@@ -18,7 +18,7 @@ import {
 } from "./flow-lib.mjs";
 import { parseSignature, structureDiff } from "./translation-pairing-lib.mjs";
 import { recommend, worktreePaths } from "./route-gates.mjs";
-import { applyGithubRef, planRetirements, renderIssueBody, runSync } from "./flow-sync.mjs";
+import { applyGithubRef, githubStateReaders, planRetirements, renderIssueBody, runSync } from "./flow-sync.mjs";
 import { verifyFlowDiff } from "./verify-flow.mjs";
 import { checkContracts, compareContractFiles } from "./contract.mjs";
 import { browserViolations } from "../tests/support/runtime.mjs";
@@ -168,6 +168,16 @@ test("valid tree passes and milestone/issue status is cross-checked", () => {
   const broken = tree();
   broken.milestones[0].data.status = "planned";
   assert.match(validateTree(broken, { exists: () => true }).join("\n"), /全部 issue 已 done/);
+});
+
+test("standing milestones stay active after their issues are done", () => {
+  const standing = tree();
+  standing.milestones[0].data.status = "active";
+  standing.milestones[0].data.standing = true;
+  assert.deepEqual(validateTree(standing, { exists: () => true }), []);
+  const invalid = tree();
+  invalid.milestones[0].data.standing = "yes";
+  assert.match(validateTree(invalid, { exists: () => true }).join("\n"), /standing 必须是布尔值/);
 });
 
 test("bootstrap is limited to the first milestone", () => {
@@ -646,12 +656,19 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   assert.match(rootPackage.scripts["verify:local-data"], /verify-local-data\.mjs/);
   assert.match(rootPackage.scripts["test:all"], /test:e2e/);
   assert.match(rootPackage.scripts["test:all"], /fixtures:check/);
+  assert.match(rootPackage.scripts["test:api"], /run-api\.mjs test$/);
+  assert.match(rootPackage.scripts["test:api:serial"], /run-api\.mjs test:serial/);
   assert.match(webPackage.scripts.test, /--coverage/);
   assert.match(rootPackage.scripts["lint:web"], /filter @harness\/web lint/);
   assert.match(rootPackage.scripts["typecheck:web"], /filter @harness\/web typecheck/);
   assert.match(rootPackage.scripts["verify:web-style"], /verify-web-style\.mjs/);
   assert.match(rootPackage.scripts["verify:bundle"], /verify-bundle\.mjs/);
-  assert.match(ci, /run: pnpm test$/m);
+  assert.match(ci, /^\s+pnpm test:web$/m);
+  assert.match(ci, /pnpm test:api -- -n \d+/);
+  assert.ok(ci.includes("unit-tests-api:"), "API 单测 lane 必须存在");
+  const ciOkNeeds = ci.slice(ci.indexOf("ci-ok:"));
+  assert.match(ciOkNeeds, /unit-tests-web/);
+  assert.match(ciOkNeeds, /unit-tests-api/);
   assert.match(ci, /run: pnpm test:db$/m);
   assert.match(ci, /run: pnpm test:db:mysql$/m);
   assert.match(ci, /run: pnpm test:integration$/m);
@@ -690,6 +707,11 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   }
   const backendThreshold = Number(/fail_under = (\d+)/.exec(apiCoverage)?.[1]);
   assert.ok(backendThreshold >= 80);
+  assert.match(apiCoverage, /pytest-xdist/);
+  assert.match(apiCoverage, /pytest-cov/);
+  assert.match(apiRunner, /--cov=app/);
+  assert.match(apiRunner, /--cov-fail-under=90/);
+  assert.match(apiRunner, /--durations=25/);
   assert.match(apiRunner, /HE_DOCS_ENABLED.*true/);
 });
 
@@ -799,6 +821,49 @@ test("retire-missing closes only open remote objects absent from the local tree"
     milestones: [{ number: 1, state: "open" }, { number: 2, state: "open" }, { number: 3, state: "closed" }],
     issues: [{ number: 10, state: "OPEN" }, { number: 20, state: "OPEN" }, { number: 30, state: "CLOSED" }],
   }), { milestones: [1], issues: [10] });
+});
+
+test("state readers parse the raw JSON returned by gh", () => {
+  const calls = [];
+  const { readIssueState, readMilestoneState } = githubStateReaders("o/r", (args) => {
+    calls.push(args);
+    return args[0] === "api"
+      ? JSON.stringify({ title: "m0", state: "open" })
+      : JSON.stringify({ state: "OPEN" });
+  });
+  assert.equal(readMilestoneState({ data: { github: { number: 2 } } }), "open");
+  assert.equal(readIssueState({ data: { github: { number: 20 } } }), "OPEN");
+  assert.deepEqual(calls, [
+    ["api", "repos/o/r/milestones/2"],
+    ["issue", "view", "20", "--repo", "o/r", "--json", "state"],
+  ]);
+  const broken = githubStateReaders("o/r", () => "{}");
+  assert.throws(() => broken.readIssueState({ data: { github: { number: 20 } } }), /state/);
+});
+
+test("sync patches only drifted states and is idempotent without drift", async () => {
+  const current = tree();
+  current.milestones[0].data.github = { number: 2, url: "https://github.com/o/r/milestone/2" };
+  current.milestones[1].data.github = { number: 3, url: "https://github.com/o/r/milestone/3" };
+  current.issues[0].data.github = { number: 20, url: "https://github.com/o/r/issues/20" };
+  const patched = [];
+  const io = (milestoneStates, issueStates) => ({
+    createMilestone() { throw new Error("unexpected"); },
+    createIssue() { throw new Error("unexpected"); },
+    backfill() {},
+    readMilestoneState: (milestone) => milestoneStates[milestone.data.github.number],
+    updateMilestoneState: (milestone, state) => patched.push([`milestone#${milestone.data.github.number}`, state]),
+    readIssueState: (issue) => issueStates[issue.data.github.number],
+    updateIssueState: (issue, state) => patched.push([`issue#${issue.data.github.number}`, state]),
+  });
+
+  const stable = await runSync(structuredClone(current), io({ 2: "closed", 3: "open" }, { 20: "CLOSED" }));
+  assert.equal(stable.stateUpdates, 0);
+  assert.deepEqual(patched, []);
+
+  const drifted = await runSync(structuredClone(current), io({ 2: "closed", 3: "closed" }, { 20: "OPEN" }));
+  assert.equal(drifted.stateUpdates, 2);
+  assert.deepEqual(patched, [["milestone#3", "open"], ["issue#20", "CLOSED"]]);
 });
 
 test("sync republish changed detailed issue bodies", async () => {

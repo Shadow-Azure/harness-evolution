@@ -148,6 +148,7 @@ const attributionStep = {
     rows: [
       {
         badCaseId: "case-1",
+        sessionId: "session-1",
         attributionId: "attr-1",
         category: "error",
         description: "读取越界",
@@ -156,6 +157,7 @@ const attributionStep = {
       },
       {
         badCaseId: "case-2",
+        sessionId: "session-2",
         attributionId: "attr-2",
         category: null,
         description: "与所选对象无关",
@@ -417,7 +419,7 @@ describe("evolution step content", () => {
 
   it("renders attribution rows with cached and fresh sources", () => {
     const wrapper = mount(StepAttribution, {
-      props: { step: attributionStep, run },
+      props: { wid: "ws-test", step: attributionStep, run },
     });
 
     expect(wrapper.text()).toContain("读取越界");
@@ -426,6 +428,10 @@ describe("evolution step content", () => {
     expect(wrapper.text()).toContain("82%");
     expect(wrapper.text()).toContain("非该对象问题");
     expect(wrapper.text()).toContain("attr-1");
+    expect(
+      wrapper.get("td.report-id a").attributes("href"),
+    ).toContain("tab=attr&at=attr-1");
+    expect(wrapper.get("td.id a").attributes("href")).toContain("tab=desc");
   });
 
   it("renders an empty case table for clusters without source cases", () => {

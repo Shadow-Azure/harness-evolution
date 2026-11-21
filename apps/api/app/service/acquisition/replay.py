@@ -31,12 +31,13 @@ from app.service.acquisition.local_sessions import (
 )
 from app.service.acquisition.normalize import ParsedIssue
 from app.service.acquisition.parsers import (
-    BaseTraceParser,
-    ParsedTranscript,
     TraceParserFactory,
     TracePayload,
 )
-from app.service.acquisition.parsers.factory import UnsupportedTraceRuntime
+from app.service.acquisition.parsers.factory import (
+    AmbiguousTraceRuntime,
+    UnsupportedTraceRuntime,
+)
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
 
@@ -71,22 +72,19 @@ class LocalReplayResult:
     errors: int
 
 
-def _normalize_payload(
+def _trace_payload(
     payload: RootPayload,
-    parser: BaseTraceParser,
     knowledge_roots: tuple[str, ...],
-) -> ParsedTranscript:
-    """Normalize one stored payload through its runtime parser."""
-    return parser.normalize(
-        TracePayload(
-            content=payload.payload,
-            root_session_id=payload.root_session_id,
-            agent_id=payload.agent_id,
-            agent_kind=cast(Literal["main", "subagent"], payload.agent_kind),
-            runtime_key=payload.runtime_key,
-            agent_meta=payload.agent_meta,
-            knowledge_roots=knowledge_roots,
-        ),
+) -> TracePayload:
+    """Build the parser input for one stored payload."""
+    return TracePayload(
+        content=payload.payload,
+        root_session_id=payload.root_session_id,
+        agent_id=payload.agent_id,
+        agent_kind=cast(Literal["main", "subagent"], payload.agent_kind),
+        runtime_key=payload.runtime_key,
+        agent_meta=payload.agent_meta,
+        knowledge_roots=knowledge_roots,
     )
 
 
@@ -188,35 +186,78 @@ async def replay_pending_payloads(
             )
             continue
         try:
-            parser = TraceParserFactory.create(runtime_key)
-        except UnsupportedTraceRuntime:
-            errors.append(
-                _issue_record(
-                    root_session_id,
-                    root_pending[0].agent_id,
-                    "UNSUPPORTED_RUNTIME",
-                    f"Unsupported trace runtime: {runtime_key}",
-                ),
-            )
-            failed += len(root_pending)
-            processed_candidates += len(root_pending)
-            await notify_progress(
-                root_session_id,
-                root_pending[0].agent_id,
-                processed_candidates,
-            )
-            continue
-        try:
             payloads = await list_root_payloads(database, runtime_key, root_session_id)
             knowledge_roots = await list_workspace_knowledge_roots(
                 database,
                 root_session_id,
                 bad_cases_present=bad_cases_present,
             )
-            parsed = tuple(
-                _normalize_payload(payload, parser, knowledge_roots) for payload in payloads
+            session_payloads = tuple(
+                _trace_payload(payload, knowledge_roots) for payload in payloads
             )
-            assembled = assemble_agent_trees(parsed)
+            main_count = sum(1 for payload in session_payloads if payload.agent_kind == "main")
+            if main_count != 1:
+                errors.append(
+                    _issue_record(
+                        root_session_id,
+                        root_pending[0].agent_id,
+                        "MISSING_MAIN_AGENT" if main_count == 0 else "DUPLICATE_MAIN_AGENT",
+                        (
+                            "Root session has no main Agent transcript"
+                            if main_count == 0
+                            else "Root session has multiple main Agent transcripts"
+                        ),
+                    ),
+                )
+                failed += len(root_pending)
+                processed_candidates += len(root_pending)
+                await notify_progress(
+                    root_session_id,
+                    root_pending[0].agent_id,
+                    processed_candidates,
+                )
+                continue
+            try:
+                parser = TraceParserFactory.for_trace(session_payloads)
+            except AmbiguousTraceRuntime:
+                errors.append(
+                    _issue_record(
+                        root_session_id,
+                        root_pending[0].agent_id,
+                        "AMBIGUOUS_RUNTIME",
+                        "Trace shape matches multiple parsers",
+                    ),
+                )
+                failed += len(root_pending)
+                processed_candidates += len(root_pending)
+                await notify_progress(
+                    root_session_id,
+                    root_pending[0].agent_id,
+                    processed_candidates,
+                )
+                continue
+            except UnsupportedTraceRuntime:
+                errors.append(
+                    _issue_record(
+                        root_session_id,
+                        root_pending[0].agent_id,
+                        "UNSUPPORTED_RUNTIME",
+                        f"Unsupported trace runtime: {runtime_key}",
+                    ),
+                )
+                failed += len(root_pending)
+                processed_candidates += len(root_pending)
+                await notify_progress(
+                    root_session_id,
+                    root_pending[0].agent_id,
+                    processed_candidates,
+                )
+                continue
+            session = parser.normalize_session()
+            assembled = assemble_agent_trees(
+                session.transcripts,
+                {root_session_id: session.links},
+            )
             root_issues = [_issue.as_sync_error() for _issue in assembled.issues]
             if not assembled.trees:
                 if not root_issues:

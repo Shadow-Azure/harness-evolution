@@ -151,10 +151,10 @@ erDiagram
 
 ### 3.0.1 runtime 身份与 parser 版本
 
-- `runtime_key` 是 parser 选择的唯一键；`TraceParserFactory.create(runtime_key)` 决定使用哪个 `BaseTraceParser` 子类。
+- `runtime_key` 是 runtime 身份与存储键；parser 选择由轨迹内容决定：`TraceParserFactory.for_trace(payloads)` 调用各子类的 `can_parse(payloads)`，唯一命中后实例化。`create(runtime_key, payloads)` 只用于显式/测试入口。
 - `parser_version` 按 runtime 解释：`source_records.parser_version` 只与该 runtime 的当前 parser version 比较；升级 Claude 不影响 Codex，反之亦然。
-- 未知 `runtime_key` 产生 `UNSUPPORTED_RUNTIME`，不得 fallback 到 Claude。
-- per-report envelope 的 `runtime` 与 parser 共用这一词汇表：`session_source` adapter 只解释 runtime 专属 `agentMeta`，最终 parser 仍由 envelope 的 `runtime_key` 选择，身份不出现第二个 home。
+- 未知轨迹或歧义选型产生稳定 `UNSUPPORTED_RUNTIME` / `AMBIGUOUS_RUNTIME`，不得 fallback 到 Claude。
+- per-report envelope 的 `runtime` 与 parser 共用这一词汇表：`session_source` adapter 只解释 runtime 专属 `agentMeta`；`runtime` 是预声明/身份提示，最终 parser 仍由轨迹 `can_parse` 选型，不一致只记诊断，身份不出现第二个 home。
 - `source_type` 只记录 `script` / `http_api` 等接入方式，不参与 parser 选择。
 
 ### 3.1 `source_records` —— 处理索引（不存 payload）
@@ -585,6 +585,7 @@ erDiagram
 | `target_version` | `VARCHAR(96)` | 本次使用的 tag/版本；决定 checkout 的基线；96 容纳 skill/agent tag 与 knowledge 的 71 字符 digest revision |
 | `target_revision` | `VARCHAR(96)` | NULL | V2：解析后的文件匹配身份；skill/agent 为 tag 内容解析出的 `digest:<sha256(body)>`，knowledge 为文档归一化 body hash；历史 run 为空，首次重试解析成功后回写 |
 | `repo_url` | `VARCHAR(1024)` | 被进化对象（skill/agent）所在的远端仓库；创建 run 时从 target 配置快照，不是自进化服务代码仓 |
+| `push_repo_url` | `VARCHAR(1024)` | prepare 时由 provider 派生的 push 目标（fork 或 `repo_url`）；eval 复用；不含凭据 |
 | `sub_dir` | `VARCHAR(512)` NOT NULL | 对象目录相对仓库根（如 `skills/deep-research`）；从 target 配置快照，避免配置变更后历史 run 无法定位 |
 | `validation_project_id` | `VARCHAR(128)` NOT NULL DEFAULT `''` | 创建 run 时从 target 快照的验证集测试工程 ID；历史 run 为空串 |
 | `test_project_id` | `VARCHAR(128)` NOT NULL DEFAULT `''` | 创建 run 时从 target 快照的测试集测试工程 ID；历史 run 为空串 |
@@ -615,7 +616,7 @@ erDiagram
 索引：`INDEX(created_at DESC)`、`INDEX(status)`、`INDEX(push_status)`、`INDEX(status, next_retry_at)`、`INDEX(target_type, target_name, target_version)`、`INDEX(target_config_id)`、`INDEX(workspace_id, created_at DESC)`。
 
 > `repo_url` 指向**被进化对象（skill/agent）所在的 git 仓库**，不是自进化服务代码仓。一次 run 的仓库生命周期：clone 到 `repo_path` 缓存 → 复制到独立 `workspace_path` → checkout `target_version`（解析 `base_commit`）→ 建 `branch_name` → 每轮从 run 分支拉 `candidate_ref`、应用 `patch`、commit、push → 外部评测 → 接纳后 fast-forward run 分支、拒绝删除 candidate ref。仓库记录代码/分支/commit，`evolution_rounds` / `evolution_run_events` 记录过程与评测/接纳结果；后端只做 git 操作，不执行仓库里的脚本，评测由外部 gateway 完成。
-> `repo_url` 与 `sub_dir` 都是创建 run 时的配置快照；prepare 只读这两个字段，不读 `evolution_targets` 的当前值。`validation_project_id` / `test_project_id` 采用同一快照语义；本切片只落库，不改变评测 gateway。
+> `repo_url`、`sub_dir`、`push_repo_url` 都是创建 run 时或 prepare 时的快照；`push_repo_url` 由 provider 从 `repo_url` 自动派生，eval 复用，保证 push 与 eval 同一个可 fetch 的仓。target 不新增 push/eval 字段；凭据只来自部署级 env，不落库。`validation_project_id` / `test_project_id` 采用同一快照语义。
 
 ### 5.3 `probe_clusters` —— 本次 run 的聚类结果
 
@@ -851,7 +852,7 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 | 元记录 | `last-prompt` / `queue-operation` 不参与轮次切分与统计；`attachment.queued_command` 的 `origin.kind=human` 可作候选 |
 | assistant 记录带 `message.id` 与 usage | 消息 = 唯一 `message.id`；同一 id 的多行 usage 只取一次，不按 content block 行重复求和；仅解析期使用，不落表 |
 | 子 agent 共享 root session | 子 agent JSONL 的 `sessionId` 与主 session 相同；`agentId` 才是子 agent 身份；`trajectory_payloads` 用 `(runtime_key, root_session_id, agent_id)` 区分 |
-| 父 agent 关系 | 子 agent 的 `*.meta.json.toolUseId` 指向父 Agent 调用；teammate/forked skill 可为 NULL |
+| 父 agent 关系 | 子 agent 的 `*.meta.json.toolUseId` 指向父 Agent 调用，优先作为 authoritative；envelope 缺 `toolUseId` 时，用父 `toolUseResult.agentId` ↔ 子 JSONL 顶层 `agentId` 生成 derived 链接；teammate/forked skill 可为 NULL，无法唯一解析时保留 synthetic |
 | 普通 skill 与 forked skill | 普通 `Skill` 调用只产生 `agent_events(kind=skill)`，不建 `agents` 行；forked skill 有独立 JSONL，建 `agents` 行（`task_kind=forked_skill`、`skill_name` 非空、`name` 为空），并用 `skill_name` 关联父 skill 事件 |
 | 会话跨多天 | 存储绝对时刻，不假设连续时长 |
 | 会话统计口径 | 整棵树：每个 agent 解析时累计 `messages_count / tokens_total / tools_count / errors_count`，组装时求和写 `session_families`；`user_turns_count` 取该会话的 `user_turns` 行数；`agents_count` 数 `kind=subagent` 且非 forked skill 的节点（不含 main/workflow） |

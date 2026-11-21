@@ -487,6 +487,7 @@ describe("run detail conformance", () => {
         rows: [
           {
             badCaseId: "case-1",
+            sessionId: "session-1",
             attributionId: "attr-1",
             category: "error",
             description: "读取越界",
@@ -495,6 +496,7 @@ describe("run detail conformance", () => {
           },
           {
             badCaseId: "case-2",
+            sessionId: "session-2",
             attributionId: "attr-2",
             category: null,
             description: "与所选对象无关",
@@ -505,7 +507,7 @@ describe("run detail conformance", () => {
       },
     } satisfies EvolutionStepAttribution;
     const wrapper = mount(StepAttribution, {
-      props: { step: attribution, run },
+      props: { wid: "ws-test", step: attribution, run },
     });
 
     expect(wrapper.text()).toContain("读取越界");
@@ -513,6 +515,32 @@ describe("run detail conformance", () => {
     expect(wrapper.text()).toContain("缓存");
     expect(wrapper.text()).toContain("新增");
     expect(wrapper.text()).toContain("82%");
+
+    const sourceLinks = wrapper.findAll("td.id a");
+    expect(sourceLinks).toHaveLength(2);
+    expect(sourceLinks[0]?.attributes("href")).toBe(
+      "/workspaces/ws-test/sessions/session-1/errors?case=case-1&tab=desc",
+    );
+    expect(sourceLinks[0]?.attributes("target")).toBe("_blank");
+    expect(sourceLinks[0]?.attributes("rel")).toBe("noopener noreferrer");
+    expect(sourceLinks[0]?.attributes("aria-label")).toBe(
+      "来源问题 case-1，在新窗口打开问题描述",
+    );
+
+    const reportLinks = wrapper.findAll("td.report-id a");
+    expect(reportLinks).toHaveLength(2);
+    expect(reportLinks[0]?.attributes("href")).toBe(
+      "/workspaces/ws-test/sessions/session-1/errors?case=case-1&tab=attr&at=attr-1",
+    );
+    expect(reportLinks[1]?.attributes("href")).toBe(
+      "/workspaces/ws-test/sessions/session-2/errors?case=case-2&tab=attr&at=attr-2",
+    );
+    expect(reportLinks[0]?.attributes("target")).toBe("_blank");
+    expect(reportLinks[0]?.attributes("rel")).toBe("noopener noreferrer");
+    expect(reportLinks[0]?.attributes("aria-label")).toBe(
+      "归因报告 attr-1，在新窗口打开归因分析",
+    );
+    expect(reportLinks[0]?.attributes("title")).toBe("归因报告 ID · 打开归因分析");
   });
 
   it("shows the final push status and timestamp", () => {

@@ -343,6 +343,9 @@ test("m3-agent-tree renders the prototype graph with real Vue Flow geometry", as
       deviceScaleFactor: 1,
       mobile: true,
     });
+    await page.session.send("Runtime.evaluate", {
+      expression: `document.querySelector("button[aria-label='适应画布']")?.click()`,
+    });
     const narrow = await waitForDocument(
       page.session,
       `(() => {

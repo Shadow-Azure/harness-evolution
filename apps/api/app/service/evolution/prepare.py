@@ -203,6 +203,7 @@ class EvolutionPrepareService:
                         {
                             "sessionId": session.session_id,
                             "title": session.title,
+                            "short": session.short,
                             "objectTriggerAt": session.object_trigger_at.isoformat(),
                             "badCaseCount": session.bad_case_count,
                         }

@@ -139,6 +139,7 @@ const attributionRows = Array.from({ length: 28 }, (_, index) => {
   const attributed = index < 16;
   return {
     badCaseId: `case-${index + 1}`,
+    sessionId: `session-${index + 1}`,
     attributionId: `probe-${index + 1}`,
     category: attributed ? "error" : null,
     description: `结论 ${index + 1}`,
@@ -758,6 +759,44 @@ describe("evolution run detail page", () => {
     });
   });
 
+  it("renders the short Session label with the full title on hover", async () => {
+    const longTitle = "SWE-bench astropy-12907 修复任务 ".repeat(120).trim();
+    server.use(
+      http.get(`${evolutionBase}/runs/:runId`, () =>
+        HttpResponse.json(
+          detail(
+            run({ status: "running" }),
+            ["done", "done", "pending", "pending", "pending", "pending", "pending"],
+          ),
+        )),
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
+        HttpResponse.json({
+          ...sessionsStep,
+          payload: {
+            ...sessionsStep.payload,
+            rows: [
+              {
+                sessionId: "session-long",
+                title: longTitle,
+                short: "SWE-bench astropy-12907",
+                objectTriggerAt: "2026-09-01T09:00:00+08:00",
+                badCaseCount: 2,
+                potentialCount: 1,
+              },
+            ],
+          },
+        })),
+    );
+    const wrapper = await mountPage("evo-full-1", "?step=sessions");
+
+    const title = wrapper.get(".session-title");
+    expect(title.text()).toBe("SWE-bench astropy-12907");
+    expect(title.attributes("title")).toBe(longTitle);
+    expect(wrapper.find(".session-cell").exists()).toBe(true);
+    expect(wrapper.findAll(".rep thead th")).toHaveLength(4);
+    expect(wrapper.text()).toContain("session-long");
+  });
+
   it("removes a missing cluster deep-link while retaining the notice", async () => {
     server.use(
       http.get(`${evolutionBase}/runs/:runId`, () =>
@@ -1056,6 +1095,7 @@ describe("evolution run detail page", () => {
             rows: [
               {
                 badCaseId: "legacy-case-1",
+                sessionId: "legacy-session-1",
                 attributionId: "legacy-probe-1",
                 category: "error",
                 description: "归因结论",
@@ -1064,6 +1104,7 @@ describe("evolution run detail page", () => {
               },
               {
                 badCaseId: "legacy-case-2",
+                sessionId: "legacy-session-2",
                 attributionId: "legacy-probe-2",
                 category: "error",
                 description: "归因结论",
@@ -1072,6 +1113,7 @@ describe("evolution run detail page", () => {
               },
               {
                 badCaseId: "legacy-case-3",
+                sessionId: "legacy-session-3",
                 attributionId: "legacy-probe-3",
                 category: null,
                 description: "非该对象",

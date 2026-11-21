@@ -68,6 +68,7 @@ RoundEvalStatus = Literal["pending", "evaluating", "completed", "failed", "timeo
 AttributionSource = Literal["cached", "fresh"]
 _CLUSTER_TYPES: tuple[str, ...] = ("model", "prompt", "error")
 SESSIONS_PAGE_SIZE = 4
+_SESSION_SHORT_TITLE_LIMIT = 120
 POTENTIAL_PAGE_SIZE = 5
 
 
@@ -121,6 +122,7 @@ class StepSessionRow(IdentityModel):
 
     session_id: str
     title: str | None
+    short: str | None = None
     object_trigger_at: datetime | None
     bad_case_count: int = 0
     potential_count: int = 0
@@ -177,9 +179,15 @@ class StepAttributionSummary(IdentityModel):
 
 
 class StepAttributionRow(IdentityModel):
-    """One case attribution conclusion of step 4."""
+    """One case attribution conclusion of step 4.
+
+    ``session_id`` is the source Session that owns the bad case. The client
+    needs it to build the canonical error-detail deep link without a second
+    lookup; rows without a Session cannot offer that link.
+    """
 
     bad_case_id: str
+    session_id: str
     attribution_id: str
     category: ClusterType | None
     description: str
@@ -781,6 +789,11 @@ def _session_summary(facts: _RunFacts, total: int) -> StepSessionsSummary:
     )
 
 
+def _short_label(title: str | None) -> str | None:
+    """Bound the prompt-derived title used as the step-2 Session label."""
+    return title[:_SESSION_SHORT_TITLE_LIMIT] if title else None
+
+
 def _v2_session_rows(facts: _RunFacts) -> list[StepSessionRow]:
     """Read the persisted Session snapshot, falling back to candidate rows."""
     raw = facts.run.stats.get("sessionRows")
@@ -790,10 +803,13 @@ def _v2_session_rows(facts: _RunFacts) -> list[StepSessionRow]:
             if not isinstance(item, Mapping) or not isinstance(item.get("sessionId"), str):
                 continue
             trigger = item.get("objectTriggerAt")
+            title = item.get("title") if isinstance(item.get("title"), str) else None
+            short = item.get("short") if isinstance(item.get("short"), str) else None
             persisted.append(
                 StepSessionRow(
                     session_id=str(item["sessionId"]),
-                    title=item.get("title") if isinstance(item.get("title"), str) else None,
+                    title=title,
+                    short=short or _short_label(title),
                     object_trigger_at=(
                         datetime.fromisoformat(trigger) if isinstance(trigger, str) else None
                     ),
@@ -835,19 +851,23 @@ def _legacy_session_rows(facts: _RunFacts) -> list[StepSessionRow]:
     grouped: dict[str, list[ProbeHitRow]] = OrderedDict()
     for row in facts.probes:
         grouped.setdefault(row.probe_session_id, []).append(row)
-    return [
-        StepSessionRow(
-            session_id=session_id,
-            title=next((row.session_title for row in rows if row.session_title), None),
-            object_trigger_at=next(
-                (row.probe_started_at for row in rows if row.probe_started_at is not None),
-                None,
+    mapped: list[StepSessionRow] = []
+    for session_id, rows in grouped.items():
+        title = next((row.session_title for row in rows if row.session_title), None)
+        mapped.append(
+            StepSessionRow(
+                session_id=session_id,
+                title=title,
+                short=_short_label(title),
+                object_trigger_at=next(
+                    (row.probe_started_at for row in rows if row.probe_started_at is not None),
+                    None,
+                ),
+                bad_case_count=len({row.bad_case_id for row in rows}),
+                potential_count=len({row.bad_case_id for row in rows}),
             ),
-            bad_case_count=len({row.bad_case_id for row in rows}),
-            potential_count=len({row.bad_case_id for row in rows}),
         )
-        for session_id, rows in grouped.items()
-    ]
+    return mapped
 
 
 def _v2_potential_rows(facts: _RunFacts) -> list[StepPotentialRow]:
@@ -909,6 +929,7 @@ def _v2_attribution_rows(facts: _RunFacts) -> list[StepAttributionRow]:
         rows.append(
             StepAttributionRow(
                 bad_case_id=candidate.bad_case_id,
+                session_id=candidate.session_id,
                 attribution_id=record.probe_id,
                 category=category,
                 description=record.probe_description,
@@ -932,6 +953,7 @@ def _legacy_attribution_rows(facts: _RunFacts) -> list[StepAttributionRow]:
         rows.append(
             StepAttributionRow(
                 bad_case_id=first.bad_case_id,
+                session_id=first.probe_session_id,
                 attribution_id=probe_id,
                 category=category,
                 description=first.probe_description,

@@ -31,6 +31,7 @@ from app.db.models.users import users
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 
 BASE = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
+LONG_SESSION_PROMPT = ("SWE-bench astropy-12907 修复任务 " * 200)[:3337]
 RUN_IDS = (
     "run-v2-completed",
     "run-v2-blocked-attribution",
@@ -204,7 +205,8 @@ async def main() -> None:
                 "sessionRows": [
                     {
                         "sessionId": "v2-session-1",
-                        "title": "来源运行 A",
+                        "title": LONG_SESSION_PROMPT,
+                        "short": "来源运行 A",
                         "objectTriggerAt": "2026-10-01T09:30:00+08:00",
                         "badCaseCount": 2,
                         "potentialCount": 2,
@@ -212,6 +214,7 @@ async def main() -> None:
                     {
                         "sessionId": "v2-session-2",
                         "title": "来源运行 B",
+                        "short": "来源运行 B",
                         "objectTriggerAt": "2026-10-02T10:00:00+08:00",
                         "badCaseCount": 1,
                         "potentialCount": 1,
@@ -219,6 +222,7 @@ async def main() -> None:
                     {
                         "sessionId": "v2-session-3",
                         "title": "来源运行 C",
+                        "short": "来源运行 C",
                         "objectTriggerAt": "2026-10-03T11:00:00+08:00",
                         "badCaseCount": 1,
                         "potentialCount": 1,
@@ -226,6 +230,7 @@ async def main() -> None:
                     {
                         "sessionId": "v2-session-4",
                         "title": "来源运行 D",
+                        "short": "来源运行 D",
                         "objectTriggerAt": "2026-10-04T12:00:00+08:00",
                         "badCaseCount": 1,
                         "potentialCount": 1,
@@ -233,6 +238,7 @@ async def main() -> None:
                     {
                         "sessionId": "v2-session-5",
                         "title": "来源运行 E",
+                        "short": "来源运行 E",
                         "objectTriggerAt": "2026-10-05T13:00:00+08:00",
                         "badCaseCount": 1,
                         "potentialCount": 1,

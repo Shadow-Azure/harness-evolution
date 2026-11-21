@@ -209,6 +209,7 @@ defineExpose({ showTip, hideTip });
 
 <style scoped>
 .version-label {
+  position: relative;
   display: flex;
   flex-shrink: 0;
   align-items: center;

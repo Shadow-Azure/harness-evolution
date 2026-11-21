@@ -2516,11 +2516,14 @@ function chainOf(events, lines) {
     const e = events[i];
     const gap = Math.max(0, (e.line || 0) - prev - 1);
     if (gap > 0) { const w = gapPillW(gap); items.push({ kind: "gap", n: gap, w }); push(w); }
-    // skill 名称完整展示（节点宽度随文字自适应）；subagent / workflow 的描述过长才省略
+    // skill 名称完整展示（节点宽度随文字自适应）；subagent / workflow 用对象名称，描述进 tooltip
     const text = e.kind === "skill"
       ? (e.name || "skill")
-      : clipName(e.desc || e.name || e.kind);
-    const item = { kind: e.kind, name: text, evIdx: i, line: e.line, w: trigPillW(text) };
+      : clipName(e.name || e.desc || e.kind);
+    const title = e.kind === "skill" || !e.desc || e.desc === e.name
+      ? (e.name || e.kind)
+      : `${e.name || e.kind} · ${e.desc}`;
+    const item = { kind: e.kind, name: text, desc: e.desc || "", title, evIdx: i, line: e.line, w: trigPillW(text) };
     items.push(item);
     offsets[i] = push(item.w);
     prev = Math.max(prev, e.line || 0);
@@ -2536,6 +2539,16 @@ function buildGraph(sid, expanded, findingsBudget, cases) {
   const d = TREE[sid];
   if (!d) return { nodes: [], edges: [], findings: [] };
   const nodes = [], edges = [];
+  // 原型 tree 数据只存了 subagent 描述；从对应子节点补出 subagent 名称，
+  // 让主链与生产一样显示 name，而不是把 desc 当标签。
+  const subByToolUse = new Map((d.subs || [])
+    .filter((sub) => sub.toolUseId)
+    .map((sub) => [sub.toolUseId, sub]));
+  (d.main.events || []).forEach((event) => {
+    if (event.kind === "skill" || event.name) return;
+    const sub = event.toolUseId ? subByToolUse.get(event.toolUseId) : null;
+    event.name = sub?.type || (event.kind === "workflow" ? "workflow" : "");
+  });
   const mainChain = chainOf(d.main.events, d.main.lines);
   const rootW = mainChain.width;
   const mainMarks = (d.main.events || []).map((e, i) => ({
@@ -3087,7 +3100,7 @@ function AgentNode({ data }) {
             ${i > 0 ? html`<span className="rf-link"></span>` : null}
             ${it.kind === "gap"
               ? html`<span className="rf-cnode gap" title=${"压缩合并 " + it.n + " 行 session 日志"}>× ${it.n}</span>`
-              : html`<span className=${"rf-cnode " + it.kind} title=${"L" + it.line + " · " + it.name}><span className="rf-cdot"></span>${it.name}</span>`}
+              : html`<span className=${"rf-cnode " + it.kind} title=${"L" + it.line + " · " + (it.title || it.name)}><span className="rf-cdot"></span>${it.name}</span>`}
           <//>
         `)}
       </div>
@@ -3759,7 +3772,7 @@ function buildLaneDag(sid, selectedNo, cases) {
     }
     const line = it.line != null ? it.line : cursor;
     cursor = Math.max(cursor, line + 1);
-    return { gap: false, kind: it.kind, label: it.name || it.kind || "step", lo: line, hi: line };
+    return { gap: false, kind: it.kind, label: it.desc || it.name || it.kind || "step", lo: line, hi: line };
   });
 
   /* 2) 相邻触发（同一轮并发 dispatch）合并成一个 bar；缺口单独成「×N 无触发」条 */

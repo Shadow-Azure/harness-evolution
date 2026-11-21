@@ -10,15 +10,15 @@ Status: implemented
 
 ## Decision
 
-- `build-and-docs` 按环境拆成七个并发 lane：`web-static`、`api-static`、`unit-tests`、`db-sqlite`、`e2e`、`build-lane`、`docs-flow`；`mysql` 与 `flow-online` 维持原样。每个 lane 自带 checkout 与 pnpm/pip setup，缓存共享。
-- 唯一真实的产物依赖（build → verify:bundle）收进 `build-lane` 内部串行；覆盖率 ≥80% 的判定保持在 `unit-tests` 单 job 内，不做跨 job coverage 聚合。
+- `build-and-docs` 按环境拆成并发 lane：`web-static`、`api-static`、`unit-tests-web`、`unit-tests-api`、`db-sqlite`、`e2e`、`build-lane`、`docs-flow`；`mysql` 与 `flow-online` 维持原样。每个 lane 自带 checkout 与 pnpm/pip setup，缓存共享。
+- 唯一真实的产物依赖（build → verify:bundle）收进 `build-lane` 内部串行；覆盖率判定不跨 job 聚合——Web 的 vitest 80% 与 API 的 pytest 90% 各自在套件内判定，因此 `unit-tests` 可拆成 web/api 两个并行 job（见 [2026-20 CI 单元测试并发化](2026-11-20-ci-unit-tests-parallelization.md)）。
 - 新增 `ci-ok` 聚合 job：`needs` 全部 lane、`if: always()`，用 `needs.*.result` 表达式只对 `failure`/`cancelled` 一票否决，`skipped` 放行——覆盖 `flow-online` 的 PR-only 条件在 push 事件下的跳过。分支保护的 required check 迁到 `ci-ok` 单点，后续增删 lane 只改 `needs` 列表。
 - 每次运行仍执行全部门禁，不引入路径过滤，"代码与文档没有旁路"原则不变。
 
 ## Alternatives considered
 
 - 路径过滤（docs-only PR 跳过 e2e/build lane）：收益更大，但违反仓库明文的 no-bypass 原则，门禁可被改文档的 PR 绕开；否。
-- 把 `unit-tests` 拆成 web/api 两个 job：多一层并行，但 80% 覆盖率阈值变成跨 job 聚合问题，需要 coverage artifact 合并设施；复杂度不值，否。
+- 把 `unit-tests` 拆成 web/api 两个 job：初版以“80% 阈值需要跨 job 聚合、要 coverage artifact 合并设施”为由否决；实测两套阈值本来就按套件分别判定，拆分无需聚合，后按 [2026-11-20 CI 单元测试并发化](2026-11-20-ci-unit-tests-parallelization.md) 采用。
 - 保留单 job 只调 timeout：不解决墙钟问题，否。
 - E2E 按文件分片到多 job：`m3-session-browser` 单文件是单点大头，但分片改变 `--test-concurrency=1` 语义并需 artifact 合并，另立 issue 评估。
 

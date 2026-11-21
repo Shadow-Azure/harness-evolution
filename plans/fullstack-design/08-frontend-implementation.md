@@ -485,6 +485,8 @@ Index.vue
 
 移动端（≤860px）保持单列、自然高度与 `overflow: visible`，与原型窄屏行为一致。父级 `.workspace-main` 仍按 `100vh` 约束：桌面 `dvh` 与 `vh` 一致，移动端由窄屏规则接管，本次不改共享壳层。
 
+滚动容器内的绝对定位辅助文本（`.sr-only` 等）必须以该容器内的某个元素为包含块：例如 `.session-card { position: relative; }`。否则绝对定位盒子的包含块会落到初始包含块，`overflow` 裁剪不生效，卡片列表会把文档撑到最后一屏之外，表现为多出一条窗口滚动条；m3 e2e 用 10 条 Session 的列表布局与 `.sr-only` 的 `offsetParent` 断言回归。
+
 ## 6. 工作空间总览页（`pages/overview/Index.vue`，V2）
 
 ### 6.1 结构
@@ -782,9 +784,9 @@ RunDetail.vue
 | step | 展示 |
 |---|---|
 | 1 选择范围 | 条件摘要（对象@版本、时间窗、策略、缓存开关）+ 统计 |
-| 2 Session 关联 | 4 条/页表格（Session / 对象触发点 / bad case 数 / 潜在数）+ 跳过统计 |
+| 2 Session 关联 | 4 条/页表格（Session 短标签 + 完整 Session ID / 对象触发点 / bad case 数 / 潜在数）；Session 单元格用 `short` 单行省略，`title` 悬停展示完整标题，固定列宽保证四列同屏；存量 run 缺 `short` 时用 `title[:120]` 兜底 + 跳过统计 |
 | 3 潜在 bad case | 5 条/页，含「命中原因」列；`unknown` 标注触发点顺序待重放 |
-| 4 对象归因 | 统计四数 + 表格（来源 bad case / 归因 ID / 分类 / 现象 / 结果来源 cached\|fresh / 置信度）；对象·版本在 step 标题，不在表格重复「结论」 |
+| 4 对象归因 | 统计四数 + 表格（来源 bad case / 归因 ID / 分类 / 现象 / 结果来源 cached\|fresh / 置信度）；对象·版本在 step 标题，不在表格重复「结论」；来源 bad case 与归因报告 ID 均为新窗口深链（问题描述 / 归因分析，`at` 选中该行归因） |
 | 5 聚类与严重度 | 簇卡片按 severity 降序，每簇标题 + 聚类描述 + 可折叠来源 bad case 表（ID 可深链错误详情），默认展开第一簇（或 active 簇） |
 | 6 迭代优化 | 沿用既有轮次卡（patch/candidate/push/eval/接纳），来源问题为 `cases[]` |
 | 7 测试集终评 | 沿用 V1（verdict/metrics/changes） |
@@ -804,6 +806,7 @@ RunDetail.vue
 | 中断/阻塞恢复 | 刷新后先拉 `run` 与 `events`；`blocked` 显示“可重试”，`interrupted` 显示“任务被中断，可查看最后事件” |
 | 点击 stepper | 只允许 `clickable === true` 的节点；点击 → `?step={key}` + 拉 `useRunStep` |
 | 簇深链 | `?step=clusters&cluster={clusterId}`：切到聚类步并滚动到该簇卡、加高亮（commit message 的「问题簇」链接落点）；簇不存在时忽略参数并提示“簇已不存在” |
+| 第 4 步归因深链 | 来源 bad case → 错误详情「问题描述」（`tab=desc`）；归因报告 ID → 「归因分析」并带 `at={attributionId}`；均在新窗口打开 |
 | Step 5 聚类展开 | 本地 `expandedClusters: Set<string>`；默认展开当前进行中的轮次 |
 | 自动推进 | 生产 UI 无「推进一轮」；后台逐轮自动执行，页面只通过 SSE/轮询更新 |
 | 评测状态 | `evalStatus`：pending/evaluating/completed/failed/timeout；`evaluating` 显示“评测中，下一次轮询 …”；failed/timeout 进入 blocked |

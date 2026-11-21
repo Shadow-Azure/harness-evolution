@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-run-detail-scroll-gutter.md
-bugfix-run-detail-scroll-gutter.md: 4bcd0e400e1dc5f19e759c3e058ba0b062a74073
-bugfix-run-detail-scroll-gutter.en.md: e318979333dfe4273d5a66dcab4e4b18919df04a
+bugfix-run-detail-scroll-gutter.md: ce4bd74459b1ab0344f89318cb706b632866d827
+bugfix-run-detail-scroll-gutter.en.md: fb9ec5fef433385b4ee0bc44818360f835660f8d

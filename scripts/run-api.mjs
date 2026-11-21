@@ -13,6 +13,45 @@ const PYTHON =
     ? path.join(API_DIR, ".venv", "Scripts", "python.exe")
     : path.join(API_DIR, ".venv", "bin", "python");
 
+// pytest-cov merges the per-worker data files that xdist leaves behind, so the
+// branch threshold stays one number for serial and parallel runs alike. The
+// 90% gate only applies to a full-suite run: a focused path selection cannot
+// reach the threshold by design.
+const TEST_ARGS = [
+  "-m",
+  "pytest",
+  "--cov=app",
+  "--cov-branch",
+  "--cov-report=term-missing",
+  "--durations=25",
+];
+
+const VALUE_OPTIONS = new Set([
+  "-k",
+  "-m",
+  "-n",
+  "-p",
+  "--deselect",
+  "--durations",
+  "--dist",
+  "--ignore",
+  "--maxfail",
+  "--timeout",
+]);
+
+/** Whether the forwarded arguments select specific tests instead of the whole suite. */
+function selectsTests(arguments_) {
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const argument = arguments_[index];
+    if (argument.startsWith("-")) {
+      if (VALUE_OPTIONS.has(argument)) index += 1;
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
 const COMMANDS = {
   dev: ["-m", "app", "--reload"],
   db: ["-m", "pytest", "tests/test_database.py", "-m", "not mysql"],
@@ -28,12 +67,21 @@ const COMMANDS = {
   ],
   lint: ["-m", "ruff", "check", ".", "--output-format", "concise"],
   start: ["-m", "app"],
-  test: [
-    "-c",
-    "from coverage import Coverage; c=Coverage(); c.start(); import pytest; status=pytest.main([]); c.stop(); c.save(); c.report(); raise SystemExit(status)",
-  ],
+  test: TEST_ARGS,
+  "test:serial": TEST_ARGS,
   typecheck: ["-m", "mypy", "app", "tests"],
 };
+
+/** Whether the caller already chose a worker count or asked for serial execution. */
+function selectsWorkers(arguments_) {
+  return arguments_.some(
+    (argument) =>
+      argument === "-n" ||
+      /^-n\d+$/.test(argument) ||
+      argument.startsWith("--numprocesses") ||
+      argument === "--serial",
+  );
+}
 
 const command = process.argv[2];
 const commandArguments = process.argv.slice(3);
@@ -54,12 +102,18 @@ const lintFormat =
   }) : { status: 0 };
 if (lintFormat.status !== 0) process.exit(lintFormat.status ?? 1);
 
-const commandLine = [...COMMANDS[command]];
-if (command === "test") {
-  commandLine[1] = commandLine[1]?.replace(
-    "pytest.main([])",
-    `pytest.main(${JSON.stringify(commandArguments)})`,
-  );
+let commandLine = [...COMMANDS[command]];
+if (command === "test" || command === "test:serial") {
+  // pnpm forwards a literal `--`; pytest treats it as the end of options.
+  const forwarded = commandArguments.filter((argument) => argument !== "--");
+  const serial = command === "test:serial" || forwarded.includes("--serial");
+  const passthrough = forwarded.filter((argument) => argument !== "--serial");
+  // Local runs use the machine's cores; CI passes an explicit `-n 4`.
+  const workers = serial || selectsWorkers(passthrough) ? [] : ["-n", "auto"];
+  // A focused selection does not represent the suite gate: skip coverage
+  // instead of judging a subset against the whole-app 90% threshold.
+  const coverage = selectsTests(passthrough) ? ["--no-cov"] : ["--cov-fail-under=90"];
+  commandLine = [...commandLine, ...coverage, ...workers, ...passthrough];
 }
 
 const result = spawnSync(PYTHON, commandLine, {

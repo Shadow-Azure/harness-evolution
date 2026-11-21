@@ -6,6 +6,7 @@ import importlib
 import pkgutil
 
 from app.service.acquisition.parsers.base import (
+    AgentLink,
     AgentMetaFacts,
     BaseTraceParser,
     ParseContext,
@@ -15,10 +16,12 @@ from app.service.acquisition.parsers.base import (
     ParsedTranscript,
     ParsedUserTurn,
     RootMetadata,
+    SessionParseResult,
     TraceEvidence,
     TracePayload,
 )
 from app.service.acquisition.parsers.factory import (
+    AmbiguousTraceRuntime,
     TraceParserFactory,
     UnsupportedTraceRuntime,
 )
@@ -37,7 +40,9 @@ def _discover_parsers() -> None:
 _discover_parsers()
 
 __all__ = [
+    "AgentLink",
     "AgentMetaFacts",
+    "AmbiguousTraceRuntime",
     "BaseTraceParser",
     "ParseContext",
     "ParsedBlock",
@@ -46,6 +51,7 @@ __all__ = [
     "ParsedTranscript",
     "ParsedUserTurn",
     "RootMetadata",
+    "SessionParseResult",
     "TraceEvidence",
     "TraceParserFactory",
     "TracePayload",

@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/bugfix-session-third-scrollbar.md
+bugfix-session-third-scrollbar.md: 1e17e8ad21f6d1ef237127c33d5e94b57ddb1db4
+bugfix-session-third-scrollbar.en.md: a70b6daf152df6ad435127a53f42e7139ddf4f09

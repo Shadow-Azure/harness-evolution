@@ -94,8 +94,8 @@ apps/api/
       workspaces/            # V2：空间、成员、额度、凭据
       overview/              # V2：总览口径与聚合
       sessions/              # 列表/会话概览/Agent 会话树
-      acquisition/           # 读 payload、按 runtime 选 parser、归一化、Agent 会话树组装、定时调度（scheduler.py）
-        parsers/             # BaseTraceParser + TraceParserFactory + ClaudeCodeTraceParser；新 runtime 只加子类
+      acquisition/           # 读 payloads、按轨迹选 parser、会话级归一化、Agent 会话树组装、定时调度（scheduler.py）
+        parsers/             # BaseTraceParser + TraceParserFactory + ClaudeCodeTraceParser；新 runtime 加子类（can_parse/会话链接）
       bad_cases/             # 问题列表/详情
       evolution/             # run、七步管线、潜在匹配、归因与缓存、candidate push、eval gateway/poller、apply、blocked retry、事件
       catalogs/              # 目标/模型清单
@@ -116,7 +116,7 @@ alembic/                     # 迁移（项目根，与 app 平级）
 
 **路由只在 `main.py` 注册**（沿用仓库现有约定），各域提供 `router = APIRouter(prefix=...)`。
 
-**轨迹 parser 扩展点**：`acquisition/parsers/` 的 `BaseTraceParser` 用模板方法固定 JSONL 帧、坏行、隐私边界、计数和 finalize；`ClaudeCodeTraceParser` 只解释 Claude record/meta。`TraceParserFactory` 以 `runtime_key` 选 parser，子类用 `@TraceParserFactory.register` 自注册，包启动时自动发现。新增 runtime 不改 replay、agent_tree 或公共 normalize；未知 runtime 生成 `UNSUPPORTED_RUNTIME`，不能 fallback 到 Claude。
+**轨迹 parser 扩展点**：`acquisition/parsers/` 的 `BaseTraceParser` 用模板方法固定 JSONL 帧、坏行、隐私边界、计数和 finalize；`can_parse(payloads)` 由子类按轨迹内容判定，`TraceParserFactory.for_trace(payloads)` 唯一命中后实例化；parser 构造时接收同一 root 的主/子 payload，`normalize_session()` 产出 transcripts 与父子链接，`agent_tree` 只应用链接。子类用 `@TraceParserFactory.register` 自注册，包启动时自动发现。新增 runtime 只需新增子类并实现 `can_parse` / record/meta / 会话链接；公共 replay/agent_tree 不出现 runtime 分支。未知/歧义选型产生稳定错误，不能 fallback 到 Claude。
 
 ## 4. 数据库设计：MySQL 主库 / SQLite 测试
 
@@ -254,7 +254,9 @@ class PayloadSource(Protocol):
 | 归因 | `service/evolution/attribution.py::RuleBasedEngine`（`rule-v1`） | 换 LLM 归因：新增 Engine 子类 + 注册新 `key`，缓存键自动隔离 |
 | patch 内容 | `service/evolution/patch.py` | 内容占位（追加小节），但**真实写文件、真实 commit**；后续换 LLM/规则生成 |
 | eval / 终评 | `service/evolution/eval_gateway.py` + `eval_poller.py` | V1 可 `FakeEvalGateway`；真实接口走 submit/status/result 适配层；终评占位 |
-| git 推送 | `HE_GIT_PUSH=true`（每轮 candidate 评测前） | candidate 推临时 ref → 评测 → 接纳后 fast-forward run 分支；`HE_GIT_PUSH_URL` 可把写入指向可写 fork；失败进入 blocked，3 次立即 + 1/5/15min 退避 |
+| git 推送 | `HE_GIT_PUSH=true`（每轮 candidate 评测前） | `GitPushProvider` 工厂按 `HE_GIT_PUSH_PROVIDER` 选择 GitHub/GitLab 子类；candidate 推临时 ref → 评测 → 接纳后 fast-forward run 分支；provider 自动 fork，run 记录派生 push 目标，eval 复用同一目标；`HE_GIT_PUSH_URL` 只作全局兜底；失败进入 blocked，3 次立即 + 1/5/15min 退避 |
+
+git 推送的托管平台差异收敛在 `third_party_api/git/`：`GitPushProvider` 父类定义 `remote_url` / `auth_environment` / `ensure_fork` / 公共 `push_ref` / `remote_ref`，`GitHubProvider` 与 `GitLabProvider` 只实现 URL、API、fork 与认证差异；新增平台只加子类与注册项，不改 prepare/candidate/final 状态机。
 
 ## 6. 错误模型与横切
 
@@ -373,7 +375,9 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 | `HE_SYNC_INTERVAL_SECONDS` | `60` | 后台处理待归一化 payload 的间隔（0 = 关闭定时，仅 admin 手动） |
 | `HE_WORKSPACE_DIR` | `data/workspaces` | 每次自进化 run 的独立工作区（git clone 目标） |
 | `HE_GIT_PUSH` | `true` | 每轮 candidate 评测前 push；测试环境可设 false（此时不触发真实评测） |
-| `HE_GIT_PUSH_URL` | 空 | 可选的可写 fork / push URL；空 = 推送 `repo_url` 的 origin。凭据只来自环境或 credential helper，不写入 URL |
+| `HE_GIT_PUSH_URL` | 空 | 可选的全局 fork / push URL 兜底；空 = provider 自动 fork，再回退 `repo_url` 的 origin。凭据只来自环境或 credential helper，不写入 URL |
+| `HE_GIT_PUSH_PROVIDER` | `github` | `github` / `gitlab`；选择 `GitPushProvider` 子类；未知值拒绝启动 |
+| `HE_GIT_PUSH_TOKEN` | 空 | PAT；只从 Secrets / 运行环境注入，配合 `GIT_ASKPASS`；API base/网页根/用户名由 provider 子类按 `repo_url` host 推导，不新增配置；token 不写 URL、不入库 |
 | `HE_GIT_PROXY` | 空 | 只给 git 子进程用的本机 HTTP 代理地址（如 `http://127.0.0.1:10808`）；空 = 直连。VLESS 凭据不在这里，见 [Git 出网代理](../../docs/git-proxy.md) |
 | `HE_GIT_PROXY_PROBE_INTERVAL_SECONDS` / `HE_GIT_PROXY_PROBE_TIMEOUT_SECONDS` | `60` / `5` | 代理健康探测间隔与单次上限 |
 | `HE_GIT_REMOTE` | `origin` | 推送远端名 |

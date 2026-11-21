@@ -15,6 +15,8 @@ scope:
   - tests/e2e/**
   - plans/**
   - scripts/doc-budgets.manifest.json
+  - scripts/flow-lib.mjs
+  - scripts/gates.spec.mjs
   - .agents/**
 adr: []
 github:

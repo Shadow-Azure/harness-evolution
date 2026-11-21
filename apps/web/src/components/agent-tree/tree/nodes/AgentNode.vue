@@ -94,7 +94,7 @@ const ariaLabel = computed(() => {
                 data.activeEvidence === item.evIdx,
             },
           ]"
-          :title="item.synthetic ? `合成触发点 · L${item.line} · ${item.name}` : `L${item.line} · ${item.name}`"
+          :title="item.synthetic ? `合成触发点 · L${item.line} · ${item.title || item.name}` : `L${item.line} · ${item.title || item.name}`"
         >
           <span class="rf-cdot" />
           {{ item.name }}

@@ -280,6 +280,7 @@ erDiagram
 "workspace": {
   "repoUrl": "https://git.example.com/agent-skills.git",
   "subDir": "skills/deep-research",
+  "pushRepoUrl": "https://github.com/acme/agent-skills.git",
   "repoPath": "data/repos/tgt-123", "baseRef": "v2.0.0", "baseCommit": "9f3c2a1…",
   "branchName": "evo/20261023-evo-20261023-01", "workspacePath": "data/workspaces/evo-20261023-01",
   "remote": "origin", "pushStatus": "succeeded", "pushedAt": "2026-10-23T09:40:00+08:00", "pushError": null
@@ -313,9 +314,9 @@ erDiagram
 | step | key | 端点 | payload 关键字段 |
 |---|---|---|---|
 | 0 选择范围 | `range` | `GET …/evolution/runs/{rid}/steps/range` | `condition`（target/版本/时间窗/policy/cacheEnabled）+ `stats`（sessions/badCases/potential） |
-| 1 Session 关联 | `sessions` | `GET …/steps/sessions` | `summary`（reported/associated/skipped/pending）+ `rows[]`（sessionId/title/objectTriggerAt/badCaseCount/potentialCount），4 条/页 |
+| 1 Session 关联 | `sessions` | `GET …/steps/sessions` | `summary`（reported/associated/skipped/pending）+ `rows[]`（sessionId/title/short/objectTriggerAt/badCaseCount/potentialCount），4 条/页 |
 | 2 潜在 bad case | `potential` | `GET …/steps/potential` | `summary`（badCases/potential/byReason）+ `rows[]`（badCaseId/objectName/badCaseType/triggerAt/sessionId/hitReason/orderState），5 条/页 |
-| 3 对象归因 | `attribution` | `GET …/steps/attribution` | `summary`（potential/reused/fresh/nonTarget）+ `rows[]`（badCaseId/attributionId/category/description/source/confidence） |
+| 3 对象归因 | `attribution` | `GET …/steps/attribution` | `summary`（potential/reused/fresh/nonTarget）+ `rows[]`（badCaseId/sessionId/attributionId/category/description/source/confidence） |
 | 4 聚类与严重度 | `clusters` | `GET …/steps/clusters` | `clusters[]`：`clusterId/title/description/category/caseCount/confidence/severity/rank/cases[]`（按 severity 降序） |
 | 5 迭代优化 | `iteration` | `GET …/steps/iteration` | `rounds[]`：roundId/clusterId/title/category/caseCount/severity/cases[]/status/candidate/patch/push/eval/accepted/finalCommit |
 | 6 测试集终评 | `final` | `GET …/steps/final` | `verdict/bestVersion/bestScore/initScore/metrics[]/changes[]` |
@@ -328,6 +329,7 @@ erDiagram
 ```
 
 - `index` 是步骤顺序（0–6），`key` 是稳定语义标识；前端路由/缓存优先用 `key`，`detail` 给 stepper 副标题。
+- `sessions.rows[].short` 是展示用短标签（来源 `session_families.short_title`，最长 120 字符），`title` 保留完整标题供悬停；存量 run 的 `stats.sessionRows` 没有 `short` 时读取侧用 `title[:120]` 兜底，不要求重新准备。
 - 进度公式 `5 + M + 1`（M = 簇数）：选择范围/Session 关联/潜在/归因/聚类各占 1，迭代占 M，终评占 1；`stageLabel` 文案按上表。
 - `confidence` 在 `clusters` 上是**簇级**占位值（按 `category`：error 0.82 / prompt 0.74 / model 0.66）；归因行上的 `confidence` 是单条结论置信度，两者不互相推导。
 - `impact` 按 `category` 固定映射（`error=9` / `prompt=7` / `model=5`）；`severity = round(min(10, confidence × impact × reportWeight), 1)`，`reportWeight = 1 + 0.1 × min(reportCount - 1, 5)`，`reportCount` 是簇内成员 join 归因行统计的 distinct `bad_case_id` 数。
@@ -384,7 +386,7 @@ erDiagram
   "key": "attribution", "index": 3, "title": "对象归因", "status": "done",
   "payload": {
     "summary": { "potential": 18, "reused": 11, "fresh": 7, "nonTarget": 4 },
-    "rows": [ { "badCaseId": "BC-HC-0007", "attributionId": "AT-01J9…", "category": "error",
+    "rows": [ { "badCaseId": "BC-HC-0007", "sessionId": "01J9…", "attributionId": "AT-01J9…", "category": "error",
       "description": "检索索引读取失败", "source": "cached", "confidence": 0.8 } ] } }
 ```
 
@@ -990,7 +992,7 @@ V1 的 `POST /api/evolution/probes/query` 进入兼容期，V2 页面不调用�
 - `GET /api/evolution/runs/{rid}` → `RunDetail`
   - `status`：`preparing | running | blocked | completed | failed | interrupted`
   - 额外字段：`blockedStage`、`retryAttempts`、`nextRetryAt`、`evalStatus`
-  - `workspace`：`repoUrl/repoPath/baseRef/baseCommit/branchName/workspacePath`
+  - `workspace`：`repoUrl/pushRepoUrl/repoPath/baseRef/baseCommit/branchName/workspacePath`；`pushRepoUrl` 是 run 在 prepare 时派生的 push 目标，不是 target 的输入
 - `GET /api/evolution/runs/{rid}/steps/{key}` 七个独立端点（`range` / `sessions` / `potential` / `attribution` / `clusters` / `iteration` / `final`）→ `EvolutionStep`（§3.6；未到达 → `404 STEP_NOT_READY`；`preparing` 时 `range` 可返回准备态）
 - `POST /api/evolution/runs/{rid}/retry` → `202 { "jobId": "job-...", "reused": false }`
   - 需要当前空间的 `space_admin` 或全局管理员；只允许 `status=blocked`
@@ -1046,8 +1048,8 @@ POST /runs（同步校验）
 { "items": [
   { "id": "tgt-123", "objectType": "skill", "objectName": "deep-research",
     "repoUrl": "https://git.example.com/agent-skills.git", "subDir": "skills/deep-research",
-    "defaultRef": "main", "validationProjectId": "val-2026-q3",
-    "testProjectId": "test-2026-q3", "enabled": true }
+    "defaultRef": "main",
+    "validationProjectId": "val-2026-q3", "testProjectId": "test-2026-q3", "enabled": true }
 ] }
 ```
 
@@ -1056,13 +1058,14 @@ POST /runs（同步校验）
 ```json
 { "objectType": "skill", "objectName": "deep-research",
   "repoUrl": "https://git.example.com/agent-skills.git", "subDir": "skills/deep-research",
-  "defaultRef": "main", "validationProjectId": "val-2026-q3",
-  "testProjectId": "test-2026-q3", "enabled": true }
+  "defaultRef": "main",
+  "validationProjectId": "val-2026-q3", "testProjectId": "test-2026-q3", "enabled": true }
 ```
 
 `POST` → `201` 创建后的 target；`PUT` → `200` 更新后的 target；`DELETE` → `204`。
 
 - `repoUrl` 支持 https/ssh；**不要**把 token 写进 URL（用 SSH agent / 凭据助手），错误信息脱敏。
+- target 不接受 push/eval URL 输入：provider 用 `repoUrl` + PAT 用户自动创建/定位 fork；prepare 把派生的 push 目标写入 run 快照，eval 直接复用同一目标，保证同源。凭据由部署级 `HE_GIT_PUSH_PROVIDER` / `HE_GIT_PUSH_TOKEN` 与 `GIT_ASKPASS` 提供，不写进 URL。
 - `subDir` 必须是仓库内相对路径，禁止 `..` 越界；保存时只校验格式，目录存在性在创建 run 的准备阶段校验。
 - `validationProjectId` / `testProjectId` 是不透明字符串，trim 后非空、不含空白或控制字符；超过 128 由请求校验返回 `422 VALIDATION_INVALID`（前端 `maxlength` 拦截），空值与空白/控制字符失败返回 `422 PROJECT_ID_INVALID`，`details` 为 `{ "field": "validationProjectId" | "testProjectId", "reason": "project_id_required" | "project_id_format" }`。本服务不校验工程是否存在。
 - `REPO_INVALID` 的 `details` 只出现在 admin 的 create/update 响应：`{ "field": "objectName" | "repoUrl" | "subDir" | "defaultRef", "reason": "<见下表>", "command"?: { "name": "git ls-remote", "exitCode": 128 }, "output"?: "<有界脱敏输出>" }`。member 可读的 versions 接口继续返回空 `details`，不暴露命令输出。
@@ -1513,8 +1516,8 @@ V2 新增映射（2026-11-11）：
 }
 ```
 
-- `runtime` 与 parser 的 `runtime_key` 同一词汇表，决定 `agentMeta` 的闭集解释；未知 runtime 直接失败，不回退 Claude。
+- `runtime` 与 parser 的 `runtime_key` 同一词汇表，用于解释 `agentMeta` 的闭集；未知 runtime 的 `agentMeta` 解释直接失败，不回退 Claude。parser 仍按轨迹 `can_parse` 选型；与预声明不一致时记诊断，不按 runtime 强行选 parser。
 - `trajectory.content` 按 §10.1 的 NDJSON 规则规范化（重序列化、重复 key 拒绝、64 MiB / 单行 1 MiB / 100 万行上限）；`lineCount` 必须与规范化后的 object 数一致。
 - `schemaVersion` 主版本不匹配是稳定错误；`sessionId` 回显、`agentKind=subagent` 时的 `parentSessionId` 必须与请求和遍历父节点一致。
 - `childSessionIds` 只给一层直接子会话；BFS 的 visited、深度、数量与时间预算沿用现有 root-sync 限额。
-- `agentMeta` 每种 runtime 一套 closed schema，解释内聚在 session-source adapter 子类；adapter 只投影 runtime 无关字段，parser 仍由 `runtime_key` 选择。
+- `agentMeta` 每种 runtime 一套 closed schema，解释内聚在 session-source adapter 子类；adapter 只投影 runtime 无关字段。`runtime` 是预声明/身份提示，最终 parser 由轨迹 `can_parse` 选型，不一致只记诊断。
