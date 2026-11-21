@@ -6,7 +6,7 @@ English | [中文](m27-milestone.md)
 kind: milestone
 id: m27
 title: M27 项目介绍与 README 展示
-status: active
+status: done
 github:
   number: 37
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/37

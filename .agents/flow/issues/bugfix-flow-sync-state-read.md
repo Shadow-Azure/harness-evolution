@@ -8,7 +8,7 @@ id: bugfix-08
 milestone: bugfix
 depends: []
 priority: P2
-status: ready
+status: done
 scope:
   - scripts/flow-sync.mjs
   - scripts/gates.spec.mjs

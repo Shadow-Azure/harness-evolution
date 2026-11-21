@@ -8,7 +8,7 @@ id: m27-01
 milestone: m27
 depends: []
 priority: P2
-status: ready
+status: done
 scope:
   - README.md
   - README.en.md
@@ -101,3 +101,9 @@ pnpm verify:flow
 - 不重写 `docs/` 的架构、部署与开发文档，只删除 README 中重复的部署段并保留链接。
 - 不引入徽章、GIF、视频或多张截图；不加工或伪造生产数据。
 - 不调整 README 之外的双语文档。
+
+## 闭环记录
+
+- PR [#462](https://github.com/Shadow-Azure/harness-evolution/pull/462) 已合入（merge commit `a2a09cf5`）；README 双语、关键截图、Agent Note 与预算调整随合并进入 `main`。
+- `main` 的 CI 11/11 通过；2026-11-21 将本流程条目标为 `done` 并关闭 GitHub #461。
+- 常驻 bugfix 桶移到 roadmap 序列末尾，避免其长期 open 的验收 issue 通过 P2 跨 milestone 串行阻塞后续 milestone。

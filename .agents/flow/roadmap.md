@@ -29,9 +29,9 @@ milestones:
   - m22
   - m23
   - m24
-  - bugfix
   - m25
   - m27
+  - bugfix
 ```
 
 ## 愿景
