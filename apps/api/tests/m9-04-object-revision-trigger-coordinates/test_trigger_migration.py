@@ -144,7 +144,7 @@ async def test_coordinate_migration_defaults_legacy_rows_and_is_idempotent(
                 .mappings()
                 .one()
             )
-        assert revision == "0023"
+        assert revision == "0024"
         assert agent["tree_index"] == 0
         assert event["triggered_at"] is None
         assert event["object_version"] is None

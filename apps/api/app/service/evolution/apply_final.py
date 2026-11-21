@@ -382,6 +382,7 @@ def _prepared_workspace(run: EvolutionRunRecord) -> PreparedWorkspace:
         ref=run.base_ref or run.target_version,
         base_commit=run.base_commit,
         branch=run.branch_name,
+        push_url=(run.push_repo_url or None),
     )
 
 

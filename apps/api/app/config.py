@@ -131,6 +131,8 @@ class Settings(BaseSettings):
         le=86_400,
     )
     git_push: bool = True
+    git_push_provider: Literal["github", "gitlab"] = "github"
+    git_push_token: SecretStr | None = None
     git_push_url: str | None = None
     git_proxy: str | None = None
     git_proxy_probe_interval_seconds: float = Field(default=60.0, ge=5, le=3_600)

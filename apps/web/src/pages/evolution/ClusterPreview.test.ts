@@ -62,6 +62,7 @@ function runDetail(status: string) {
     evalStatus: { verdict: null, bestScore: null, initScore: null },
     workspace: {
       repoUrl: "https://example.invalid/skills.git",
+      pushRepoUrl: "https://example.invalid/fork/skills.git",
       subDir: "skills/synthetic-review",
       repoPath: null,
       baseRef: null,

@@ -2782,6 +2782,10 @@
             ],
             "title": "Pusherror"
           },
+          "pushRepoUrl": {
+            "title": "Pushrepourl",
+            "type": "string"
+          },
           "pushStatus": {
             "enum": [
               "pending",
@@ -2842,6 +2846,7 @@
         },
         "required": [
           "repoUrl",
+          "pushRepoUrl",
           "subDir",
           "repoPath",
           "baseRef",

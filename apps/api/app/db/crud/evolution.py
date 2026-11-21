@@ -315,6 +315,7 @@ class EvolutionRepository:
         workspace_path: str | None,
         stats: Mapping[str, Any],
         target_revision: str | None = None,
+        push_repo_url: str | None = None,
     ) -> EvolutionRunRecord:
         """Persist the immutable workspace snapshot and prepared run status."""
         if status not in {"running", "completed"}:
@@ -335,6 +336,8 @@ class EvolutionRepository:
         }
         if target_revision is not None:
             values["target_revision"] = target_revision
+        if push_repo_url is not None:
+            values["push_repo_url"] = push_repo_url
         async with self._database.transaction() as session:
             result = cast(
                 CursorResult[Any],

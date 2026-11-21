@@ -2711,6 +2711,8 @@ export interface components {
             branchName: string | null;
             /** Pusherror */
             pushError: string | null;
+            /** Pushrepourl */
+            pushRepoUrl: string;
             /**
              * Pushstatus
              * @enum {string}

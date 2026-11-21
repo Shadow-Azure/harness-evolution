@@ -1,6 +1,6 @@
 # Agent Note: 多托管平台的 Git 推送提供者
 
-Status: proposed
+Status: implemented
 
 [English](2026-11-21-git-push-provider.en.md) | 中文
 
@@ -14,7 +14,9 @@ Status: proposed
 
 ## Decision
 
-在 `third_party_api/git/` 增加 `GitPushProvider` 父类、`GitHubProvider` / `GitLabProvider` 子类与 `GitPushProviderFactory`。父类定义 `remote_url`、`auth_environment`、`ensure_fork`、`open_pull_request` 以及公共 `push_ref` / `remote_ref`；子类只实现托管平台 URL、API、fork 与认证差异。工厂按 `HE_GIT_PUSH_PROVIDER`（`github` 默认，`gitlab` 可选）实例化，未知值启动失败；provider 在 composition root 构造一次并注入 `GitWorkspaceManager`。
+在 `third_party_api/git/` 增加 `GitPushProvider` 父类、`GitHubProvider` / `GitLabProvider` 子类与 `GitPushProviderFactory`。父类定义 `remote_url`、`auth_environment`、`ensure_fork`、`open_pull_request` 以及公共 `push_ref` / `remote_ref`；子类只实现托管平台 URL、API、fork 与认证差异。工厂按 `HE_GIT_PUSH_PROVIDER`（`github` 默认，`gitlab` 可选）实例化，未知值启动失败；provider 在 composition root 构造一次并注入 `GitWorkspaceManager`，同时把 `auth_environment()` 合并进代理感知的 git 子进程环境。
+
+`run.push_repo_url` 是 prepare 写下的派生目标：已有快照优先复用，否则 provider 自动 fork；未配置 token 时回退 `HE_GIT_PUSH_URL`，两者都为空时保持原有推 `origin` 行为。run 详情经 `workspace.pushRepoUrl` 暴露该目标；target API/契约与表单不新增字段。
 
 PAT 通过 `HE_GIT_PUSH_TOKEN` 从 GitHub Secrets 注入服务器 `.env`（0600），Deploy 同时注入绝对路径的 `GIT_ASKPASS` 脚本；git 子进程从环境拿凭据，token 不进入 URL、数据库、事件或日志。API base、网页根与 git 用户名由子类按 `repo_url` host 推导（GitHub：`api.github.com` / `x-access-token`；GitLab：`/api/v4` / `oauth2`；自托管用同 host 的 `/api/v3` 或 `/api/v4`），特殊反向代理/非标准用户名在子类覆盖，不新增环境配置。
 
@@ -33,6 +35,7 @@ PAT 通过 `HE_GIT_PUSH_TOKEN` 从 GitHub Secrets 注入服务器 `.env`（0600�
 - 新增平台只需一个子类 + 注册项；prepare/candidate/final 状态机与评测契约不变。
 - target/run 需要迁移新字段；旧 run/未配置字段回退现有行为，保持兼容。
 - Deploy 需要新增 `HE_GIT_PUSH_PROVIDER` 与 `HE_GIT_PUSH_TOKEN`，以及 `GIT_ASKPASS` 注入；换机器重新部署即可，不手工配凭据。
+- PAT 状态不在 target 页面暴露：target 契约保持不变，凭据属于部署级配置；run 详情只显示派生后的 push 目标。
 - PAT 仍是个人长期凭据，存在离职/轮换/审计风险；本 Note 只把它作为过渡，专用账号/App 由后续切片收敛。
 - 公开上游的 fork 仍是公开的；敏感内容需要私有 mirror。
 - GitLab 与 GitHub 的 fork/API/用户名字段不同，必须由子类测试覆盖；provider 契约要保持最小，避免把平台字段泄漏到业务层。

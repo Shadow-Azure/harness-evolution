@@ -856,6 +856,17 @@ function clearMissingClusterFocus(): void {
                   {{ run.evalStatus }}
                 </div>
               </div>
+              <div class="kv">
+                <div class="k">
+                  推送目标
+                </div>
+                <div
+                  class="v mono workspace-path"
+                  data-testid="run-push-repo"
+                >
+                  {{ run.workspace.pushRepoUrl }}
+                </div>
+              </div>
             </div>
             <p
               v-if="run.workspace.pushError"

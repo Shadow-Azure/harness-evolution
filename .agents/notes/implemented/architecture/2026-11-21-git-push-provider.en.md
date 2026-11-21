@@ -1,6 +1,6 @@
 # Agent Note: Multi-host Git push providers
 
-Status: proposed
+Status: implemented
 
 English | [中文](2026-11-21-git-push-provider.md)
 
@@ -14,7 +14,9 @@ The user chose a personal-account PAT transition and wants only two GitHub Secre
 
 ## Decision
 
-Add a `GitPushProvider` parent, `GitHubProvider` / `GitLabProvider` subclasses, and `GitPushProviderFactory` under `third_party_api/git/`. The parent defines `remote_url`, `auth_environment`, `ensure_fork`, `open_pull_request`, and the common `push_ref` / `remote_ref`; subclasses implement only host-specific URLs, APIs, fork behavior, and authentication. The factory selects by `HE_GIT_PUSH_PROVIDER` (`github` by default, `gitlab` optional) and rejects unknown values at startup; the provider is built once in the composition root and injected into `GitWorkspaceManager`.
+Add a `GitPushProvider` parent, `GitHubProvider` / `GitLabProvider` subclasses, and `GitPushProviderFactory` under `third_party_api/git/`. The parent defines `remote_url`, `auth_environment`, `ensure_fork`, `open_pull_request`, and the common `push_ref` / `remote_ref`; subclasses implement only host-specific URLs, APIs, fork behavior, and authentication. The factory selects by `HE_GIT_PUSH_PROVIDER` (`github` by default, `gitlab` optional) and rejects unknown values at startup; the provider is built once in the composition root and injected into `GitWorkspaceManager`, and its `auth_environment()` is merged into the proxy-aware git subprocess environment.
+
+`run.push_repo_url` is the derived target recorded by prepare: an existing snapshot is reused first, otherwise the provider creates the fork; without a token the resolver falls back to `HE_GIT_PUSH_URL`, and with neither it keeps the original push-to-`origin` behavior. The run detail exposes the target as `workspace.pushRepoUrl`; target APIs, contracts, and forms add no fields.
 
 The PAT is delivered from GitHub Secrets into the server `.env` (0600) as `HE_GIT_PUSH_TOKEN`, and Deploy also injects an absolute-path `GIT_ASKPASS` script; git subprocesses read the credential from the environment, and the token never enters URLs, the database, events, or logs. The API base, web root, and git username are derived by the subclass from the `repo_url` host (GitHub: `api.github.com` / `x-access-token`; GitLab: `/api/v4` / `oauth2`; self-hosted uses the same host with `/api/v3` or `/api/v4`); special reverse-proxy or non-standard usernames belong in the subclass, with no new environment settings.
 
@@ -33,6 +35,7 @@ No target push/eval/credential fields are added: the provider creates the fork, 
 - Adding a host requires one subclass plus a registry entry; the prepare/candidate/final state machine and evaluation contract stay unchanged.
 - Target/run need new-field migrations; old runs and unconfigured fields fall back to current behavior and stay compatible.
 - Deploy needs `HE_GIT_PUSH_PROVIDER` and `HE_GIT_PUSH_TOKEN`, plus `GIT_ASKPASS` injection; a new machine only needs a redeploy, not manual credential setup.
+- PAT status is not surfaced on the target page: the target contract stays unchanged because the credential is deployment-level, and the run detail only shows the derived push target.
 - A PAT is still a long-lived personal credential with offboarding, rotation, and audit risk; this Note treats it as a transition, and a dedicated account/App follows in a later slice.
 - A fork of a public upstream is still public; sensitive content needs a private mirror.
 - GitLab and GitHub differ in fork/API/username fields and must be covered by subclass tests; the provider contract stays minimal so host fields do not leak into business code.
