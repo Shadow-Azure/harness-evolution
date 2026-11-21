@@ -123,10 +123,18 @@ class EvolutionAdvanceService:
                         round_,
                         trace,
                         job_id=job.id,
+                        resume=True,
                     )
                 return await self._submit_evaluation(run, current)
             if round_.status == "evaluating":
-                current = round_
+                stale = round_.eval_status in {"failed", "timeout"} or (
+                    round_.eval_external_id is not None and round_.eval_next_poll_at is None
+                )
+                current = (
+                    await self._runs.reset_round_for_eval_retry(run.id, round_.id)
+                    if stale
+                    else round_
+                )
                 if self._eval_submitter is not None and current.eval_external_id is None:
                     current = await self._eval_submitter.submit(run, current)
                 return {

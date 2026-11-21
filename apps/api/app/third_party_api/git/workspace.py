@@ -272,8 +272,11 @@ class GitWorkspaceManager:
         patch: Patch,
         message: str,
         expected_run_id: str | None = None,
+        reset_workspace: bool = False,
     ) -> CandidateWorkspace:
-        """Create one candidate commit from the clean, current run branch."""
+        """Create one candidate commit, optionally resetting a resumed worktree."""
+        if reset_workspace:
+            await self._reset_candidate_workspace(prepared.path, run_branch)
         await self._require_clean(prepared.path)
         await self._git_checked(
             prepared.path,
@@ -348,6 +351,25 @@ class GitWorkspaceManager:
             run_id=run_id,
             base_commit=prepared.base_commit,
             push_url=prepared.push_url,
+        )
+
+    async def _reset_candidate_workspace(
+        self,
+        workspace_path: Path,
+        run_branch: str,
+    ) -> None:
+        """Discard a half-finished candidate attempt before regenerating it."""
+        await self._git_checked(
+            workspace_path,
+            ("git", "switch", "--force", run_branch),
+            stage="workspace",
+            failure="stale candidate worktree could not return to the run branch",
+        )
+        await self._git_checked(
+            workspace_path,
+            ("git", "clean", "-fd"),
+            stage="workspace",
+            failure="stale candidate worktree could not be cleaned",
         )
 
     async def push_candidate(

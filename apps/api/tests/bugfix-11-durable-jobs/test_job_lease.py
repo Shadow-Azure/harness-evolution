@@ -20,6 +20,7 @@ from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.models.jobs import JobRunRecord, job_runs
 from app.service.events import EventBus
+from app.service.evolution.engine.contracts import RunBlocked
 from app.service.jobs import JobRunner
 from app.utils.time import now_shanghai
 
@@ -326,3 +327,168 @@ async def test_closed_runner_refuses_new_submissions(
             ref_id="closed",
             created_by=None,
         )
+
+
+class SlowBlockedEvents:
+    """Record a blocked event after a delay longer than the heartbeat."""
+
+    def __init__(self) -> None:
+        """Expose a flag the test can await."""
+        self.completed = asyncio.Event()
+
+    async def record_interrupted(
+        self,
+        *,
+        run_id: str,
+        stage: str,
+        message: str,
+        job_id: str,
+    ) -> int:
+        """Keep the recorder protocol complete without using this path."""
+        del run_id, stage, message, job_id
+        return 1
+
+    async def record_blocked(self, *_args: Any, **_kwargs: Any) -> int:
+        """Delay the blocked event so a heartbeat can race the bookkeeping."""
+        await asyncio.sleep(0.12)
+        self.completed.set()
+        return 1
+
+
+async def test_drain_allows_terminal_hook_to_queue_followup(
+    environment: tuple[Database, JobRepository, EventBus],
+) -> None:
+    """A handler finishing inside the drain window can persist its next stage."""
+    _, repository, bus = environment
+    started = asyncio.Event()
+
+    async def handler(_job: JobRunRecord) -> dict[str, Any]:
+        started.set()
+        await asyncio.sleep(0.02)
+        return {"ok": True}
+
+    runner = JobRunner(repository, bus, drain_timeout_seconds=1.0)
+    runner.register_handler("sync", handler)
+
+    async def hook(_job: JobRunRecord) -> None:
+        await runner.submit(
+            kind="sync",
+            payload={"next": True},
+            ref_id="follow-up",
+            created_by=None,
+        )
+
+    runner.set_terminal_hook(hook)
+    await runner.start()
+    submitted = await runner.submit(
+        kind="sync",
+        payload={},
+        ref_id="drain-follow-up",
+        created_by=None,
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+    await runner.close()
+
+    completed = await repository.get(submitted.id)
+    queued = await repository.list_queued()
+    assert completed is not None
+    assert completed.status == "completed"
+    assert [job.ref_id for job in queued] == ["follow-up"]
+
+
+async def test_heartbeat_does_not_cancel_terminal_bookkeeping(
+    environment: tuple[Database, JobRepository, EventBus],
+) -> None:
+    """A terminal write clears the lease; the heartbeat must not abort the event write."""
+    _, repository, bus = environment
+    events = SlowBlockedEvents()
+
+    async def block(_job: JobRunRecord) -> None:
+        raise RunBlocked("push failed", stage="push")
+
+    runner = JobRunner(
+        repository,
+        bus,
+        run_events=events,
+        lease_seconds=10,
+        heartbeat_seconds=0.02,
+        owner="blocked-worker",
+    )
+    runner.register_handler("evolution_advance", block)
+    await runner.start()
+    submitted = await runner.submit(
+        kind="evolution_advance",
+        payload={"runId": "run-terminal"},
+        ref_id="run-terminal",
+        created_by=None,
+    )
+
+    await runner.wait(submitted.id)
+
+    assert events.completed.is_set()
+    terminal = await repository.get(submitted.id)
+    assert terminal is not None
+    assert terminal.status == "failed"
+
+
+async def test_terminal_writes_are_owner_scoped(
+    environment: tuple[Database, JobRepository, EventBus],
+) -> None:
+    """A worker that lost its lease cannot complete or interrupt the new owner's row."""
+    _, repository, _ = environment
+    job = await repository.insert(
+        kind="sync",
+        payload={},
+        ref_id="owner",
+        created_by=None,
+    )
+    await repository.claim(job.id, owner="worker-a", lease_seconds=30)
+
+    await repository.complete(job.id, {"stale": True}, owner="worker-b")
+    still_running = await repository.get(job.id)
+    assert still_running is not None
+    assert still_running.status == "running"
+    assert still_running.lease_owner == "worker-a"
+
+    await repository.complete(job.id, {"ok": True}, owner="worker-a")
+    completed = await repository.get(job.id)
+    assert completed is not None
+    assert completed.status == "completed"
+
+
+class FailingInterruptionEvents:
+    """Fail every interruption write while keeping recovery requeue observable."""
+
+    async def record_interrupted(
+        self,
+        *,
+        run_id: str,
+        stage: str,
+        message: str,
+        job_id: str,
+    ) -> int:
+        """Raise so one job's event failure can be isolated."""
+        del run_id, stage, message, job_id
+        raise RuntimeError("event store unavailable")
+
+
+async def test_recovery_isolates_a_failing_event_write(
+    environment: tuple[Database, JobRepository, EventBus],
+) -> None:
+    """One event failure must not stop later interrupted jobs from requeueing."""
+    _, repository, bus = environment
+    job = await repository.insert(
+        kind="evolution_advance",
+        payload={"runId": "run-isolated"},
+        ref_id="run-isolated",
+        created_by=None,
+    )
+    await repository.claim(job.id, owner="dead-process", lease_seconds=30)
+    runner = JobRunner(repository, bus, run_events=FailingInterruptionEvents())
+
+    await runner.recover()
+
+    queued = await repository.list_queued()
+    assert len(queued) == 1
+    assert queued[0].ref_id == "run-isolated"

@@ -284,13 +284,22 @@ class JobRepository:
                 .values(progress=progress, updated_at=now_shanghai()),
             )
 
-    async def complete(self, job_id: str, result: Mapping[str, Any] | None) -> None:
+    async def complete(
+        self,
+        job_id: str,
+        result: Mapping[str, Any] | None,
+        *,
+        owner: str | None = None,
+    ) -> None:
         """Record successful completion, final progress, and optional result."""
         now = now_shanghai()
+        conditions = [job_runs.c.id == job_id]
+        if owner is not None:
+            conditions.append(job_runs.c.lease_owner == owner)
         async with self._database.transaction() as session:
             await session.execute(
                 update(job_runs)
-                .where(job_runs.c.id == job_id)
+                .where(*conditions)
                 .values(
                     status="completed",
                     progress=1.0,
@@ -302,13 +311,16 @@ class JobRepository:
                 ),
             )
 
-    async def fail(self, job_id: str, error: str) -> None:
-        """Record a sanitized terminal failure."""
+    async def fail(self, job_id: str, error: str, *, owner: str | None = None) -> None:
+        """Record a sanitized terminal failure for the owning worker."""
         now = now_shanghai()
+        conditions = [job_runs.c.id == job_id]
+        if owner is not None:
+            conditions.append(job_runs.c.lease_owner == owner)
         async with self._database.transaction() as session:
             await session.execute(
                 update(job_runs)
-                .where(job_runs.c.id == job_id)
+                .where(*conditions)
                 .values(
                     status="failed",
                     error=error,
@@ -318,13 +330,22 @@ class JobRepository:
                 ),
             )
 
-    async def interrupt(self, job_id: str, reason: str) -> None:
-        """Record process interruption for one active job."""
+    async def interrupt(
+        self,
+        job_id: str,
+        reason: str,
+        *,
+        owner: str | None = None,
+    ) -> None:
+        """Record process interruption for one active job and its owner."""
         now = now_shanghai()
+        conditions = [job_runs.c.id == job_id, job_runs.c.status == "running"]
+        if owner is not None:
+            conditions.append(job_runs.c.lease_owner == owner)
         async with self._database.transaction() as session:
             await session.execute(
                 update(job_runs)
-                .where(job_runs.c.id == job_id, job_runs.c.status == "running")
+                .where(*conditions)
                 .values(
                     status="interrupted",
                     error=reason,

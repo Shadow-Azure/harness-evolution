@@ -274,6 +274,11 @@ class EvolutionRetryService:
         job: JobRunRecord,
     ) -> Mapping[str, Any]:
         """Resume an interrupted retry job from its durable round/final facts."""
+        stale_eval = await self._stale_eval_round(run.id)
+        if stale_eval is not None:
+            previous_eval_id = stale_eval.eval_external_id
+            cleared = await self._runs.reset_round_for_eval_retry(run.id, stale_eval.id)
+            return await self._resubmit_eval(run, cleared, previous_eval_id, job)
         final = await self._runs.get_final(run.id)
         if final is not None:
             return await self._finalize(run, job)
@@ -345,6 +350,7 @@ class EvolutionRetryService:
             round_,
             trace,
             job_id=job.id,
+            resume=True,
         )
         if current.status == "evaluating" and current.eval_external_id is None:
             submitter = self._require_stage(self._eval_submitter, "eval submitter")
@@ -437,6 +443,20 @@ class EvolutionRetryService:
         """Find one evaluated round whose accept/reject decision is still missing."""
         for round_ in await self._runs.list_rounds(run_id):
             if round_.status in {"evaluating", "deciding"} and round_.eval_result is not None:
+                return round_
+        return None
+
+    async def _stale_eval_round(
+        self,
+        run_id: str,
+    ) -> EvolutionRoundRecord | None:
+        """Find an evaluating round whose external poll can no longer progress."""
+        for round_ in await self._runs.list_rounds(run_id):
+            if round_.status != "evaluating":
+                continue
+            if round_.eval_status in {"failed", "timeout"}:
+                return round_
+            if round_.eval_external_id is not None and round_.eval_next_poll_at is None:
                 return round_
         return None
 

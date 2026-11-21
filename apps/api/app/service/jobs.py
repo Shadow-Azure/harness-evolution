@@ -105,6 +105,7 @@ class JobRunner:
         self._submit_lock = asyncio.Lock()
         self._worker_lock = asyncio.Lock()
         self._closed = False
+        self._draining = False
         self._lease_seconds = lease_seconds
         self._heartbeat_seconds = heartbeat_seconds
         self._drain_timeout_seconds = drain_timeout_seconds
@@ -131,33 +132,56 @@ class JobRunner:
         """
         recovered = await self.repository.mark_running_interrupted("process restarted")
         for job in recovered:
-            await self._record_interruption(
-                job,
-                message="job interrupted by process restart",
-            )
-            await self._notify_terminal(job)
-            if job.kind not in _INTERRUPTIBLE_KINDS:
-                continue
-            if job.kind == "sync":
-                await self.repository.insert(
-                    kind=job.kind,
-                    payload=job.payload,
-                    ref_id=new_id(),
-                    created_by=job.created_by,
+            try:
+                await self._record_interruption(
+                    job,
+                    message="job interrupted by process restart",
+                )
+            except Exception:
+                logger.exception(
+                    "failed to persist restart interruption",
+                    extra={"job_id": job.id, "kind": job.kind},
+                )
+            try:
+                await self._notify_terminal(job)
+            except Exception:
+                logger.exception(
+                    "failed to run restart terminal hook",
+                    extra={"job_id": job.id, "kind": job.kind},
+                )
+            try:
+                queued = await self._requeue_interrupted(job)
+            except Exception:
+                logger.exception(
+                    "failed to requeue interrupted job",
+                    extra={"job_id": job.id, "kind": job.kind},
                 )
                 continue
-            if await self.repository.find_active(job.kind, job.ref_id) is not None:
-                continue
-            payload = dict(job.payload)
-            if job.kind == "evolution_retry":
-                payload["recovery"] = True
-            queued = await self.repository.insert(
+            if queued is not None and job.kind != "sync":
+                await self._record_recovery(job, queued.id)
+
+    async def _requeue_interrupted(self, job: JobRunRecord) -> JobRunRecord | None:
+        """Persist the replacement row for one resumable interrupted job."""
+        if job.kind not in _INTERRUPTIBLE_KINDS:
+            return None
+        if job.kind == "sync":
+            return await self.repository.insert(
                 kind=job.kind,
-                payload=payload,
-                ref_id=job.ref_id,
+                payload=job.payload,
+                ref_id=new_id(),
                 created_by=job.created_by,
             )
-            await self._record_recovery(job, queued.id)
+        if await self.repository.find_active(job.kind, job.ref_id) is not None:
+            return None
+        payload = dict(job.payload)
+        if job.kind == "evolution_retry":
+            payload["recovery"] = True
+        return await self.repository.insert(
+            kind=job.kind,
+            payload=payload,
+            ref_id=job.ref_id,
+            created_by=job.created_by,
+        )
 
     async def start_queued(self) -> None:
         """Dispatch queued work after lock-owning services have adopted state."""
@@ -179,7 +203,7 @@ class JobRunner:
     ) -> JobSubmission:
         """Persist a queued job, enforce duplicate policy, and schedule execution."""
         async with self._submit_lock:
-            if self._closed:
+            if self._closed and not self._draining:
                 raise RuntimeError("job runner is closed")
             existing = await self.repository.find_active(kind, ref_id)
             if existing is not None:
@@ -255,7 +279,15 @@ class JobRunner:
         """Stop accepting work, drain the active handler, then cancel the rest."""
         if self._closed:
             return
+        self._draining = True
         self._closed = True
+        try:
+            await self._drain_and_cancel()
+        finally:
+            self._draining = False
+
+    async def _drain_and_cancel(self) -> None:
+        """Wait for the active handler, then cancel every remaining local task."""
         active = self._active_task
         if active is not None and not active.done():
             _done, pending = await asyncio.wait(
@@ -297,9 +329,13 @@ class JobRunner:
                 if handler is None:
                     raise RuntimeError(f"no handler registered for job kind {job.kind}")
                 result = await handler(job)
-                await self.repository.complete(job.id, result)
+                await self.repository.complete(job.id, result, owner=self._owner)
             except asyncio.CancelledError:
-                await self.repository.interrupt(job.id, "job cancelled during shutdown")
+                await self.repository.interrupt(
+                    job.id,
+                    "job cancelled during shutdown",
+                    owner=self._owner,
+                )
                 try:
                     await self._record_interruption(
                         job,
@@ -313,7 +349,7 @@ class JobRunner:
                 raise
             except RunBlocked as exc:
                 error = sanitize_job_error(str(exc))
-                await self.repository.fail(job.id, error)
+                await self.repository.fail(job.id, error, owner=self._owner)
                 record_blocked = getattr(self._run_events, "record_blocked", None)
                 event_stage = _BLOCKED_STAGE_TO_EVENT_STAGE[exc.stage]
                 if callable(record_blocked) and job.ref_id:
@@ -348,7 +384,7 @@ class JobRunner:
                 )
             except Exception as exc:
                 error = sanitize_job_error(str(exc))
-                await self.repository.fail(job.id, error)
+                await self.repository.fail(job.id, error, owner=self._owner)
                 record_failed = getattr(self._run_events, "record_failed", None)
                 stage = _failure_event_stage(job, exc)
                 if callable(record_failed) and job.ref_id and stage is not None:
@@ -412,12 +448,19 @@ class JobRunner:
                 continue
             if alive:
                 continue
-            logger.warning(
-                "job lease lost; interrupting local handler",
-                extra={"job_id": job.id, "kind": job.kind},
-            )
-            if owner_task is not None and not owner_task.done():
-                owner_task.cancel()
+            current = await self.repository.get(job.id)
+            if current is None or current.status != "running":
+                # The handler already wrote its terminal row (for example fail()
+                # before recording the blocked event). Do not cancel its
+                # bookkeeping just because the lease was cleared by that write.
+                return
+            if current.lease_owner not in (None, self._owner):
+                logger.warning(
+                    "job lease lost to another owner; interrupting local handler",
+                    extra={"job_id": job.id, "kind": job.kind},
+                )
+                if owner_task is not None and not owner_task.done():
+                    owner_task.cancel()
             return
 
     async def _record_recovery(

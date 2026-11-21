@@ -184,6 +184,33 @@ async def test_prepare_checkpoint_runs_before_remote_publication(
     assert _git(fork, "rev-parse", f"refs/heads/{prepared.branch}") == base_commit
 
 
+async def test_candidate_resume_resets_a_half_finished_workspace(
+    tmp_path: Path,
+    repositories: tuple[Path, Path, str],
+) -> None:
+    """A crash mid-commit leaves a dirty worktree that resume must reset."""
+    upstream, fork, base_commit = repositories
+    run = _run(str(upstream), base_commit)
+    manager = _manager(tmp_path, fork)
+    prepared = await manager.prepare(run)
+    _git(prepared.path, "switch", "-c", "stale-candidate")
+    (prepared.path / "dirty.txt").write_text("dirty\n", encoding="utf-8")
+    _git(prepared.path, "add", "dirty.txt")
+
+    candidate = await manager.create_candidate(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=f"{prepared.branch}/candidate/r1",
+        patch=Patch(file="skills/deep-research/CHANGE.md", lines=("change",)),
+        message=f"fix: candidate\n\nHarness-Run-Id: {run.id}",
+        reset_workspace=True,
+    )
+
+    assert candidate.commit
+    assert not (prepared.path / "dirty.txt").exists()
+    assert _git(prepared.path, "branch", "--show-current") != "stale-candidate"
+
+
 async def test_candidate_push_reconciles_when_remote_tag_already_advanced(
     tmp_path: Path,
     repositories: tuple[Path, Path, str],

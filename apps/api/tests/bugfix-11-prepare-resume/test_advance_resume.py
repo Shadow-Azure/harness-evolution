@@ -21,6 +21,7 @@ class FakeRuns:
         """Store the round that recovery must inspect."""
         self.round = round_
         self.claimed: list[str] = []
+        self.reset: list[str] = []
 
     async def get_run(self, run_id: str) -> Any:
         """Return a running full-mode run."""
@@ -34,6 +35,18 @@ class FakeRuns:
         """Record an unexpected fresh-round claim."""
         self.claimed.append(round_id)
         return True
+
+    async def reset_round_for_eval_retry(self, run_id: str, round_id: str) -> Any:
+        """Clear a stale external evaluation and return the resettable round."""
+        self.reset.append(round_id)
+        return SimpleNamespace(
+            **{
+                **vars(self.round),
+                "eval_external_id": None,
+                "eval_status": "pending",
+                "eval_next_poll_at": None,
+            },
+        )
 
     async def list_clusters(self, run_id: str) -> tuple[Any, ...]:
         """Return one cluster backing the round's trace."""
@@ -58,7 +71,15 @@ class FakeCandidates:
         self.published: list[str] = []
         self.repushed: list[str] = []
 
-    async def publish(self, run: Any, round_: Any, trace: Any, *, job_id: str | None) -> Any:
+    async def publish(
+        self,
+        run: Any,
+        round_: Any,
+        trace: Any,
+        *,
+        job_id: str | None,
+        resume: bool = False,
+    ) -> Any:
         """Record a candidate regeneration."""
         self.published.append(round_.id)
         return SimpleNamespace(**{**vars(round_), "status": "evaluating"})
@@ -155,6 +176,37 @@ async def test_pushing_round_repushes_the_persisted_candidate() -> None:
     assert candidates.published == []
     assert runs.claimed == []
     assert eval_submitter.submitted == ["round-1"]
+    assert result["published"] is True
+
+
+@pytest.mark.asyncio
+async def test_stale_evaluating_round_is_reset_and_resubmitted() -> None:
+    """A failed or deadline-less eval is resubmitted instead of polling forever."""
+    round_ = SimpleNamespace(
+        id="round-3",
+        status="evaluating",
+        candidate_ref="evo/20261121-run/candidate/r1",
+        candidate_commit="a" * 40,
+        candidate_message="message",
+        eval_external_id="old-eval",
+        eval_status="failed",
+        eval_next_poll_at=None,
+        probe_cluster_id="cluster-1",
+        seq=1,
+    )
+    runs = FakeRuns(round_)
+    eval_submitter = FakeEval()
+    service = EvolutionAdvanceService(
+        runs,  # type: ignore[arg-type]
+        FakeCandidates(round_),  # type: ignore[arg-type]
+        FakeProbes(),  # type: ignore[arg-type]
+        eval_submitter,
+    )
+
+    result = await service.handle(_job("run-3"))
+
+    assert runs.reset == ["round-3"]
+    assert eval_submitter.submitted == ["round-3"]
     assert result["published"] is True
 
 
