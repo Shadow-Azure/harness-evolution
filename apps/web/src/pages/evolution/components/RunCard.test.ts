@@ -365,6 +365,34 @@ describe("RunCard", () => {
     );
   });
 
+  it("labels a completed cluster-only card without iteration or final facts", () => {
+    const wrapper = mount(RunCard, {
+      props: {
+        wid: "ws-test",
+        workspaceName: "测试空间",
+        run: run({
+          mode: "cluster_only",
+          status: "completed",
+          progress: {
+            unit: 5,
+            total: 5,
+            percent: 100,
+            stageLabel: "第 5/5 步 · 聚类完成",
+            doneRounds: 0,
+            accepted: 0,
+          },
+        }),
+      },
+    });
+
+    expect(wrapper.get(".badge").text()).toBe("✓ 已完成 · 仅聚类");
+    expect(wrapper.get(".badge").classes()).toContain("done-ok");
+    expect(wrapper.text()).toContain("仅聚类分析 · 未执行 patch 生成与评测迭代");
+    expect(wrapper.text()).toContain("聚类");
+    expect(wrapper.text()).not.toContain("已跑轮次");
+    expect(wrapper.text()).not.toContain("终评数据暂不可用");
+  });
+
   it("keeps the error tooltip button from opening the detail", async () => {
     const wrapper = mount(RunCard, {
       props: {
