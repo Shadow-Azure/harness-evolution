@@ -5905,7 +5905,7 @@
       },
       "StepAttributionRow": {
         "additionalProperties": false,
-        "description": "One case attribution conclusion of step 4.",
+        "description": "One case attribution conclusion of step 4.\n\n``session_id`` is the source Session that owns the bad case. The client\nneeds it to build the canonical error-detail deep link without a second\nlookup; rows without a Session cannot offer that link.",
         "properties": {
           "attributionId": {
             "title": "Attributionid",
@@ -5946,6 +5946,10 @@
             "title": "Description",
             "type": "string"
           },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
           "source": {
             "enum": [
               "cached",
@@ -5957,6 +5961,7 @@
         },
         "required": [
           "badCaseId",
+          "sessionId",
           "attributionId",
           "category",
           "description",

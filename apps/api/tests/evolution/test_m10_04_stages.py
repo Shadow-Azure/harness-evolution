@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from app.db.base import Database
@@ -11,7 +13,11 @@ from app.db.crud.probe_query import ProbeQueryRepository
 from app.errors import AppError
 from app.service.evolution.attribution import AttributionRunner, RuleBasedEngine
 from app.service.evolution.prepare import EvolutionPrepareService
-from app.service.evolution.stages import EvolutionStageService, StepSessionRow
+from app.service.evolution.stages import (
+    EvolutionStageService,
+    StepAttributionPayload,
+    StepSessionRow,
+)
 from app.service.evolution.state import STEP_KEYS
 from tests.evolution.test_m10_04_prepare import (
     FakeWorkspacePreparer,
@@ -82,6 +88,7 @@ async def test_v2_run_returns_all_seven_steps_in_order(harness: Harness) -> None
     attribution = await service.step("run-m10-04", "attribution")
     assert attribution.payload.summary.potential == 1  # type: ignore[union-attr]
     assert attribution.payload.summary.non_target == 0  # type: ignore[union-attr]
+    assert attribution.payload.rows[0].session_id == "session-m10-04"  # type: ignore[union-attr]
     clusters = await service.step("run-m10-04", "clusters")
     cluster = clusters.payload.clusters[0]  # type: ignore[union-attr]
     assert cluster.case_count == 1
@@ -141,6 +148,11 @@ async def test_legacy_run_maps_six_step_progress_onto_seven_steps(
     sessions = await service.step(data["run"]["id"], "sessions")
     assert sessions.status == "done"
     assert sessions.payload.summary.associated == 1  # type: ignore[union-attr]
+
+    attribution = await service.step(data["run"]["id"], "attribution")
+    attribution_rows = cast(StepAttributionPayload, attribution.payload).rows
+    assert attribution_rows
+    assert attribution_rows[0].session_id == "050b81ba-0000-4000-8000-0000000000c3"
 
     range_step = await service.step(data["run"]["id"], "range")
     assert range_step.status == "done"
