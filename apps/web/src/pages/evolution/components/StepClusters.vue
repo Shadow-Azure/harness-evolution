@@ -8,6 +8,9 @@ const props = defineProps<{
   wid: string;
   step: EvolutionStepClusters;
   focusCluster?: string;
+  title?: string;
+  subtitle?: string;
+  caseSessions?: Record<string, string>;
 }>();
 const emit = defineEmits<{
   "missing-focus": [];
@@ -83,8 +86,8 @@ watch(
 <template>
   <article class="card panel">
     <h3 class="sec-title">
-      第 5 步 · 聚类与严重度
-      <span class="sub">按问题类型聚类，按严重程度降序；每簇含标题与聚类问题描述</span>
+      {{ title ?? "第 5 步 · 聚类与严重度" }}
+      <span class="sub">{{ subtitle ?? "按问题类型聚类，按严重程度降序；每簇含标题与聚类问题描述" }}</span>
     </h3>
     <div class="wz-stats">
       <span class="st"><b>{{ clusters.length }}</b><span>聚类问题</span></span>
@@ -154,7 +157,11 @@ watch(
           <p class="cb-label">
             来源 bad case（{{ cluster.cases.length }} 个 · 由归因结论聚类而来）
           </p>
-          <StepCaseTable :cases="cluster.cases" />
+          <StepCaseTable
+            :cases="cluster.cases"
+            :wid="wid"
+            :case-sessions="caseSessions"
+          />
         </section>
       </div>
     </div>

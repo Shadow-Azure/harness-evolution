@@ -748,19 +748,70 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     );
     const runCard = await pollRun(runId);
     assert.equal(runCard.status, "completed", JSON.stringify(runCard));
-    await waitForDocument(
+    const clusterPage = await waitForDocument(
       page.session,
       `(() => {
         const status = document.querySelector("[data-testid='cluster-status']");
-        if (!status) return false;
-        const badge = status.querySelector(".badge")?.textContent?.trim();
-        return badge === "completed";
+        if (!status) return null;
+        const statusText = status.textContent || "";
+        const cards = [...document.querySelectorAll(".cluster")];
+        const text = document.body.textContent || "";
+        if (!statusText.includes("聚类完成") || cards.length === 0) return null;
+        return {
+          cardCount: cards.length,
+          hasSummary: text.includes("输入概况"),
+          hasHeading: text.includes("聚类出的"),
+          hasLaunch: Boolean(
+            document.querySelector("[data-testid='cluster-launch-full']")
+          ),
+          statusText,
+          text,
+        };
       })()`,
-      "cluster-only run completion",
+      "cluster-only result content",
+    );
+    assert.ok(clusterPage.cardCount >= 1, JSON.stringify(clusterPage));
+    assert.equal(clusterPage.hasSummary, true, JSON.stringify(clusterPage));
+    assert.equal(clusterPage.hasHeading, true, JSON.stringify(clusterPage));
+    assert.equal(clusterPage.hasLaunch, true, JSON.stringify(clusterPage));
+    assert.doesNotMatch(clusterPage.statusText, /迭代|第 6\/7|completed/);
+    assert.match(clusterPage.text, /严重程度/);
+    assert.match(clusterPage.text, /来源 bad case/);
+    const caseLink = await waitForDocument(
+      page.session,
+      `document.querySelector(".case-rep a")?.getAttribute("href") ?? null`,
+      "cluster case deep link",
+    );
+    assert.match(
+      caseLink,
+      /\/workspaces\/[^/]+\/sessions\/[^/]+\/errors\?case=.+&tab=attr/,
     );
     await screenshot(page, "09-cluster-preview.png");
+    await screenshot(page, "09-cluster-preview-viewport.png", false);
 
-    // 9. Run detail shows seven steps and the cluster step is clickable.
+    // 9. The run list card reports the cluster step, not an iteration round.
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}${labPath}/evolution`,
+    });
+    const clusterCard = await waitForDocument(
+      page.session,
+      `(() => {
+        const card = document.querySelector("[data-run-id='${runId}']");
+        if (!card) return null;
+        const text = card.textContent || "";
+        const badge = card.querySelector(".badge")?.textContent?.trim();
+        if (badge !== "✓ 已完成 · 仅聚类") return null;
+        if (text.includes("已跑轮次") || text.includes("第 6/7")) return null;
+        return { badge, text };
+      })()`,
+      "cluster-only list card stage",
+    );
+    assert.equal(clusterCard.badge, "✓ 已完成 · 仅聚类");
+    assert.match(clusterCard.text, /仅聚类分析 · 未执行 patch 生成与评测迭代/);
+    assert.doesNotMatch(clusterCard.text, /已跑轮次|第 6\/7/);
+    await screenshot(page, "09b-cluster-run-card.png");
+
+    // 10. Run detail shows seven steps and the cluster step is clickable.
     await page.session.send("Page.navigate", {
       url: `${baseUrl}${labPath}/evolution/runs/${runId}`,
     });
@@ -796,7 +847,7 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     );
     await screenshot(page, "10-run-detail.png");
 
-    // 10. The completed run is visible in the error detail as a real attribution.
+    // 11. The completed run is visible in the error detail as a real attribution.
     // A full reload avoids reusing the stale empty attribution query from step 7.
     await page.session.send("Page.navigate", {
       url: `${baseUrl}${labPath}/sessions/${sessionId}/errors?case=${ingestCases[0].badCaseId}&tab=attr`,
@@ -814,7 +865,7 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     assert.match(attributed.text, /可归因到本对象/);
     await screenshot(page, "11-lab-error-attributed.png");
 
-    // 11. The execution flow defaults to lane DAG and keeps the tree toggle.
+    // 12. The execution flow defaults to lane DAG and keeps the tree toggle.
     await page.session.send("Page.navigate", {
       url: `${baseUrl}${labPath}/sessions/${sessionId}`,
     });
@@ -845,7 +896,7 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
       "lane DAG restored",
     );
 
-    // 12. Switching back to the default workspace must not reuse the lab cache.
+    // 13. Switching back to the default workspace must not reuse the lab cache.
     await page.session.send("Page.navigate", { url: `${baseUrl}${labPath}/overview` });
     await waitForDocument(
       page.session,

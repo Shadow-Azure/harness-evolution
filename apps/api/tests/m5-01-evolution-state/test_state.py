@@ -10,6 +10,7 @@ from app.service.evolution.state import (
     ensure_step_readable,
     legacy_unit,
     next_unit,
+    progress_total,
     step_states,
     total_units,
     validate_cursor,
@@ -63,6 +64,13 @@ def test_total_units_and_progress_helpers_follow_cluster_count() -> None:
     assert total_units(2) == 8
     assert next_unit(0, 2) == 1
     assert next_unit(5, 2) == 6
+
+
+def test_progress_total_hides_iteration_for_cluster_only_runs() -> None:
+    """A cluster-only run announces five visible units regardless of clusters."""
+    assert progress_total("full", 2) == total_units(2)
+    assert progress_total("cluster_only", 0) == 5
+    assert progress_total("cluster_only", 2) == 5
 
 
 @pytest.mark.parametrize("unit", [-1, 9])
