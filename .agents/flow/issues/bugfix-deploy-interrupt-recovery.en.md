@@ -10,7 +10,7 @@ depends:
   - bugfix-09
   - m5-11
 priority: P2
-status: ready
+status: done
 scope:
   - apps/api/**
   - apps/web/**
