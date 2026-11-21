@@ -553,6 +553,9 @@ erDiagram
 | `object_type` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` |
 | `object_name` | `VARCHAR(128)` | NOT NULL | 对象名（如 `deep-research`） |
 | `repo_url` | `VARCHAR(1024)` | NOT NULL | 远端 git 仓库地址（https/ssh；不含凭据）；创建 run 时快照到 `evolution_runs.repo_url` |
+| `push_repo_url` | `VARCHAR(1024)` | NOT NULL DEFAULT `''` | 可写 fork / mirror 地址；空 = 由 provider 推导或回退 `repo_url`；不含凭据 |
+| `eval_repo_url` | `VARCHAR(1024)` | NOT NULL DEFAULT `''` | 评测取数仓库；空 = 与 push 目标相同；必须能 fetch 到 candidate commit |
+| `push_credential_ref` | `VARCHAR(128)` | NOT NULL DEFAULT `''` | 凭据引用名（env/Secret）；空 = 使用部署级 `HE_GIT_PUSH_TOKEN` |
 | `sub_dir` | `VARCHAR(512)` | NOT NULL | 对象目录相对仓库根（如 `skills/deep-research`）；创建 run 时快照到 `evolution_runs.sub_dir` |
 | `default_ref` | `VARCHAR(128)` | NOT NULL | 默认基线分支或 tag（如 `main` / `v2.0.0`） |
 | `validation_project_id` | `VARCHAR(128)` | NOT NULL DEFAULT `''` | 验证集在外部测试平台的测试工程 ID；历史行为空串 |
@@ -582,6 +585,10 @@ erDiagram
 | `target_version` | `VARCHAR(96)` | 本次使用的 tag/版本；决定 checkout 的基线；96 容纳 skill/agent tag 与 knowledge 的 71 字符 digest revision |
 | `target_revision` | `VARCHAR(96)` | NULL | V2：解析后的文件匹配身份；skill/agent 为 tag 内容解析出的 `digest:<sha256(body)>`，knowledge 为文档归一化 body hash；历史 run 为空，首次重试解析成功后回写 |
 | `repo_url` | `VARCHAR(1024)` | 被进化对象（skill/agent）所在的远端仓库；创建 run 时从 target 配置快照，不是自进化服务代码仓 |
+| `push_provider` | `VARCHAR(32)` | 创建 run 时快照的 `HE_GIT_PUSH_PROVIDER`（`github` / `gitlab`）；审计与恢复用 |
+| `push_repo_url` | `VARCHAR(1024)` | 创建 run 时快照的 push 目标；空 = provider 推导或 `repo_url`；不含凭据 |
+| `eval_repo_url` | `VARCHAR(1024)` | 创建 run 时快照的评测仓库；空 = 与 push 目标相同 |
+| `push_credential_ref` | `VARCHAR(128)` | 创建 run 时快照的凭据引用名；空 = 部署级 token |
 | `sub_dir` | `VARCHAR(512)` NOT NULL | 对象目录相对仓库根（如 `skills/deep-research`）；从 target 配置快照，避免配置变更后历史 run 无法定位 |
 | `validation_project_id` | `VARCHAR(128)` NOT NULL DEFAULT `''` | 创建 run 时从 target 快照的验证集测试工程 ID；历史 run 为空串 |
 | `test_project_id` | `VARCHAR(128)` NOT NULL DEFAULT `''` | 创建 run 时从 target 快照的测试集测试工程 ID；历史 run 为空串 |
@@ -612,7 +619,7 @@ erDiagram
 索引：`INDEX(created_at DESC)`、`INDEX(status)`、`INDEX(push_status)`、`INDEX(status, next_retry_at)`、`INDEX(target_type, target_name, target_version)`、`INDEX(target_config_id)`、`INDEX(workspace_id, created_at DESC)`。
 
 > `repo_url` 指向**被进化对象（skill/agent）所在的 git 仓库**，不是自进化服务代码仓。一次 run 的仓库生命周期：clone 到 `repo_path` 缓存 → 复制到独立 `workspace_path` → checkout `target_version`（解析 `base_commit`）→ 建 `branch_name` → 每轮从 run 分支拉 `candidate_ref`、应用 `patch`、commit、push → 外部评测 → 接纳后 fast-forward run 分支、拒绝删除 candidate ref。仓库记录代码/分支/commit，`evolution_rounds` / `evolution_run_events` 记录过程与评测/接纳结果；后端只做 git 操作，不执行仓库里的脚本，评测由外部 gateway 完成。
-> `repo_url` 与 `sub_dir` 都是创建 run 时的配置快照；prepare 只读这两个字段，不读 `evolution_targets` 的当前值。`validation_project_id` / `test_project_id` 采用同一快照语义；本切片只落库，不改变评测 gateway。
+> `repo_url`、`sub_dir`、`push_provider`、`push_repo_url`、`eval_repo_url`、`push_credential_ref` 都是创建 run 时的配置快照；prepare 只读这些字段，不读 `evolution_targets` 的当前值。push 与 eval 必须使用同一个可 fetch 的仓；凭据本身不落库，只存引用名。`validation_project_id` / `test_project_id` 采用同一快照语义。
 
 ### 5.3 `probe_clusters` —— 本次 run 的聚类结果
 
