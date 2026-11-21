@@ -23,8 +23,8 @@ During prepare, an evolution run builds a local bare cache for the target ref an
 ## Hosts and credentials
 
 - `HE_GIT_PUSH_PROVIDER=github` (default) or `gitlab` selects a `GitPushProvider` subclass; the factory builds it at startup and rejects unknown values.
-- `HE_GIT_PUSH_TOKEN` is a PAT injected only from Secrets or the run environment; a `GIT_ASKPASS` script reads `HE_GIT_PUSH_USERNAME` / `HE_GIT_PUSH_TOKEN`, and the token never enters URLs, the database, events, or logs. The `harness` user has no home, so the script uses an absolute path.
-- Optional `HE_GIT_PUSH_API_URL` / `HE_GIT_PUSH_BASE_URL` / `HE_GIT_PUSH_USERNAME` override self-hosted or enterprise hosts; defaults come from the provider (GitHub: `api.github.com` / `x-access-token`; GitLab: `/api/v4` / `oauth2`).
+- `HE_GIT_PUSH_TOKEN` is a PAT injected only from Secrets or the run environment; `GIT_ASKPASS` uses the provider default username (GitHub `x-access-token`, GitLab `oauth2`) with that token, and the token never enters URLs, the database, events, or logs. The `harness` user has no home, so the script uses an absolute path.
+- The API base, web root, and git username are derived by the provider subclass from the `repo_url` host (public github.com / gitlab.com use their defaults; self-hosted uses the same host with `/api/v3` or `/api/v4`); special reverse-proxy differences belong in the subclass, not in new environment settings.
 - Adding a host means adding one `GitPushProvider` subclass and a registry entry; the prepare / candidate / final state machine, failure classification, and evaluation contract stay unchanged.
 
 ## Observability

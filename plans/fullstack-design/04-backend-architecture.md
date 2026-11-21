@@ -377,8 +377,7 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 | `HE_GIT_PUSH` | `true` | 每轮 candidate 评测前 push；测试环境可设 false（此时不触发真实评测） |
 | `HE_GIT_PUSH_URL` | 空 | 可选的全局 fork / push URL 兜底；target/run 的 `pushRepoUrl`/`evalRepoUrl` 优先。空 = 推送 `repo_url` 的 origin。凭据只来自环境或 credential helper，不写入 URL |
 | `HE_GIT_PUSH_PROVIDER` | `github` | `github` / `gitlab`；选择 `GitPushProvider` 子类；未知值拒绝启动 |
-| `HE_GIT_PUSH_TOKEN` | 空 | PAT；只从 Secrets / 运行环境注入，配合 `GIT_ASKPASS`；不写 URL、不入库 |
-| `HE_GIT_PUSH_API_URL` / `HE_GIT_PUSH_BASE_URL` / `HE_GIT_PUSH_USERNAME` | 空 | 自托管或企业版覆盖；默认值由 provider 提供（GitHub：`api.github.com` / `x-access-token`；GitLab：`/api/v4` / `oauth2`） |
+| `HE_GIT_PUSH_TOKEN` | 空 | PAT；只从 Secrets / 运行环境注入，配合 `GIT_ASKPASS`；API base/网页根/用户名由 provider 子类按 `repo_url` host 推导，不新增配置；token 不写 URL、不入库 |
 | `HE_GIT_PROXY` | 空 | 只给 git 子进程用的本机 HTTP 代理地址（如 `http://127.0.0.1:10808`）；空 = 直连。VLESS 凭据不在这里，见 [Git 出网代理](../../docs/git-proxy.md) |
 | `HE_GIT_PROXY_PROBE_INTERVAL_SECONDS` / `HE_GIT_PROXY_PROBE_TIMEOUT_SECONDS` | `60` / `5` | 代理健康探测间隔与单次上限 |
 | `HE_GIT_REMOTE` | `origin` | 推送远端名 |

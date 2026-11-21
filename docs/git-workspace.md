@@ -23,8 +23,8 @@
 ## 托管平台与凭据
 
 - `HE_GIT_PUSH_PROVIDER=github`（默认）或 `gitlab` 选择 `GitPushProvider` 子类；工厂在启动时实例化，未知值拒绝启动。
-- `HE_GIT_PUSH_TOKEN` 是 PAT，只从 Secrets / 运行环境注入；`GIT_ASKPASS` 脚本从 `HE_GIT_PUSH_USERNAME` / `HE_GIT_PUSH_TOKEN` 取值，token 不进入 URL、数据库、事件或日志。`harness` 用户没有 home，脚本用绝对路径。
-- 可选 `HE_GIT_PUSH_API_URL` / `HE_GIT_PUSH_BASE_URL` / `HE_GIT_PUSH_USERNAME` 覆盖自托管或企业版；默认值由 provider 提供（GitHub：`api.github.com` / `x-access-token`；GitLab：`/api/v4` / `oauth2`）。
+- `HE_GIT_PUSH_TOKEN` 是 PAT，只从 Secrets / 运行环境注入；`GIT_ASKPASS` 用 provider 的默认用户名（GitHub `x-access-token`、GitLab `oauth2`）和该 token 取值，token 不进入 URL、数据库、事件或日志。`harness` 用户没有 home，脚本用绝对路径。
+- API base、网页根与 git 用户名由 provider 子类按 `repo_url` 的 host 推导（github.com / gitlab.com 用公有默认；自托管用同 host 的 `/api/v3` 或 `/api/v4`）；确有反向代理等特殊差异时在子类覆盖，不新增环境配置。
 - 新增托管平台只需新增一个 `GitPushProvider` 子类与注册项；prepare / candidate / final 的状态机、失败分类与评测契约不变。
 
 ## 可观测性

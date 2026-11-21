@@ -66,8 +66,8 @@ github:
 - `Settings` 新增：
   - `git_push_provider: Literal["github", "gitlab"] = "github"`，来源 `HE_GIT_PUSH_PROVIDER`；未知值启动失败（`ConfigError`），不静默回退。
   - `git_push_token: SecretStr | None`，来源 `HE_GIT_PUSH_TOKEN`；为空时保留现有 credential helper 行为。
-  - `git_push_api_url: str | None`、`git_push_base_url: str | None`、`git_push_username: str | None`，用于自托管/企业版；默认值由子类提供，校验 http(s)、无内嵌凭据、无 query/fragment。
-  - 保留 `HE_GIT_PUSH`（总开关）与 `HE_GIT_PUSH_URL`（旧全局兜底），避免破坏现有部署。
+- 不新增 API base、网页根或 git 用户名配置：由 provider 子类按 `repo_url` 的 host 推导（GitHub.com `api.github.com` / `x-access-token`，GitLab.com `/api/v4` / `oauth2`；自托管用同 host 的 `/api/v3` 或 `/api/v4`）。特殊反向代理/非标准用户名在子类覆盖。
+- 保留 `HE_GIT_PUSH`（总开关）与 `HE_GIT_PUSH_URL`（旧全局兜底），避免破坏现有部署。
 - `GitPushProviderFactory.create(settings)`：按 registry `{"github": GitHubProvider, "gitlab": GitLabProvider}` 实例化；provider 在 composition root 构造一次，注入 `GitWorkspaceManager`，不在每次 run 里读环境。
 - 工厂只负责选择实现；业务层只依赖父类接口，不 import 具体子类。
 
@@ -99,14 +99,14 @@ class GitPushProvider(ABC):
 ```
 
 - `GitHubProvider`：默认 `https://github.com` / `https://api.github.com`；`GET /user` 取登录名；`GET /repos/{owner}/{repo}` 判存在；`POST /repos/{owner}/{repo}/forks` 建 fork；HTTPS 用户名 `x-access-token`，密码 `HE_GIT_PUSH_TOKEN`；API 头 `Authorization: Bearer`。
-- `GitLabProvider`：默认 `https://gitlab.com` / `https://gitlab.com/api/v4`；`GET /user` 取 username；项目路径 `owner%2Frepo`；`POST /projects/{encoded}/fork` 建 fork（可带 `namespace_path`）；HTTPS 用户名 `oauth2`，密码 PAT；API 头 `PRIVATE-TOKEN`；自托管用 `HE_GIT_PUSH_API_URL` / `HE_GIT_PUSH_BASE_URL`。
+- `GitLabProvider`：默认 `https://gitlab.com` / `https://gitlab.com/api/v4`；`GET /user` 取 username；项目路径 `owner%2Frepo`；`POST /projects/{encoded}/fork` 建 fork（可带 `namespace_path`）；HTTPS 用户名 `oauth2`，密码 PAT；API 头 `PRIVATE-TOKEN`；自托管从 `repo_url` 的 host 推导 API/网页根。
 - 公共 git 执行放父类（`git push`、`git ls-remote`、删除 ref），平台差异（URL、认证、fork、PR）全部在子类；新增 `GiteaProvider` 只加子类 + registry，不改业务。
 - 远端 ref 查询仍用 `git ls-remote`，不引入平台特定分支/tag 语义；candidate tag 的 force-with-lease 仍用期望 SHA。
 
 ### 3. GitWorkspaceManager 与 per-run 目标
 
 - `GitWorkspaceManager` 不再保存单一 `_push_url`；`prepare` 按 `run.push_repo_url`、provider 推导 fork、`HE_GIT_PUSH_URL`、`run.repo_url` 的顺序解析 push URL；`push_candidate` / `publish_run_branch` 接收 run 或显式 push URL，不读全局可变状态。
-- 认证：`GIT_ASKPASS` 脚本从 `HE_GIT_PUSH_USERNAME` / `HE_GIT_PUSH_TOKEN` 返回值；provider 的 `auth_environment` 注入 git 子进程；不把 token 拼进 URL；日志/事件只记 host 与 ref，不记 token。
+- 认证：`GIT_ASKPASS` 使用 provider 的默认用户名（GitHub `x-access-token`、GitLab `oauth2`）和 `HE_GIT_PUSH_TOKEN`；provider 的 `auth_environment` 注入 git 子进程；不把 token 拼进 URL；日志/事件只记 host 与 ref，不记 token。
 - push 失败仍走既有 `classify_git_failure` → `blocked(push)`；不改变 retry 语义；本 issue 不修 retry 自阻塞。
 - 评测：`evalRepoUrl = run.eval_repo_url or run.push_repo_url or run.repo_url`；`EvalRequest.repo_url` 使用它，保证 push/eval 同源。
 
@@ -122,7 +122,6 @@ class GitPushProvider(ABC):
 - `production` Environment 新增：
   - `HE_GIT_PUSH_PROVIDER=github`（类型；可放 Secret 或 Variable）。
   - `HE_GIT_PUSH_TOKEN=<PAT>`（Secret，fine-grained 或 classic `public_repo`）。
-  - 可选 `HE_GIT_PUSH_API_URL` / `HE_GIT_PUSH_BASE_URL` / `HE_GIT_PUSH_USERNAME`（自托管/企业版）。
 - `Deploy` 的“注入部署配置”步骤把以上值按现有 base64 + `inject-config.py` 模式写入 `/opt/harness/shared/.env`（0600），并注入：
   - `GIT_ASKPASS=/opt/harness/shared/git-askpass.sh`（0755，脚本只读 env，不存 token）。
 - 重启 `harness-api`；`harness` 用户无 home，凭据用绝对路径，不依赖 `~/.ssh` / `~/.git-credentials`。

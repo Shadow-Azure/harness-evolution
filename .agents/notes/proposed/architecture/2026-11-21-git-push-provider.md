@@ -16,7 +16,7 @@ Status: proposed
 
 在 `third_party_api/git/` 增加 `GitPushProvider` 父类、`GitHubProvider` / `GitLabProvider` 子类与 `GitPushProviderFactory`。父类定义 `remote_url`、`auth_environment`、`ensure_fork`、`open_pull_request` 以及公共 `push_ref` / `remote_ref`；子类只实现托管平台 URL、API、fork 与认证差异。工厂按 `HE_GIT_PUSH_PROVIDER`（`github` 默认，`gitlab` 可选）实例化，未知值启动失败；provider 在 composition root 构造一次并注入 `GitWorkspaceManager`。
 
-PAT 通过 `HE_GIT_PUSH_TOKEN` 从 GitHub Secrets 注入服务器 `.env`（0600），Deploy 同时注入绝对路径的 `GIT_ASKPASS` 脚本；git 子进程从环境拿凭据，token 不进入 URL、数据库、事件或日志。`HE_GIT_PUSH_API_URL` / `HE_GIT_PUSH_BASE_URL` / `HE_GIT_PUSH_USERNAME` 只在自托管/企业版需要时覆盖，默认值由子类提供。
+PAT 通过 `HE_GIT_PUSH_TOKEN` 从 GitHub Secrets 注入服务器 `.env`（0600），Deploy 同时注入绝对路径的 `GIT_ASKPASS` 脚本；git 子进程从环境拿凭据，token 不进入 URL、数据库、事件或日志。API base、网页根与 git 用户名由子类按 `repo_url` host 推导（GitHub：`api.github.com` / `x-access-token`；GitLab：`/api/v4` / `oauth2`；自托管用同 host 的 `/api/v3` 或 `/api/v4`），特殊反向代理/非标准用户名在子类覆盖，不新增环境配置。
 
 target 与 run 增加 `push_repo_url`、`eval_repo_url`、`push_credential_ref`（run 另存 `push_provider` 快照）；空值按 provider 推导 fork、回退 `HE_GIT_PUSH_URL` 与 `repo_url`。prepare、candidate、final 使用 per-run push 目标，评测使用 per-run eval 目标，保证 push 与 eval 同源。`HE_GIT_PUSH` 与 `HE_GIT_PUSH_URL` 保持兼容；同一次部署只选择一个 provider，per-target provider、OAuth/App、自动 PR 与 GitLab CI 不在本决策内。
 

@@ -66,8 +66,8 @@ A related but separate defect should be recorded: a retry job is rejected as `RU
 - Add to `Settings`:
   - `git_push_provider: Literal["github", "gitlab"] = "github"` from `HE_GIT_PUSH_PROVIDER`; unknown values fail startup with `ConfigError` instead of silently falling back.
   - `git_push_token: SecretStr | None` from `HE_GIT_PUSH_TOKEN`; an empty value keeps the existing credential-helper behavior.
-  - Optional `git_push_api_url`, `git_push_base_url`, and `git_push_username` for self-hosted/enterprise hosts; defaults come from the subclass and values must be HTTP(S), credential-free, and have no query or fragment.
-  - Keep `HE_GIT_PUSH` (master switch) and `HE_GIT_PUSH_URL` (legacy global fallback) so current deployments do not break.
+- Do not add environment settings for the API base, web root, or git username: the provider subclass derives them from the `repo_url` host (GitHub.com `api.github.com` / `x-access-token`, GitLab.com `/api/v4` / `oauth2`; self-hosted uses the same host with `/api/v3` or `/api/v4`). Special reverse-proxy or non-standard usernames belong in the subclass.
+- Keep `HE_GIT_PUSH` (master switch) and `HE_GIT_PUSH_URL` (legacy global fallback) so current deployments do not break.
 - `GitPushProviderFactory.create(settings)` selects from `{"github": GitHubProvider, "gitlab": GitLabProvider}`. The provider is built once in the composition root and injected into `GitWorkspaceManager`; it does not read the environment per run.
 - The factory only selects an implementation; business code depends on the parent interface and never imports a concrete subclass.
 
@@ -99,14 +99,14 @@ class GitPushProvider(ABC):
 ```
 
 - `GitHubProvider`: default `https://github.com` and `https://api.github.com`; `GET /user` for the login; `GET /repos/{owner}/{repo}` for existence; `POST /repos/{owner}/{repo}/forks` to fork; HTTPS username `x-access-token` and password `HE_GIT_PUSH_TOKEN`; API header `Authorization: Bearer`.
-- `GitLabProvider`: default `https://gitlab.com` and `https://gitlab.com/api/v4`; `GET /user` for the username; URL-encode the project path as `owner%2Frepo`; `POST /projects/{encoded}/fork` (optionally with `namespace_path`); HTTPS username `oauth2` and password PAT; API header `PRIVATE-TOKEN`; self-hosted hosts use `HE_GIT_PUSH_API_URL` / `HE_GIT_PUSH_BASE_URL`.
+- `GitLabProvider`: default `https://gitlab.com` and `https://gitlab.com/api/v4`; `GET /user` for the username; URL-encode the project path as `owner%2Frepo`; `POST /projects/{encoded}/fork` (optionally with `namespace_path`); HTTPS username `oauth2` and password PAT; API header `PRIVATE-TOKEN`; self-hosted hosts derive their API and web root from the `repo_url` host.
 - Common git execution stays in the parent (`git push`, `git ls-remote`, ref deletion); all host differences (URL, authentication, fork, PR) stay in subclasses. Adding `GiteaProvider` means one subclass plus a registry entry, with no business changes.
 - Remote ref lookup keeps using `git ls-remote`, not host-specific branch/tag semantics; candidate tags keep their expected-SHA force-with-lease behavior.
 
 ### 3. GitWorkspaceManager and per-run targets
 
 - `GitWorkspaceManager` no longer stores a single `_push_url`. `prepare` resolves the push URL from `run.push_repo_url`, the provider-derived fork, `HE_GIT_PUSH_URL`, then `run.repo_url`; `push_candidate` and `publish_run_branch` receive the run or an explicit push URL and never read mutable global state.
-- Authentication: a `GIT_ASKPASS` script returns `HE_GIT_PUSH_USERNAME` / `HE_GIT_PUSH_TOKEN`; the provider's `auth_environment` injects it into git subprocesses. Tokens never enter URLs; logs and events record only host and ref, not tokens.
+- Authentication: `GIT_ASKPASS` uses the provider default username (GitHub `x-access-token`, GitLab `oauth2`) with `HE_GIT_PUSH_TOKEN`; the provider's `auth_environment` injects it into git subprocesses. Tokens never enter URLs; logs and events record only host and ref, not tokens.
 - Push failures still go through `classify_git_failure` to `blocked(push)`; retry semantics are unchanged. This issue does not fix the retry self-block.
 - Evaluation: `evalRepoUrl = run.eval_repo_url or run.push_repo_url or run.repo_url`; `EvalRequest.repo_url` uses it so push and eval share one source.
 
@@ -122,7 +122,6 @@ class GitPushProvider(ABC):
 - Add to the `production` Environment:
   - `HE_GIT_PUSH_PROVIDER=github` (type; secret or variable).
   - `HE_GIT_PUSH_TOKEN=<PAT>` (Secret; fine-grained or classic `public_repo`).
-  - Optional `HE_GIT_PUSH_API_URL`, `HE_GIT_PUSH_BASE_URL`, and `HE_GIT_PUSH_USERNAME` for self-hosted/enterprise hosts.
 - The Deploy "inject deployment configuration" step writes these values into `/opt/harness/shared/.env` (0600) using the existing base64 + `inject-config.py` pattern, and injects:
   - `GIT_ASKPASS=/opt/harness/shared/git-askpass.sh` (0755; the script reads env and stores no token).
 - Restart `harness-api`. The `harness` user has no home, so credentials use absolute paths and never rely on `~/.ssh` or `~/.git-credentials`.
