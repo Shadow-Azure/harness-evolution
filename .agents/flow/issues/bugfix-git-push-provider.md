@@ -1,11 +1,11 @@
 # 多托管平台的 Git 推送提供者：PAT/Secrets + 工厂/子类
 
-[English](m26-git-push-provider.en.md) | 中文
+[English](bugfix-git-push-provider.en.md) | 中文
 
 ```yaml flow
 kind: issue
-id: m26-01
-milestone: m26
+id: bugfix-09
+milestone: bugfix
 depends:
   - m24-01
   - m5-09

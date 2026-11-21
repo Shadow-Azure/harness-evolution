@@ -1,11 +1,11 @@
 # Multi-host Git push providers: PAT/Secrets with a factory and subclasses
 
-English | [中文](m26-git-push-provider.md)
+English | [中文](bugfix-git-push-provider.md)
 
 ```yaml flow
 kind: issue
-id: m26-01
-milestone: m26
+id: bugfix-09
+milestone: bugfix
 depends:
   - m24-01
   - m5-09
