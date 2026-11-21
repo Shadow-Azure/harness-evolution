@@ -11,7 +11,7 @@ depends:
   - m5-09
   - m5-11
 priority: P1
-status: backlog
+status: ready
 scope:
   - apps/api/**
   - apps/web/**
