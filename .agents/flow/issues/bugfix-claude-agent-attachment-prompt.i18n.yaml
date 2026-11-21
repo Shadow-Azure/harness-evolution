@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-claude-agent-attachment-prompt.md
-bugfix-claude-agent-attachment-prompt.md: a178880733e5fe345e14ab9f64ffc1c191788278
-bugfix-claude-agent-attachment-prompt.en.md: ab03dd65ee6964e67404eede3fa6ace0120c21f4
+bugfix-claude-agent-attachment-prompt.md: b739b4bc0fc1970d11b2b9657a3379774e59ca68
+bugfix-claude-agent-attachment-prompt.en.md: 42f709b29ff52a98229284bc4106fbc838308a53
