@@ -254,7 +254,9 @@ class PayloadSource(Protocol):
 | 归因 | `service/evolution/attribution.py::RuleBasedEngine`（`rule-v1`） | 换 LLM 归因：新增 Engine 子类 + 注册新 `key`，缓存键自动隔离 |
 | patch 内容 | `service/evolution/patch.py` | 内容占位（追加小节），但**真实写文件、真实 commit**；后续换 LLM/规则生成 |
 | eval / 终评 | `service/evolution/eval_gateway.py` + `eval_poller.py` | V1 可 `FakeEvalGateway`；真实接口走 submit/status/result 适配层；终评占位 |
-| git 推送 | `HE_GIT_PUSH=true`（每轮 candidate 评测前） | candidate 推临时 ref → 评测 → 接纳后 fast-forward run 分支；`HE_GIT_PUSH_URL` 可把写入指向可写 fork；失败进入 blocked，3 次立即 + 1/5/15min 退避 |
+| git 推送 | `HE_GIT_PUSH=true`（每轮 candidate 评测前） | `GitPushProvider` 工厂按 `HE_GIT_PUSH_PROVIDER` 选择 GitHub/GitLab 子类；candidate 推临时 ref → 评测 → 接纳后 fast-forward run 分支；provider 自动 fork，run 记录派生 push 目标，eval 复用同一目标；`HE_GIT_PUSH_URL` 只作全局兜底；失败进入 blocked，3 次立即 + 1/5/15min 退避 |
+
+git 推送的托管平台差异收敛在 `third_party_api/git/`：`GitPushProvider` 父类定义 `remote_url` / `auth_environment` / `ensure_fork` / 公共 `push_ref` / `remote_ref`，`GitHubProvider` 与 `GitLabProvider` 只实现 URL、API、fork 与认证差异；新增平台只加子类与注册项，不改 prepare/candidate/final 状态机。
 
 ## 6. 错误模型与横切
 
@@ -373,7 +375,9 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 | `HE_SYNC_INTERVAL_SECONDS` | `60` | 后台处理待归一化 payload 的间隔（0 = 关闭定时，仅 admin 手动） |
 | `HE_WORKSPACE_DIR` | `data/workspaces` | 每次自进化 run 的独立工作区（git clone 目标） |
 | `HE_GIT_PUSH` | `true` | 每轮 candidate 评测前 push；测试环境可设 false（此时不触发真实评测） |
-| `HE_GIT_PUSH_URL` | 空 | 可选的可写 fork / push URL；空 = 推送 `repo_url` 的 origin。凭据只来自环境或 credential helper，不写入 URL |
+| `HE_GIT_PUSH_URL` | 空 | 可选的全局 fork / push URL 兜底；空 = provider 自动 fork，再回退 `repo_url` 的 origin。凭据只来自环境或 credential helper，不写入 URL |
+| `HE_GIT_PUSH_PROVIDER` | `github` | `github` / `gitlab`；选择 `GitPushProvider` 子类；未知值拒绝启动 |
+| `HE_GIT_PUSH_TOKEN` | 空 | PAT；只从 Secrets / 运行环境注入，配合 `GIT_ASKPASS`；API base/网页根/用户名由 provider 子类按 `repo_url` host 推导，不新增配置；token 不写 URL、不入库 |
 | `HE_GIT_PROXY` | 空 | 只给 git 子进程用的本机 HTTP 代理地址（如 `http://127.0.0.1:10808`）；空 = 直连。VLESS 凭据不在这里，见 [Git 出网代理](../../docs/git-proxy.md) |
 | `HE_GIT_PROXY_PROBE_INTERVAL_SECONDS` / `HE_GIT_PROXY_PROBE_TIMEOUT_SECONDS` | `60` / `5` | 代理健康探测间隔与单次上限 |
 | `HE_GIT_REMOTE` | `origin` | 推送远端名 |
