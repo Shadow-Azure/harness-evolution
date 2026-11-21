@@ -64,6 +64,7 @@ evolution_runs = Table(
     Column("target_version", String(96), nullable=False),
     Column("target_revision", String(96), nullable=True),
     Column("repo_url", String(1024), nullable=False),
+    Column("push_repo_url", String(1024), nullable=False, server_default=""),
     Column("sub_dir", String(512), nullable=False),
     Column(
         "validation_project_id",
@@ -359,6 +360,7 @@ class EvolutionRunRecord:
     created_by: str | None
     created_at: datetime
     finished_at: datetime | None
+    push_repo_url: str = ""
     validation_project_id: str = ""
     test_project_id: str = ""
     workspace_id: str = DEFAULT_WORKSPACE_ID
@@ -562,6 +564,7 @@ def record_from_evolution_run(row: Mapping[str, Any]) -> EvolutionRunRecord:
         target_version=_required_text(row["target_version"]),
         target_revision=_optional_text(row.get("target_revision")),
         repo_url=_required_text(row["repo_url"]),
+        push_repo_url=_optional_text(row.get("push_repo_url")) or "",
         sub_dir=_required_text(row["sub_dir"]),
         validation_project_id=_required_text(row["validation_project_id"]),
         test_project_id=_required_text(row["test_project_id"]),

@@ -849,7 +849,10 @@ RunLogPanel.vue
 - 顶部 banner："仅聚类分析：未执行 patch 生成与评测迭代" + 「以这批问题启动自进化 →」。
 - 输入概况：关联 Session / 潜在 bad case / 聚类数。
 - 聚类列表：每簇展示分类、来源 bad case 数、严重程度，簇内来源 bad case 表（可展开，ID 可深链错误详情）。
+- 来源 bad case 的深链由页面并行读取 `steps/attribution` 得到 `badCaseId → sessionId` 映射后拼出 `/workspaces/{wid}/sessions/{sid}/errors?case={badCaseId}&tab=attr`；不在 `steps/clusters` 契约里新增 session 字段。
 - 数据来自 `mode=cluster_only` 的 run（`GET /runs/{rid}/steps/clusters`）；「启动自进化」用同一条件再创建 `mode=full` 的 run（同样 202）。
+- 状态口径由后端给：`cluster_only` 的可见进度是 5 步，完成态 `progress.stageLabel` 为「第 5/5 步 · 聚类完成」，不出现迭代轮次；页面用中文状态徽标，不直接渲染 `completed` 等原始枚举。
+- 页面根节点按运行详情的约定承担页级滚动（`height` + `overflow-y: auto`），内容长时可以滚到最后一个簇；簇卡直接复用运行详情第 5 步的 `StepClusters`。
 
 ## 12. 样式与视觉实现
 

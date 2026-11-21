@@ -155,7 +155,7 @@ async def test_recover_interrupts_running_job_and_publishes_sse(state: State) ->
 
     try:
         await runner.recover()
-        notifications = [subscription.queue.get_nowait() for _ in range(2)]
+        notifications = [subscription.queue.get_nowait() for _ in range(3)]
     finally:
         await subscription.close()
         await runner.close()
@@ -172,16 +172,28 @@ async def test_recover_interrupts_running_job_and_publishes_sse(state: State) ->
     assert run.status == "interrupted"
     assert run.error_stage == "step"
     assert run.error_message == "job interrupted by process restart"
-    assert [item.event_type for item in page.items] == ["run_interrupted"]
+    assert run.finished_at is not None
+    assert [item.event_type for item in page.items] == ["run_interrupted", "job_recovered"]
     assert page.items[0].stage == "step"
     assert page.items[0].job_id == job.id
     assert page.items[0].level == "error"
-    assert [item.event for item in notifications] == ["run.event", "run.interrupted"]
+    assert [item.event for item in notifications] == [
+        "run.event",
+        "run.interrupted",
+        "run.event",
+    ]
     assert notifications[1].data["runId"] == "run-recover"
     assert notifications[1].data["stage"] == "step"
     assert notifications[1].data["message"] == "job interrupted by process restart"
     assert notifications[1].data["eventSeq"] == page.items[0].seq
-    assert queued == []
+    assert len(queued) == 1
+    assert queued[0].kind == "evolution_advance"
+    assert queued[0].ref_id == "run-recover"
+    assert queued[0].payload == {"runId": "run-recover"}
+    assert page.items[1].payload == {
+        "previousJobId": job.id,
+        "source": "process-restart",
+    }
 
 
 async def test_restart_acknowledges_pause_after_worker_recorded_its_checkpoint(
@@ -222,6 +234,35 @@ async def test_committed_pause_has_audited_actor_without_process_notification(st
     page = await state.events.list(run.id, after_seq=0, limit=10, level=None)
     assert [event.event_type for event in page.items] == ["run_pause_requested", "run_paused"]
     assert all(event.payload and event.payload["actor"] == "operator" for event in page.items)
+
+
+async def test_restart_requeues_running_work_only_after_user_resumes(state: State) -> None:
+    from app.db.crud.evolution_control import EvolutionControlRepository
+    from app.service.evolution.control import EvolutionControlService
+    from tests.workspaces.helpers import create_user
+
+    actor = await create_user(state.database, username="held-restart")
+    await _create_run(state.repository, "held-restart", status="preparing")
+    run = await state.repository.get_run("held-restart")
+    assert run
+    jobs = JobRepository(state.database)
+    job = await jobs.insert(kind="evolution_prepare", ref_id=run.id, payload={}, created_by=None)
+    await jobs.claim(job.id)
+    runner = JobRunner(jobs, state.bus, run_events=state.events)
+    control = EvolutionControlRepository(state.database)
+    runner.set_evolution_control(
+        EvolutionControlService(control, state.events, runner.schedule), state.repository
+    )
+    assert (
+        await control.pause(run.id, run.workspace_id, actor)
+    ).run.control_state == "pause_requested"
+    await runner.recover()
+    held = await state.repository.get_run(run.id)
+    assert held and held.control_state == "paused" and held.status == "preparing"
+    assert not await jobs.list_queued()
+    resumed = await control.resume(run.id, run.workspace_id, actor)
+    assert [row.id for row in await jobs.list_queued()] == [resumed.job_id]
+    await runner.close()
 
 
 async def test_checkpoint_releases_worker_for_another_run_and_resumes_once(state: State) -> None:
@@ -365,7 +406,7 @@ async def test_pending_pause_keeps_push_blocked_for_manual_retry(state: State) -
     assert run
     store = JobRepository(state.database)
     control = EvolutionControlRepository(state.database)
-    job = await store.insert(kind="evolution_advance", ref_id=run.id, payload={}, created_by=None)
+    job = await store.insert(kind="evolution_retry", ref_id=run.id, payload={}, created_by=None)
     await store.claim(job.id)
     assert (await control.pause(run.id, run.workspace_id, "operator")).run.control_state == (
         "pause_requested"
@@ -379,7 +420,11 @@ async def test_pending_pause_keeps_push_blocked_for_manual_retry(state: State) -
     blocked = await state.repository.get_run(run.id)
     assert blocked and blocked.status == "blocked" and blocked.blocked_stage == "push"
     assert blocked.error_message == "remote unavailable" and blocked.next_retry_at is None
-    await store.fail(job.id, "remote unavailable")
+    # A restart between the durable push failure and its job terminal write
+    # cannot quietly replay a retry that the operator already put on hold.
+    await store.interrupt(job.id, "process restarted")
+    interrupted = await store.get(job.id)
+    assert interrupted and await control.requeue_interrupted(interrupted) is None
     assert (
         await EvolutionBlockedSweeper(state.repository, JobCapture(), now=lambda: NOW).run_once()
         == 0

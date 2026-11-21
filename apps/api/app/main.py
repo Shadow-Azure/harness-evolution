@@ -122,6 +122,7 @@ from app.service.workspaces.service import WorkspaceService
 from app.third_party_api.bad_case_query.http import HttpBadCaseCatalogSource
 from app.third_party_api.bad_case_query.models import BadCaseCatalogSource
 from app.third_party_api.git.content import SubprocessGitContent
+from app.third_party_api.git.provider import GitPushProviderFactory
 from app.third_party_api.git.proxy import GitProxyController, ProxyAwareGitRunner
 from app.third_party_api.git.remote import GitRemote, SubprocessGitRemote
 from app.third_party_api.git.workspace import GitWorkspaceManager
@@ -159,7 +160,11 @@ def create_app(
     resolved_settings = resolved_settings.model_copy(update={"data_dir": data_directory.path})
     resolve_attribution_engine(resolved_settings.attribution_engine)
     proxy_controller = GitProxyController.from_settings(resolved_settings)
-    proxy_runner = ProxyAwareGitRunner(proxy_controller)
+    git_push_provider = GitPushProviderFactory.create(resolved_settings)
+    proxy_runner = ProxyAwareGitRunner(
+        proxy_controller,
+        extra_environment=git_push_provider.auth_environment,
+    )
     resolved_database = database or create_database(resolved_settings)
     external_contract = ExternalContractMonitor(
         resolved_database,
@@ -175,7 +180,14 @@ def create_app(
         event_bus,
     )
     job_repository = JobRepository(resolved_database)
-    jobs = JobRunner(job_repository, event_bus, evolution_events)
+    jobs = JobRunner(
+        job_repository,
+        event_bus,
+        evolution_events,
+        lease_seconds=resolved_settings.job_lease_seconds,
+        heartbeat_seconds=resolved_settings.job_heartbeat_seconds,
+        drain_timeout_seconds=resolved_settings.job_drain_timeout_seconds,
+    )
     evolution_control = EvolutionControlService(
         EvolutionControlRepository(resolved_database),
         evolution_events,
@@ -347,6 +359,7 @@ def create_app(
         runner=cast(Any, proxy_runner.run),
         push_enabled=resolved_settings.git_push,
         push_url=resolved_settings.git_push_url,
+        provider=git_push_provider,
     )
     workspace_manager = git_workspaces or default_workspace_manager
     candidate_workspace_manager = cast(GitWorkspaceManager, workspace_manager)

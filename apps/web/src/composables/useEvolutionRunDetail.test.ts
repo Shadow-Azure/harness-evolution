@@ -8,8 +8,9 @@ function snapshot(status: EvolutionRunDetail["status"]): EvolutionRunDetail {
 }
 
 describe("runDetailRefetchInterval", () => {
-  it("polls blocked runs faster so the sweeper retry is visible", () => {
+  it("polls blocked and interrupted runs faster so recovery is visible", () => {
     expect(runDetailRefetchInterval(snapshot("blocked"))).toBe(5_000);
+    expect(runDetailRefetchInterval(snapshot("interrupted"))).toBe(5_000);
   });
 
   it("keeps a slow polling fallback behind the live stream", () => {
@@ -20,7 +21,6 @@ describe("runDetailRefetchInterval", () => {
   it("stops polling for terminal and unknown snapshots", () => {
     expect(runDetailRefetchInterval(snapshot("completed"))).toBe(false);
     expect(runDetailRefetchInterval(snapshot("failed"))).toBe(false);
-    expect(runDetailRefetchInterval(snapshot("interrupted"))).toBe(false);
     expect(runDetailRefetchInterval(undefined)).toBe(false);
   });
 });

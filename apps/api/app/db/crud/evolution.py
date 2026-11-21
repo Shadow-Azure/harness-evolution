@@ -250,6 +250,27 @@ class EvolutionRepository:
                 update(evolution_runs).where(evolution_runs.c.id == run_id).values(**values),
             )
 
+    async def mark_recovered(self, run_id: str) -> None:
+        """Return an interrupted run to running and clear stale terminal/blocked facts."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs)
+                .where(
+                    evolution_runs.c.id == run_id,
+                    evolution_runs.c.status == "interrupted",
+                    evolution_runs.c.control_state == "running",
+                )
+                .values(
+                    status="running",
+                    blocked_stage=None,
+                    next_retry_at=None,
+                    error_stage=None,
+                    error_message=None,
+                    error_at=None,
+                    finished_at=None,
+                ),
+            )
+
     async def mark_resumed(self, run_id: str) -> None:
         """Clear a prior blocked state when retry execution begins."""
         async with self._database.transaction() as session:
@@ -264,6 +285,7 @@ class EvolutionRepository:
                     error_message=None,
                     error_at=None,
                     next_retry_at=None,
+                    finished_at=None,
                 ),
             )
 
@@ -288,8 +310,14 @@ class EvolutionRepository:
         async with self._database.transaction() as session:
             await session.execute(
                 update(evolution_runs)
-                .where(evolution_runs.c.id == run_id)
-                .values(retry_attempts=0, next_retry_at=None),
+                .where(evolution_runs.c.id == run_id, evolution_runs.c.status == "blocked")
+                .values(
+                    retry_attempts=0,
+                    next_retry_at=None,
+                    pause_requested_at=None,
+                    paused_at=None,
+                    paused_by=None,
+                ),
             )
         run = await self.get_run(run_id)
         if run is None:
@@ -345,29 +373,6 @@ class EvolutionRepository:
                 .values(target_revision=revision)
             )
 
-    async def save_workspace(
-        self,
-        run_id: str,
-        *,
-        repo_path: str,
-        base_commit: str,
-        base_ref: str,
-        branch_name: str,
-        workspace_path: str,
-    ) -> None:
-        async with self._database.transaction() as session:
-            await session.execute(
-                update(evolution_runs)
-                .where(evolution_runs.c.id == run_id)
-                .values(
-                    repo_path=repo_path,
-                    base_commit=base_commit,
-                    base_ref=base_ref,
-                    branch_name=branch_name,
-                    workspace_path=workspace_path,
-                )
-            )
-
     async def save_round_patch(self, round_id: str, patch: Mapping[str, Any]) -> None:
         async with self._database.transaction() as session:
             await session.execute(
@@ -385,6 +390,43 @@ class EvolutionRepository:
                 .values(stats=deepcopy(dict(stats))),
             )
 
+    async def write_workspace_checkpoint(
+        self,
+        run_id: str,
+        *,
+        repo_path: str,
+        base_ref: str | None,
+        base_commit: str,
+        branch_name: str,
+        workspace_path: str,
+        push_repo_url: str,
+        prepared: bool = False,
+    ) -> None:
+        """Persist local workspace facts and distinguish successful publication."""
+        async with self._database.transaction() as session:
+            values: dict[str, Any] = {}
+            if prepared:
+                await lock_run_row(session, run_id)
+                stats: Mapping[str, Any] | None = (
+                    await session.execute(
+                        select(evolution_runs.c.stats).where(evolution_runs.c.id == run_id)
+                    )
+                ).scalar_one()
+                values["stats"] = {**(stats or {}), "workspacePrepared": True}
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(
+                    repo_path=repo_path,
+                    base_ref=base_ref,
+                    base_commit=base_commit,
+                    branch_name=branch_name,
+                    workspace_path=workspace_path,
+                    push_repo_url=push_repo_url,
+                    **values,
+                ),
+            )
+
     async def mark_prepared(
         self,
         run_id: str,
@@ -398,6 +440,7 @@ class EvolutionRepository:
         workspace_path: str | None,
         stats: Mapping[str, Any],
         target_revision: str | None = None,
+        push_repo_url: str | None = None,
     ) -> EvolutionRunRecord:
         """Persist the immutable workspace snapshot and prepared run status."""
         if status not in {"running", "completed"}:
@@ -420,6 +463,8 @@ class EvolutionRepository:
             values["control_state"] = "running"
         if target_revision is not None:
             values["target_revision"] = target_revision
+        if push_repo_url is not None:
+            values["push_repo_url"] = push_repo_url
         async with self._database.transaction() as session:
             result = cast(
                 CursorResult[Any],

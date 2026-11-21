@@ -19,7 +19,7 @@ from app.db.models.evolution import (
     evolution_runs,
     record_from_evolution_run,
 )
-from app.db.models.jobs import job_runs
+from app.db.models.jobs import JobRunRecord, job_runs
 from app.db.models.run_events import RunEventRecord
 from app.errors import AppError, ErrorCode
 from app.service.evolution.backoff import MAX_RETRY_ATTEMPTS
@@ -335,3 +335,41 @@ class EvolutionControlRepository:
                 )
             )
             return job_id, False
+
+    async def requeue_interrupted(self, job: JobRunRecord) -> str | None:
+        """Recover the lease-lost stage under the same fence as pause and resume."""
+        if job.ref_id is None:
+            return None
+        async with self._database.transaction() as session:
+            run = await _locked_run(session, job.ref_id)
+            if run.control_state != "running" or run.status in {"completed", "failed"}:
+                return None
+            if run.status == "blocked" and (
+                job.kind != "evolution_retry" or run.pause_requested_at is not None
+            ):
+                return None
+            if (
+                run.status in ACTIVE_RUN
+                and run.resumed_at
+                and job.finished_at
+                and run.resumed_at >= job.finished_at
+            ):
+                return None
+            if await _active(session, run.id):
+                return None
+            payload = dict(job.payload)
+            if job.kind == "evolution_retry":
+                payload["recovery"] = True
+            job_id = new_id()
+            await session.execute(
+                insert(job_runs).values(
+                    **queued_job_values(
+                        job_id=job_id,
+                        kind=job.kind,
+                        payload=payload,
+                        ref_id=run.id,
+                        created_by=job.created_by,
+                    )
+                )
+            )
+            return job_id

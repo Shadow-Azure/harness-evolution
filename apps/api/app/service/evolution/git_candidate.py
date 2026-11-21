@@ -209,16 +209,13 @@ class EvolutionCandidateService:
         trace: CandidateTrace,
         *,
         job_id: str | None = None,
+        resume: bool = False,
     ) -> EvolutionRoundRecord:
         """Create, commit, and push one candidate with bounded immediate retries."""
         if round_.status in {"evaluating", "deciding", "accepted", "rejected", "skipped"}:
             return round_
         await checkpoint(self._runs, run.id)
         if round_.candidate_commit:
-            if round_.push_status == "succeeded":
-                return await self._runs.mark_round_evaluating(round_.id)
-            if not self._workspaces.push_enabled:
-                return await self._runs.mark_round_and_run_push_skipped(run.id, round_.id)
             return await self.repush_existing(run, round_, job_id=job_id)
         prepared = _prepared_workspace(run)
         current = await self._runs.mark_round_patching(
@@ -265,6 +262,7 @@ class EvolutionCandidateService:
                 patch=patch,
                 message=message,
                 expected_run_id=run.id,
+                reset_workspace=resume,
             )
         except GitOperationError as exc:
             await self._handle_git_failure(
@@ -371,6 +369,7 @@ class EvolutionCandidateService:
                 next_retry_at=retry_at,
                 retry_attempts=0,
                 retryable=exc.retryable,
+                detail=exc.detail,
             ) from None
 
         pushed = await self._runs.mark_round_push_succeeded(
@@ -407,14 +406,16 @@ class EvolutionCandidateService:
         retry_attempts: int = 0,
     ) -> EvolutionRoundRecord:
         """Push one already-committed candidate exactly once and re-enter evaluation."""
+        if round_.push_status == "succeeded":
+            return await self._runs.mark_round_evaluating(round_.id)
+        if not self._workspaces.push_enabled:
+            return await self._runs.mark_round_and_run_push_skipped(run.id, round_.id)
         if (
             round_.candidate_ref is None
             or round_.candidate_commit is None
             or not round_.candidate_message
         ):
             raise ValueError("candidate push retry requires a persisted candidate")
-        if not self._workspaces.push_enabled:
-            raise ValueError("push-disabled runs cannot resume a candidate push")
         prepared = _prepared_workspace(run)
         candidate = CandidateWorkspace(
             workspace_path=prepared.path,
@@ -425,6 +426,7 @@ class EvolutionCandidateService:
             message=round_.candidate_message,
             run_id=run.id,
             base_commit=prepared.base_commit,
+            push_url=prepared.push_url,
         )
         await checkpoint(self._runs, run.id)
         attempt = round_.push_attempts + 1
@@ -528,6 +530,7 @@ class EvolutionCandidateService:
             message=deciding.candidate_message or "",
             run_id=run.id,
             base_commit=prepared.base_commit,
+            push_url=prepared.push_url,
         )
         patch_hash = _patch_hash(deciding)
         message = build_accepted_message(
@@ -612,6 +615,7 @@ class EvolutionCandidateService:
             message=deciding.candidate_message or "",
             run_id=run.id,
             base_commit=prepared.base_commit,
+            push_url=prepared.push_url,
         )
         cleanup_error = await self._workspaces.reject_candidate(
             candidate,
@@ -742,6 +746,7 @@ class EvolutionCandidateService:
             next_retry_at=retry_at,
             retry_attempts=retry_attempts,
             retryable=error.retryable,
+            detail=error.detail,
         ) from None
 
 
@@ -914,6 +919,7 @@ def _prepared_workspace(run: EvolutionRunRecord) -> PreparedWorkspace:
         ref=run.base_ref or run.target_version,
         base_commit=run.base_commit,
         branch=run.branch_name,
+        push_url=(run.push_repo_url or None),
     )
 
 

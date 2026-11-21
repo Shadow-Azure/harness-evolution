@@ -64,6 +64,7 @@ def _run(
         "target_name": "deep-research",
         "target_version": "v2.0.0",
         "repo_url": "https://example.invalid/skills.git",
+        "push_repo_url": "https://example.invalid/fork/skills.git",
         "sub_dir": "skills/deep-research",
         "repo_path": None,
         "base_ref": "v2.0.0",

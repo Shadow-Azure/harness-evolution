@@ -22,6 +22,7 @@ scope:
   - plans/**
   - .agents/**
   - scripts/**
+  - tests/**
 adr: []
 github:
   number: 457

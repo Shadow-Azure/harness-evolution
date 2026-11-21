@@ -33,6 +33,7 @@ const statusLabel = computed(() => {
     case "blocked":
       return "已阻塞";
     case "completed":
+      if (props.run.mode === "cluster_only") return "✓ 已完成 · 仅聚类";
       if (props.run.final === null) return "已完成 · 终评未知";
       return props.run.final.verdict
         ? "✓ 已完成 · 自进化有效"
@@ -50,6 +51,7 @@ const statusClass = computed(() => {
   if (props.run.controlState === "paused") return "paused";
   if (props.run.controlState === "pause_requested") return "blocked";
   if (props.run.status === "completed") {
+    if (props.run.mode === "cluster_only") return "done-ok";
     if (props.run.final === null) return "done-pending";
     return props.run.final?.verdict ? "done-ok" : "done-no";
   }
@@ -216,7 +218,16 @@ function closeError(): void {
       <span class="stat"><b>{{ run.stats.potential }}</b>潜在 bad case</span>
       <span class="stat"><b>{{ run.stats.attributed }}</b>可归因</span>
       <span class="stat"><b>{{ run.stats.reused }}</b>复用归因</span>
-      <span class="stat">
+      <span
+        v-if="run.mode === 'cluster_only'"
+        class="stat"
+      >
+        <b>{{ run.stats.clusters }}</b>聚类
+      </span>
+      <span
+        v-else
+        class="stat"
+      >
         <b>{{ run.progress.doneRounds }}/{{ run.stats.clusters }}</b>已跑轮次
       </span>
     </div>
@@ -258,6 +269,12 @@ function closeError(): void {
       <span class="accepted-copy">
         · 接纳 {{ run.progress.accepted }}/{{ run.stats.clusters }} 个 patch
       </span>
+    </div>
+    <div
+      v-else-if="run.mode === 'cluster_only'"
+      class="final-line unavailable"
+    >
+      仅聚类分析 · 未执行 patch 生成与评测迭代
     </div>
     <div
       v-else-if="run.status === 'completed'"

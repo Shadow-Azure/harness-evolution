@@ -301,6 +301,27 @@ async def test_cluster_only_stops_after_clustering(harness: Harness) -> None:
     assert len(await runs.list_clusters(RUN_ID)) == 1
 
 
+async def test_prepare_reconciles_pre_push_workspace_before_building_rounds(
+    harness: Harness,
+) -> None:
+    await _seed_self_case(harness)
+    await _create_run(harness.database)
+    runs = EvolutionRepository(harness.database)
+    await runs.write_workspace_checkpoint(
+        RUN_ID,
+        repo_path="cache",
+        workspace_path="pre-push-worktree",
+        base_ref=TARGET_VERSION,
+        base_commit="a" * 40,
+        branch_name="evo/checkpoint",
+        push_repo_url="",
+    )
+    await _service(harness).handle(_job())
+    recovered = await runs.get_run(RUN_ID)
+    assert recovered and recovered.workspace_path == str(Path("/tmp/workspace"))
+    assert len(await runs.list_rounds(RUN_ID)) == 1
+
+
 @pytest.mark.parametrize(
     ("revision", "unit", "message"),
     [(None, 0, "revision"), ("tag:v1", 2, "association")],

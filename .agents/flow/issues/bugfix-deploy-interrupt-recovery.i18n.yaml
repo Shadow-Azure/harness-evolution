@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/bugfix-deploy-interrupt-recovery.md
+bugfix-deploy-interrupt-recovery.md: e055b0017603a62d2982adde9e6b746527840dac
+bugfix-deploy-interrupt-recovery.en.md: 746302bb29dc270ff5d78af3a2ea2b36e4351a40

@@ -315,9 +315,10 @@ async def test_evolution_blocked_is_not_written_as_run_failure(
             next_retry_at: object,
             retry_attempts: int,
             error: BaseException,
+            detail: str | None = None,
         ) -> int:
             """Record the retryable stage boundary."""
-            del message, job_id, next_retry_at, error
+            del message, job_id, next_retry_at, error, detail
             self.blocked.append((run_id, stage, blocked_stage, retry_attempts))
             return 11
 

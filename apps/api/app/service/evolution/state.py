@@ -80,6 +80,24 @@ def total_units(cluster_count: int) -> int:
     return PREPARE_COMPLETE_UNIT + cluster_count + 1
 
 
+def progress_total(mode: str, cluster_count: int) -> int:
+    """Return the visible cursor range announced for one run mode.
+
+    Cluster-only runs stop after the cluster step, so their progress bar has
+    five units even though the persisted cursor vocabulary stays seven-step.
+
+    Args:
+        mode: Persisted run mode; `cluster_only` hides iteration and final.
+        cluster_count: Number of clusters behind the run's cursor range.
+
+    Returns:
+        The inclusive final unit shown to the client for this mode.
+    """
+    if mode == "cluster_only":
+        return PREPARE_COMPLETE_UNIT
+    return total_units(cluster_count)
+
+
 def _thresholds(cluster_count: int) -> tuple[int, ...]:
     """Map each step key to the first unit at which it is done."""
     total = total_units(cluster_count)

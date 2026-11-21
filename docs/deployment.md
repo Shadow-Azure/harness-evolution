@@ -44,7 +44,7 @@
 
 ## 配置注入
 
-数据目录与评测配置经同一通道写入服务器 `.env`：`Deploy` 从 GitHub Environment `vars.HE_DATA_DIR` 取绝对路径（空值用默认），评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入；`apiKeyRef` 只存环境变量名，未配置时跳过。值经 base64 传输、服务器侧 `inject-config.py` 原子写入，注入前备份 `.env.bak.<sha>`；解码失败告警跳过，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [deploy/env.production.example](../deploy/env.production.example)。
+数据目录与评测配置经同一通道写入服务器 `.env`：`Deploy` 从 GitHub Environment `vars.HE_DATA_DIR` 取绝对路径（空值用默认），评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入；`apiKeyRef` 只存环境变量名，未配置时跳过。Git 推送凭据同通道注入：`HE_GIT_PUSH_PROVIDER` 总是写入，`HE_GIT_PUSH_TOKEN` 为空时移除旧键，`GIT_ASKPASS` 指向 `/opt/harness/shared/git-askpass.sh`。值经 base64 传输、`inject-config.py` 原子写入并保持 `.env` 0600，注入前备份 `.env.bak.<sha>`；解码失败告警跳过，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [deploy/env.production.example](../deploy/env.production.example)。
 
 ## Claude Code
 
@@ -55,6 +55,7 @@
 - 触发：push main → CI 全绿 → `Deploy`；支持 `workflow_dispatch` 手动触发。
 - 行为：[deploy/release.sh](../deploy/release.sh) 校验数据目录 → 安装依赖 → `alembic upgrade head` → 切换 `current` 软链 → `systemctl restart harness-api` → 探活 `/api/health`（最长 60 秒）。
 - 回滚：探活失败时先恢复 `.env`，再将软链退回上一 release 并重启；本地保留最近 5 个 release 与 5 份 `.env` 备份。
+- 重启排水：unit 用 `KillMode=mixed` + `TimeoutStopSec=45` 先发 SIGTERM；应用在 `HE_JOB_DRAIN_TIMEOUT_SECONDS`（默认 25 秒）内等在跑 job，超时释放租约并标 `interrupted`，下次启动续跑。
 - 迁移幂等：连续发布对已应用的迁移零副作用。
 
 ## 数据目录与可写校验
@@ -69,7 +70,7 @@ API 启动时解析绝对路径、`mkdir` 并写探针；不可写时 `/api/heal
 
 ## Git 工作区与推送
 
-自进化 run 的工作区按目标 ref 建缓存并克隆，推送目标由 `HE_GIT_PUSH` / `HE_GIT_PUSH_URL` 控制；缓存、单 ref 克隆、推送凭据策略与逐操作代理可观测性见 [Git 工作区与推送](git-workspace.md)。
+run 工作区按目标 ref 建缓存并克隆，推送目标由 provider 自动 fork，`HE_GIT_PUSH_URL` 作为无 token 兜底；缓存、单 ref 克隆、推送凭据策略与逐操作代理可观测性见 [Git 工作区与推送](git-workspace.md)。
 
 ## 上游健康与漂移日志
 

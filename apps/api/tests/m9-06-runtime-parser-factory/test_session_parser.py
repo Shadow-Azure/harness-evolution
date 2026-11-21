@@ -274,7 +274,7 @@ def test_explicit_create_keeps_single_payload_compatibility() -> None:
     main = payload(claude_main())
     parser = TraceParserFactory.create("claude-code", (main,))
     assert parser.runtime_key == "claude-code"
-    assert parser.parser_version == 7
+    assert parser.parser_version == 8
 
 
 def test_session_parser_exposes_main_and_subagents() -> None:

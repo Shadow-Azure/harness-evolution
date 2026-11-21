@@ -6,6 +6,8 @@
 #       未配置时跳过安装步骤，配置后发布前自动安装并写入服务器 ~/.claude。
 #       可选 Git 出网代理：Environment Secret XRAY_CONFIG（完整 Xray JSON）；
 #       未配置、配置非法或探测失败时移除 HE_GIT_PROXY，git 直连。
+#       可选 Git 推送凭据：Secrets HE_GIT_PUSH_PROVIDER（github/gitlab，默认 github）
+#       与 HE_GIT_PUSH_TOKEN（PAT）；未配置 token 时移除旧值并保留 GIT_ASKPASS。
 name: Deploy
 
 on:
@@ -250,13 +252,15 @@ jobs:
           printf '%s\n' "${ENTRIES[@]}" | $SSH_CMD "$SSH_USER@$SSH_HOST" \
             "python3 /opt/harness/shared/config/install-claude-code.py --version '${{ steps.claude_code_resolve.outputs.target }}' $DEB_ARG"
 
-      - name: 注入部署配置（数据目录 + 可选评测 + Git 代理）
+      - name: 注入部署配置（数据目录 + 可选评测 + Git 代理 + Git 推送凭据）
         env:
           SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           HE_DATA_DIR: ${{ vars.HE_DATA_DIR }}
           HE_EVAL_MODE: ${{ secrets.HE_EVAL_MODE }}
           HE_EVAL_BASE_URL: ${{ secrets.HE_EVAL_BASE_URL }}
           HE_EVAL_API_KEY: ${{ secrets.HE_EVAL_API_KEY }}
+          HE_GIT_PUSH_PROVIDER: ${{ secrets.HE_GIT_PUSH_PROVIDER }}
+          HE_GIT_PUSH_TOKEN: ${{ secrets.HE_GIT_PUSH_TOKEN }}
           GIT_PROXY_URL: ${{ steps.git_proxy.outputs.proxy_url }}
         run: |
           set -euo pipefail
@@ -272,8 +276,19 @@ jobs:
             /opt/harness/current|/opt/harness/current/*|/opt/harness/releases|/opt/harness/releases/*)
               echo "::error::vars.HE_DATA_DIR 不得位于发布目录：$DATA_DIR"; exit 1 ;;
           esac
+          GIT_PUSH_PROVIDER="${HE_GIT_PUSH_PROVIDER:-github}"
+          case "$GIT_PUSH_PROVIDER" in
+            github|gitlab) ;;
+            *) echo "::error::HE_GIT_PUSH_PROVIDER 只接受 github 或 gitlab：$GIT_PUSH_PROVIDER"; exit 1 ;;
+          esac
           SSH_CMD="ssh -i ~/deploy_key -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
+          # deploy/ 已 rsync 到 /opt/harness/shared/config/；安装到固定绝对路径，
+          # 因为 harness 用户没有 home，不能依赖 ~/.git-credentials 或 ~/.ssh。
+          $SSH_CMD "$SSH_USER@$SSH_HOST" \
+            "install -m 0755 /opt/harness/shared/config/git-askpass.sh /opt/harness/shared/git-askpass.sh"
           ENTRIES=("HE_DATA_DIR $(printf '%s' "$DATA_DIR" | base64 | tr -d '\n')")
+          ENTRIES+=("HE_GIT_PUSH_PROVIDER $(printf '%s' "$GIT_PUSH_PROVIDER" | base64 | tr -d '\n')")
+          ENTRIES+=("GIT_ASKPASS $(printf '%s' '/opt/harness/shared/git-askpass.sh' | base64 | tr -d '\n')")
           [ -n "${HE_EVAL_MODE:-}" ] && ENTRIES+=("HE_EVAL_MODE $(printf '%s' "${HE_EVAL_MODE:-}" | base64 | tr -d '\n')")
           [ -n "${HE_EVAL_BASE_URL:-}" ] && ENTRIES+=("HE_EVAL_BASE_URL $(printf '%s' "${HE_EVAL_BASE_URL:-}" | base64 | tr -d '\n')")
           [ -n "${HE_EVAL_API_KEY:-}" ] && ENTRIES+=("HE_EVAL_API_KEY $(printf '%s' "${HE_EVAL_API_KEY:-}" | base64 | tr -d '\n')")
@@ -284,6 +299,13 @@ jobs:
           else
             UNSET_ARGS="--unset HE_GIT_PROXY"
           fi
+          # token 只经 base64 + stdin 传输，不进入 SSH 命令行或日志；secret 被移除时
+          # 显式 unset，避免旧 PAT 留在服务器 .env 里继续生效。
+          if [ -n "${HE_GIT_PUSH_TOKEN:-}" ]; then
+            ENTRIES+=("HE_GIT_PUSH_TOKEN $(printf '%s' "$HE_GIT_PUSH_TOKEN" | base64 | tr -d '\n')")
+          else
+            UNSET_ARGS="$UNSET_ARGS --unset HE_GIT_PUSH_TOKEN"
+          fi
           # 值以 base64 传输、服务器侧 inject-config.py 解码并原子重写 .env：
           # `&`/`$`/反引号/`|`/引号等特殊字符全部安全；HE_DATA_DIR 总是注入（空值用默认绝对路径）。
           # 注入前备份到 .env.bak.<sha>，release.sh 失败时恢复；单键解码失败只告警跳过。
@@ -291,7 +313,17 @@ jobs:
           BACKUP="/opt/harness/shared/.env.bak.$SHA"
           printf '%s\n' "${ENTRIES[@]}" | $SSH_CMD "$SSH_USER@$SSH_HOST" \
             "python3 /opt/harness/shared/config/inject-config.py --backup '$BACKUP' $UNSET_ARGS"
-          echo "已注入 ${#ENTRIES[@]} 个配置变量（数据目录：$DATA_DIR，Git 代理：${GIT_PROXY_URL:-直连}）"
+          # inject-config.py 以 0600 临时文件原子替换；这里再确认权限，防止历史文件或
+          # 手工改动让过期 token 可被其他用户读取。
+          ENV_MODE=$($SSH_CMD "$SSH_USER@$SSH_HOST" \
+            "chmod 600 /opt/harness/shared/.env && stat -c '%a' /opt/harness/shared/.env")
+          if [ "$ENV_MODE" != "600" ]; then
+            echo "::error::/opt/harness/shared/.env 权限为 $ENV_MODE，期望 600"
+            exit 1
+          fi
+          TOKEN_STATE="未配置"
+          [ -n "${HE_GIT_PUSH_TOKEN:-}" ] && TOKEN_STATE="已配置"
+          echo "已注入 ${#ENTRIES[@]} 个配置变量（数据目录：$DATA_DIR，Git 代理：${GIT_PROXY_URL:-直连}，Git 推送：$GIT_PUSH_PROVIDER，token $TOKEN_STATE）"
 
       - name: 执行发布（迁移 + 切换 + 重启 + 探活）
         env:

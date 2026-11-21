@@ -23,17 +23,19 @@ def _run(
     status: str,
     *,
     progress_unit: int = 0,
+    mode: str = "full",
     stats: dict[str, object] | None = None,
     error: tuple[str, str] | None = None,
     potential_policy: dict[str, object] | None = None,
     cache_enabled: bool = False,
+    attribution_engine: str = "legacy-probe-import",
 ) -> EvolutionRunRecord:
     """Build a complete run snapshot for a deterministic service test."""
     return EvolutionRunRecord(
         id=run_id,
         title=f"{run_id} title",
-        mode="full",
-        engine_key="full",
+        mode=mode,
+        engine_key="cluster_only" if mode == "cluster_only" else "full",
         eval_config={},
         target_config_id=None,
         target_type="skill",
@@ -68,6 +70,7 @@ def _run(
         finished_at=NOW if status in {"completed", "failed", "interrupted"} else None,
         potential_policy=potential_policy,
         cache_enabled=cache_enabled,
+        attribution_engine=attribution_engine,
     )
 
 
@@ -180,6 +183,44 @@ async def test_progress_copy_and_percent_are_backend_owned(
     assert card.progress.stage_label == label
     assert card.progress.done_rounds == done_rounds
     assert card.progress.accepted == 1
+
+
+@pytest.mark.parametrize(
+    ("unit", "label", "percent"),
+    [
+        (0, "第 1/5 步 · 选择范围中…", 0),
+        (1, "第 2/5 步 · Session 关联中…", 20),
+        (2, "第 3/5 步 · 筛选潜在 bad case 中…", 40),
+        (3, "第 4/5 步 · 对象归因中…", 60),
+        (4, "第 5/5 步 · 聚类与严重度排序中…", 80),
+        (5, "第 5/5 步 · 聚类完成", 100),
+    ],
+)
+async def test_cluster_only_progress_stops_at_the_cluster_step(
+    unit: int,
+    label: str,
+    percent: int,
+) -> None:
+    """A cluster-only run never advertises iteration rounds on its card."""
+    run = _run(
+        "run-cluster",
+        "running" if unit < 5 else "completed",
+        progress_unit=unit,
+        mode="cluster_only",
+        attribution_engine="rule-v1",
+    )
+    service = EvolutionRunService(FakeRunStore((_summary(run, clusters=2, accepted=1),)))
+
+    result = await service.list()
+    card = result.running[0] if unit < 5 else result.history[0]
+
+    assert card.mode == "cluster_only"
+    assert card.progress.total == 5
+    assert card.progress.unit == unit
+    assert card.progress.percent == percent
+    assert card.progress.stage_label == label
+    assert card.progress.done_rounds == 0
+    assert card.progress.accepted == 0
 
 
 async def test_progress_percent_rounds_half_up() -> None:

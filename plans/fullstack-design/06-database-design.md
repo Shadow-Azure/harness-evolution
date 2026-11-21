@@ -375,8 +375,11 @@ erDiagram
 | `error` | `TEXT` | 失败原因 |
 | `created_by` | `VARCHAR(36)` NULL | FK → `users.id` |
 | `created_at` / `started_at` / `finished_at` / `updated_at` | DATETIME | — |
+| `lease_owner` | `VARCHAR(64)` NULL | 持有执行权的实例/worker 标识；历史行为 NULL 视为已过期 |
+| `lease_expires_at` | DATETIME NULL | 租约到期时间；到期 running 可被重新领取 |
+| `heartbeat_at` | DATETIME NULL | 最近一次续租时间 |
 
-索引：`INDEX(status)`、`INDEX(kind, created_at DESC)`、`INDEX(ref_id)`。
+索引：`INDEX(status)`、`INDEX(kind, created_at DESC)`、`INDEX(ref_id)`、`INDEX(status, lease_expires_at)`。
 
 ### 3.10 `workspaces` —— 工作空间（V2）
 
@@ -565,7 +568,7 @@ erDiagram
 
 ### 5.2 `evolution_runs`
 
-暂停控制由增量迁移 `0024` 添加：`control_state VARCHAR(16) NOT NULL DEFAULT running`、`pause_requested_at/paused_at/resumed_at DATETIME NULL`、`paused_by VARCHAR(36) NULL`；当前暂停请求与确认时间独立，操作者及历次转换保留在持久化运行事件中。`evolution_rounds.eval_paused_seconds` 为非空浮点秒数，默认 0，用于排除本地暂停等待。执行状态、unit、轮次产物、外部评测 ID 和原始输入快照继续作为恢复事实，不改变运行身份。并发暂停、确认与继续通过行锁事务和 job 认领互斥；暂停工作区不进入普通终态清理。
+暂停控制由增量迁移 `0026` 添加：`control_state VARCHAR(16) NOT NULL DEFAULT running`、`pause_requested_at/paused_at/resumed_at DATETIME NULL`、`paused_by VARCHAR(36) NULL`；当前暂停请求与确认时间独立，操作者及历次转换保留在持久化运行事件中。`evolution_rounds.eval_paused_seconds` 为非空浮点秒数，默认 0，用于排除本地暂停等待。执行状态、unit、轮次产物、外部评测 ID 和原始输入快照继续作为恢复事实，不改变运行身份。并发暂停、确认与继续通过行锁事务和 job 认领互斥；暂停工作区不进入普通终态清理。
 
 
 | 列 | 类型 | 说明 |

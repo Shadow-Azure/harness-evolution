@@ -132,6 +132,7 @@ class WorkspaceDouble:
         patch: Patch,
         message: str,
         expected_run_id: str | None = None,
+        reset_workspace: bool = False,
     ) -> CandidateWorkspace:
         """Record and return one deterministic candidate."""
         del prepared, patch

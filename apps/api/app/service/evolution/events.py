@@ -36,6 +36,7 @@ EvolutionRunEventType = Literal[
     "final_completed",
     "run_failed",
     "run_interrupted",
+    "job_recovered",
     "candidate_committed",
     "candidate_pushed",
     "eval_submitted",
@@ -80,6 +81,7 @@ EVOLUTION_RUN_EVENT_TYPES: tuple[EvolutionRunEventType, ...] = (
     "final_completed",
     "run_failed",
     "run_interrupted",
+    "job_recovered",
     "candidate_committed",
     "candidate_pushed",
     "eval_submitted",
@@ -406,6 +408,32 @@ class EvolutionRunEventService:
         await self._runs.mark_interrupted(run_id, stage=stage, message=safe_message)
         return event.seq
 
+    async def record_recovered(
+        self,
+        *,
+        run_id: str,
+        stage: str,
+        message: str,
+        job_id: str,
+        previous_job_id: str,
+    ) -> int:
+        """Persist an automatic restart recovery and return its event sequence."""
+        if stage not in EVOLUTION_RUN_EVENT_STAGES:
+            raise ValueError(f"unknown evolution event stage: {stage}")
+        run = await self._runs.get_run(run_id)
+        if run is None or run.status != "interrupted":
+            return 0
+        event = await self.record(
+            run_id,
+            "job_recovered",
+            level="info",
+            stage=stage,
+            message=message,
+            job_id=job_id,
+            payload={"previousJobId": previous_job_id, "source": "process-restart"},
+        )
+        return event.seq
+
     async def record_blocked(
         self,
         run_id: str,
@@ -417,6 +445,7 @@ class EvolutionRunEventService:
         next_retry_at: datetime | None = None,
         retry_attempts: int | None = None,
         error: BaseException | None = None,
+        detail: str | None = None,
     ) -> int:
         """Persist one retryable failure and enter blocked state."""
         resolved_blocked_stage = blocked_stage or (stage if stage in {"push", "eval"} else None)
@@ -430,6 +459,7 @@ class EvolutionRunEventService:
             if isinstance(declared_error_stage, str) and declared_error_stage
             else stage
         )
+        safe_detail = sanitize_message(detail, limit=1_000) if detail else None
         event = await self.record(
             run_id,
             "run_blocked",
@@ -438,11 +468,13 @@ class EvolutionRunEventService:
             message=message,
             job_id=job_id,
             error=error,
+            error_detail=safe_detail,
         )
+        run_message = f"{message}: {safe_detail}" if safe_detail else message
         await self._runs.mark_blocked(
             run_id,
             stage=resolved_blocked_stage,
-            message=sanitize_message(message, limit=2_000),
+            message=sanitize_message(run_message, limit=2_000),
             error_stage=resolved_error_stage,
             next_retry_at=next_retry_at,
             retry_attempts=retry_attempts,

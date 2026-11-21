@@ -91,7 +91,7 @@ class EvolutionEvalSubmitter:
                 EvalRequest(
                     run_id=run.id,
                     evolution_round_id=round_.id,
-                    repo_url=run.repo_url,
+                    repo_url=run.push_repo_url or run.repo_url,
                     ref=round_.candidate_ref,
                     commit=round_.candidate_commit,
                     target_type=run.target_type,

@@ -10,13 +10,17 @@ import shutil
 import signal
 import sys
 import time
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
 from app.db.models.evolution import EvolutionRunRecord
+from app.third_party_api.git.provider import (
+    GitPushProvider,
+    GitPushProviderError,
+)
 from app.utils.redaction import sanitize_message
 
 GitStage = Literal[
@@ -39,11 +43,13 @@ class GitOperationError(RuntimeError):
         *,
         stage: GitStage,
         retryable: bool = False,
+        detail: str | None = None,
     ) -> None:
-        """Store safe diagnostics without retaining raw process output."""
+        """Store safe diagnostics without retaining credential-bearing output."""
         super().__init__(message)
         self.stage = stage
         self.retryable = retryable
+        self.detail = detail
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +75,7 @@ class PreparedWorkspace:
     branch: str
     cache_hit: bool = False
     clone_seconds: float = 0.0
+    push_url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +112,7 @@ class CandidateWorkspace:
     message: str
     run_id: str
     base_commit: str
+    push_url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,19 +161,30 @@ class GitWorkspaceManager:
         timeout_seconds: float = 60.0,
         push_enabled: bool = True,
         push_url: str | None = None,
+        provider: GitPushProvider | None = None,
     ) -> None:
-        """Bind roots, the sanitized process seam, and an optional push remote."""
+        """Bind roots, the sanitized process seam, and one push provider."""
         self.repos_root = repos_root
         self.workspaces_root = workspaces_root
-        self._runner = runner or _run_process
+        self._runner = runner
         self._timeout_seconds = timeout_seconds
         self._push_enabled = push_enabled
-        self._push_url = (push_url or "").strip() or None
-        self._push_remote = "push" if self._push_url is not None else "origin"
+        self._provider = provider
+        self._fallback_push_url = (push_url or "").strip() or None
+        self._auth_environment = dict(provider.auth_environment()) if provider is not None else {}
         self._cache_locks: dict[str, asyncio.Lock] = {}
 
     async def prepare(self, run: EvolutionRunRecord) -> PreparedWorkspace:
         """Fetch one target ref into a cache and create the uniquely named run branch."""
+        return await self.prepare_with_checkpoint(run)
+
+    async def prepare_with_checkpoint(
+        self,
+        run: EvolutionRunRecord,
+        *,
+        checkpoint: Callable[[PreparedWorkspace], Awaitable[None]] | None = None,
+    ) -> PreparedWorkspace:
+        """Prepare the workspace and publish its durable checkpoint before push."""
         if run.resumed_at and not run.base_commit and run.target_type in {"skill", "agent"}:
             raise GitOperationError(
                 "cannot safely resume without a frozen baseline commit",
@@ -178,8 +197,12 @@ class GitWorkspaceManager:
         workspace_path = self.workspaces_root / _safe_component(run.id)
         branch = f"evo/{run.created_at:%Y%m%d}-{run.id}"
 
+        push_url = await self._resolve_push_url(run)
+
         clone_started = time.monotonic()
-        frozen_ref = run.base_commit if run.resumed_at or run.target_revision else None
+        frozen_ref = (
+            run.base_commit if run.workspace_path or run.resumed_at or run.target_revision else None
+        )
         base_commit, cache_hit = await self._ensure_ref_cache(
             cache_path, run.repo_url, frozen_ref or ref
         )
@@ -206,6 +229,7 @@ class GitWorkspaceManager:
                 run.repo_url,
                 run.remote_name,
                 base_commit,
+                push_url,
             )
         else:
             try:
@@ -224,7 +248,7 @@ class GitWorkspaceManager:
                 stage="workspace",
                 failure="workspace remote setup failed",
             )
-            await self._ensure_push_remote(workspace_path)
+            await self._ensure_push_remote(workspace_path, push_url)
             await self._select_or_create_run_branch(
                 workspace_path,
                 branch,
@@ -240,10 +264,13 @@ class GitWorkspaceManager:
             branch=branch,
             cache_hit=cache_hit,
             clone_seconds=clone_seconds,
+            push_url=push_url,
         )
         await self.validate_for_push(prepared, run)
+        if checkpoint is not None:
+            await checkpoint(prepared)
         if self._push_enabled:
-            await self._push_run_branch(workspace_path, branch)
+            await self._push_run_branch(workspace_path, branch, push_url=push_url)
         return prepared
 
     async def create_candidate(
@@ -255,8 +282,11 @@ class GitWorkspaceManager:
         patch: Patch,
         message: str,
         expected_run_id: str | None = None,
+        reset_workspace: bool = False,
     ) -> CandidateWorkspace:
-        """Create one candidate commit from the clean, current run branch."""
+        """Create one candidate commit, optionally resetting a resumed worktree."""
+        if reset_workspace:
+            await self._reset_candidate_workspace(prepared.path, run_branch)
         await self._require_clean(prepared.path)
         await self._git_checked(
             prepared.path,
@@ -352,6 +382,26 @@ class GitWorkspaceManager:
             message=message,
             run_id=run_id,
             base_commit=prepared.base_commit,
+            push_url=prepared.push_url,
+        )
+
+    async def _reset_candidate_workspace(
+        self,
+        workspace_path: Path,
+        run_branch: str,
+    ) -> None:
+        """Discard a half-finished candidate attempt before regenerating it."""
+        await self._git_checked(
+            workspace_path,
+            ("git", "switch", "--force", run_branch),
+            stage="workspace",
+            failure="stale candidate worktree could not return to the run branch",
+        )
+        await self._git_checked(
+            workspace_path,
+            ("git", "clean", "-fd"),
+            stage="workspace",
+            failure="stale candidate worktree could not be cleaned",
         )
 
     async def push_candidate(
@@ -364,7 +414,7 @@ class GitWorkspaceManager:
         await self._validate_candidate(candidate)
         if not self._push_enabled:
             return
-        remote = await self._ensure_push_remote(candidate.workspace_path)
+        remote = await self._ensure_push_remote(candidate.workspace_path, candidate.push_url)
         remote_commit = await self.remote_tag_commit(
             candidate.workspace_path,
             remote,
@@ -397,7 +447,23 @@ class GitWorkspaceManager:
                 remote,
                 f"{candidate.commit}:refs/tags/{candidate.ref}",
             )
-        await self._push_checked(candidate.workspace_path, args)
+        try:
+            await self._push_checked(candidate.workspace_path, args)
+        except GitOperationError as exc:
+            try:
+                reconciled = (
+                    await self.remote_tag_commit(
+                        candidate.workspace_path,
+                        remote,
+                        candidate.ref,
+                    )
+                    == candidate.commit
+                )
+            except GitOperationError:
+                reconciled = False
+            if reconciled:
+                return
+            raise exc
 
     async def accept_candidate(
         self,
@@ -485,10 +551,14 @@ class GitWorkspaceManager:
                 message=message,
                 run_id=candidate.run_id,
                 base_commit=candidate.base_commit,
+                push_url=candidate.push_url,
             )
             remote_commit = await self.remote_tag_commit(
                 candidate.workspace_path,
-                await self._ensure_push_remote(candidate.workspace_path),
+                await self._ensure_push_remote(
+                    candidate.workspace_path,
+                    candidate.push_url,
+                ),
                 candidate.ref,
             )
             if remote_commit not in {None, candidate.commit, final_commit}:
@@ -540,11 +610,16 @@ class GitWorkspaceManager:
             expected_run_id=candidate.run_id,
             base_commit=candidate.base_commit,
             require_trailer=True,
+            push_url=candidate.push_url,
         )
 
         cleanup_errors: list[str] = []
         try:
-            await self._delete_remote_tag(candidate.workspace_path, candidate.ref)
+            await self._delete_remote_tag(
+                candidate.workspace_path,
+                candidate.ref,
+                push_url=candidate.push_url,
+            )
         except GitOperationError as exc:
             cleanup_errors.append(str(exc))
         if local_candidate is not None:
@@ -578,7 +653,11 @@ class GitWorkspaceManager:
         )
         cleanup_errors: list[str] = []
         try:
-            await self._delete_remote_tag(candidate.workspace_path, candidate.ref)
+            await self._delete_remote_tag(
+                candidate.workspace_path,
+                candidate.ref,
+                push_url=candidate.push_url,
+            )
         except GitOperationError as exc:
             cleanup_errors.append(str(exc))
         try:
@@ -684,6 +763,7 @@ class GitWorkspaceManager:
             expected_run_id=expected_run_id or run.id,
             base_commit=prepared.base_commit,
             require_trailer=require_trailer,
+            push_url=prepared.push_url,
         )
 
     def cleanup_workspaces(
@@ -720,6 +800,7 @@ class GitWorkspaceManager:
         expected_run_id: str | None = None,
         base_commit: str | None = None,
         require_trailer: bool = False,
+        push_url: str | None = None,
     ) -> None:
         """Publish only a fast-forward run branch and never force it."""
         await self._validate_publication_state(
@@ -731,7 +812,7 @@ class GitWorkspaceManager:
         )
         if not self._push_enabled:
             return
-        remote = await self._ensure_push_remote(workspace_path)
+        remote = await self._ensure_push_remote(workspace_path, push_url)
         remote_commit = await self.remote_ref_commit(workspace_path, remote, branch)
         head = (
             await self._git_checked(
@@ -741,6 +822,11 @@ class GitWorkspaceManager:
                 failure="run branch commit could not be resolved",
             )
         ).stdout.strip()
+        if remote_commit == head:
+            # The ref already matches the checkpoint. This is the normal
+            # recovery path after a previous push wrote the remote ref but the
+            # client was killed before it could report success.
+            return
         if remote_commit is not None and remote_commit != head:
             if not await self._commit_present(workspace_path, remote_commit):
                 # The single-ref cache does not carry the run branch, so fetch
@@ -762,16 +848,42 @@ class GitWorkspaceManager:
                     "run branch update is not a fast-forward",
                     stage="push",
                 )
-        await self._push_checked(
-            workspace_path,
-            ("git", "push", remote, f"{head}:refs/heads/{branch}"),
-        )
+        try:
+            await self._push_checked(
+                workspace_path,
+                ("git", "push", remote, f"{head}:refs/heads/{branch}"),
+            )
+        except GitOperationError as exc:
+            # A killed client can exit non-zero after the server accepted the
+            # ref update. Reconcile once before classifying a real failure.
+            if await self._remote_branch_matches(workspace_path, remote, branch, head):
+                return
+            raise exc
 
-    async def _delete_remote_tag(self, workspace_path: Path, ref: str) -> None:
+    async def _remote_branch_matches(
+        self,
+        workspace_path: Path,
+        remote: str,
+        branch: str,
+        commit: str,
+    ) -> bool:
+        """Return whether one remote branch already points at the commit."""
+        try:
+            return await self.remote_ref_commit(workspace_path, remote, branch) == commit
+        except GitOperationError:
+            return False
+
+    async def _delete_remote_tag(
+        self,
+        workspace_path: Path,
+        ref: str,
+        *,
+        push_url: str | None = None,
+    ) -> None:
         """Delete a transient candidate tag, treating absence as success."""
         if not self._push_enabled:
             return
-        remote = await self._ensure_push_remote(workspace_path)
+        remote = await self._ensure_push_remote(workspace_path, push_url)
         if await self.remote_tag_commit(workspace_path, remote, ref) is None:
             return
         await self._push_checked(
@@ -786,6 +898,7 @@ class GitWorkspaceManager:
         expected_repo_url: str,
         remote_name: str,
         base_commit: str,
+        push_url: str | None,
     ) -> None:
         """Resume an existing safe run workspace without resetting its branch."""
         if not (workspace_path / ".git").is_dir():
@@ -797,7 +910,7 @@ class GitWorkspaceManager:
         )
         if current_url.returncode != 0 or current_url.stdout.strip() != expected_repo_url:
             raise GitOperationError("workspace remote does not match the run", stage="workspace")
-        await self._ensure_push_remote(workspace_path)
+        await self._ensure_push_remote(workspace_path, push_url)
         current_branch = await self._git(
             workspace_path,
             ("git", "branch", "--show-current"),
@@ -1063,30 +1176,55 @@ class GitWorkspaceManager:
             return
         shutil.rmtree(cache_path, ignore_errors=True)
 
-    async def _ensure_push_remote(self, workspace_path: Path) -> str:
-        """Ensure the optional push remote exists and return the remote to push to."""
-        if self._push_url is None:
+    async def _resolve_push_url(self, run: EvolutionRunRecord) -> str | None:
+        """Resolve one per-run push target without a process-global URL."""
+        if not self._push_enabled:
+            return None
+        snapshot = (run.push_repo_url or "").strip()
+        if snapshot:
+            return snapshot
+        if self._provider is not None and self._provider.has_token:
+            try:
+                return await self._provider.ensure_fork(run.repo_url)
+            except GitPushProviderError as exc:
+                detail = _provider_failure_detail(exc.status_code)
+                raise GitOperationError(
+                    f"push fork preparation failed ({detail})",
+                    stage="push",
+                    retryable=exc.status_code is None
+                    or exc.status_code in {429, 500, 502, 503, 504},
+                ) from None
+        return self._fallback_push_url
+
+    async def _ensure_push_remote(
+        self,
+        workspace_path: Path,
+        push_url: str | None,
+    ) -> str:
+        """Ensure the optional per-run push remote and return its git name."""
+        if push_url is None:
             return "origin"
+        remote_name = "push"
         current = await self._git(
             workspace_path,
-            ("git", "remote", "get-url", self._push_remote),
+            ("git", "remote", "get-url", remote_name),
             stage="push",
         )
         if current.returncode != 0:
             await self._git_checked(
                 workspace_path,
-                ("git", "remote", "add", self._push_remote, self._push_url),
+                ("git", "remote", "add", remote_name, push_url),
                 stage="push",
                 failure="push remote setup failed",
             )
-        elif current.stdout.strip() != self._push_url:
+        elif current.stdout.strip() != push_url:
             await self._git_checked(
                 workspace_path,
-                ("git", "remote", "set-url", self._push_remote, self._push_url),
+                ("git", "remote", "set-url", remote_name, push_url),
                 stage="push",
                 failure="push remote update failed",
             )
-        return self._push_remote
+        return remote_name
 
     async def _validate_candidate(self, candidate: CandidateWorkspace) -> None:
         """Validate the exact local commit immediately before candidate publication."""
@@ -1303,10 +1441,11 @@ class GitWorkspaceManager:
     ) -> GitProcessResult:
         """Invoke the process seam with one bounded timeout."""
         try:
-            return await asyncio.wait_for(
-                self._runner(argv, cwd),
-                timeout=self._timeout_seconds,
-            )
+            if self._runner is not None:
+                call = self._runner(argv, cwd)
+            else:
+                call = _run_process(argv, cwd, environment=self._auth_environment)
+            return await asyncio.wait_for(call, timeout=self._timeout_seconds)
         except (TimeoutError, OSError, RuntimeError):
             raise GitOperationError(
                 f"{stage} operation failed",
@@ -1325,7 +1464,13 @@ class GitWorkspaceManager:
         """Classify transient transport failures without exposing command output."""
         diagnostic = sanitize_message(result.stderr, limit=500).lower()
         is_retryable = retryable or any(marker in diagnostic for marker in self._TRANSIENT_MARKERS)
-        return GitOperationError(failure, stage=stage, retryable=is_retryable)
+        detail = sanitize_message(result.stderr, limit=1_000).strip() or None
+        return GitOperationError(
+            failure,
+            stage=stage,
+            retryable=is_retryable,
+            detail=detail,
+        )
 
     @staticmethod
     def _write_patch(workspace_path: Path, patch: Patch) -> None:
@@ -1399,22 +1544,26 @@ def _has_trailer(message: str, name: str, expected: str) -> bool:
 async def _run_process(
     argv: Sequence[str],
     cwd: Path | None,
+    *,
+    environment: Mapping[str, str] | None = None,
 ) -> GitProcessResult:
     """Execute git through a sanitized argument array with prompts disabled."""
-    environment = dict(os.environ)
-    environment.update(
+    resolved_environment = dict(os.environ)
+    resolved_environment.update(
         {
             "GIT_TERMINAL_PROMPT": "0",
             "GCM_INTERACTIVE": "Never",
         },
     )
+    if environment is not None:
+        resolved_environment.update(environment)
     process = await asyncio.create_subprocess_exec(
         *argv,
         cwd=str(cwd) if cwd is not None else None,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        env=environment,
+        env=resolved_environment,
         start_new_session=sys.platform != "win32",
     )
     try:
@@ -1458,6 +1607,23 @@ async def _terminate_process_group(process: asyncio.subprocess.Process) -> None:
         return
     if process.returncode is None:
         await process.wait()
+
+
+def _provider_failure_detail(status_code: int | None) -> str:
+    """Map a provider HTTP status to a durable, credential-free diagnosis."""
+    if status_code is None:
+        return "network error"
+    if status_code == 401:
+        return "HTTP 401: token rejected or expired"
+    if status_code == 403:
+        return "HTTP 403: token lacks repository or fork permission"
+    if status_code == 404:
+        return "HTTP 404: upstream repository not found"
+    if status_code == 429:
+        return "HTTP 429: rate limited"
+    if status_code >= 500:
+        return f"HTTP {status_code}: host temporarily unavailable"
+    return f"HTTP {status_code}: request rejected"
 
 
 def _safe_component(value: str) -> str:

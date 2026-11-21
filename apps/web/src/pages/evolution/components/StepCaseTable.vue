@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import type { StepClusterCase } from "@harness/contracts";
 
-import { formatLocalDateTime } from "../runDetail";
+import { workspacePath } from "../../../router/workspace";
 import { shortBadCaseId } from "../../../utils/badCaseId";
+import { formatLocalDateTime } from "../runDetail";
 
-defineProps<{
+const props = defineProps<{
   cases: StepClusterCase[];
+  wid?: string;
+  caseSessions?: Record<string, string>;
 }>();
 
 function typeLabel(type: string): string {
@@ -13,6 +16,20 @@ function typeLabel(type: string): string {
   if (type === "model") return "模型";
   if (type === "error") return "错误";
   return type;
+}
+
+/**
+ * Build the error-detail deep link for a source bad case.
+ * @param badCaseId Source bad case identifier.
+ * @returns Workspace error-detail path, or null when the owning Session is unknown.
+ */
+function caseLink(badCaseId: string): string | null {
+  const sessionId = props.caseSessions?.[badCaseId];
+  if (!props.wid || !sessionId) return null;
+  return `${workspacePath(
+    props.wid,
+    `sessions/${encodeURIComponent(sessionId)}/errors`,
+  )}?case=${encodeURIComponent(badCaseId)}&tab=attr`;
 }
 </script>
 
@@ -41,7 +58,13 @@ function typeLabel(type: string): string {
             class="id mono"
             :title="item.badCaseId"
           >
-            {{ shortBadCaseId(item.badCaseId) }}
+            <a
+              v-if="caseLink(item.badCaseId)"
+              :href="caseLink(item.badCaseId)!"
+            >{{ shortBadCaseId(item.badCaseId) }}</a>
+            <template v-else>
+              {{ shortBadCaseId(item.badCaseId) }}
+            </template>
           </td>
           <td>{{ item.title }}</td>
           <td class="mono">

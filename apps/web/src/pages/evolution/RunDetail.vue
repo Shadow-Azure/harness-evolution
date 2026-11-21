@@ -598,7 +598,7 @@ function clearMissingClusterFocus(): void {
         data-testid="interrupted-banner"
         role="status"
       >
-        <span class="blocked-title">任务被中断，可查看最后事件</span>
+        <span class="blocked-title">任务被中断，系统将自动恢复；可查看最后事件</span>
         <span v-if="run.error">{{ run.error.message }}</span>
         <button
           type="button"
@@ -866,6 +866,17 @@ function clearMissingClusterFocus(): void {
                 </div>
                 <div class="v mono">
                   {{ run.evalStatus }}
+                </div>
+              </div>
+              <div class="kv">
+                <div class="k">
+                  推送目标
+                </div>
+                <div
+                  class="v mono workspace-path"
+                  data-testid="run-push-repo"
+                >
+                  {{ run.workspace.pushRepoUrl }}
                 </div>
               </div>
             </div>
