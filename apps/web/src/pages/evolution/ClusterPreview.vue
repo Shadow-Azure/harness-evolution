@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { PotentialPolicy, StepRangeCondition } from "@harness/contracts";
+import { useQueryClient } from "@tanstack/vue-query";
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { startEvolutionRun } from "../../api/evolutionRuns";
+import { queryKeys } from "../../api/queryKeys";
 import { formatApiError } from "../../app/apiError";
 import ErrorState from "../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../components/ui/LoadingSkeleton.vue";
@@ -20,6 +22,7 @@ defineOptions({ name: "ClusterPreviewPage" });
 
 const route = useRoute();
 const router = useRouter();
+const queryClient = useQueryClient();
 const workspaceId = useWorkspaceId();
 const runId = computed(() => String(route.params.runId ?? ""));
 const { data, error, isPending, refetch } = useEvolutionRunDetail(
@@ -175,6 +178,9 @@ async function launchFullRun(): Promise<void> {
       cacheEnabled: condition.cacheEnabled,
       page: 1,
       pageSize: 5,
+    });
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.evolutionRuns(workspaceId.value),
     });
     await router.push(
       workspacePath(
