@@ -17,6 +17,7 @@ from app.third_party_api.git.workspace import (
     GitOperationError,
     GitProcessResult,
     GitWorkspaceManager,
+    Patch,
 )
 
 NOW = datetime(2026, 11, 21, 9, 30, tzinfo=UTC)
@@ -155,6 +156,66 @@ def _advance_branch(prepared: Any) -> str:
     _git(path, "add", "README.md")
     _git(path, "commit", "-m", "advance run branch")
     return _git(path, "rev-parse", "HEAD")
+
+
+async def test_prepare_checkpoint_runs_before_remote_publication(
+    tmp_path: Path,
+    repositories: tuple[Path, Path, str],
+) -> None:
+    """The durable checkpoint is written while the remote branch does not exist."""
+    upstream, fork, base_commit = repositories
+    run = _run(str(upstream), base_commit)
+    manager = _manager(tmp_path, fork)
+    observed: list[tuple[str, str]] = []
+
+    async def checkpoint(prepared: Any) -> None:
+        branch = prepared.branch
+        remote = subprocess.run(
+            ("git", "ls-remote", "--heads", str(fork), f"refs/heads/{branch}"),
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        observed.append((branch, remote))
+
+    prepared = await manager.prepare_with_checkpoint(run, checkpoint=checkpoint)
+
+    assert observed == [(prepared.branch, "")]
+    assert _git(fork, "rev-parse", f"refs/heads/{prepared.branch}") == base_commit
+
+
+async def test_candidate_push_reconciles_when_remote_tag_already_advanced(
+    tmp_path: Path,
+    repositories: tuple[Path, Path, str],
+) -> None:
+    """A candidate tag written before a killed client exit is accepted once."""
+    upstream, fork, base_commit = repositories
+    run = _run(str(upstream), base_commit)
+    manager = _manager(tmp_path, fork)
+    prepared = await manager.prepare(run)
+    candidate_ref = f"{prepared.branch}/candidate/r1"
+    candidate = await manager.create_candidate(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=candidate_ref,
+        patch=Patch(file="skills/deep-research/CHANGE.md", lines=("change",)),
+        message=f"fix: candidate\n\nHarness-Run-Id: {run.id}",
+    )
+
+    async def killed_client(argv: tuple[str, ...], cwd: Path | None) -> GitProcessResult:
+        result = await workspace_module._run_process(argv, cwd)
+        if argv[:2] == ("git", "push"):
+            return GitProcessResult(
+                returncode=1,
+                stdout=result.stdout,
+                stderr="fatal: the remote end hung up unexpectedly",
+            )
+        return result
+
+    resumed = _manager(tmp_path, fork, killed_client)
+    await resumed.push_candidate(candidate, expected_remote_commit=None)
+
+    assert _git(fork, "rev-parse", f"refs/tags/{candidate.ref}") == candidate.commit
 
 
 async def test_publish_skips_push_when_remote_already_matches(

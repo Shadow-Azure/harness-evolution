@@ -214,13 +214,15 @@ class EvolutionRepository:
             )
 
     async def mark_recovered(self, run_id: str) -> None:
-        """Return an interrupted run to running without rewriting its stage facts."""
+        """Return an interrupted run to running and clear stale terminal/blocked facts."""
         async with self._database.transaction() as session:
             await session.execute(
                 update(evolution_runs)
                 .where(evolution_runs.c.id == run_id)
                 .values(
                     status="running",
+                    blocked_stage=None,
+                    next_retry_at=None,
                     error_stage=None,
                     error_message=None,
                     error_at=None,
