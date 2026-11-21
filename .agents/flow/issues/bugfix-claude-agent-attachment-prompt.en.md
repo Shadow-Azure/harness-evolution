@@ -4,7 +4,7 @@ English | [中文](bugfix-claude-agent-attachment-prompt.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-11
+id: bugfix-12
 milestone: bugfix
 depends:
   - m9-02
