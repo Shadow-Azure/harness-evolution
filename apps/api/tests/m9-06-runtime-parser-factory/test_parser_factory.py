@@ -159,7 +159,7 @@ def test_claude_parser_is_discovered_at_package_import() -> None:
     )
     parser = TraceParserFactory.create("claude-code", (payload,))
     assert parser.runtime_key == "claude-code"
-    assert parser.parser_version == 7
+    assert parser.parser_version == 8
 
 
 def test_duplicate_runtime_registration_is_rejected() -> None:
@@ -220,6 +220,6 @@ def test_parser_versions_are_read_per_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Upgrading one runtime's parser does not change another runtime's version."""
-    assert TraceParserFactory.versions() == {"claude-code": 7, "fake-runtime": 1}
+    assert TraceParserFactory.versions() == {"claude-code": 8, "fake-runtime": 1}
     monkeypatch.setattr(fake_runtime, "parser_version", 2)
-    assert TraceParserFactory.versions() == {"claude-code": 7, "fake-runtime": 2}
+    assert TraceParserFactory.versions() == {"claude-code": 8, "fake-runtime": 2}

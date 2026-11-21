@@ -1,6 +1,6 @@
 # Agent Note: Claude Code attachment 嵌套 prompt snapshot
 
-Status: proposed
+Status: implemented
 
 [English](2026-11-21-claude-attachment-prompt-snapshot.en.md) | 中文
 
@@ -30,6 +30,5 @@ Claude Code 子 agent 的定义证据在设计文档和解析器里一直被描�
 
 ## Consequences
 
-- issue [#471](https://github.com/Shadow-Azure/harness-evolution/issues/471) 记录并跟踪 parser 子类修复与 `agent_tree` 的 `definition_hash` 传播；两处都完成后，父 `kind=agent` 事件才同时有 body hash 与 target revision，6 个 agent 才能匹配。
-- 代码落地前本 Note 为 `proposed`；PR 合并后由实现 PR 移入 `implemented/bug-fix/` 并更新事实，不改本决策。
+- issue [#471](https://github.com/Shadow-Azure/harness-evolution/issues/471) 记录并跟踪 parser 子类修复与 `agent_tree` 的 `definition_hash` 传播；本 PR 已实现两处，父 `kind=agent` 事件即使没有 target revision，也携带 body hash。
 - 不改变现有顶层 `prompt_snapshot` / `api-request-shape.system` 的兼容行为；不把 `shape.system` 升级为定义来源。

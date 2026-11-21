@@ -245,7 +245,7 @@ async def test_replay_persists_knowledge_documents_from_every_reported_root(
         assert oncall["retrieval_scope"] == KNOWLEDGE_ROOT_B
         assert all(row["line_no"] > 0 for row in knowledge)
         assert all(row["triggered_at"] is not None for row in knowledge)
-        assert source_version == 7
+        assert source_version == 8
         assert not any(str(row["source_path"]).startswith(SOURCE_ROOT) for row in rows)
     finally:
         await database.dispose()
@@ -319,7 +319,7 @@ async def test_stale_parser_version_replays_an_already_processed_payload(
             )
         assert result.imported == 1
         assert "knowledge" in kinds
-        assert source["parser_version"] == 7
+        assert source["parser_version"] == 8
     finally:
         await database.dispose()
 
@@ -395,7 +395,7 @@ async def test_replay_survives_a_missing_bad_cases_table(tmp_path: Path) -> None
         assert result.failed == 0
         assert result.imported == 1
         assert rows == []
-        assert parser_version == 7
+        assert parser_version == 8
     finally:
         await database.dispose()
 

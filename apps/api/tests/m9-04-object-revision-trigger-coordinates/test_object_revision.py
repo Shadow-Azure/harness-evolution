@@ -108,6 +108,16 @@ def prompt_snapshot(body: str, *, agent_id: str = CHILD_ID) -> dict[str, object]
     }
 
 
+def attachment_prompt_snapshot(body: str, *, agent_id: str = CHILD_ID) -> dict[str, object]:
+    """Build the attachment-nested prompt snapshot shape observed in production."""
+    return {
+        "type": "attachment",
+        "sessionId": ROOT_ID,
+        "agentId": agent_id,
+        "attachment": {"type": "prompt_snapshot", "systemPrompt": [body]},
+    }
+
+
 def parse(
     records: tuple[object, ...],
     *,
@@ -369,6 +379,103 @@ def test_agent_revision_is_stable_across_tasks_and_attached_to_parent_event() ->
     parent = next(node for node in tree.nodes if node.kind == "main")
     assert parent.events[0].object_revision == first.agent_revision
     assert parent.events[0].definition_hash == first.agent_definition_hash
+
+
+def test_attachment_definition_hash_reaches_parent_event_without_revision() -> None:
+    """A child without agentType still contributes its body hash to the parent event."""
+    main = parse(
+        (
+            user(),
+            assistant(
+                "message-main",
+                tools=(("tool-agent", "Agent", {"subagent_type": "reviewer"}),),
+            ),
+        ),
+    )
+    child = parse(
+        (
+            attachment_prompt_snapshot("You are a synthetic reviewer."),
+            user(),
+        ),
+        agent_id=CHILD_ID,
+        agent_kind="subagent",
+        meta={"name": "synthetic reviewer"},
+    )
+
+    assert child.agent_definition_hash is not None
+    assert child.agent_revision is None
+    tree = assemble_agent_trees((main, child)).trees[0]
+    parent = next(node for node in tree.nodes if node.kind == "main")
+    child_node = next(node for node in tree.nodes if node.id == CHILD_ID)
+    event = next(item for item in parent.events if item.tool_use_id == child_node.tool_use_id)
+    assert event.definition_hash == child.agent_definition_hash
+    assert event.object_revision == "unknown"
+
+
+def test_attachment_definition_hash_yields_revision_and_parent_event() -> None:
+    """The nested attachment shape feeds the existing revision and parent propagation."""
+    main = parse(
+        (
+            user(),
+            assistant(
+                "message-main",
+                tools=(("tool-agent", "Agent", {"subagent_type": "reviewer"}),),
+            ),
+        ),
+    )
+    child = parse(
+        (
+            attachment_prompt_snapshot("You are a synthetic reviewer."),
+            user(),
+        ),
+        agent_id=CHILD_ID,
+        agent_kind="subagent",
+        meta=child_meta(),
+    )
+
+    assert child.agent_definition_hash is not None
+    assert child.agent_revision is not None
+    tree = assemble_agent_trees((main, child)).trees[0]
+    parent = next(node for node in tree.nodes if node.kind == "main")
+    event = next(item for item in parent.events if item.kind == "agent")
+    assert event.definition_hash == child.agent_definition_hash
+    assert event.object_revision == child.agent_revision
+
+
+def test_parent_tag_wins_while_child_definition_hash_still_propagates() -> None:
+    """An explicit Agent tag stays the revision even without a child revision."""
+    main = parse(
+        (
+            user(),
+            assistant(
+                "message-main",
+                tools=(
+                    (
+                        "tool-agent",
+                        "Agent",
+                        {"subagent_type": "reviewer", "agentVersion": "2026.1"},
+                    ),
+                ),
+            ),
+        ),
+    )
+    child = parse(
+        (
+            attachment_prompt_snapshot("You are a synthetic reviewer."),
+            user(),
+        ),
+        agent_id=CHILD_ID,
+        agent_kind="subagent",
+        meta={"name": "synthetic reviewer", "toolUseId": "tool-agent", "spawnDepth": 1},
+    )
+
+    assert child.agent_definition_hash is not None
+    assert child.agent_revision is None
+    tree = assemble_agent_trees((main, child)).trees[0]
+    parent = next(node for node in tree.nodes if node.kind == "main")
+    event = parent.events[0]
+    assert event.object_revision == "tag:2026.1"
+    assert event.definition_hash == child.agent_definition_hash
 
 
 def test_builtin_agent_revision_has_no_body_but_keeps_type_identity() -> None:

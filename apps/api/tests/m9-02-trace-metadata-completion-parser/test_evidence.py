@@ -49,6 +49,19 @@ def api_request_shape(body: str) -> dict[str, object]:
     }
 
 
+def attachment_prompt_snapshot(body: str) -> dict[str, object]:
+    """Build the attachment-nested prompt snapshot shape observed in production."""
+    return {
+        "type": "attachment",
+        "sessionId": ROOT_ID,
+        "agentId": AGENT_ID,
+        "attachment": {
+            "type": "prompt_snapshot",
+            "systemPrompt": [body],
+        },
+    }
+
+
 def read_round_trip(
     *,
     path: str,
@@ -160,6 +173,59 @@ def test_api_request_shape_is_a_fallback_source() -> None:
 
     assert parsed.definition_source == "api_request_shape"
     assert parsed.agent_definition_hash == hashlib.sha256(DEFINITION.encode()).hexdigest()
+
+
+def test_attachment_nested_prompt_snapshot_supplies_the_definition_hash() -> None:
+    """An attachment prompt snapshot is equivalent to the top-level shape."""
+    parsed = parse(jsonl(attachment_prompt_snapshot(DEFINITION_WITH_SUFFIX)))
+
+    expected = hashlib.sha256(DEFINITION.encode("utf-8")).hexdigest()
+    assert parsed.definition_source == "prompt_snapshot"
+    assert parsed.agent_definition_hash == expected
+    assert [(item.kind, item.source, item.content_hash) for item in parsed.evidence] == [
+        ("agent_definition", "prompt_snapshot", expected),
+    ]
+
+
+def test_attachment_prompt_snapshot_wins_over_api_request_shape() -> None:
+    """The nested prompt snapshot is preferred to the runtime system fallback."""
+    parsed = parse(
+        jsonl(
+            api_request_shape("runtime system snapshot"),
+            attachment_prompt_snapshot(DEFINITION_WITH_SUFFIX),
+        ),
+    )
+
+    assert parsed.definition_source == "prompt_snapshot"
+    assert parsed.agent_definition_hash == hashlib.sha256(DEFINITION.encode()).hexdigest()
+
+
+def test_attachment_without_prompt_body_is_not_a_definition() -> None:
+    """Non-definition attachments never produce an agent definition identity."""
+    parsed = parse(
+        jsonl(
+            {
+                "type": "attachment",
+                "sessionId": ROOT_ID,
+                "agentId": AGENT_ID,
+                "attachment": {
+                    "type": "skill_listing",
+                    "names": ["review"],
+                    "digests": ["0123456789abcdef"],
+                },
+            },
+            {
+                "type": "attachment",
+                "sessionId": ROOT_ID,
+                "agentId": AGENT_ID,
+                "attachment": {"type": "prompt_snapshot", "systemPrompt": []},
+            },
+        ),
+    )
+
+    assert parsed.definition_source is None
+    assert parsed.agent_definition_hash is None
+    assert not [item for item in parsed.evidence if item.kind == "agent_definition"]
 
 
 def test_builtin_agent_has_no_definition_body_hash() -> None:

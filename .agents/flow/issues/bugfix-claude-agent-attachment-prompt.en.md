@@ -20,7 +20,7 @@ scope:
   - plans/**
   - .agents/**
 adr:
-  - ../../notes/proposed/bug-fix/2026-11-21-claude-attachment-prompt-snapshot.md
+  - ../../notes/implemented/bug-fix/2026-11-21-claude-attachment-prompt-snapshot.md
 github:
   number: 471
   url: https://github.com/Shadow-Azure/harness-evolution/issues/471
