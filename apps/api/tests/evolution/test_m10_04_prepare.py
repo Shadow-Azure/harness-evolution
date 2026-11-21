@@ -203,6 +203,46 @@ async def test_prepare_advances_through_every_stage_and_clusters_attributed(
     assert len(await EvolutionRunCandidateRepository(harness.database).list(RUN_ID)) == 1
 
 
+async def test_prepare_yields_after_persisted_attribution_and_resumes(harness: Harness) -> None:
+    """A pause during attribution keeps the link, cursor and frozen target on resume."""
+    from sqlalchemy import update
+
+    from app.db.models.evolution import evolution_runs
+
+    await _seed_self_case(harness)
+    await _create_run(harness.database)
+    calls = 0
+
+    class PausingEngine(RuleBasedEngine):
+        async def attribute(self, item: AttributionInput) -> AttributionResult:
+            nonlocal calls
+            calls += 1
+            async with harness.database.transaction() as session:
+                await session.execute(
+                    update(evolution_runs)
+                    .where(evolution_runs.c.id == RUN_ID)
+                    .values(
+                        control_state="pause_requested",
+                    )
+                )
+            return await super().attribute(item)
+
+    with pytest.raises(Exception) as yielded:
+        await _service(harness, engine_factory=lambda _: PausingEngine()).handle(_job())
+    assert type(yielded.value).__name__ == "PauseAtCheckpoint"
+    assert len(await AttributionRepository(harness.database).list_clusterable_probes(RUN_ID)) == 1
+    assert not await EvolutionRepository(harness.database).list_clusters(RUN_ID)
+    async with harness.database.transaction() as session:
+        await session.execute(
+            update(evolution_runs)
+            .where(evolution_runs.c.id == RUN_ID)
+            .values(control_state="running")
+        )
+    await _service(harness, engine_factory=lambda _: PausingEngine()).handle(_job())
+    assert calls == 1
+    assert len(await EvolutionRepository(harness.database).list_rounds(RUN_ID)) == 1
+
+
 async def test_cluster_only_stops_after_clustering(harness: Harness) -> None:
     """Cluster-only runs complete at unit 5 without iteration rounds."""
     await _seed_self_case(harness)
@@ -218,6 +258,71 @@ async def test_cluster_only_stops_after_clustering(harness: Harness) -> None:
     assert run.finished_at is not None
     assert await runs.list_rounds(RUN_ID) == ()
     assert len(await runs.list_clusters(RUN_ID)) == 1
+
+
+@pytest.mark.parametrize(
+    ("revision", "unit", "message"),
+    [(None, 0, "revision"), ("tag:v1", 2, "association")],
+)
+async def test_historical_pause_fails_before_replacing_missing_inputs(
+    harness: Harness, revision: str | None, unit: int, message: str
+) -> None:
+    from sqlalchemy import update
+
+    from app.db.models.evolution import evolution_runs
+    from app.service.evolution.engine.contracts import ConfigError
+
+    await _seed_self_case(harness)
+    await _create_run(harness.database, mode="cluster_only")
+    async with harness.database.transaction() as session:
+        await session.execute(
+            update(evolution_runs)
+            .where(evolution_runs.c.id == RUN_ID)
+            .values(
+                target_revision=revision,
+                progress_unit=unit,
+                resumed_at=NOW,
+                stats={"sessionRows": [{"sessionId": "original-session"}]},
+            )
+        )
+    with pytest.raises(ConfigError, match=message):
+        await _service(harness).handle(_job())
+    assert not await EvolutionRunCandidateRepository(harness.database).list(RUN_ID)
+
+
+async def test_prepare_keeps_association_until_potential_cursor_commits(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typing import Any
+
+    from sqlalchemy import update
+
+    from app.db.models.evolution import evolution_runs
+
+    await _seed_self_case(harness)
+    await _create_run(harness.database, mode="cluster_only")
+    runs = EvolutionRepository(harness.database)
+    await runs.freeze_revision(RUN_ID, f"tag:{TARGET_VERSION}")
+    advance = EvolutionRepository.advance_unit
+
+    async def crash_before_cursor(
+        repository: EvolutionRepository, run_id: str, **kwargs: Any
+    ) -> Any:
+        if kwargs["expected"] == 2:
+            raise RuntimeError("process stopped before potential cursor")
+        return await advance(repository, run_id, **kwargs)
+
+    with monkeypatch.context() as stopping:
+        stopping.setattr(EvolutionRepository, "advance_unit", crash_before_cursor)
+        with pytest.raises(RuntimeError, match="before potential cursor"):
+            await _service(harness).handle(_job())
+    async with harness.database.transaction() as session:
+        await session.execute(
+            update(evolution_runs).where(evolution_runs.c.id == RUN_ID).values(resumed_at=NOW)
+        )
+    resumed = await _service(harness).handle(_job())
+    assert resumed["status"] == "completed"
+    assert len(await EvolutionRunCandidateRepository(harness.database).list(RUN_ID)) == 1
 
 
 async def test_blocked_attribution_resumes_without_duplicate_candidates(

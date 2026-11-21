@@ -16,6 +16,7 @@ from app.db.models.evolution import EvolutionRoundRecord, EvolutionRunRecord
 from app.db.models.jobs import JobRunRecord
 from app.service.evolution.advance import build_candidate_trace
 from app.service.evolution.backoff import next_retry_at
+from app.service.evolution.control import checkpoint
 from app.service.evolution.engine.contracts import EvalResult, RunBlocked
 from app.service.evolution.events import EvolutionRunEventService
 from app.service.evolution.git_candidate import (
@@ -95,6 +96,7 @@ class EvolutionApplyService:
         trace = await self._trace(run, round_)
         accepted = result.external_verdict == "accept"
         reason = decision_sentence(result, accepted=accepted)
+        await checkpoint(self._runs, run.id)
         if accepted:
             decided = await self._candidates.accept(
                 run,
@@ -205,8 +207,11 @@ class EvolutionFinalizeService:
                 "reason": "rounds are still active",
             }
         retry_attempts = _job_retry_attempts(job)
+        await checkpoint(self._runs, run.id)
         try:
-            final = await self._runs.write_final(_final_values(run, rounds))
+            final = await self._runs.get_final(run.id) or await self._runs.write_final(
+                _final_values(run, rounds)
+            )
             prepared = _prepared_workspace(run)
         except Exception as exc:
             message = sanitize_message(str(exc), limit=2_000)
@@ -226,6 +231,7 @@ class EvolutionFinalizeService:
                 retry_attempts=retry_attempts,
                 retryable=False,
             ) from None
+        await checkpoint(self._runs, run.id)
         try:
             await self._workspaces.publish_run_branch(
                 prepared,

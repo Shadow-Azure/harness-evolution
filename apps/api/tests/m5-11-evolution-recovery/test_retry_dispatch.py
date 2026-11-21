@@ -594,6 +594,59 @@ async def test_permanent_push_error_never_schedules_automatic_retry(state: State
     assert raised.value.retry_attempts == 1
 
 
+async def test_resume_committed_candidate_pushes_without_creating_again(state: State) -> None:
+    """The saved commit is sufficient to resume between local Git and remote push."""
+    await _create_run(state.repository, status="running", blocked_stage=None, push_status="pending")
+    await _seed_cluster_and_round(state, round_status="patching", push_status="pending")
+    run = await state.repository.get_run(RUN_ID)
+    round_ = await state.repository.get_round(ROUND_ID)
+    assert run and round_
+    candidates = EvolutionCandidateService(state.repository, state.workspace)  # type: ignore[arg-type]
+    published = await candidates.publish(
+        run, round_, CandidateTrace("cluster-retry", "test", (), (), "evidence")
+    )
+    assert state.workspace.created == []
+    assert published.candidate_commit == CANDIDATE_COMMIT
+    assert published.status == "evaluating"
+    assert len(state.workspace.pushed) == 1
+
+
+async def test_saved_patch_bypasses_model_generation(state: State) -> None:
+    from sqlalchemy import update
+
+    await _create_run(state.repository, status="running", blocked_stage=None, push_status="pending")
+    await _seed_cluster_and_round(
+        state, round_status="patching", push_status="pending", candidate=False
+    )
+    patch = {
+        "file": "SKILL.md",
+        "lines": ["line from saved patch"],
+        "note": "saved",
+        "overwrite": True,
+    }
+    async with state.database.transaction() as session:
+        await session.execute(
+            update(evolution_rounds).where(evolution_rounds.c.id == ROUND_ID).values(patch=patch)
+        )
+    run = await state.repository.get_run(RUN_ID)
+    round_ = await state.repository.get_round(ROUND_ID)
+    assert run and round_
+
+    def forbidden(_: Any) -> Any:
+        raise AssertionError("resuming a durable patch called the model twice")
+
+    service = EvolutionCandidateService(
+        state.repository,
+        state.workspace,  # type: ignore[arg-type]
+        patch_source_factory=forbidden,
+    )
+    published = await service.publish(
+        run, round_, CandidateTrace("cluster-retry", "test", (), (), "evidence")
+    )
+    assert published.patch == patch
+    assert published.status == "evaluating"
+
+
 async def test_initial_transient_push_failure_carries_one_minute_backoff(
     state: State,
 ) -> None:

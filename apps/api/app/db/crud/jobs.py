@@ -1,11 +1,13 @@
 """Dialect-neutral persistence for durable job audit rows."""
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import insert, select, update
+from sqlalchemy.engine import CursorResult
 
 from app.db.base import Database
+from app.db.crud.evolution_lock import lock_run_row
 from app.db.models.jobs import JobRunRecord, job_runs, record_from_row
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
@@ -173,20 +175,30 @@ class JobRepository:
             )
         return [record_from_row(row) for row in rows]
 
-    async def claim(self, job_id: str) -> JobRunRecord:
+    async def claim(self, job_id: str) -> JobRunRecord | None:
         """Move one queued job to running and increment its attempt count."""
+        job = await self.get(job_id)
+        if job is None or job.status != "queued":
+            return None
         now = now_shanghai()
         async with self._database.transaction() as session:
-            await session.execute(
-                update(job_runs)
-                .where(job_runs.c.id == job_id, job_runs.c.status == "queued")
-                .values(
-                    status="running",
-                    started_at=now,
-                    attempt=job_runs.c.attempt + 1,
-                    updated_at=now,
+            if job.ref_id and job.kind in EVOLUTION_JOB_KINDS:
+                await lock_run_row(session, job.ref_id)
+            changed = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(job_runs)
+                    .where(job_runs.c.id == job_id, job_runs.c.status == "queued")
+                    .values(
+                        status="running",
+                        started_at=now,
+                        attempt=job_runs.c.attempt + 1,
+                        updated_at=now,
+                    ),
                 ),
             )
+            if changed.rowcount != 1:
+                return None
         claimed = await self.get(job_id)
         if claimed is None:
             raise RuntimeError("claimed job disappeared before execution")

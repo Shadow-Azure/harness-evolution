@@ -9,6 +9,8 @@ from datetime import datetime
 from typing import Any, Protocol, cast
 from urllib.parse import urlsplit
 
+from pydantic import TypeAdapter
+
 from app.db.crud.attributions import (
     AttributionRepository,
     CandidateWrite,
@@ -34,6 +36,7 @@ from app.service.evolution.cluster import (
     cluster_probes,
     cluster_severity,
 )
+from app.service.evolution.control import checkpoint
 from app.service.evolution.engine.contracts import ConfigError, RunBlocked
 from app.service.evolution.events import (
     EvolutionRunEventService,
@@ -57,6 +60,7 @@ from app.service.evolution.potential import (
 from app.service.evolution.target_content import (
     ResolvedTargetVersion,
     TargetVersionResolver,
+    prefixed_revision,
     resolve_legacy_target_version,
 )
 from app.third_party_api.git.observability import (
@@ -69,6 +73,8 @@ from app.utils.redaction import sanitize_message
 from app.utils.time import now_shanghai
 
 logger = logging.getLogger(__name__)
+
+_ASSOCIATION = TypeAdapter(SessionAssociation)
 
 ATTRIBUTION_EVENT_BATCH = 20
 """Batched attribution event size from 07 §5.11."""
@@ -107,7 +113,6 @@ class _PrepareContext:
     """Mutable facts shared across the seven prepare stages."""
 
     association: SessionAssociation | None = None
-    summary: AttributionRunSummary | None = None
 
 
 class EvolutionPrepareService:
@@ -147,10 +152,13 @@ class EvolutionPrepareService:
                 "progressUnit": run.progress_unit,
                 "reused": True,
             }
-        resolved = await self._resolve_target(run)
-        persist_revision = run.target_revision is None and self._resolver is not None
+        await checkpoint(self._runs, run.id)
+        resolved = await self._resolve_target(run) if run.progress_unit < 4 else None
+        if resolved and run.target_revision is None and self._resolver is not None:
+            await self._runs.freeze_revision(run.id, resolved.target_revision)
 
         context = _PrepareContext()
+        await checkpoint(self._runs, run.id)
         if run.progress_unit == 0:
             await self._record(
                 run.id,
@@ -166,7 +174,8 @@ class EvolutionPrepareService:
                 cluster_count=0,
             )
 
-        if run.progress_unit < 2:
+        await checkpoint(self._runs, run.id)
+        if resolved is not None and run.progress_unit < 2:
             condition = self._condition(run, resolved)
             association = await self._matcher.associated_sessions(condition)
             context.association = association
@@ -177,10 +186,14 @@ class EvolutionPrepareService:
                     message="no Session contains the requested object version",
                     details={"summary": _association_summary(association)},
                 )
-            await self._runs.write_stats(
+            run = await self._runs.advance_unit(
                 run.id,
-                {
+                expected=1,
+                target=2,
+                cluster_count=0,
+                stats={
                     **dict(run.stats),
+                    "associationSnapshot": _ASSOCIATION.dump_python(association, mode="json"),
                     "reportedSessions": association.reported,
                     "sessions": association.associated,
                     "skippedSessions": association.skipped,
@@ -209,29 +222,38 @@ class EvolutionPrepareService:
                 job_id=job.id,
                 payload=_association_summary(association),
             )
-            run = await self._runs.advance_unit(
-                run.id,
-                expected=1,
-                target=2,
-                cluster_count=0,
-            )
 
-        if run.progress_unit < 3:
+        await checkpoint(self._runs, run.id)
+        if resolved is not None and run.progress_unit < 3:
             condition = self._condition(run, resolved)
-            association = context.association or await self._matcher.associated_sessions(condition)
+            if context.association is None:
+                snapshot = run.stats.get("associationSnapshot")
+                if snapshot is None and run.resumed_at:
+                    raise ConfigError("Cannot resume without the frozen association snapshot")
+                association = (
+                    _ASSOCIATION.validate_python(snapshot)
+                    if snapshot is not None
+                    else await self._matcher.associated_sessions(condition)
+                )
+            else:
+                association = context.association
             context.association = association
             policy = _run_policy(run)
             match = await self._matcher.potential_cases(condition, association, policy)
             await self._candidates.upsert_many(_candidate_writes(run, match.cases))
             stats = _potential_stats(run, association, match.cases, match.potential)
-            await self._runs.write_stats(run.id, stats)
             if not match.included:
+                await self._runs.write_stats(run.id, stats)
                 raise AppError(
                     status_code=409,
                     code=ErrorCode.NO_POTENTIAL_MATCHED,
                     message="no potential bad case matches the run policy",
                     details={"summary": _potential_summary(stats)},
                 )
+            stats.pop("associationSnapshot", None)
+            run = await self._runs.advance_unit(
+                run.id, expected=2, target=3, cluster_count=0, stats=stats
+            )
             await self._record(
                 run.id,
                 "potential_computed",
@@ -241,44 +263,42 @@ class EvolutionPrepareService:
                 job_id=job.id,
                 payload=_potential_summary(stats),
             )
-            run = await self._runs.advance_unit(
-                run.id,
-                expected=2,
-                target=3,
-                cluster_count=0,
-            )
 
-        if run.progress_unit < 4:
+        await checkpoint(self._runs, run.id)
+        if resolved is not None and run.progress_unit < 4:
             candidates = await self._candidates_from_rows(run)
-            try:
-                summary = await self._attribution.run(
-                    run,
-                    candidates,
-                    run.cache_enabled,
-                    target_revision=resolved.target_revision,
-                )
-            except RunBlocked:
-                raise
-            except (ConfigError, ValueError):
-                raise
-            except Exception as exc:
-                raise RunBlocked(
-                    "attribution failed",
-                    stage="attribution",
-                    error_stage="prepare",
-                    retryable=True,
-                ) from exc
-            context.summary = summary
+            for offset in range(0, len(candidates), ATTRIBUTION_EVENT_BATCH):
+                batch = candidates[offset : offset + ATTRIBUTION_EVENT_BATCH]
+                try:
+                    summary = await self._attribution.run(
+                        run,
+                        batch,
+                        run.cache_enabled,
+                        target_revision=resolved.target_revision,
+                    )
+                except RunBlocked:
+                    raise
+                except (ConfigError, ValueError):
+                    raise
+                except Exception as exc:
+                    raise RunBlocked(
+                        "attribution failed",
+                        stage="attribution",
+                        error_stage="prepare",
+                        retryable=True,
+                    ) from exc
+                await self._record_attribution_batches(run, summary, job.id)
+                await checkpoint(self._runs, run.id)
+            rows = await self._candidates.list(run.id)
             stats = dict(run.stats)
             stats.update(
                 {
                     "attributed": await self._attributed_count(run),
-                    "reused": summary.reused,
+                    "reused": sum(row.is_cached for row in rows),
                     "byCategory": await self._category_counts(run),
-                },
+                }
             )
             await self._runs.write_stats(run.id, stats)
-            await self._record_attribution_batches(run, summary, job.id)
             run = await self._runs.advance_unit(
                 run.id,
                 expected=3,
@@ -286,6 +306,7 @@ class EvolutionPrepareService:
                 cluster_count=0,
             )
 
+        await checkpoint(self._runs, run.id)
         if run.progress_unit < 5:
             clusters, fingerprint = await self._build_clusters(run)
             stats = dict(run.stats)
@@ -311,9 +332,20 @@ class EvolutionPrepareService:
                 },
             )
 
+        await checkpoint(self._runs, run.id)
         workspace = None
         if run.mode == "full":
-            workspace = await self._prepare_workspace(run, job)
+            if not run.workspace_path or not run.base_commit:
+                workspace = await self._prepare_workspace(run, job)
+                await self._runs.save_workspace(
+                    run.id,
+                    repo_path=str(workspace.repo_path),
+                    base_ref=workspace.ref,
+                    base_commit=workspace.base_commit,
+                    branch_name=workspace.branch,
+                    workspace_path=str(workspace.path),
+                )
+                await checkpoint(self._runs, run.id)
             await self._build_rounds(run)
         refreshed = await self._runs.get_run(run.id)
         prepared = await self._runs.mark_prepared(
@@ -325,7 +357,6 @@ class EvolutionPrepareService:
             base_commit=workspace.base_commit if workspace else run.base_commit,
             branch_name=workspace.branch if workspace else run.branch_name,
             workspace_path=str(workspace.path) if workspace else run.workspace_path,
-            target_revision=(resolved.target_revision if persist_revision else None),
             stats=await self._final_stats(refreshed or run),
         )
         return {
@@ -340,6 +371,20 @@ class EvolutionPrepareService:
         """Resolve the run target once so matching and attribution share one identity."""
         if run.target_revision:
             return ResolvedTargetVersion(run.target_version, run.target_revision)
+        if run.resumed_at:
+            if prefixed_revision(run.target_version):
+                return resolve_legacy_target_version(run.target_version)
+            if not run.base_commit or self._resolver is None:
+                raise ConfigError("Cannot resume without a frozen target revision or commit")
+            pinned = await self._resolver.resolve(
+                object_type=run.target_type,
+                repo_url=run.repo_url,
+                sub_dir=run.sub_dir,
+                version=run.base_commit,
+            )
+            return ResolvedTargetVersion(
+                run.target_version, pinned.target_revision, run.base_commit
+            )
         if self._resolver is None:
             return resolve_legacy_target_version(run.target_version)
         return await self._resolver.resolve(
@@ -355,7 +400,7 @@ class EvolutionPrepareService:
         resolved: ResolvedTargetVersion,
     ) -> MatchCondition:
         """Build the matcher condition from the run snapshot and resolved revision."""
-        start, end = resolve_window(run.window_from, run.window_to)
+        start, end = resolve_window(run.window_from, run.window_to, today=run.created_at.date())
         window_start, window_end = window_day_boundaries(start, end)
         return MatchCondition(
             workspace_id=run.workspace_id,

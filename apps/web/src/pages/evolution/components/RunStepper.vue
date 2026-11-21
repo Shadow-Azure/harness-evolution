@@ -6,6 +6,7 @@ import type { RunStep } from "../runDetail";
 defineProps<{
   steps: RunStep[];
   selected: EvolutionStepKey;
+  paused?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -49,10 +50,10 @@ const emit = defineEmits<{
           aria-hidden="true"
         >
           <span
-            v-if="step.status === 'active'"
+            v-if="step.status === 'active' && !paused"
             class="pulse"
           />
-          <template v-else>{{ step.status === "done" ? "✓" : index + 1 }}</template>
+          <template v-else>{{ paused && step.status === "active" ? "Ⅱ" : step.status === "done" ? "✓" : index + 1 }}</template>
         </span>
         <span class="lbl">
           {{ step.title }}<template v-if="step.detail">（{{ step.detail }}）</template>

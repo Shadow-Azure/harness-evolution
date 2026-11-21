@@ -14,5 +14,7 @@ export function useEvolutionRuns(workspaceId: MaybeRefOrGetter<string>) {
     queryKey: computed(() => queryKeys.evolutionRuns(toValue(workspaceId))),
     queryFn: () => listEvolutionRuns(toValue(workspaceId)),
     enabled: computed(() => toValue(workspaceId).length > 0),
+    refetchInterval: (query) => query.state.data?.running.some(run => run.controlState === "pause_requested")
+      ? 1_000 : query.state.data?.running.length ? 15_000 : false,
   });
 }

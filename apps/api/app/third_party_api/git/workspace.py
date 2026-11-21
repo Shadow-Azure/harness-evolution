@@ -166,6 +166,11 @@ class GitWorkspaceManager:
 
     async def prepare(self, run: EvolutionRunRecord) -> PreparedWorkspace:
         """Fetch one target ref into a cache and create the uniquely named run branch."""
+        if run.resumed_at and not run.base_commit and run.target_type in {"skill", "agent"}:
+            raise GitOperationError(
+                "cannot safely resume without a frozen baseline commit",
+                stage="reference",
+            )
         self.repos_root.mkdir(parents=True, exist_ok=True)
         self.workspaces_root.mkdir(parents=True, exist_ok=True)
         ref = _checked_ref(run.target_version)
@@ -174,7 +179,10 @@ class GitWorkspaceManager:
         branch = f"evo/{run.created_at:%Y%m%d}-{run.id}"
 
         clone_started = time.monotonic()
-        base_commit, cache_hit = await self._ensure_ref_cache(cache_path, run.repo_url, ref)
+        frozen_ref = run.base_commit if run.resumed_at or run.target_revision else None
+        base_commit, cache_hit = await self._ensure_ref_cache(
+            cache_path, run.repo_url, frozen_ref or ref
+        )
         clone_seconds = time.monotonic() - clone_started
 
         sub_dir = _normalize_sub_dir(run.sub_dir)
@@ -271,6 +279,28 @@ class GitWorkspaceManager:
             ("git", "rev-parse", "--verify", f"refs/heads/{local_branch}"),
         )
         if existing_candidate is not None:
+            # A worker can restart after commit succeeds and before its response
+            # reaches the DB. Only reuse a commit from this exact base and patch.
+            parent = await self._optional_ref(
+                prepared.path, ("git", "rev-parse", f"{existing_candidate}^")
+            )
+            head = await self._optional_ref(prepared.path, ("git", "rev-parse", "HEAD"))
+            if (
+                parent == head
+                and (await self._commit_message(prepared.path, existing_candidate)).strip()
+                == message.strip()
+                and _has_trailer(message, "Harness-Patch-Hash", f"sha256:{patch.sha256}")
+            ):
+                return CandidateWorkspace(
+                    workspace_path=prepared.path,
+                    run_branch=run_branch,
+                    local_branch=local_branch,
+                    ref=candidate_ref,
+                    commit=existing_candidate,
+                    message=message,
+                    run_id=run_id,
+                    base_commit=prepared.base_commit,
+                )
             await self._git_checked(
                 prepared.path,
                 ("git", "branch", "-D", local_branch),

@@ -12,6 +12,7 @@ from typing import Any, Protocol
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.probe_query import ProbeHitRow
 from app.db.models.jobs import JobRunRecord
+from app.service.evolution.control import checkpoint
 from app.service.evolution.git_candidate import (
     CandidateSource,
     CandidateTrace,
@@ -96,12 +97,16 @@ class EvolutionAdvanceService:
                 "published": False,
                 "reason": "run is not ready for candidate advancement",
             }
+        await checkpoint(self._runs, run.id)
         rounds = await self._runs.list_rounds(run.id)
+        continuation = job.payload.get("continuation") is True
         target = None
         for round_ in rounds:
-            if round_.status in {"accepted", "rejected"}:
+            if round_.status in {"accepted", "rejected", "skipped"}:
                 continue
-            if round_.status != "pending":
+            if round_.status != "pending" and not (
+                continuation and round_.status in {"patching", "pushing", "evaluating"}
+            ):
                 return {
                     "runId": run.id,
                     "roundId": round_.id,
@@ -118,7 +123,7 @@ class EvolutionAdvanceService:
                 "published": False,
                 "reason": "no pending round",
             }
-        claimed = await self._runs.claim_round_for_advance(
+        claimed = target.status != "pending" or await self._runs.claim_round_for_advance(
             target.id,
             started_at=datetime.now().astimezone(),
         )
@@ -201,10 +206,16 @@ class EvolutionJobLifecycle:
             self._schedule_candidate_advance
             and job.kind in {"evolution_prepare", "evolution_advance", "evolution_apply"}
             and job.status == "completed"
+            and not (job.result and job.result.get("yielded"))
             and job.ref_id
         ):
             run = await self._runs.get_run(job.ref_id)
-            if run is not None and run.mode == "full" and run.status == "running":
+            if (
+                run is not None
+                and run.mode == "full"
+                and run.status == "running"
+                and run.control_state == "running"
+            ):
                 rounds = await self._runs.list_rounds(run.id)
                 active = {
                     "patching",

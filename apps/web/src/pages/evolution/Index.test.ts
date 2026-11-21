@@ -34,6 +34,7 @@ const run = (
   createdAt: string,
 ): EvolutionRunCard => ({
   runId,
+  controlState: "running", canPause: false, canResume: false,
   title: `${runId} title`,
   mode: "full",
   target: { type: "skill", name: "deep-research", version: "v2.0.0" },

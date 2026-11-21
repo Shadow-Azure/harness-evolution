@@ -10,12 +10,17 @@ import {
 } from "../../composables/useEvolutionRunDetail";
 import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import { workspacePath } from "../../router/workspace";
+import { useAuthStore } from "../../stores/auth";
+import { canManageWorkspace } from "../../utils/workspaceDisplay";
+import RunControl from "./components/RunControl.vue";
 
 defineOptions({ name: "ClusterPreviewPage" });
 
 const route = useRoute();
 const router = useRouter();
 const workspaceId = useWorkspaceId();
+const auth = useAuthStore();
+const canManage = computed(() => canManageWorkspace(auth.workspaceById(workspaceId.value)?.role));
 const runId = computed(() => String(route.params.runId ?? ""));
 const { data, error, isPending, refetch } = useEvolutionRunDetail(
   workspaceId,
@@ -61,6 +66,12 @@ function retry(): void {
     <template v-else-if="run">
       <header class="page-intro">
         <h1>{{ run.title }}</h1>
+        <RunControl
+          v-if="run.controlState"
+          :wid="workspaceId"
+          :run="run"
+          :can-manage="canManage"
+        />
         <p class="page-note">
           运行 ID <span class="mono">{{ runId }}</span>
         </p>
@@ -69,8 +80,8 @@ function retry(): void {
         class="status-banner"
         data-testid="cluster-status"
       >
-        <span class="badge">{{ run.status === "preparing" ? "准备中" : run.status }}</span>
-        <span v-if="run.status === 'preparing'">正在筛选与聚类，完成后此处展示问题簇。</span>
+        <span class="badge">{{ run.controlState === "paused" ? "已暂停" : run.controlState === "pause_requested" ? "暂停中" : run.status === "preparing" ? "准备中" : run.status }}</span>
+        <span v-if="run.status === 'preparing' && (!run.controlState || run.controlState === 'running')">正在筛选与聚类，完成后此处展示问题簇。</span>
         <span v-else>{{ run.progress.stageLabel }}</span>
       </div>
       <div class="info-panel">

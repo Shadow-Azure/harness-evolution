@@ -28,6 +28,9 @@ EvolutionRunEventType = Literal[
     "workspace_prepared",
     "clusters_created",
     "step_advanced",
+    "run_pause_requested",
+    "run_paused",
+    "run_continued",
     "run_blocked",
     "run_resumed",
     "final_completed",
@@ -69,6 +72,9 @@ EVOLUTION_RUN_EVENT_TYPES: tuple[EvolutionRunEventType, ...] = (
     "workspace_prepared",
     "clusters_created",
     "step_advanced",
+    "run_pause_requested",
+    "run_paused",
+    "run_continued",
     "run_blocked",
     "run_resumed",
     "final_completed",
@@ -286,6 +292,11 @@ class EvolutionRunEventService:
             error_message=sanitized_error_message,
             error_detail=sanitize_detail(resolved_detail),
         )
+        return self.publish_committed(record)
+
+    def publish_committed(self, record: RunEventRecord) -> EvolutionRunEvent:
+        """Notify live subscribers only after the event and its transition commit."""
+        run_id = record.run_id
         event = _public_event(record)
         notification = event.model_dump(mode="json", by_alias=True)
         notification["runId"] = run_id

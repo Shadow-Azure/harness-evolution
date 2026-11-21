@@ -947,6 +947,17 @@ V1 的 `POST /api/evolution/probes/query` 进入兼容期，V2 页面不调用�
 
 ### 4.10 自进化运行（异步任务）
 
+#### 用户暂停与继续
+
+工作空间运行列表卡片和详情返回 `controlState=running|pause_requested|paused`、`pauseRequestedAt`、`pausedAt`、`pausedBy`、`canPause`、`canResume`；执行 `status`、七步游标和历史分组口径保持独立。历史行迁移默认 `running`。只有 `preparing/running` 的运行可暂停或继续；阻塞、完成、失败、中断不提供控制动作。动作权限为当前空间管理员或全局管理员，成员可读取状态。
+
+- `POST /api/workspaces/{wid}/evolution/runs/{rid}/pause` 返回 `EvolutionRunControl`；有正在执行的 job 时先记录 `pause_requested`，当前不可分操作结束并释放 worker 后确认 `paused`；无执行 job 时可立即确认。重复请求幂等。
+- `POST /api/workspaces/{wid}/evolution/runs/{rid}/resume` 返回 `EvolutionRunControl`；在同一事务恢复 `running` 并按冻结运行与轮次事实续排唯一 job。等待远端评测时无需续排 job，由 poller 继续观测。重复点击不创建重复工作。
+- 跨空间 run 返回 404；权限不足返回 403；不满足执行状态返回 409。客户端使用响应中的可用动作，不推测阶段或重新启动 run。
+- `run_pause_requested`、`run_paused`、`run_continued` 进入持久化日志，并沿现有 `run.event` 通道刷新详情与列表。继续与 blocked 的 `run.resumed` 重试事件分别表达。
+- 暂停不取消已经提交的远端评测。暂停期间可接收结果，禁止 apply、下一轮和终评推进；继续沿用候选 commit 和评测 ID。
+
+
 > 创建 run 的 body 增加 `policy` 与 `cacheEnabled`（见 §4.20）；新 run 的 `steps` 为七步（§3.6），进度公式 `5+M+1`。历史 V1 run 只在服务端映射为同一 DTO，前端不维护第二套步骤 schema。
 
 - `GET /api/evolution/runs` → `{ "running": [RunCard], "history": [RunCard] }`（后端分组；`preparing/running/blocked` 归 running，终态归 history）

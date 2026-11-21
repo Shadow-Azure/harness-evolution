@@ -5141,7 +5141,15 @@ function evCanEdit() { return !window.V2 || !window.V2.canManage || window.V2.ca
 function evRunsOfWs() { return EV_RUNS.filter(r => r.workspace === evCurrentWs()); }
 function evTargetsOfWs() { return (EV_TARGETS[evCurrentWs()] || []).filter(t => t.enabled); }
 
+function evControlActions(run) {
+  if (evIsDone(run) || run.failed) return '';
+  const state = run.controlState || 'running';
+  const copy = state === 'paused' ? '已暂停 · 进度已保留，已提交的外部评测可能继续运行' : state === 'pause_requested' ? '暂停中 · 等待当前操作结束' : '';
+  return `<span style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:8px">${copy ? `<span style="font-size:12px;color:var(--text-faint)">${copy}</span>` : ''}${evCanEdit() ? `<button class="btn ${state === 'paused' ? 'primary' : ''}" data-action="${state === 'paused' ? 'ev-resume' : 'ev-pause'}" data-id="${run.id}" ${state === 'pause_requested' ? 'disabled' : ''}>${state === 'paused' ? '继续执行' : state === 'pause_requested' ? '暂停中…' : '暂停'}</button>` : ''}</span>`;
+}
 function evStatusBadge(run) {
+  if (run.controlState === 'paused') return `<span class="badge" style="background:color-mix(in srgb, var(--orange) 12%, transparent);color:var(--orange)">已暂停</span>`;
+  if (run.controlState === 'pause_requested') return `<span class="badge preparing">暂停中</span>`;
   if (run.preparing) return `<span class="badge preparing"><span class="pulse"></span>准备中</span>`;
   if (run.failed) return `<span class="badge failed">失败</span>`;
   if (!evIsDone(run)) return `<span class="badge running"><span class="pulse"></span>正在执行 · 第 ${evStageIndex(run) + 1}/7 步</span>`;
@@ -5173,7 +5181,7 @@ function evRunCard(run) {
     tail = `<div class="final-line"><span style="color:var(--text-dim)">best <b class="mono">${run.final.bestScore.toFixed(1)}</b> vs 初始 <b class="mono">${run.final.initScore.toFixed(1)}</b></span>${evDelta(run.final.bestScore - run.final.initScore)}<span style="color:var(--text-faint)">· 接纳 ${accepted}/${run.clusters.length} 个 patch</span></div>`;
   }
   return `<div class="card run-card" data-action="ev-open-run" data-id="${run.id}">
-    <div class="r1"><span class="title">${evEsc(run.title)}</span>${evStatusBadge(run)}<span class="time">${run.createdAt}</span></div>
+    <div class="r1"><span class="title">${evEsc(run.title)}</span>${evStatusBadge(run)}<span class="time">${run.createdAt}</span>${evControlActions(run)}</div>
     <div class="r2">
       <span class="chip kind">${run.target.kind}:${evEsc(run.target.name)}@${run.target.version}</span>
       <span class="mono" style="font-size:11px">${run.window[0]} ~ ${run.window[1]}</span>
@@ -5272,7 +5280,7 @@ function evStepper(run, sel) {
   return `<div class="stepper">` + EV_STEPS.map((s, i) => {
     const done = evStageDone(run, i), active = evStageActive(run, i);
     const clickable = done || active;
-    const ico = done ? '✓' : (active ? '<span class="pulse" style="width:8px;height:8px"></span>' : i + 1);
+    const ico = done ? '✓' : (active ? (run.controlState === 'paused' ? 'Ⅱ' : '<span class="pulse" style="width:8px;height:8px"></span>') : i + 1);
     return `${i ? `<div class="conn ${evStageDone(run, i - 1) ? 'done' : ''}"></div>` : ''}<div class="xstep ${done ? 'done' : active ? 'active' : ''}${clickable ? ' clickable' : ''}${sel === i ? ' selected' : ''}"${clickable ? ` data-action="ev-sel-step" data-step="${i}"` : ''}><span class="ico">${ico}</span><span class="lbl">${evEsc(s)}${i === 5 ? `（${run.clusters.length} 轮）` : ''}</span></div>`;
   }).join('') + `</div>`;
 }
@@ -5546,7 +5554,8 @@ function evRenderDetail(id) {
     <a class="back" href="#/runs">← 返回自进化列表</a>
     <div class="detail-head">
       <h1>${evEsc(run.title)}</h1>${evStatusBadge(run)}<span class="v2-badge">${evEsc(wsName)}</span><span class="spacer"></span>
-      ${!run.preparing && !evIsDone(run) ? `<button class="btn primary" data-action="ev-advance" data-id="${run.id}">▶ 模拟推进一轮</button>` : ''}
+      ${evControlActions(run)}
+      ${!run.preparing && !evIsDone(run) && (!run.controlState || run.controlState === 'running') ? `<button class="btn primary" data-action="ev-advance" data-id="${run.id}">▶ 模拟推进一轮</button>` : ''}
     </div>
     <div class="detail-tabs" role="tablist" aria-label="运行详情视图">
       <button type="button" role="tab" data-action="ev-detail-tab" data-tab="steps" aria-selected="${tab === 'steps'}" class="${tab === 'steps' ? 'active' : ''}">七步详情</button>
@@ -5999,9 +6008,20 @@ document.addEventListener('click', e => {
     if (branch && navigator.clipboard) { navigator.clipboard.writeText(branch).then(() => { el.textContent = branch + ' · 已复制'; }).catch(() => {}); }
   }
   else if (a === 'ev-run-page') { const run = EV_RUNS.find(r => r.id === el.dataset.id); if (!run) return; const key = el.dataset.target === 'assoc' ? 'assocPage' : 'potentialPage'; run[key] = Math.max(1, (run[key] || 1) + Number(el.dataset.delta || 0)); evRenderDetail(run.id); }
+  else if (a === 'ev-pause' || a === 'ev-resume') {
+    const run = EV_RUNS.find(r => r.id === el.dataset.id);
+    if (!run || evIsDone(run) || !evCanEdit()) return;
+    if (a === 'ev-resume' && run.controlState === 'paused') run.controlState = 'running';
+    else if (a === 'ev-pause' && (!run.controlState || run.controlState === 'running')) {
+      run.controlState = 'pause_requested';
+      // Prototype-only safe-checkpoint acknowledgement; production is worker-owned.
+      setTimeout(() => { if (run.controlState === 'pause_requested') { run.controlState = 'paused'; evRoute(); } }, 800);
+    }
+    evRoute();
+  }
   else if (a === 'ev-advance') {
     const run = EV_RUNS.find(r => r.id === el.dataset.id);
-    if (run && !evIsDone(run)) { run.progress++; EV_STATE.expanded.clear(); EV_STATE.selStep = null; evRenderDetail(run.id); }
+    if (run && !evIsDone(run) && (!run.controlState || run.controlState === 'running')) { run.progress++; EV_STATE.expanded.clear(); EV_STATE.selStep = null; evRenderDetail(run.id); }
   }
   else if (a === 'ev-launch') evWizardOpen(null);
   else if (a === 'ev-targets') { evRoute(); }
@@ -6225,6 +6245,12 @@ function v2LoginAs(userId, opts) {
   if (!opts || !opts.silent) v2Toast(`已登录：${u.name} · ${v2RoleLabel(V2.wsId)}`);
   if (!opts || !opts.auto) {
     const q = new URLSearchParams(location.search);
+    if (q.has('runcontrol') && window.EV_RUNS) {
+      const state = q.get('runcontrol');
+      const rm = location.hash.match(/#\/run\/([^/?]+)/);
+      const run = rm ? EV_RUNS.find(r => r.id === rm[1]) : EV_RUNS.find(r => r.workspace === evCurrentWs() && !evIsDone(r));
+      if (run && ['running', 'pause_requested', 'paused'].includes(state)) { run.controlState = state; evRoute(); }
+    }
     if (q.get('page') === 'session' && q.get('view') === 'errors') {
       v2SetPage('session');
       setTimeout(() => { if (window.__bootDeepLink) window.__bootDeepLink(q); }, 320);

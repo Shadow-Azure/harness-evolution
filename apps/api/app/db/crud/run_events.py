@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any
 
-from sqlalchemy import func, insert, inspect, or_, select
+from sqlalchemy import func, insert, inspect, or_, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,24 @@ from app.db.models.run_events import (
 from app.service.events import ReplayEvent, RunEventReplayResult
 from app.utils.redaction import sanitize_message
 from app.utils.time import as_shanghai, now_shanghai
+
+
+async def next_run_event_sequence(session: AsyncSession, run_id: str) -> int:
+    """Allocate a sequence after the writer has locked the run row."""
+    latest = (
+        await session.execute(
+            select(func.max(evolution_run_events.c.seq)).where(
+                evolution_run_events.c.run_id == run_id,
+            ),
+        )
+    ).scalar_one()
+    return int(latest or 0) + 1
+
+
+async def insert_run_event(session: AsyncSession, values: Mapping[str, Any]) -> RunEventRecord:
+    """Append one event in the transaction that owns its state transition."""
+    await session.execute(insert(evolution_run_events).values(**values))
+    return _record_from_values(values)
 
 
 class SqlRunEventStore:
@@ -121,6 +139,12 @@ class SqlRunEventStore:
             try:
                 created_at = now_shanghai()
                 async with self._database.transaction() as session:
+                    # Serialize audit sequence allocation with control transactions.
+                    await session.execute(
+                        update(evolution_runs)
+                        .where(evolution_runs.c.id == run_id)
+                        .values(id=evolution_runs.c.id)
+                    )
                     sequence = await self._next_sequence(session, run_id)
                     workspace_id = (
                         await session.execute(
@@ -149,8 +173,7 @@ class SqlRunEventStore:
                         "error_detail": error_detail,
                         "created_at": created_at,
                     }
-                    await session.execute(insert(evolution_run_events).values(**values))
-                return _record_from_values(values)
+                    return await insert_run_event(session, values)
             except IntegrityError:
                 if attempt == 4:
                     raise
@@ -158,14 +181,7 @@ class SqlRunEventStore:
 
     async def _next_sequence(self, session: AsyncSession, run_id: str) -> int:
         """Allocate the next run-local sequence inside the append transaction."""
-        latest = (
-            await session.execute(
-                select(func.max(evolution_run_events.c.seq)).where(
-                    evolution_run_events.c.run_id == run_id,
-                ),
-            )
-        ).scalar_one()
-        return int(latest or 0) + 1
+        return await next_run_event_sequence(session, run_id)
 
     async def read_page(
         self,

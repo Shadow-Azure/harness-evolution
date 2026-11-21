@@ -172,7 +172,7 @@ async def test_evidence_migration_defaults_legacy_states_and_keeps_runtime(
                 .one()
             )
 
-        assert revision == "0023"
+        assert revision == "0024"
         assert dict(family) == {
             "execution_outcome": "legacy_unknown",
             "end_reason": None,
@@ -279,7 +279,7 @@ async def test_evidence_migration_resumes_after_partial_ddl(tmp_path: Path) -> N
                 )
             ).scalar_one()
 
-        assert revision == "0023"
+        assert revision == "0024"
         assert outcome == "legacy_unknown"
         assert relation is None
         async with database.engine.connect() as connection:

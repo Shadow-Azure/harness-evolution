@@ -1708,6 +1708,7 @@
           "RUN_NOT_FOUND",
           "STEP_NOT_READY",
           "RUN_BUSY",
+          "RUN_CONTROL_CONFLICT",
           "RUN_NOT_RETRYABLE",
           "REPO_INVALID",
           "PROJECT_ID_INVALID",
@@ -1870,6 +1871,26 @@
             "title": "Cacheenabled",
             "type": "boolean"
           },
+          "canPause": {
+            "default": false,
+            "title": "Canpause",
+            "type": "boolean"
+          },
+          "canResume": {
+            "default": false,
+            "title": "Canresume",
+            "type": "boolean"
+          },
+          "controlState": {
+            "default": "running",
+            "enum": [
+              "running",
+              "pause_requested",
+              "paused"
+            ],
+            "title": "Controlstate",
+            "type": "string"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
@@ -1920,6 +1941,41 @@
             },
             "title": "Models",
             "type": "array"
+          },
+          "pauseRequestedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pauserequestedat"
+          },
+          "pausedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pausedat"
+          },
+          "pausedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pausedby"
           },
           "policy": {
             "$ref": "#/components/schemas/EvolutionRunPolicy"
@@ -1977,6 +2033,76 @@
         "title": "EvolutionRunCard",
         "type": "object"
       },
+      "EvolutionRunControl": {
+        "additionalProperties": false,
+        "description": "Server-authoritative controls shared by mutations, cards and details.",
+        "properties": {
+          "canPause": {
+            "default": false,
+            "title": "Canpause",
+            "type": "boolean"
+          },
+          "canResume": {
+            "default": false,
+            "title": "Canresume",
+            "type": "boolean"
+          },
+          "controlState": {
+            "default": "running",
+            "enum": [
+              "running",
+              "pause_requested",
+              "paused"
+            ],
+            "title": "Controlstate",
+            "type": "string"
+          },
+          "pauseRequestedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pauserequestedat"
+          },
+          "pausedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pausedat"
+          },
+          "pausedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pausedby"
+          },
+          "runId": {
+            "title": "Runid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "title": "EvolutionRunControl",
+        "type": "object"
+      },
       "EvolutionRunDetail": {
         "additionalProperties": false,
         "description": "Complete shell consumed by the seven-step run-detail page.",
@@ -2001,6 +2127,26 @@
           "cacheEnabled": {
             "title": "Cacheenabled",
             "type": "boolean"
+          },
+          "canPause": {
+            "default": false,
+            "title": "Canpause",
+            "type": "boolean"
+          },
+          "canResume": {
+            "default": false,
+            "title": "Canresume",
+            "type": "boolean"
+          },
+          "controlState": {
+            "default": "running",
+            "enum": [
+              "running",
+              "pause_requested",
+              "paused"
+            ],
+            "title": "Controlstate",
+            "type": "string"
           },
           "createdAt": {
             "format": "date-time",
@@ -2079,6 +2225,41 @@
               }
             ],
             "title": "Nextretryat"
+          },
+          "pauseRequestedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pauserequestedat"
+          },
+          "pausedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pausedat"
+          },
+          "pausedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pausedby"
           },
           "policy": {
             "$ref": "#/components/schemas/EvolutionRunPolicy"
@@ -2224,6 +2405,9 @@
               "workspace_prepared",
               "clusters_created",
               "step_advanced",
+              "run_pause_requested",
+              "run_paused",
+              "run_continued",
               "run_blocked",
               "run_resumed",
               "final_completed",
@@ -13961,6 +14145,208 @@
           }
         ],
         "summary": "Read Run Events",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/pause": {
+      "post": {
+        "description": "Request a cooperative pause at the next durable checkpoint.",
+        "operationId": "pause_run_api_workspaces__wid__evolution_runs__run_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionRunControl"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Pause Run",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/resume": {
+      "post": {
+        "description": "Release a user pause and admit the first unfinished operation.",
+        "operationId": "resume_run_api_workspaces__wid__evolution_runs__run_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionRunControl"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Resume Run",
         "tags": [
           "workspace-evolution"
         ]

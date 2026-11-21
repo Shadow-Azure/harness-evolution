@@ -3,11 +3,13 @@ import type { EvolutionRunCard } from "@harness/contracts";
 import { computed, ref } from "vue";
 
 import { workspacePath } from "../../../router/workspace";
+import RunControl from "./RunControl.vue";
 
 const props = defineProps<{
   wid: string;
   workspaceName: string;
   run: EvolutionRunCard;
+  canManage?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -21,6 +23,8 @@ const errorOpen = ref(false);
 const errorTooltipId = computed(() => `run-error-${props.run.runId}`);
 
 const statusLabel = computed(() => {
+  if (props.run.controlState === "paused") return "已暂停";
+  if (props.run.controlState === "pause_requested") return "暂停中";
   switch (props.run.status) {
     case "preparing":
       return "准备中";
@@ -43,6 +47,8 @@ const statusLabel = computed(() => {
 });
 
 const statusClass = computed(() => {
+  if (props.run.controlState === "paused") return "paused";
+  if (props.run.controlState === "pause_requested") return "blocked";
   if (props.run.status === "completed") {
     if (props.run.final === null) return "done-pending";
     return props.run.final?.verdict ? "done-ok" : "done-no";
@@ -127,7 +133,7 @@ function closeError(): void {
         :class="statusClass"
       >
         <span
-          v-if="isActive"
+          v-if="isActive && run.controlState !== 'paused'"
           class="pulse"
           aria-hidden="true"
         />
@@ -154,7 +160,7 @@ function closeError(): void {
           @keydown.esc="closeError"
         >
           <span
-            v-if="isActive"
+            v-if="isActive && run.controlState !== 'paused'"
             class="pulse"
             aria-hidden="true"
           />
@@ -170,6 +176,12 @@ function closeError(): void {
         </span>
       </span>
       <span class="time">{{ createdAtLabel }}</span>
+      <RunControl
+        v-if="run.controlState && (run.controlState !== 'running' || (canManage && run.canPause))"
+        :wid="wid"
+        :run="run"
+        :can-manage="canManage ?? false"
+      />
     </div>
 
     <div class="run-meta">
@@ -345,6 +357,7 @@ function closeError(): void {
 }
 
 .badge.blocked,
+.badge.paused,
 .badge.interrupted {
   color: var(--orange);
   background: color-mix(in srgb, var(--orange) 12%, transparent);

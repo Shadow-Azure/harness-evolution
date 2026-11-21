@@ -23,6 +23,8 @@ import { useRunEvents } from "../../composables/useRunEvents";
 import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import { workspacePath } from "../../router/workspace";
 import { useAuthStore } from "../../stores/auth";
+import { canManageWorkspace } from "../../utils/workspaceDisplay";
+import RunControl from "./components/RunControl.vue";
 import RunStepContent from "./components/RunStepContent.vue";
 import RunStepper from "./components/RunStepper.vue";
 import RunLogPanel from "./components/RunLogPanel.vue";
@@ -39,6 +41,7 @@ const router = useRouter();
 const queryClient = useQueryClient();
 const workspaceId = useWorkspaceId();
 const auth = useAuthStore();
+const canManage = computed(() => canManageWorkspace(auth.workspaceById(workspaceId.value)?.role));
 
 const runId = computed(() => String(route.params.runId ?? ""));
 const {
@@ -216,6 +219,8 @@ const {
 );
 
 const statusLabel = computed(() => {
+  if (run.value?.controlState === "paused") return "已暂停";
+  if (run.value?.controlState === "pause_requested") return "暂停中";
   switch (run.value?.status) {
     case "preparing":
       return "准备中";
@@ -236,6 +241,7 @@ const statusLabel = computed(() => {
 });
 
 const statusClass = computed(() => {
+  if (run.value?.controlState === "paused" || run.value?.controlState === "pause_requested") return "blocked";
   const status = run.value?.status;
   if (status === "completed") {
     if (!run.value?.final) return "pending";
@@ -528,6 +534,12 @@ function clearMissingClusterFocus(): void {
           class="badge space"
           data-testid="run-workspace-badge"
         >{{ workspaceName }}</span>
+        <RunControl
+          v-if="run.controlState"
+          :wid="workspaceId"
+          :run="run"
+          :can-manage="canManage"
+        />
       </header>
 
       <div
@@ -890,12 +902,13 @@ function clearMissingClusterFocus(): void {
           <RunStepper
             :steps="steps"
             :selected="selectedKey"
+            :paused="run.controlState === 'paused'"
             @select="selectStep"
           />
         </article>
 
         <div
-          v-if="run.status === 'preparing'"
+          v-if="run.status === 'preparing' && run.controlState !== 'paused'"
           class="preparing-copy"
         >
           <span class="pulse" />
@@ -971,6 +984,10 @@ function clearMissingClusterFocus(): void {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.detail-head :deep(.run-control) {
+  margin-left: auto;
 }
 
 .detail-head h1 {

@@ -9,6 +9,7 @@ import RunGroup from "./RunGroup.vue";
 
 const card: EvolutionRunCard = {
   runId: "run-1",
+  controlState: "running", canPause: false, canResume: false,
   title: "run",
   mode: "full",
   target: { type: "skill", name: "deep-research", version: "v2.0.0" },

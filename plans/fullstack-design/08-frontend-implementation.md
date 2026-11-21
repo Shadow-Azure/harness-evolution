@@ -618,12 +618,18 @@ Index.vue
 ```
 
 - 分组与排序由后端给（`running` / `history`），前端不重排。
-- 卡片右上只显示 `createdAt`；创建人保留在 DTO，不在列表渲染。
+- 卡片右上显示 `createdAt` 及可用的运行控制操作；创建人保留在 DTO，不在列表渲染。
 - `run-meta` 依次为对象版本 chip、时间窗、工作空间 chip、`默认潜在策略` / `自定义潜在策略`、`复用缓存` / `不复用缓存`，随后是模型 chip；策略与缓存分别取 `run.policy.preset` 与 `run.cacheEnabled`。
 - 工作空间名来自 auth store 的当前路由空间，列表本就按空间过滤，卡片 DTO 不重复空间信息；空间名缺失时按空串处理，不伪造名称。
 - 进度条：`progress.percent` 直接用；阶段文案 `progress.stageLabel` 直接用（后端算）。
 - `failed` / `interrupted` 的 run 显示红色/橙色状态徽章 + `error.message` 摘要（tooltip），点击进入详情并定位"执行日志"。
 - 空态："当前没有正在执行的自进化"。
+
+### 8.1 运行暂停与继续
+
+列表卡片标题行与运行详情页头复用 `RunControl.vue`，沿原型 `btn` / `btn primary`、圆角、间距及状态 token：运行时显示「暂停」；请求受理显示「暂停中」并禁用按钮，说明「等待当前操作结束」；确认后显示「已暂停」和「继续执行」，说明进度已保留及已提交的外部评测可能继续运行。暂停的运行保留在活动分组、保留进度条和已到达步骤，停止活动脉冲。原型可使用 `runcontrol=running|pause_requested|paused` 固定展示状态。
+
+控件仅对当前空间管理员或全局管理员显示，按钮可用性使用服务端 `canPause/canResume`；只读成员可看状态。点击卡片内动作不触发详情导航，提交期间禁用重复动作；接口失败保留原状态并显示错误，冲突时刷新服务端事实。响应先展示权威控制状态，再失效列表、详情查询；`run.event` 的三个控制事件同步刷新。等待确认时 REST fallback 每秒刷新，活动/已暂停运行每 15 秒兜底，终态停止刷新。刷新、跳转和继续均复用原 run ID 与冻结输入。
 
 ## 9. 启动向导（`pages/evolution/components/LaunchWizard.vue`）
 

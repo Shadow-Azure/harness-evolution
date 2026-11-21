@@ -203,6 +203,60 @@ async def test_prepare_sanitizes_clone_and_workspace_copy_failures(
     assert not (tmp_path / "copy-workspaces" / "run-m5-09").exists()
 
 
+async def test_resume_prepares_original_baseline_after_branch_moves(
+    tmp_path: Path, remote_repo: tuple[Path, Path, str]
+) -> None:
+    """The checkout uses the commit frozen alongside the target definition digest."""
+    bare, seed, initial = remote_repo
+    (seed / "skills/deep-research/SKILL.md").write_text("# Changed", encoding="utf-8")
+    _git(seed, "commit", "-am", "branch moved while paused")
+    _git(seed, "push", "origin", "HEAD:refs/heads/main")
+    run = replace(_run(str(bare), initial), target_version="main", resumed_at=NOW)
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos", workspaces_root=tmp_path / "workspaces", push_enabled=False
+    )
+    workspace = await manager.prepare(run)
+    assert workspace.base_commit == initial
+    assert _git(workspace.path, "rev-parse", "HEAD") == initial
+
+
+async def test_replaying_an_unacknowledged_local_commit_keeps_the_candidate_branch(
+    tmp_path: Path, remote_repo: tuple[Path, Path, str]
+) -> None:
+    from app.third_party_api.git.workspace import _run_process
+
+    bare, _, initial = remote_repo
+    commits: list[tuple[str, ...]] = []
+
+    async def record(argv: tuple[str, ...], cwd: Path | None) -> GitProcessResult:
+        if "commit" in argv and "-m" in argv:
+            commits.append(argv)
+        return await _run_process(argv, cwd)
+
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+        push_enabled=False,
+        runner=record,
+    )
+    run = _run(str(bare), initial)
+    prepared = await manager.prepare(run)
+    patch = Patch("sample.md", ("retry fixture",))
+    trace = CandidateTrace("cluster", "candidate", (), (), "evidence")
+    message = build_candidate_message(
+        run, round_seq=1, trace=trace, patch_sha256=patch.sha256, created_at=NOW, web_base_url=None
+    )
+    ref = f"{prepared.branch}/candidate/r1"
+    candidate = await manager.create_candidate(
+        prepared, run_branch=prepared.branch, candidate_ref=ref, patch=patch, message=message
+    )
+    replay = await manager.create_candidate(
+        prepared, run_branch=prepared.branch, candidate_ref=ref, patch=patch, message=message
+    )
+    assert replay.commit == candidate.commit
+    assert len(commits) == 1
+
+
 async def test_candidate_accept_amends_ffs_run_branch_and_removes_candidate(
     tmp_path: Path,
     remote_repo: tuple[Path, Path, str],
@@ -1146,3 +1200,20 @@ def test_workspace_cleanup_keeps_active_and_newest_inactive_runs(tmp_path: Path)
     assert len(removed) == 2
     assert created[1] in removed
     assert created[2] in removed
+
+
+async def test_resume_without_a_frozen_baseline_does_not_fetch_a_moving_ref(tmp_path: Path) -> None:
+    """A historical run must fail explicitly instead of silently selecting a new baseline."""
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos", workspaces_root=tmp_path / "workspaces"
+    )
+    run = replace(
+        _run("https://example.invalid/unreachable.git", "a" * 40),
+        base_commit=None,
+        target_revision="digest:" + "b" * 64,
+        resumed_at=NOW,
+    )
+    with pytest.raises(GitOperationError, match="frozen baseline") as failure:
+        await manager.prepare(run)
+    assert failure.value.stage == "reference"
+    assert not manager.repos_root.exists()

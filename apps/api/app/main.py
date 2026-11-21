@@ -38,6 +38,7 @@ from app.db.crud.bad_case_ingest import BadCaseIngestRepository
 from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
 from app.db.crud.bad_cases import BadCaseRepository
 from app.db.crud.evolution import EvolutionRepository
+from app.db.crud.evolution_control import EvolutionControlRepository
 from app.db.crud.evolution_targets import EvolutionTargetRepository
 from app.db.crud.jobs import JobRepository
 from app.db.crud.overview import OverviewRepository
@@ -84,6 +85,7 @@ from app.service.evolution.apply_final import (
 )
 from app.service.evolution.attribution import AttributionRunner, resolve_attribution_engine
 from app.service.evolution.blocked_sweeper import EvolutionBlockedSweeper
+from app.service.evolution.control import EvolutionControlService
 from app.service.evolution.engine.contracts import EngineDeps
 from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.eval_poller import (
@@ -174,6 +176,12 @@ def create_app(
     )
     job_repository = JobRepository(resolved_database)
     jobs = JobRunner(job_repository, event_bus, evolution_events)
+    evolution_control = EvolutionControlService(
+        EvolutionControlRepository(resolved_database),
+        evolution_events,
+        jobs.schedule,
+    )
+    jobs.set_evolution_control(evolution_control, evolution_repository)
     upstream_client: httpx.AsyncClient | None = None
     resolved_source = trajectory_source
     if resolved_source is None and resolved_settings.upstream_configured:
@@ -586,6 +594,7 @@ def create_app(
     app.state.evolution_advance = evolution_advance
     app.state.evolution_apply = evolution_apply
     app.state.evolution_finalize = evolution_finalize
+    app.state.evolution_control = evolution_control
     app.state.evolution_retry = evolution_retry
     app.state.blocked_sweeper = evolution_blocked_sweeper
     app.state.evolution_eval_poller = evolution_eval_poller

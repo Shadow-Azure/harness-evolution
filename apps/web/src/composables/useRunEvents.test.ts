@@ -224,6 +224,18 @@ afterEach(() => {
 });
 
 describe("useRunEvents", () => {
+  it("refreshes control facts without closing the stream on durable pause events", async () => {
+    const harness = mountEvents();
+    await flushPromises();
+    const source = FakeEventSource.latest();
+    for (const [index, eventType] of ["run_pause_requested", "run_paused", "run_continued"].entries()) {
+      source.emit("run.event", { ...eventPayload(index + 1), eventType });
+    }
+    expect(harness.invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.evolutionRun(workspaceId, "run-1") });
+    expect(harness.invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.evolutionRuns(workspaceId) });
+    expect(source.closed).toBe(false);
+  });
+
   it("requests a ticket for the run cursor and opens the stream", async () => {
     const harness = mountEvents();
 

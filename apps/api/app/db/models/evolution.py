@@ -95,6 +95,11 @@ evolution_runs = Table(
     Column("window_to", Date, nullable=True),
     Column("models", JSON, nullable=True),
     Column("status", String(16), nullable=False, server_default="preparing"),
+    Column("control_state", String(16), nullable=False, server_default="running"),
+    Column("pause_requested_at", DateTime(timezone=True)),
+    Column("paused_at", DateTime(timezone=True)),
+    Column("paused_by", String(36)),
+    Column("resumed_at", DateTime(timezone=True)),
     Column("blocked_stage", String(16), nullable=True),
     Column("retry_attempts", Integer, nullable=False, server_default="0"),
     Column("next_retry_at", DateTime(timezone=True), nullable=True),
@@ -277,6 +282,7 @@ evolution_rounds = Table(
     Column("eval_status", String(16), nullable=False, server_default="pending"),
     Column("eval_attempts", Integer, nullable=False, server_default="0"),
     Column("eval_next_poll_at", DateTime(timezone=True), nullable=True),
+    Column("eval_paused_seconds", Float, nullable=False, server_default="0"),
     Column("eval_started_at", DateTime(timezone=True), nullable=True),
     Column("eval_finished_at", DateTime(timezone=True), nullable=True),
     Column("eval_current", Float, nullable=True),
@@ -360,6 +366,11 @@ class EvolutionRunRecord:
     cache_enabled: bool = False
     attribution_engine: str = "legacy-probe-import"
     target_revision: str | None = None
+    control_state: Literal["running", "pause_requested", "paused"] = "running"
+    pause_requested_at: datetime | None = None
+    paused_at: datetime | None = None
+    paused_by: str | None = None
+    resumed_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -445,6 +456,7 @@ class EvolutionRoundRecord:
     accepted: bool
     commit_hash: str | None
     commit_message: str | None
+    eval_paused_seconds: float = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -577,6 +589,13 @@ def record_from_evolution_run(row: Mapping[str, Any]) -> EvolutionRunRecord:
         stats=_json_dict(row["stats"]),
         created_by=_optional_text(row["created_by"]),
         created_at=_timestamp(row["created_at"]),
+        control_state=cast(
+            Literal["running", "pause_requested", "paused"], row.get("control_state", "running")
+        ),
+        pause_requested_at=_optional_timestamp(row.get("pause_requested_at")),
+        paused_at=_optional_timestamp(row.get("paused_at")),
+        paused_by=_optional_text(row.get("paused_by")),
+        resumed_at=_optional_timestamp(row.get("resumed_at")),
         finished_at=_optional_timestamp(row["finished_at"]),
         workspace_id=(_optional_text(row.get("workspace_id")) or DEFAULT_WORKSPACE_ID),
         potential_policy=_optional_json_dict(row.get("potential_policy")),
@@ -673,6 +692,7 @@ def record_from_evolution_round(row: Mapping[str, Any]) -> EvolutionRoundRecord:
         eval_status=_required_text(row["eval_status"]),
         eval_attempts=int(row["eval_attempts"]),
         eval_next_poll_at=_optional_timestamp(row["eval_next_poll_at"]),
+        eval_paused_seconds=float(row.get("eval_paused_seconds") or 0),
         eval_started_at=_optional_timestamp(row["eval_started_at"]),
         eval_finished_at=_optional_timestamp(row["eval_finished_at"]),
         eval_current=(float(row["eval_current"]) if row["eval_current"] is not None else None),

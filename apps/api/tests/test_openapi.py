@@ -85,6 +85,8 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/workspaces/{wid}/evolution/runs/{run_id}",
         "/api/workspaces/{wid}/evolution/runs/{run_id}/events",
         "/api/workspaces/{wid}/evolution/runs/{run_id}/retry",
+        "/api/workspaces/{wid}/evolution/runs/{run_id}/pause",
+        "/api/workspaces/{wid}/evolution/runs/{run_id}/resume",
         "/api/workspaces/{wid}/evolution/runs/{run_id}/steps/{key}",
         "/api/workspaces/{wid}/evolution/cluster-previews",
         "/api/workspaces/{wid}/evolution/preview/sessions",
@@ -147,6 +149,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "SyncStatusError",
         "SyncTriggerResponse",
         "EvolutionRunCard",
+        "EvolutionRunControl",
         "EvolutionRunList",
         "EvolutionRunTarget",
         "EvolutionRunWindow",
@@ -298,6 +301,8 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/evolution/runs/{run_id}/steps/final", "get"),
         ("/api/evolution/probes/query", "post"),
         ("/api/evolution/cluster-previews", "post"),
+        ("/api/workspaces/{wid}/evolution/runs/{run_id}/pause", "post"),
+        ("/api/workspaces/{wid}/evolution/runs/{run_id}/resume", "post"),
         ("/api/workspaces/{wid}/evolution/preview/sessions", "post"),
         ("/api/workspaces/{wid}/evolution/preview/potential", "post"),
         ("/api/workspaces/{wid}/evolution/preview/attribution", "post"),
@@ -430,6 +435,12 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
     run_card = components["EvolutionRunCard"]
     assert set(run_card["properties"]) == {
         "runId",
+        "controlState",
+        "pauseRequestedAt",
+        "pausedAt",
+        "pausedBy",
+        "canPause",
+        "canResume",
         "title",
         "mode",
         "target",
@@ -445,6 +456,19 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "progress",
         "final",
     }
+    assert run_card["properties"]["controlState"]["enum"] == [
+        "running",
+        "pause_requested",
+        "paused",
+    ]
+    for action in ("pause", "resume"):
+        responses = paths[f"/api/workspaces/{{wid}}/evolution/runs/{{run_id}}/{action}"]["post"][
+            "responses"
+        ]
+        assert {"200", "401", "403", "404", "409"} <= set(responses)
+        assert responses["200"]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/EvolutionRunControl"
+        }
     assert components["EvolutionRunWindow"]["properties"]["from"]["anyOf"][0]["format"] == ("date")
     detail_schema = components["EvolutionRunDetail"]
     assert detail_schema["properties"]["evalStatus"]["enum"] == [
@@ -769,6 +793,7 @@ def test_openapi_export_ignores_service_environment() -> None:
             "HE_VERSION": "environment-drift",
             "HE_PHASE": "live",
             "HE_DOCS_ENABLED": "true",
+            "PYTHONIOENCODING": "ascii",
             "PATH": os.environ["PATH"],
         }
     )
@@ -778,7 +803,8 @@ def test_openapi_export_ignores_service_environment() -> None:
         env=environment,
         check=True,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
     )
 
     assert json.loads(result.stdout)["info"]["version"] == "0.1.0"
+    assert "§4.2.1" in result.stdout

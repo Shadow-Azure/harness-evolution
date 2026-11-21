@@ -65,6 +65,7 @@ class TestEventSource {
 function run(overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard {
   return {
     runId: "evo-full-1",
+    controlState: "running", canPause: false, canResume: false,
     title: "deep-research v2.0.0 自进化",
     mode: "full",
     target: {
@@ -405,6 +406,37 @@ afterAll(() => {
 });
 
 describe("evolution run detail page", () => {
+  it("pauses and continues the existing run through the workspace API without losing reached steps", async () => {
+    let snapshot = detail(run({ status: "running", canPause: true }));
+    let resumes = 0;
+    server.use(
+      http.get(`${evolutionBase}/runs/:runId`, () => HttpResponse.json(snapshot)),
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () => HttpResponse.json(iterationStep)),
+      http.post(`${evolutionBase}/runs/:runId/pause`, () => {
+        snapshot = { ...snapshot, controlState: "paused", canPause: false, canResume: true };
+        return HttpResponse.json(snapshot, { status: 202 });
+      }),
+      http.post(`${evolutionBase}/runs/:runId/resume`, () => {
+        resumes++;
+        snapshot = { ...snapshot, controlState: "running", canPause: true, canResume: false };
+        return HttpResponse.json(snapshot);
+      }),
+    );
+    const wrapper = await mountPage();
+    expect(wrapper.get(".control-button").text()).toBe("暂停");
+    await wrapper.get(".control-button").trigger("click");
+    await flushPromises();
+    expect(wrapper.get(".detail-head .badge").text()).toBe("已暂停");
+    expect(wrapper.find(".stepper .pulse").exists()).toBe(false);
+    expect(wrapper.find('[data-step-key="iteration"]').exists()).toBe(true);
+    expect(wrapper.get(".control-button").text()).toBe("继续执行");
+    await wrapper.get(".control-button").trigger("click");
+    await flushPromises();
+    expect(resumes).toBe(1);
+    expect(wrapper.get(".detail-head .badge").text()).toBe("正在执行");
+    expect(snapshot.runId).toBe("evo-full-1");
+  });
+
   it("shows an unreached explanation when a failed run stops before step 1", async () => {
     const requested: string[] = [];
     server.use(
