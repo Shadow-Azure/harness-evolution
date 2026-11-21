@@ -18,7 +18,7 @@ import signal
 import ssl
 import sys
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -544,10 +544,12 @@ class ProxyAwareGitRunner:
         controller: GitProxyController,
         *,
         spawn: SpawnGit | None = None,
+        extra_environment: Callable[[], Mapping[str, str]] | None = None,
     ) -> None:
-        """Bind the controller and an injectable process seam for tests."""
+        """Bind the controller, process seam, and credential environment overlay."""
         self._controller = controller
         self._spawn = spawn or _spawn_process
+        self._extra_environment = extra_environment
 
     async def run(
         self,
@@ -570,6 +572,8 @@ class ProxyAwareGitRunner:
         try:
             endpoint = await self._controller.endpoint()
             environment = build_git_environment()
+            if self._extra_environment is not None:
+                environment.update(self._extra_environment())
             if endpoint is None:
                 if self._controller.enabled:
                     strip_proxy_environment(environment)
@@ -599,6 +603,8 @@ class ProxyAwareGitRunner:
                 },
             )
             direct_environment = build_git_environment()
+            if self._extra_environment is not None:
+                direct_environment.update(self._extra_environment())
             strip_proxy_environment(direct_environment)
             via_proxy = False
             result = await self._spawn(argv, cwd, direct_environment)

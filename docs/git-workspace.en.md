@@ -15,7 +15,7 @@ During prepare, an evolution run builds a local bare cache for the target ref an
 ## Push
 
 - `HE_GIT_PUSH` controls every remote write and defaults to true; when false, the candidate is still created locally but is not pushed or evaluated.
-- The provider creates the fork; prepare records the derived push target on the run snapshot, and eval reuses it. `HE_GIT_PUSH_URL` remains the global fallback, targets do not accept push/eval URLs, and the frontend does not need to fill anything. Push and eval must point at the same fetchable repository.
+- The provider creates the fork; prepare records the derived target on the run snapshot, and eval reuses it. With a token the fork wins, and `HE_GIT_PUSH_URL` is only the no-token fallback; a provider API failure enters `blocked(push)` directly and never falls back silently. Targets do not accept push/eval URLs, and push and eval must point at the same fetchable repository.
 - `HE_GIT_PUSH_URL` is an optional global fork / push URL fallback. When set, fetches stay on `origin`, while pushes, candidate-tag `ls-remote`, and deletion use a separate `push` remote; when unset, pushes go to `origin`.
 - Credentials come only from the run environment or a credential helper; HTTP(S) URLs must not embed credentials, and neither the repository nor the database stores push credentials.
 - Third-party public repositories usually have no write access: disable `HE_GIT_PUSH` or configure a writable fork. A push failure surfaces as `blocked(push)` and is never recorded as a silent success.
@@ -23,7 +23,7 @@ During prepare, an evolution run builds a local bare cache for the target ref an
 ## Hosts and credentials
 
 - `HE_GIT_PUSH_PROVIDER=github` (default) or `gitlab` selects a `GitPushProvider` subclass; the factory builds it at startup and rejects unknown values.
-- `HE_GIT_PUSH_TOKEN` is a PAT injected only from Secrets or the run environment; `GIT_ASKPASS` uses the provider default username (GitHub `x-access-token`, GitLab `oauth2`) with that token, and the token never enters URLs, the database, events, or logs. The `harness` user has no home, so the script uses an absolute path.
+- `HE_GIT_PUSH_TOKEN` is a PAT injected only from Secrets or the run environment; `GIT_ASKPASS` uses the provider default username (GitHub `x-access-token`, GitLab `oauth2`) with that token, and the token never enters URLs, the database, events, or logs. The `harness` user has no home, so the script uses an absolute path; with only a token locally, point `GIT_ASKPASS` at the absolute `deploy/git-askpass.sh` path.
 - The API base, web root, and git username are derived by the provider subclass from the `repo_url` host (public github.com / gitlab.com use their defaults; self-hosted uses the same host with `/api/v3` or `/api/v4`); special reverse-proxy differences belong in the subclass, not in new environment settings.
 - Adding a host means adding one `GitPushProvider` subclass and a registry entry; the prepare / candidate / final state machine, failure classification, and evaluation contract stay unchanged.
 

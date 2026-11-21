@@ -15,7 +15,7 @@
 ## 推送
 
 - `HE_GIT_PUSH` 控制全部远端写入，默认 true；设为 false 时仍生成本地 candidate，但不推送、不评测。
-- provider 自动 fork；prepare 把派生出的 push 目标写入 run 快照，eval 复用同一目标。`HE_GIT_PUSH_URL` 仍是全局兜底，target 不接受 push/eval URL 输入，前端不需要填写。push 与 eval 必须指向同一个可 fetch 的仓。
+- provider 自动 fork；prepare 把派生目标写入 run 快照，eval 复用。有 token 时 fork 优先，`HE_GIT_PUSH_URL` 只作为无 token 兜底；provider API 失败直接进入 `blocked(push)`，不静默回退。target 不接收 push/eval URL 输入，push 与 eval 必须指向同一个可 fetch 的仓。
 - `HE_GIT_PUSH_URL` 是可选的全局 fork / push URL 兜底。配置后 fetch 仍走 `origin`，push、候选 tag 的 `ls-remote` 与删除走独立 `push` remote；未配置时 push `origin`。
 - 凭据只来自运行环境或 credential helper；HTTP(S) 地址不得内嵌凭据，仓库与数据库不保存推送凭据。
 - 第三方公共仓库通常没有写权限：关闭 `HE_GIT_PUSH`，或配置可写 fork。push 失败按 `blocked(push)` 暴露，不静默记为成功。
@@ -23,7 +23,7 @@
 ## 托管平台与凭据
 
 - `HE_GIT_PUSH_PROVIDER=github`（默认）或 `gitlab` 选择 `GitPushProvider` 子类；工厂在启动时实例化，未知值拒绝启动。
-- `HE_GIT_PUSH_TOKEN` 是 PAT，只从 Secrets / 运行环境注入；`GIT_ASKPASS` 用 provider 的默认用户名（GitHub `x-access-token`、GitLab `oauth2`）和该 token 取值，token 不进入 URL、数据库、事件或日志。`harness` 用户没有 home，脚本用绝对路径。
+- `HE_GIT_PUSH_TOKEN` 是 PAT，只从 Secrets / 运行环境注入；`GIT_ASKPASS` 用 provider 的默认用户名（GitHub `x-access-token`、GitLab `oauth2`）和该 token 取值，token 不进入 URL、数据库、事件或日志。`harness` 用户没有 home，脚本用绝对路径；本地只配 token 时需把 `GIT_ASKPASS` 指向 `deploy/git-askpass.sh` 的绝对路径。
 - API base、网页根与 git 用户名由 provider 子类按 `repo_url` 的 host 推导（github.com / gitlab.com 用公有默认；自托管用同 host 的 `/api/v3` 或 `/api/v4`）；确有反向代理等特殊差异时在子类覆盖，不新增环境配置。
 - 新增托管平台只需新增一个 `GitPushProvider` 子类与注册项；prepare / candidate / final 的状态机、失败分类与评测契约不变。
 

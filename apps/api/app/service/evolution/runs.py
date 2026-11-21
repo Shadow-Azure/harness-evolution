@@ -161,6 +161,7 @@ class EvolutionRunWorkspace(IdentityModel):
     """Repository and worktree state shown by the run detail."""
 
     repo_url: str
+    push_repo_url: str
     sub_dir: str
     repo_path: str | None
     base_ref: str | None
@@ -487,6 +488,7 @@ class EvolutionRunService:
             eval_status=cast(EvolutionRunEvalStatus, run.eval_status),
             workspace=EvolutionRunWorkspace(
                 repo_url=run.repo_url,
+                push_repo_url=run.push_repo_url or run.repo_url,
                 sub_dir=run.sub_dir,
                 repo_path=run.repo_path,
                 base_ref=run.base_ref,

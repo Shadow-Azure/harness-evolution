@@ -327,6 +327,7 @@ class EvolutionPrepareService:
             branch_name=workspace.branch if workspace else run.branch_name,
             workspace_path=str(workspace.path) if workspace else run.workspace_path,
             target_revision=(resolved.target_revision if persist_revision else None),
+            push_repo_url=(workspace.push_url if workspace else None),
             stats=await self._final_stats(refreshed or run),
         )
         return {

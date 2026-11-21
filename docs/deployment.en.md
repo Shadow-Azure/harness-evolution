@@ -44,7 +44,7 @@ Only the private key lives in GitHub; its public half sits in `deploy`'s `author
 
 ## Config injection
 
-The data directory and evaluation config share one channel into the server `.env`: `Deploy` takes an absolute path from the GitHub Environment `vars.HE_DATA_DIR` (the default applies when empty), and evaluation-platform secrets (`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`) arrive from GitHub Secrets; `apiKeyRef` stores only an environment-variable name and the step is skipped when absent. Values travel base64-encoded and `inject-config.py` writes them atomically, backing up `.env.bak.<sha>` first; decode failures warn and skip, disk-write failures abort the release. Steps: [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md); template: [deploy/env.production.example](../deploy/env.production.example).
+The data directory and evaluation config share one channel into the server `.env`: `Deploy` takes an absolute path from the GitHub Environment `vars.HE_DATA_DIR` (the default applies when empty), and evaluation-platform secrets (`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`) arrive from GitHub Secrets; `apiKeyRef` stores only an environment-variable name and the step is skipped when absent. Git push credentials ride the same channel: `HE_GIT_PUSH_PROVIDER` is always written, `HE_GIT_PUSH_TOKEN` is unset when empty, and `GIT_ASKPASS` points at `/opt/harness/shared/git-askpass.sh`. Values travel base64-encoded and `inject-config.py` writes them atomically while keeping `.env` at 0600, backing up `.env.bak.<sha>` first; decode failures warn and skip, disk-write failures abort the release. Steps: [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md); template: [deploy/env.production.example](../deploy/env.production.example).
 
 ## Claude Code
 
@@ -69,7 +69,7 @@ When production access to GitHub is unstable, a local Xray/VLESS proxy that serv
 
 ## Git workspaces and pushes
 
-Evolution run workspaces cache the target ref and clone from it; the push target is controlled by `HE_GIT_PUSH` / `HE_GIT_PUSH_URL`. See [Git workspaces and pushes](git-workspace.en.md) for the cache, single-ref clone, push credential policy, and per-operation proxy observability.
+Run workspaces cache the target ref and clone from it; the provider creates the fork automatically, with `HE_GIT_PUSH_URL` as the no-token fallback. See [Git workspaces and pushes](git-workspace.en.md) for the cache, single-ref clone, push credential policy, and per-operation proxy observability.
 
 ## Upstream health and drift logs
 

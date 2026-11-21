@@ -272,7 +272,20 @@ test("m5 run detail exposes seven steps, candidate state, blocked state and fina
     assert.match(running.text, /评测中/);
     assert.match(running.text, /cluster 1/);
     assert.match(running.text, /可归因 \/ 非该对象\s*2\s*\//);
+    assert.match(running.text, /推送目标/);
+    assert.match(running.text, /https:\/\/example\.invalid\/fork\/skills\.git/);
     assert.equal(running.overflow, 0);
+
+    await evaluate(
+      page,
+      `document.querySelector("[data-testid='run-workspace'] summary").click()`,
+    );
+    await waitForDocument(
+      page.session,
+      `document.querySelector("[data-testid='run-workspace']").open === true`,
+      "workspace details open",
+    );
+    await screenshot(page, "01b-running-workspace.png");
 
     await evaluate(
       page,

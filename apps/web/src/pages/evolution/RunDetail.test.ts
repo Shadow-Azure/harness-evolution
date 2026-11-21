@@ -314,6 +314,7 @@ function detail(
     evalStatus: card.status === "blocked" ? "failed" : "pending",
     workspace: {
       repoUrl: "https://example.invalid/skills.git",
+      pushRepoUrl: "https://example.invalid/fork/skills.git",
       subDir: "skills/deep-research",
       repoPath: "data/repos/target",
       baseRef: "v2.0.0",
@@ -550,6 +551,10 @@ describe("evolution run detail page", () => {
     expect(workspace.element instanceof HTMLDetailsElement).toBe(true);
     expect((workspace.element as HTMLDetailsElement).open).toBe(false);
     expect(info.find("[data-testid='copy-branch']").exists()).toBe(true);
+    expect(workspace.text()).toContain("推送目标");
+    expect(workspace.get("[data-testid='run-push-repo']").text()).toBe(
+      "https://example.invalid/fork/skills.git",
+    );
 
     const html = wrapper.html();
     expect(html.indexOf('data-testid="run-info-panel"')).toBeLessThan(

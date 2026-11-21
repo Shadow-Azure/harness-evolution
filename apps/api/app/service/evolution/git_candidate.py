@@ -398,6 +398,7 @@ class EvolutionCandidateService:
             message=round_.candidate_message,
             run_id=run.id,
             base_commit=prepared.base_commit,
+            push_url=prepared.push_url,
         )
         attempt = round_.push_attempts + 1
         pushing = await self._runs.mark_round_pushing(round_.id, attempt=attempt)
@@ -500,6 +501,7 @@ class EvolutionCandidateService:
             message=deciding.candidate_message or "",
             run_id=run.id,
             base_commit=prepared.base_commit,
+            push_url=prepared.push_url,
         )
         patch_hash = _patch_hash(deciding)
         message = build_accepted_message(
@@ -584,6 +586,7 @@ class EvolutionCandidateService:
             message=deciding.candidate_message or "",
             run_id=run.id,
             base_commit=prepared.base_commit,
+            push_url=prepared.push_url,
         )
         cleanup_error = await self._workspaces.reject_candidate(
             candidate,
@@ -886,6 +889,7 @@ def _prepared_workspace(run: EvolutionRunRecord) -> PreparedWorkspace:
         ref=run.base_ref or run.target_version,
         base_commit=run.base_commit,
         branch=run.branch_name,
+        push_url=(run.push_repo_url or None),
     )
 
 
