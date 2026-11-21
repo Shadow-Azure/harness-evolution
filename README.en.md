@@ -2,52 +2,47 @@
 
 English | [中文](README.md)
 
-A trace-viewing and problem-diagnosis service for coding agents: import real execution traces, inspect goals, tool calls, errors and results turn by turn, link every problem back to evidence, and turn it into evaluable harness improvements.
+A trace-diagnosis and self-evolution service for coding agents: import real execution traces, reconstruct goals, tool calls, errors and results turn by turn, attribute bad cases to concrete objects and evidence, and feed the conclusions into the evolution flow.
 
-## Current state
+![Session browser, execution flow and problem cards](docs/assets/readme/session-overview.png)
 
-M1 engineering foundation in progress: the pnpm workspace, React + Vite web app, Python 3.12 + FastAPI server, shared contracts package and health check are wired together. Data, identity, traces and diagnosis arrive through the [roadmap](docs/roadmap.en.md); boundaries live in [architecture](docs/architecture.en.md).
+<sub>Session browser and execution flow: inspect tool calls, subagents and failures lane by lane, with problem cards linking back to evidence. The capture uses local synthetic fixtures.</sub>
+
+## Core capabilities
+
+- **Trace inspection**: normalize Claude Code traces into root sessions, user turns, messages and an agent tree; the execution flow shows tool calls, failures and subagents lane by lane.
+- **Problem attribution**: attribute a bad case to multiple objects, with problem cards carrying type, object, full ID and evidence; error details support deep links and attribution filters.
+- **Evolution loop**: object configuration, a four-step wizard, seven-step runs and the lane DAG feed conclusions into the evolution flow for review before adoption.
+- **Engineering boundaries**: workspaces isolate data, members, quotas and ingestion; contract, document, flow and E2E gates run in CI.
 
 ## Quick start
 
 ```sh
 pnpm install
 pnpm setup:api
+pnpm fixtures:seed
 pnpm dev
 ```
 
-- Web: http://localhost:5173
-- API: http://127.0.0.1:8787/api/health
+Web: http://localhost:5173 · API: http://127.0.0.1:8787/api/health
 
-## Production prerequisites
+## Documentation
 
-On production, run [deploy/bootstrap-server.sh](deploy/bootstrap-server.sh) once as root (it installs the unit with `StateDirectory=` and prepares `/var/lib/harness-evolution`); rerun the same script to update the unit on an existing host. Then optionally set an absolute `vars.HE_DATA_DIR` in the GitHub Environment `production` (empty keeps the default); routine deploys need no server access. After the first deploy run `curl -sf http://127.0.0.1:8787/api/health` and confirm `"data":{"ok":true}`. Path rules and migration live in the [deployment docs](docs/deployment.en.md).
-
-## Docs and gates
-
-- Documentation map: [docs/README.en.md](docs/README.en.md)
-- Documentation standard: [docs/AGENTS.md](docs/AGENTS.md)
-- Bilingual pairing contract: [docs/i18n/README.en.md](docs/i18n/README.en.md)
-- Development flow: [.agents/flow/README.en.md](.agents/flow/README.en.md)
-- Decision records: [.agents/notes/README.en.md](.agents/notes/README.en.md)
-- PR review: [docs/review.en.md](docs/review.en.md)
-
-```sh
-pnpm lint:docs     # 快速文档门禁
-pnpm verify:docs   # 全量文档门禁
-pnpm verify:flow   # 开发流程状态机
-```
+- [Architecture](docs/architecture.en.md): service boundaries, request chain and data layer
+- [Development](docs/development.en.md): local environment and daily loop
+- [Deployment](docs/deployment.en.md): production bootstrap, release and rollback
+- [Documentation map](docs/README.en.md): every resident document
+- [Development flow](.agents/flow/README.en.md): roadmap → milestone → issue
+- [Decision records](.agents/notes/README.en.md): why the design is this way
 
 ## Layout
 
 ```text
-apps/web/          React + Vite frontend
-apps/api/          Python 3.12 + FastAPI backend
-packages/contracts Shared protocols
-docs/              Engineering docs (layers in docs/AGENTS.md)
-.agents/flow/      Roadmap / milestone / issue tree
-.agents/notes/     Decision records
-.agents/skills/    Reusable review and Computer Use skills
-research/          Evaluation tasks, adapters and experiments
-scripts/           Dependency-free gates
+apps/web/           Vue 3 + Vite frontend
+apps/api/           Python 3.12 + FastAPI backend
+packages/contracts  Shared protocols
+docs/               Engineering docs
+.agents/            Flow, notes and skills
+research/           Evaluation tasks, adapters and experiments
+scripts/            Dependency-free gates
 ```
