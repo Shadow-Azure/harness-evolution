@@ -4,7 +4,7 @@ English | [中文](bugfix-claude-agent-attachment-prompt.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-11
+id: bugfix-12
 milestone: bugfix
 depends:
   - m9-02
@@ -20,7 +20,7 @@ scope:
   - plans/**
   - .agents/**
 adr:
-  - ../../notes/proposed/bug-fix/2026-11-21-claude-attachment-prompt-snapshot.md
+  - ../../notes/implemented/bug-fix/2026-11-21-claude-attachment-prompt-snapshot.md
 github:
   number: 471
   url: https://github.com/Shadow-Azure/harness-evolution/issues/471

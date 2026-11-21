@@ -324,7 +324,7 @@ class TraceParserFactory:
 @TraceParserFactory.register
 class ClaudeCodeTraceParser(BaseTraceParser):
     runtime_key = "claude-code"
-    parser_version = 7
+    parser_version = 8
 
     @classmethod
     def can_parse(cls, payloads):

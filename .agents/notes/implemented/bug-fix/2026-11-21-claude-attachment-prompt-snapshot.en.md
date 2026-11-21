@@ -1,6 +1,6 @@
 # Agent Note: Claude Code nested attachment prompt snapshot
 
-Status: proposed
+Status: implemented
 
 English | [中文](2026-11-21-claude-attachment-prompt-snapshot.md)
 
@@ -30,6 +30,5 @@ There is a second blocker: the child `agentMeta` only has `name`, not `agentType
 
 ## Consequences
 
-- Issue [#471](https://github.com/Shadow-Azure/harness-evolution/issues/471) tracks both the parser subclass fix and the `agent_tree` `definition_hash` propagation; only after both does the parent `kind=agent` event carry the body hash and match the target revision for all six agents.
-- Until the code lands this Note is `proposed`; the implementation PR moves it to `implemented/bug-fix/` and updates facts without changing the decision.
+- Issue [#471](https://github.com/Shadow-Azure/harness-evolution/issues/471) tracks the parser subclass fix and the `agent_tree` `definition_hash` propagation; this PR implements both, so the parent `kind=agent` event carries the body hash even without a target revision.
 - Existing top-level `prompt_snapshot` / `api-request-shape.system` compatibility is unchanged; `shape.system` is not promoted to a definition source.
