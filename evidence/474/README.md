@@ -1,7 +1,7 @@
 # Smoke evidence for #474
 
 Baseline revision: 09abb40c (origin/main before the change)
-Changed revision: 5db830a7 (branch head)
+Changed revision: 372e1a58 (branch head)
 
 Scenarios captured with a real browser against the SQLite-backed app:
 - 01/03: interrupted run detail banner before/after the copy change.
