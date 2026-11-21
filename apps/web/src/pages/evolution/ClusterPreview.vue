@@ -312,8 +312,8 @@ function backToList(): void {
       <section
         v-else-if="
           run.status === 'failed' ||
-          run.status === 'blocked' ||
-          run.status === 'interrupted'
+            run.status === 'blocked' ||
+            run.status === 'interrupted'
         "
         class="card panel state-error"
         role="alert"
