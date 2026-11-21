@@ -1271,7 +1271,8 @@ app/api/deps.py             # require_workspace_role(wid, minimum)
 - `service/jobs.py` 提供 `JobRunner`：`submit(kind, payload, ref_id)` 落 `job_runs` 行（`queued`），由进程内 worker 串行执行；
 - **串行**用一把全局 `asyncio.Lock` 保证；同 `(kind, ref_id)` 已有活跃任务时按 kind 区分：`sync` / `evolution_retry` 命中去重，service 层捕获后返回已有 job（路由层 `202 {jobId, reused:true}`，见 §2.2.1 / §5.8.1）；`evolution_prepare` / `evolution_advance` / `evolution_apply` 冲突抛 `RUN_BUSY`（409）；
 - 状态与进度写 `job_runs`（`queued/running/completed/failed/interrupted` + `progress`）；
-- 重启恢复：lifespan 把残留 `running` 标 `interrupted`；若 `ref_id` 指向 evolution run，同时写 `run_interrupted` 事件；可重试的 kind（sync）重新入队；
+- 重启恢复：lifespan 把残留 `running` 标 `interrupted`；若 `ref_id` 指向 evolution run，同时写 `run_interrupted` 与 `job_recovered` 事件，并按同一阶段 kind 重新入队（sync 保持新 ref 重试）；各 evolution 阶段从持久检查点继续，prepare/push 先对账远端 ref；
+- 租约与心跳：领取写 `lease_owner`/`lease_expires_at`/`heartbeat_at`，handler 运行期间续租，终结时清租；停机先停止接单，在 `HE_JOB_DRAIN_TIMEOUT_SECONDS` 内等待在跑 handler，超时取消并标 `interrupted`，由下次启动接管；
 - 未来并行/CI：新增 executor 实现（调 CI 平台接口），`job_runs.executor='ci'`、`external_job_id` 记录远端任务 id，业务 service 不变。
 
 ```python

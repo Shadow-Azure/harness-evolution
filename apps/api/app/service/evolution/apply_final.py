@@ -81,6 +81,11 @@ class EvolutionApplyService:
                 "applied": False,
                 "reason": "round already decided",
             }
+        if run.status == "interrupted":
+            await self._runs.mark_recovered(run.id)
+            refreshed = await self._runs.get_run(run.id)
+            if refreshed is not None:
+                run = refreshed
         if run.mode != "full" or run.status != "running":
             return {
                 "runId": run.id,
@@ -189,6 +194,11 @@ class EvolutionFinalizeService:
                 "finalized": False,
                 "reason": "run is already complete",
             }
+        if run.status == "interrupted":
+            await self._runs.mark_recovered(run.id)
+            refreshed = await self._runs.get_run(run.id)
+            if refreshed is not None:
+                run = refreshed
         if run.status != "running":
             return {
                 "runId": run.id,
@@ -252,6 +262,7 @@ class EvolutionFinalizeService:
                 next_retry_at=retry_at,
                 retry_attempts=retry_attempts,
                 retryable=exc.retryable,
+                detail=exc.detail,
             ) from None
         push_status = "succeeded" if self._workspaces.push_enabled else "skipped"
         completed = await self._runs.complete_run(

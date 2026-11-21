@@ -46,8 +46,16 @@ job_runs = Table(
     Column("started_at", DateTime(timezone=True), nullable=True),
     Column("finished_at", DateTime(timezone=True), nullable=True),
     Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("lease_owner", String(64), nullable=True),
+    Column("lease_expires_at", DateTime(timezone=True), nullable=True),
+    Column("heartbeat_at", DateTime(timezone=True), nullable=True),
     Index("ix_job_runs_status", "status"),
     Index("ix_job_runs_ref_id", "ref_id"),
+)
+Index(
+    "ix_job_runs_status_lease_expires_at",
+    job_runs.c.status,
+    job_runs.c.lease_expires_at,
 )
 Index(
     "ix_job_runs_kind_created_at",
@@ -92,6 +100,9 @@ class JobRunRecord:
     started_at: datetime | None
     finished_at: datetime | None
     updated_at: datetime
+    lease_owner: str | None = None
+    lease_expires_at: datetime | None = None
+    heartbeat_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,4 +137,13 @@ def record_from_row(row: Any) -> JobRunRecord:
         started_at=as_shanghai(started_at) if started_at is not None else None,
         finished_at=as_shanghai(finished_at) if finished_at is not None else None,
         updated_at=as_shanghai(row["updated_at"]),
+        lease_owner=row.get("lease_owner"),
+        lease_expires_at=(
+            as_shanghai(row["lease_expires_at"])
+            if row.get("lease_expires_at") is not None
+            else None
+        ),
+        heartbeat_at=(
+            as_shanghai(row["heartbeat_at"]) if row.get("heartbeat_at") is not None else None
+        ),
     )

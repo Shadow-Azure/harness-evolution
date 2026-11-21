@@ -1426,7 +1426,7 @@ describe("evolution run detail page", () => {
     const wrapper = await mountPage();
 
     expect(wrapper.get("[data-testid='interrupted-banner']").text()).toContain(
-      "任务被中断，可查看最后事件",
+      "任务被中断，系统将自动恢复；可查看最后事件",
     );
     expect(wrapper.find("[data-testid='run-retry']").exists()).toBe(false);
   });

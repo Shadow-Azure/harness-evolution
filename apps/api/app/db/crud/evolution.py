@@ -163,7 +163,10 @@ class EvolutionRepository:
         async with self._database.transaction() as session:
             await session.execute(
                 update(evolution_runs)
-                .where(evolution_runs.c.id == run_id)
+                .where(
+                    evolution_runs.c.id == run_id,
+                    evolution_runs.c.status.notin_(("completed", "failed")),
+                )
                 .values(
                     status="interrupted",
                     error_stage=stage,
@@ -210,6 +213,23 @@ class EvolutionRepository:
                 update(evolution_runs).where(evolution_runs.c.id == run_id).values(**values),
             )
 
+    async def mark_recovered(self, run_id: str) -> None:
+        """Return an interrupted run to running and clear stale terminal/blocked facts."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(
+                    status="running",
+                    blocked_stage=None,
+                    next_retry_at=None,
+                    error_stage=None,
+                    error_message=None,
+                    error_at=None,
+                    finished_at=None,
+                ),
+            )
+
     async def mark_resumed(self, run_id: str) -> None:
         """Clear a prior blocked state when retry execution begins."""
         async with self._database.transaction() as session:
@@ -224,6 +244,7 @@ class EvolutionRepository:
                     error_message=None,
                     error_at=None,
                     next_retry_at=None,
+                    finished_at=None,
                 ),
             )
 
@@ -300,6 +321,32 @@ class EvolutionRepository:
                 update(evolution_runs)
                 .where(evolution_runs.c.id == run_id)
                 .values(stats=deepcopy(dict(stats))),
+            )
+
+    async def write_workspace_checkpoint(
+        self,
+        run_id: str,
+        *,
+        repo_path: str,
+        base_ref: str | None,
+        base_commit: str,
+        branch_name: str,
+        workspace_path: str,
+        push_repo_url: str,
+    ) -> None:
+        """Persist the pre-push workspace facts so a restart can reconcile them."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(
+                    repo_path=repo_path,
+                    base_ref=base_ref,
+                    base_commit=base_commit,
+                    branch_name=branch_name,
+                    workspace_path=workspace_path,
+                    push_repo_url=push_repo_url,
+                ),
             )
 
     async def mark_prepared(

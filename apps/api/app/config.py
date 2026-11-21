@@ -98,6 +98,9 @@ class Settings(BaseSettings):
     event_replay_limit: int = Field(default=500, gt=0, le=5_000)
     sync_interval_seconds: int = Field(default=60, ge=0)
     sync_lock_ttl_seconds: int = Field(default=30 * 60, gt=0)
+    job_lease_seconds: int = Field(default=90, ge=10, le=86_400)
+    job_heartbeat_seconds: float = Field(default=15.0, gt=0, le=3_600)
+    job_drain_timeout_seconds: float = Field(default=25.0, ge=0, le=600)
     upstream_base_url: str | None = None
     upstream_token: SecretStr | None = None
     upstream_api_major: UpstreamApiMajor = 1
@@ -180,6 +183,13 @@ class Settings(BaseSettings):
         """Reject configuration that would sign JWTs with an empty key."""
         if not self.jwt_secret.get_secret_value():
             raise ValueError("HE_JWT_SECRET must not be empty")
+        return self
+
+    @model_validator(mode="after")
+    def require_valid_job_timing(self) -> "Settings":
+        """Keep at least one heartbeat renewal inside every lease window."""
+        if self.job_heartbeat_seconds >= self.job_lease_seconds:
+            raise ValueError("HE_JOB_HEARTBEAT_SECONDS must be less than HE_JOB_LEASE_SECONDS")
         return self
 
     @model_validator(mode="after")

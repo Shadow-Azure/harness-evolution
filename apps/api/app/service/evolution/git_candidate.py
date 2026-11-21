@@ -208,6 +208,7 @@ class EvolutionCandidateService:
         trace: CandidateTrace,
         *,
         job_id: str | None = None,
+        resume: bool = False,
     ) -> EvolutionRoundRecord:
         """Create, commit, and push one candidate with bounded immediate retries."""
         if round_.status in {"evaluating", "deciding", "accepted", "rejected", "skipped"}:
@@ -240,6 +241,7 @@ class EvolutionCandidateService:
                 patch=patch,
                 message=message,
                 expected_run_id=run.id,
+                reset_workspace=resume,
             )
         except GitOperationError as exc:
             await self._handle_git_failure(
@@ -344,6 +346,7 @@ class EvolutionCandidateService:
                 next_retry_at=retry_at,
                 retry_attempts=0,
                 retryable=exc.retryable,
+                detail=exc.detail,
             ) from None
 
         pushed = await self._runs.mark_round_push_succeeded(
@@ -717,6 +720,7 @@ class EvolutionCandidateService:
             next_retry_at=retry_at,
             retry_attempts=retry_attempts,
             retryable=error.retryable,
+            detail=error.detail,
         ) from None
 
 
