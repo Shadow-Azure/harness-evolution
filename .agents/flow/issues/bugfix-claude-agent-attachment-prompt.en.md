@@ -11,7 +11,7 @@ depends:
   - m9-04
   - m9-07
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/app/service/acquisition/parsers/**
   - apps/api/app/service/acquisition/agent_tree.py
