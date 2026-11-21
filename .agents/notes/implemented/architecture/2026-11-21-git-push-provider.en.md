@@ -33,6 +33,7 @@ No target push/eval/credential fields are added: the provider creates the fork, 
 ## Consequences
 
 - Adding a host requires one subclass plus a registry entry; the prepare/candidate/final state machine and evaluation contract stay unchanged.
+- The parent `push_ref` / `remote_ref` methods are reserved template helpers; production push/ls-remote/delete-ref still runs in `GitWorkspaceManager`, while the provider owns URLs, authentication, forks, and APIs.
 - Target/run need new-field migrations; old runs and unconfigured fields fall back to current behavior and stay compatible.
 - Deploy needs `HE_GIT_PUSH_PROVIDER` and `HE_GIT_PUSH_TOKEN`, plus `GIT_ASKPASS` injection; a new machine only needs a redeploy, not manual credential setup.
 - PAT status is not surfaced on the target page: the target contract stays unchanged because the credential is deployment-level, and the run detail only shows the derived push target.

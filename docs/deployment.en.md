@@ -69,7 +69,7 @@ When production access to GitHub is unstable, a local Xray/VLESS proxy that serv
 
 ## Git workspaces and pushes
 
-Evolution run workspaces cache the target ref and clone from it; the push target is controlled by `HE_GIT_PUSH` / `HE_GIT_PUSH_URL`. See [Git workspaces and pushes](git-workspace.en.md) for the cache, single-ref clone, push credential policy, and per-operation proxy observability.
+Run workspaces cache the target ref and clone from it; the provider creates the fork automatically, with `HE_GIT_PUSH_URL` as the no-token fallback. See [Git workspaces and pushes](git-workspace.en.md) for the cache, single-ref clone, push credential policy, and per-operation proxy observability.
 
 ## Upstream health and drift logs
 

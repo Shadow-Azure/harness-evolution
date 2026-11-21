@@ -249,12 +249,50 @@ async def test_provider_failure_becomes_a_sanitized_push_error(
 
     with pytest.raises(
         GitOperationError,
-        match=r"push fork preparation failed \(HTTP 401\)",
+        match=r"push fork preparation failed \(HTTP 401: token rejected or expired\)",
     ) as raised:
         await manager.prepare(run)
 
     assert raised.value.stage == "push"
     assert raised.value.retryable is False
+    assert "fake-provider-token" not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    ("status_code", "retryable"),
+    [
+        (401, False),
+        (403, False),
+        (404, False),
+        (429, True),
+        (503, True),
+        (None, True),
+    ],
+)
+async def test_provider_failure_retryability_follows_the_http_status(
+    tmp_path: Path,
+    repositories: tuple[Path, Path, str],
+    status_code: int | None,
+    retryable: bool,
+) -> None:
+    """Rate limits, host outages, and transport errors can be retried; auth cannot."""
+    upstream, _fork, base_commit = repositories
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+        provider=FakeProvider(
+            failure=GitPushProviderError(
+                "git host API request failed",
+                status_code=status_code,
+            ),
+        ),
+    )
+
+    with pytest.raises(GitOperationError) as raised:
+        await manager.prepare(_run(str(upstream), base_commit))
+
+    assert raised.value.stage == "push"
+    assert raised.value.retryable is retryable
     assert "fake-provider-token" not in str(raised.value)
 
 

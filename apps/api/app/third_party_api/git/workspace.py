@@ -1079,9 +1079,9 @@ class GitWorkspaceManager:
             try:
                 return await self._provider.ensure_fork(run.repo_url)
             except GitPushProviderError as exc:
-                status = f" (HTTP {exc.status_code})" if exc.status_code is not None else ""
+                detail = _provider_failure_detail(exc.status_code)
                 raise GitOperationError(
-                    f"push fork preparation failed{status}",
+                    f"push fork preparation failed ({detail})",
                     stage="push",
                     retryable=exc.status_code is None
                     or exc.status_code in {429, 500, 502, 503, 504},
@@ -1493,6 +1493,23 @@ async def _terminate_process_group(process: asyncio.subprocess.Process) -> None:
         return
     if process.returncode is None:
         await process.wait()
+
+
+def _provider_failure_detail(status_code: int | None) -> str:
+    """Map a provider HTTP status to a durable, credential-free diagnosis."""
+    if status_code is None:
+        return "network error"
+    if status_code == 401:
+        return "HTTP 401: token rejected or expired"
+    if status_code == 403:
+        return "HTTP 403: token lacks repository or fork permission"
+    if status_code == 404:
+        return "HTTP 404: upstream repository not found"
+    if status_code == 429:
+        return "HTTP 429: rate limited"
+    if status_code >= 500:
+        return f"HTTP {status_code}: host temporarily unavailable"
+    return f"HTTP {status_code}: request rejected"
 
 
 def _safe_component(value: str) -> str:

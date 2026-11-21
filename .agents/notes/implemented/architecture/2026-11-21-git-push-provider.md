@@ -33,6 +33,7 @@ PAT 通过 `HE_GIT_PUSH_TOKEN` 从 GitHub Secrets 注入服务器 `.env`（0600�
 ## Consequences
 
 - 新增平台只需一个子类 + 注册项；prepare/candidate/final 状态机与评测契约不变。
+- 父类的 `push_ref` / `remote_ref` 当前是预留的公共模板方法；生产 push/ls-remote/delete-ref 仍由 `GitWorkspaceManager` 执行，provider 只负责 URL、认证、fork 与 API。
 - target/run 需要迁移新字段；旧 run/未配置字段回退现有行为，保持兼容。
 - Deploy 需要新增 `HE_GIT_PUSH_PROVIDER` 与 `HE_GIT_PUSH_TOKEN`，以及 `GIT_ASKPASS` 注入；换机器重新部署即可，不手工配凭据。
 - PAT 状态不在 target 页面暴露：target 契约保持不变，凭据属于部署级配置；run 详情只显示派生后的 push 目标。

@@ -69,7 +69,7 @@ API 启动时解析绝对路径、`mkdir` 并写探针；不可写时 `/api/heal
 
 ## Git 工作区与推送
 
-自进化 run 的工作区按目标 ref 建缓存并克隆，推送目标由 `HE_GIT_PUSH` / `HE_GIT_PUSH_URL` 控制；缓存、单 ref 克隆、推送凭据策略与逐操作代理可观测性见 [Git 工作区与推送](git-workspace.md)。
+run 工作区按目标 ref 建缓存并克隆，推送目标由 provider 自动 fork，`HE_GIT_PUSH_URL` 作为无 token 兜底；缓存、单 ref 克隆、推送凭据策略与逐操作代理可观测性见 [Git 工作区与推送](git-workspace.md)。
 
 ## 上游健康与漂移日志
 

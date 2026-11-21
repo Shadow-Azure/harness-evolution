@@ -199,10 +199,11 @@ def test_remote_urls_follow_provider_host_and_fork_owner() -> None:
 async def test_github_ensure_fork_creates_then_polls_the_user_fork() -> None:
     """Fork creation is one POST followed by bounded readiness polling."""
     requests: list[tuple[str, str]] = []
-    repo_reads = 0
+    fork_created = False
+    poll_count = 0
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal repo_reads
+        nonlocal fork_created, poll_count
         requests.append((request.method, str(request.url)))
         if request.url.path == "/user":
             return json_response(200, {"login": "me"})
@@ -211,10 +212,13 @@ async def test_github_ensure_fork_creates_then_polls_the_user_fork() -> None:
         if request.method == "POST" and request.url.path.endswith("/forks"):
             assert request.headers["Authorization"] == f"Bearer {TOKEN}"
             assert json.loads(request.content) == {"default_branch_only": False}
+            fork_created = True
             return json_response(202, {"full_name": "me/superpowers"})
         if request.url.path == "/repos/me/superpowers":
-            repo_reads += 1
-            if repo_reads == 1:
+            if not fork_created:
+                return json_response(404, {"message": "Not Found"})
+            poll_count += 1
+            if poll_count == 1:
                 return json_response(404, {"message": "Not Found"})
             return json_response(200, {"full_name": "me/superpowers"})
         return json_response(500, {"message": "unexpected"})
@@ -236,7 +240,7 @@ async def test_github_ensure_fork_creates_then_polls_the_user_fork() -> None:
 
     assert fork_url == "https://github.com/me/superpowers.git"
     assert ("POST", "https://api.github.com/repos/obra/superpowers/forks") in requests
-    assert sleeps == []
+    assert sleeps == [1.0]
     assert TOKEN not in fork_url
 
 
