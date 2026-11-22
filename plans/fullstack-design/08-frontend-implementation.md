@@ -662,19 +662,19 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 - 时间段：`from/to` 必填，校验 `from <= to`（后端再判 ≤366 天）。
 - **潜在策略**：默认策略单选 + 「自定义」三开关（`includeSelfReport` / `includeAfterObject` / `sameObjectOnly`）；custom 至少勾一条，否则本地拦截（后端 `422 POLICY_INVALID` 兜底）。
 - 从错误详情进入（`focusCaseId`）：第 1 步显示只读提示「以 bad case <id> 启动」，自动带出它的对象/版本线索；不改变潜在判定口径。
-- 「下一步」：字段级校验（对象/版本/时间段缺失、版本 ref 格式非法都标红 `aria-invalid`）→ 服务端 git 存在性校验（tag/分支/commit 必须解析到 commit）→ `POST …/evolution/preview/sessions` → Step 2；ref 不存在或内容解析失败回到第 1 步，`409 NO_ASSOCIATED_SESSIONS` 同样进 Step 2 渲染「没有对象版本出现过的 Session」空态并禁用前进。
+- 「下一步」：字段级校验（对象/版本/时间段缺失、版本 ref 格式非法都标红 `aria-invalid`）→ 服务端 git 存在性校验（tag/分支/commit 必须解析到 commit）→ `POST …/evolution/preview/sessions` → Step 2；ref 不存在或内容解析失败回到第 1 步，`409 NO_ASSOCIATED_SESSIONS` 同样进 Step 2 渲染「没有对象出现过的 Session」空态并禁用前进。
 
 **Step 2 Session 关联**
 
-- 条件摘要 chip + 「修改条件」（条件同时展示 `targetVersion` ref 与解析后的 `targetRevision` body hash）；统计：上报过 bad case 的 Session / 关联 / 跳过 / 版本未知 / 待轨迹同步。
+- 条件摘要 chip + 「修改条件」（条件同时展示 `targetVersion` ref 与解析后的 `targetRevision` body hash）；统计：上报过 bad case 的 Session / 关联 / 跳过 / 待轨迹同步。
 - 表格 4 条/页：Session 短标签 / 对象出现标记 / 对象触发点时间 / 该 Session 的 bad case 数；Session 单元格用 `short`（来源 `session_families.short_title`）单行省略，`title` 提供完整标题悬停，表格固定布局保证四列同屏；只列**对象出现过**的 Session，本步只做关联、不计算潜在数；未出现的只进「跳过」统计，不入表。skill/agent/knowledge 目标的“出现”都按归一化 body hash 匹配，tag 只用于解析内容 hash。
-- 空态：「没有对象版本出现过的 Session；可回第 1 步调整时间段或对象版本」+ 前进禁用。
+- 空态：「没有对象出现过的 Session；可回第 1 步调整时间段或选择其他对象」+ 前进禁用。
 - 分页只重新请求 `preview/sessions` 的 `page`，不重算匹配（服务端已按条件稳定排序）。
 
 **Step 3 潜在 bad case**
 
 - 统计：时间段内 bad case 总数 / 潜在数 / 按命中原因分布（`self_report` / `after_object` / `both`）。
-- 表格 5 条/页：bad case ID（深链）/ 上报来源 `object_name` / 类型 / 触发点时间 / 来源 Session / **命中原因** / **锚点来源**；`orderState=unknown` 显示“触发点顺序待轨迹时间戳重放”；`anchorSource=post_process` 显示“后处理上报”徽标，`eventIndex=INT_MAX` 不直接显示数字。对象版本未知的 Session 已在第 2 步跳过并计数，不进入本表。
+- 表格 5 条/页：bad case ID（深链）/ 上报来源 `object_name` / 类型 / 触发点时间 / 来源 Session / **命中原因** / **锚点来源**；`orderState=unknown` 显示“触发点顺序待轨迹时间戳重放”；`anchorSource=post_process` 显示“后处理上报”徽标，`eventIndex=INT_MAX` 不直接显示数字。
 - 空态：「当前策略没有命中潜在 bad case；可返回调整时间段或策略」+ 前进禁用（`409 NO_POTENTIAL_MATCHED`）。
 - 「上一步」回到 Step 2；修改策略需回 Step 1（策略影响潜在集合，前端不就地重算）。
 

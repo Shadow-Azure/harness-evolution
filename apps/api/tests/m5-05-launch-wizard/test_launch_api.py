@@ -693,11 +693,11 @@ async def test_start_run_rejects_window_and_empty_hits(
     )
     empty = await launch_api.post(
         "/api/evolution/runs",
-        json=_query_body(targetVersion="v9.9.9"),
+        json=_query_body(**{"from": "2026-01-01", "to": "2026-01-02"}),
     )
     reported_only = await launch_api.post(
         "/api/evolution/runs",
-        json=_query_body(targetName="reported-object"),
+        json=_query_body(targetName="reported-object", targetVersion="v9.9.9"),
     )
 
     assert inverted.status_code == 422
@@ -898,14 +898,14 @@ async def test_cluster_preview_creates_cluster_only_run(
 
     empty = await launch_api.post(
         "/api/evolution/cluster-previews",
-        json=_query_body(mode="cluster_only", targetVersion="v9.9.9"),
+        json=_query_body(mode="cluster_only", **{"from": "2026-01-01", "to": "2026-01-02"}),
     )
     assert empty.status_code == 409
     assert empty.json()["error"]["code"] == "NO_ASSOCIATED_SESSIONS"
 
     response = await launch_api.post(
         "/api/evolution/cluster-previews",
-        json=_query_body(mode="cluster_only"),
+        json=_query_body(mode="cluster_only", targetVersion="v9.9.9"),
     )
     assert response.status_code == 202
     body = response.json()

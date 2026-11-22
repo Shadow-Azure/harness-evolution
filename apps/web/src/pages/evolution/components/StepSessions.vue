@@ -29,13 +29,13 @@ function changePage(delta: number): void {
   <article class="card panel">
     <h3 class="sec-title">
       第 2 步 · Session 关联
-      <span class="sub">只展示对象版本出现过的 Session；未出现的 Session 已跳过</span>
+      <span class="sub">只展示对象出现过的 Session；未出现的 Session 已跳过</span>
     </h3>
     <div class="wz-stats">
       <span class="st"><b>{{ summary.reported }}</b><span>上报过 bad case</span></span>
       <span class="st accent"><b>{{ summary.associated }}</b><span>关联</span></span>
       <span class="st"><b>{{ summary.skipped }}</b><span>跳过</span></span>
-      <span class="st"><b>{{ summary.versionUnresolved }}</b><span>版本未知</span></span>
+      <span v-if="summary.versionUnresolved" class="st"><b>{{ summary.versionUnresolved }}</b><span>版本未知</span></span>
       <span class="st"><b>{{ summary.pending }}</b><span>待轨迹同步</span></span>
     </div>
     <div
@@ -89,7 +89,7 @@ function changePage(delta: number): void {
       v-else
       class="waiting"
     >
-      没有对象版本出现过的 Session；可回第 1 步调整时间段或对象版本
+      没有对象出现过的 Session；可回第 1 步调整时间段或选择其他对象
     </p>
     <div
       v-if="payload.total > 0"

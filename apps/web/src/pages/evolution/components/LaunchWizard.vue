@@ -1758,14 +1758,13 @@ const reasonEntries = computed(() => {
 
               <div class="wz-section-title">
                 第 2 步 · Session 关联
-                <span>先判断对象版本出现在哪些 Session，只有出现的 Session 才进入下一步</span>
+                <span>先判断对象出现在哪些 Session，只有出现的 Session 才进入下一步</span>
               </div>
 
               <div class="wz-stats">
                 <span class="st"><b>{{ sessionSummary?.reported ?? 0 }}</b><span>上报过 bad case 的 Session</span></span>
                 <span class="st accent"><b>{{ sessionSummary?.associated ?? 0 }}</b><span>对象出现 · 已关联</span></span>
                 <span class="st"><b>{{ sessionSummary?.skipped ?? 0 }}</b><span>未出现 · 跳过</span></span>
-                <span class="st"><b>{{ sessionSummary?.versionUnresolved ?? 0 }}</b><span>版本未知</span></span>
                 <span class="st"><b>{{ sessionSummary?.pending ?? 0 }}</b><span>待轨迹同步</span></span>
               </div>
 
@@ -1837,7 +1836,7 @@ const reasonEntries = computed(() => {
                   </button>
                 </div>
                 <p class="f-note">
-                  只展示对象版本出现过的 Session；未出现的 Session 已跳过，下一步再按策略筛选潜在 bad case。
+                  只展示对象出现过的 Session；未出现的 Session 已跳过，下一步再按策略筛选潜在 bad case。
                 </p>
               </template>
               <div
@@ -1852,8 +1851,8 @@ const reasonEntries = computed(() => {
                   >
                     ∅
                   </div>
-                  <h3>没有对象版本出现过的 Session</h3>
-                  <p>可回第 1 步调整时间段或对象版本后重试。</p>
+                  <h3>没有对象出现过的 Session</h3>
+                  <p>可回第 1 步调整时间段或选择其他对象后重试。</p>
                 </div>
               </div>
 

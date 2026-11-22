@@ -53,7 +53,7 @@ class ContextObjectOccurrence:
 
     ref: str
     agent_id: str
-    event_index: int
+    event_index: int | None
     tree_index: int
     object_version: str | None
     object_revision: str | None
@@ -78,7 +78,7 @@ class ContextEvidencePoint:
     ref: str
     kind: str
     agent_id: str
-    event_index: int
+    event_index: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,8 +218,7 @@ class AttributionContextProvider:
         events_by_session: dict[str, list[ObjectEventRecord]] = defaultdict(list)
         target_revision = target_revision or resolve_target_revision(target_version)[1]
         for event in events:
-            if _matches_revision(event, target_version, target_revision):
-                events_by_session[event.session_id].append(event)
+            events_by_session[event.session_id].append(event)
         cases_by_session: dict[str, list[PotentialCase]] = defaultdict(list)
         for candidate in candidates:
             cases_by_session[candidate.session_id].append(candidate)
@@ -248,26 +247,6 @@ class AttributionContextProvider:
                     path_agent_refs=context_case.path_agent_refs,
                 )
         return projections
-
-
-def _matches_revision(event: ObjectEventRecord, target_version: str, revision: str) -> bool:
-    """Keep the same exact version/revision identity selected by the matcher."""
-    accepted = {
-        target_version,
-        revision,
-        revision.removeprefix("digest:"),
-        revision.removeprefix("tag:"),
-    }
-    return bool(
-        accepted.intersection(
-            {
-                event.object_revision,
-                event.object_version,
-                event.definition_hash,
-                event.document_revision,
-            }
-        )
-    )
 
 
 def _bundle(
@@ -312,9 +291,13 @@ def _bundle(
     )
     occurrence_rows = tuple(
         ContextObjectOccurrence(
-            ref=f"event:{item.agent_id}:{item.event_index}",
+            ref=(
+                f"agent:{item.agent_id}"
+                if item.event_index < 0
+                else f"event:{item.agent_id}:{item.event_index}"
+            ),
             agent_id=item.agent_id,
-            event_index=item.event_index,
+            event_index=item.event_index if item.event_index >= 0 else None,
             tree_index=item.tree_index,
             object_version=item.object_version,
             object_revision=item.object_revision,

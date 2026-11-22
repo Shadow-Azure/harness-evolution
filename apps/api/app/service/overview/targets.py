@@ -1049,7 +1049,9 @@ class TargetOverviewService:
             window_start=window_start,
             window_end=window_end,
         )
-        association = await self._matcher.associated_sessions(condition)
+        association = await self._matcher.associated_sessions(
+            condition, observed_revisions=condition.revision_candidates
+        )
         match = await self._matcher.potential_cases(condition, association, self._policy)
         return association, match
 

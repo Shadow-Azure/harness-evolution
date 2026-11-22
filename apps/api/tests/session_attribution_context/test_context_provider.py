@@ -147,7 +147,9 @@ async def test_one_bundle_serves_multiple_badcases_without_n_plus_one() -> None:
     assert store.agent_calls == 1
     assert store.event_calls == 1
     assert contexts[CASE_ID].bundle is contexts[OTHER_CASE_ID].bundle
-    assert len(contexts[CASE_ID].bundle.object_occurrences) == 2
+    occurrences = contexts[CASE_ID].bundle.object_occurrences
+    assert len(occurrences) == 3
+    assert {event.object_revision for event in occurrences} == {"tag:v2.0.0", "tag:v1.0.0"}
     assert contexts[CASE_ID].report_ref == "event:agent-m10-03-main:1"
     assert contexts[CASE_ID].report_ref in {
         point.ref for point in contexts[CASE_ID].bundle.evidence_points

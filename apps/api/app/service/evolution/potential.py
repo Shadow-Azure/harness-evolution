@@ -387,7 +387,7 @@ class CaseVerdict:
 
 @dataclass(frozen=True, slots=True)
 class AssociatedSession:
-    """One Session whose trace contains the requested object version."""
+    """One Session whose trace contains the requested object."""
 
     session_id: str
     short: str
@@ -469,7 +469,7 @@ def compare_triggers(
 
     Args:
         case: Resolved bad-case anchor, or ``None`` when it cannot be resolved.
-        target: Object entry point from a version-matched `agent_events` row.
+        target: Object entry point from a matching event or node in the Session tree.
         post_process: Whether the case anchor is the explicit post-process kind.
 
     Returns:
@@ -589,11 +589,14 @@ class PotentialMatcher:
         """Bind the matcher to its read-only repository."""
         self._repository = repository
 
-    async def associated_sessions(self, condition: MatchCondition) -> SessionAssociation:
-        """Return Sessions whose trace contains the requested object identity.
+    async def associated_sessions(
+        self, condition: MatchCondition, *, observed_revisions: frozenset[str] | None = None
+    ) -> SessionAssociation:
+        """Return Sessions whose trace contains the requested object type and name.
 
         Args:
             condition: Normalized workspace, object, version, revision, and window.
+            observed_revisions: Restrict historical overview statistics to one observed version.
 
         Returns:
             The non-overlapping Session partition plus the window case snapshot.
@@ -623,18 +626,23 @@ class PotentialMatcher:
         )
         events_by_session: dict[str, list[ObjectEventRecord]] = {}
         for event in events:
-            events_by_session.setdefault(event.session_id, []).append(event)
+            if observed_revisions is None or not observed_revisions.isdisjoint(
+                (
+                    event.object_version,
+                    event.object_revision,
+                    event.definition_hash,
+                    event.document_revision,
+                )
+            ):
+                events_by_session.setdefault(event.session_id, []).append(event)
         case_counts = Counter(case.session_id for case in cases)
 
-        candidates = condition.revision_candidates
         associated: list[AssociatedSession] = []
-        version_unresolved: list[str] = []
         skipped: list[str] = []
         for session_id in traced:
             session_events = events_by_session.get(session_id, [])
-            matching = [event for event in session_events if _event_matches(event, candidates)]
-            if matching:
-                entry = min(matching, key=cmp_to_key(_compare_entry_order))
+            if session_events:
+                entry = min(session_events, key=cmp_to_key(_compare_entry_order))
                 associated.append(
                     AssociatedSession(
                         session_id=session_id,
@@ -655,8 +663,6 @@ class PotentialMatcher:
                         bad_case_count=case_counts.get(session_id, 0),
                     ),
                 )
-            elif any(_event_revision_unresolved(event) for event in session_events):
-                version_unresolved.append(session_id)
             else:
                 skipped.append(session_id)
 
@@ -666,7 +672,7 @@ class PotentialMatcher:
             reported=len(session_ids),
             associated=len(associated),
             skipped=len(skipped),
-            version_unresolved=len(version_unresolved),
+            version_unresolved=0,
             pending=len(pending),
             sessions=tuple(associated),
             cases=cases,
@@ -1200,33 +1206,6 @@ def _compare_entry_order(left: ObjectEventRecord, right: ObjectEventRecord) -> i
     left_key = (left.tree_index, left.event_index)
     right_key = (right.tree_index, right.event_index)
     return (left_key > right_key) - (left_key < right_key)
-
-
-def _event_matches(event: ObjectEventRecord, candidates: frozenset[str]) -> bool:
-    """Return whether any persisted identity form matches the target."""
-    return any(
-        value is not None and value in candidates
-        for value in (
-            event.object_version,
-            event.object_revision,
-            event.definition_hash,
-            event.document_revision,
-        )
-    )
-
-
-def _event_revision_unresolved(event: ObjectEventRecord) -> bool:
-    """Return whether an event carries no usable version or revision identity."""
-    if event.object_version is not None:
-        return False
-    return not any(
-        value is not None and value != "unknown"
-        for value in (
-            event.object_revision,
-            event.definition_hash,
-            event.document_revision,
-        )
-    )
 
 
 def _associated_order_key(

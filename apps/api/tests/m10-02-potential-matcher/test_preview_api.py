@@ -160,7 +160,7 @@ async def test_sessions_preview_partitions_and_paginates(preview_api: PreviewApi
         preview_api.database,
         agent_id=skipped_main,
         event_index=0,
-        kind="skill",
+        kind="agent",
         name=TARGET_NAME,
         object_version="v1.0.0",
         triggered_at=OBJECT_ENTRY,
@@ -190,12 +190,12 @@ async def test_sessions_preview_partitions_and_paginates(preview_api: PreviewApi
     payload = first.json()
     assert payload["summary"] == {
         "reported": 9,
-        "associated": 6,
+        "associated": 7,
         "skipped": 1,
-        "versionUnresolved": 1,
+        "versionUnresolved": 0,
         "pending": 1,
     }
-    assert payload["total"] == 6
+    assert payload["total"] == 7
     assert payload["targetRevision"] == "tag:v2.0.0"
     assert len(payload["items"]) == 4
     assert payload["pageSize"] == 4
@@ -210,7 +210,7 @@ async def test_sessions_preview_partitions_and_paginates(preview_api: PreviewApi
         item["title"] for item in payload["items"]
     }
     assert second.status_code == 200
-    assert len(second.json()["items"]) == 2
+    assert len(second.json()["items"]) == 3
 
 
 async def test_sessions_preview_returns_short_title_for_long_prompt(

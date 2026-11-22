@@ -797,7 +797,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
     await reachStep2(wrapper);
 
     expect(wrapper.get("[data-testid='wizard-session-empty']").text()).toContain(
-      "没有对象版本出现过的 Session",
+      "没有对象出现过的 Session",
     );
     expect(
       wrapper

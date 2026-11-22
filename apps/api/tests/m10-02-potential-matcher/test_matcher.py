@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
 from sqlalchemy import update
 
-from app.db.models.domain import bad_case_analysis, probe_reports
+from app.db.crud.potential import ObjectType
+from app.db.models.domain import agents, bad_case_analysis, probe_reports
 from app.db.models.evolution import evolution_run_candidates
 from app.service.evolution.attribution_contracts import default_execution_manifest
 from app.service.evolution.potential import (
@@ -429,8 +431,8 @@ async def test_missing_reporter_leaves_order_unknown(harness: Harness) -> None:
     assert {item.order_state for item in match.cases} == {"unknown"}
 
 
-async def test_session_partition_pending_unresolved_skipped(harness: Harness) -> None:
-    """reported splits into associated, versionUnresolved, skipped, and pending."""
+async def test_session_partition_by_target_presence(harness: Harness) -> None:
+    """A missing version qualifies, but a same-name event of another type does not."""
     associated = "session-associated"
     unresolved = "session-unresolved"
     skipped = "session-skipped"
@@ -442,7 +444,7 @@ async def test_session_partition_pending_unresolved_skipped(harness: Harness) ->
         harness.database,
         agent_id=skipped_main,
         event_index=0,
-        kind="skill",
+        kind="agent",
         name=TARGET_NAME,
         object_version="v1.0.0",
         triggered_at=OBJECT_ENTRY,
@@ -461,14 +463,41 @@ async def test_session_partition_pending_unresolved_skipped(harness: Harness) ->
     association = await harness.matcher.associated_sessions(condition)
 
     assert association.reported == 4
-    assert association.associated == 1
-    assert association.version_unresolved == 1
+    assert association.associated == 2
+    assert association.version_unresolved == 0
     assert association.skipped == 1
     assert association.pending == 1
-    assert [session.session_id for session in association.sessions] == [associated]
+    assert {session.session_id for session in association.sessions} == {associated, unresolved}
     assert association.sessions[0].bad_case_count == 1
     match = await harness.matcher.potential_cases(condition, association, default_policy())
-    assert [item.bad_case_id for item in match.cases] == [f"case-{associated}"]
+    assert {item.bad_case_id for item in match.cases} == {
+        f"case-{associated}",
+        f"case-{unresolved}",
+    }
+
+
+@pytest.mark.parametrize(("kind", "field"), [("agent", "agent_type"), ("skill", "skill_name")])
+async def test_node_without_invocation_event_matches(
+    harness: Harness, kind: ObjectType, field: str
+) -> None:
+    session_id = "session-node-only"
+    root = await seed_session(harness.database, session_id=session_id)
+    await seed_agent(
+        harness.database,
+        session_id=session_id,
+        agent_id="child",
+        parent_agent_id=root,
+        tree_index=1,
+    )
+    async with harness.database.transaction() as session:
+        await session.execute(
+            update(agents).where(agents.c.id == "child").values({field: TARGET_NAME})
+        )
+    await seed_case(harness.database, session_id=session_id, case_id="node-case", created_at=LATER)
+    association = await harness.matcher.associated_sessions(harness.condition(target_type=kind))
+    assert association.associated == 1
+    assert association.sessions[0].object_entry.agent_id == "child"
+    assert association.sessions[0].object_entry.event_index == -1
 
 
 async def test_knowledge_real_shape_associates_by_object_revision(harness: Harness) -> None:
@@ -564,8 +593,8 @@ async def test_tag_only_skill_event_associates_by_object_revision(harness: Harne
     assert match.potential == 1
 
 
-async def test_unknown_and_nonmatching_revisions_are_skipped(harness: Harness) -> None:
-    """A non-matching digest is skipped; only a missing revision is unresolved."""
+async def test_unknown_and_nonmatching_revisions_are_associated(harness: Harness) -> None:
+    """Both unknown and different observed revisions qualify for attribution."""
     unresolved = "session-revision-unresolved"
     nonmatching = "session-revision-nonmatching"
     unresolved_main = await seed_session(
@@ -611,9 +640,8 @@ async def test_unknown_and_nonmatching_revisions_are_skipped(harness: Harness) -
     association = await harness.matcher.associated_sessions(harness.condition())
 
     assert association.reported == 2
-    assert association.associated == 0
-    assert association.version_unresolved == 1
-    assert association.skipped == 1
+    assert {s.session_id for s in association.sessions} == {unresolved, nonmatching}
+    assert association.version_unresolved == association.skipped == 0
 
 
 async def test_window_filters_by_shanghai_day(harness: Harness) -> None:
