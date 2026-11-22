@@ -69,6 +69,9 @@ CLAUDE_SETTINGS_FILENAME: Final = "settings.json"
 EDIT_PLAN_FILENAME: Final = ".harness-evolution/edits.json5"
 """The one file the edit phase may write; the deterministic applier owns it later."""
 
+READ_ONLY_TOOLS: Final = ("Read", "Grep", "Glob")
+"""Tools the edit phase may use to explore before it submits one plan (07 §5.5.4)."""
+
 HEALTH_TIMEOUT_SECONDS: Final = 10.0
 """Upper bound for the ``--version`` health probe."""
 
@@ -336,7 +339,7 @@ class ClaudeCodeProvider(AIAgentProvider):
             filename=EDIT_PLAN_FILENAME,
         )
         prompt = _compose_prompt(request.prompt, prep.prompt_addendum)
-        argv = self._edit_argv(prompt, prep)
+        argv = self._edit_argv(prompt, prep, settings_file=self._settings_file())
         _, parsed = await self._call(
             "edit",
             argv,
@@ -502,9 +505,15 @@ class ClaudeCodeProvider(AIAgentProvider):
             argv.extend(("--settings", str(settings_file)))
         return tuple(argv)
 
-    def _edit_argv(self, prompt: str, prep: SubmissionPrep) -> tuple[str, ...]:
-        """Build one edit argv; the edit session is kept for ``--resume``."""
-        return (
+    def _edit_argv(
+        self,
+        prompt: str,
+        prep: SubmissionPrep,
+        *,
+        settings_file: Path,
+    ) -> tuple[str, ...]:
+        """Build one edit argv; exploration is read-only and the session is kept."""
+        argv = [
             self._binary(),
             "--bare",
             "-p",
@@ -514,10 +523,11 @@ class ClaudeCodeProvider(AIAgentProvider):
             "--permission-mode",
             PERMISSION_MODE,
             "--allowed-tools",
-            prep.allowed_tools[0],
-            "--settings",
-            str(self._settings_file()),
-        )
+            ",".join((*READ_ONLY_TOOLS, *prep.allowed_tools)),
+        ]
+        if settings_file.is_file():
+            argv.extend(("--settings", str(settings_file)))
+        return tuple(argv)
 
     def _binary(self) -> str:
         """Resolve the configured CLI path with ``~`` expansion."""
@@ -620,7 +630,14 @@ def _single_json_object(document: str) -> Mapping[str, Any] | None:
 
 
 def _capabilities_from(payload: Mapping[str, Any]) -> tuple[str, ...]:
-    """Extract the ``system/init.capabilities`` string list when present."""
+    """Extract ``system/init.capabilities`` from an init document only.
+
+    The design names exactly one feature-detection source (07 §5.5.1), so a
+    capability list on any other document type or subtype is ignored rather
+    than treated as a second, implicit source.
+    """
+    if payload.get("type") != "system" or payload.get("subtype") != "init":
+        return ()
     raw = payload.get("capabilities")
     if not isinstance(raw, list):
         return ()
@@ -764,6 +781,7 @@ def _version_line(stdout: str) -> str:
 
 __all__ = [
     "EDIT_PLAN_FILENAME",
+    "READ_ONLY_TOOLS",
     "AsyncioClaudeCliRunner",
     "ClaudeCliResult",
     "ClaudeCliRunner",

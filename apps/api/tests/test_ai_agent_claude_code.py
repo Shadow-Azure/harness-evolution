@@ -36,6 +36,7 @@ from app.third_party_api.ai_agent.base import (
 from app.third_party_api.ai_agent.claude_code import (
     EDIT_PLAN_FILENAME,
     HEALTH_TIMEOUT_SECONDS,
+    READ_ONLY_TOOLS,
     AsyncioClaudeCliRunner,
 )
 
@@ -290,6 +291,11 @@ async def test_analyze_parses_ndjson_last_result_and_capabilities(tmp_path: Path
                     "type": "system",
                     "subtype": "init",
                     "capabilities": ["session-resume", "json-schema"],
+                },
+                {
+                    "type": "system",
+                    "subtype": "status",
+                    "capabilities": ["not-an-init-document"],
                 },
                 {"type": "assistant", "message": {"content": []}},
                 {"type": "result", "session_id": "first-result", "is_error": False},
@@ -634,6 +640,7 @@ async def test_edit_workspace_collects_the_plan_without_applying_it(
         ],
     }
     settings_file = tmp_path / "settings.json"
+    settings_file.write_text("{}\n", encoding="utf-8")
     runner = MockRunner(
         _edit_step(
             plan,
@@ -667,11 +674,31 @@ async def test_edit_workspace_collects_the_plan_without_applying_it(
     argv = call.argv
     assert call.cwd == workspace
     assert call.timeout_seconds == EDIT_TIMEOUT_SECONDS
-    assert argv[argv.index("--allowed-tools") + 1] == (f"Write(./{EDIT_PLAN_FILENAME})")
+    expected_tools = ",".join((*READ_ONLY_TOOLS, f"Write(./{EDIT_PLAN_FILENAME})"))
+    assert argv[argv.index("--allowed-tools") + 1] == expected_tools
     assert "make the skill tolerate slow hosts" in argv[argv.index("-p") + 1]
     assert argv[argv.index("--settings") + 1] == str(settings_file)
     assert "--no-session-persistence" not in argv
     assert "--resume" not in argv
+
+
+async def test_edit_omits_settings_when_the_deployment_file_is_absent(
+    tmp_path: Path,
+) -> None:
+    """Edit advertises ``--settings`` only for an existing deployment settings file."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    plan = {"summary": "no-op plan", "edits": []}
+    runner = MockRunner(_edit_step(plan))
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    await provider.edit_workspace(EditRequest(workspace=workspace, prompt="edit"))
+
+    assert "--settings" not in runner.calls[0].argv
 
 
 async def test_edit_invalid_plan_raises_without_retry(tmp_path: Path) -> None:
