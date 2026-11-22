@@ -54,6 +54,7 @@ class RunnerCall:
 
     argv: tuple[str, ...]
     cwd: Path
+    cwd_existed: bool
     env: Mapping[str, str]
     timeout_seconds: float
 
@@ -82,6 +83,7 @@ class MockRunner:
             RunnerCall(
                 argv=tuple(argv),
                 cwd=cwd,
+                cwd_existed=await asyncio.to_thread(cwd.is_dir),
                 env=dict(env),
                 timeout_seconds=timeout_seconds,
             ),
@@ -265,7 +267,7 @@ async def test_analyze_success_single_json_result(tmp_path: Path) -> None:
 
     call = runner.calls[0]
     argv = call.argv
-    assert call.cwd.is_dir()
+    assert call.cwd_existed
     assert call.cwd.name.startswith("he-ai-submission-")
     assert call.timeout_seconds == ANALYZE_TIMEOUT_SECONDS
     assert argv[0] == str(binary)
@@ -279,6 +281,22 @@ async def test_analyze_success_single_json_result(tmp_path: Path) -> None:
     assert "--no-session-persistence" in argv
     assert "--settings" not in argv
     assert "--resume" not in argv
+
+
+async def test_analyze_discards_the_disposable_task_directory(tmp_path: Path) -> None:
+    """The provider releases its one-shot task directory once the call returns."""
+    binary = _binary(tmp_path)
+    runner = MockRunner(_analyze_step({"confidence": 0.5, "summary": "ok"}))
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path, binary=binary),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    await provider.analyze(_request())
+
+    assert runner.calls[0].cwd_existed is True
+    assert not runner.calls[0].cwd.exists()
 
 
 async def test_analyze_parses_ndjson_last_result_and_capabilities(tmp_path: Path) -> None:

@@ -213,6 +213,14 @@ class StructuredSubmission:
         else:
             task_directory = _existing_directory(directory)
             schema_path = None
+            # An explicit directory survives between rounds, so a previous
+            # round's plan must not be collectable when this call's agent does
+            # not write a new one. The target is the channel's own output path,
+            # so removing it before the call is safe and keeps "one submission
+            # per prepare" true for workspaces too.
+            target = task_directory.joinpath(*result_relative.parts)
+            with contextlib.suppress(FileNotFoundError):
+                target.unlink()
             addendum = self._prompt_addendum(
                 normalized_key,
                 result_relative,

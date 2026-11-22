@@ -284,6 +284,21 @@ class ClaudeCodeProvider(AIAgentProvider):
         """Run one headless analysis and collect it through the submission channel."""
         started = self._clock()
         prep = self._submission.prepare(request.task, request.output_model)
+        try:
+            return await self._analyze_with(prep, request, started)
+        finally:
+            # The task directory is disposable; without an explicit release it
+            # would live as long as the provider singleton and accumulate
+            # schema/result files for every analysis.
+            self._submission.discard(prep)
+
+    async def _analyze_with(
+        self,
+        prep: SubmissionPrep,
+        request: AnalysisRequest,
+        started: float,
+    ) -> AnalysisResult:
+        """Run the analysis and one feedback resume against one prepared directory."""
         prompt = _compose_prompt(request.prompt, prep.prompt_addendum)
         settings_file = self._settings_file()
         argv = self._analyze_argv(prompt, prep, settings_file=settings_file)

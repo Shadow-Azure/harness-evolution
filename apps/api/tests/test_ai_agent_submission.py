@@ -620,6 +620,27 @@ def test_explicit_directory_with_the_default_filename_still_inlines_the_schema(
     assert '"confidence"' in prep.prompt_addendum
 
 
+def test_explicit_directory_removes_a_stale_result_before_the_next_round(
+    tmp_path: Path,
+) -> None:
+    """A workspace keeps old rounds; a failed write must not collect the stale plan."""
+    channel = StructuredSubmission()
+    stale = tmp_path / ".harness-evolution" / "edits.json5"
+    stale.parent.mkdir()
+    stale.write_text('{"summary": "old round", "edits": []}', encoding="utf-8")
+
+    prep = channel.prepare(
+        "agent.edit",
+        EditPlan,
+        directory=tmp_path,
+        filename=".harness-evolution/edits.json5",
+    )
+
+    assert prep.result_path == stale
+    assert not stale.exists()
+    assert channel.collect(prep, EditPlan.model_validate).status == "missing"
+
+
 def test_custom_filename_in_a_disposable_directory_keeps_the_written_schema(
     tmp_path: Path,
 ) -> None:
