@@ -3,7 +3,7 @@
 A case-level confidence is a rule score over three independent signals:
 whether the two trigger points are comparable, whether the reported failure
 names the attributed object, and whether the reported failure pins the exact
-target version or body hash. The same persisted evidence always produces the
+resolved revision or body hash. The same persisted evidence always produces the
 same score, and the engine never calls a model to obtain it.
 """
 
@@ -24,7 +24,7 @@ _NO_VOTE_SCORE = 0.3
 """No signal holds; the attribution has no direct evidence."""
 
 _CONTRADICTION_SCORE = 0.2
-"""The failure pins the target version but names another object."""
+"""The failure pins the target revision but names another object."""
 
 _REVISION_PREFIXES = ("tag:", "digest:", "provider:")
 
@@ -105,28 +105,21 @@ def _identity_forms(value: str | None) -> set[str]:
     return forms
 
 
-def version_identity_forms(
-    target_version: str | None,
-    target_revision: str | None,
-) -> frozenset[str]:
-    """Return every persisted form that counts as a direct version hit.
+def version_identity_forms(revision: str | None) -> frozenset[str]:
+    """Return every persisted form that counts as a direct revision hit.
 
-    A bad case may record the version a human selected (for example
-    ``v2.0.0``) while the run persists the normalized revision identity
-    (``tag:v2.0.0`` or ``digest:...``). Both sides keep their prefix-free forms
-    so a body hash recorded bare by the trace parser still matches.
+    The resolved revision keeps its ``tag:`` / ``digest:`` / ``provider:``
+    prefix and its prefix-free form, so a body hash recorded bare by the trace
+    parser still matches while the selected human version never has to join the
+    cache-key identity.
 
     Args:
-        target_version: User-selected version stored on the run.
-        target_revision: Normalized revision resolved for the run.
+        revision: Normalized revision resolved for the run.
 
     Returns:
-        The accepted identity strings; empty when neither side carries one.
+        The accepted identity strings; empty when the run has no revision.
     """
-    forms: set[str] = set()
-    for value in (target_version, target_revision):
-        forms.update(_identity_forms(value))
-    return frozenset(forms)
+    return frozenset(_identity_forms(revision))
 
 
 def extract_signals(
@@ -137,7 +130,6 @@ def extract_signals(
     case_object_version: str | None,
     probe_type: str,
     probe_object: str,
-    target_version: str | None,
     target_revision: str | None,
 ) -> EvidenceSignals:
     """Evaluate the three evidence signals from persisted attribution inputs.
@@ -149,8 +141,7 @@ def extract_signals(
         case_object_version: Version or revision the bad case reports.
         probe_type: Object kind the attribution is written against.
         probe_object: Object name the attribution is written against.
-        target_version: Version selected for the run.
-        target_revision: Revision resolved for the run.
+        target_revision: Normalized revision resolved for the run.
 
     Returns:
         The three booleans consumed by :func:`evidence_score`.
@@ -168,8 +159,7 @@ def extract_signals(
             signature is not None and target_signature is not None and signature == target_signature
         ),
         version_proof=(
-            case_version is not None
-            and case_version in version_identity_forms(target_version, target_revision)
+            case_version is not None and case_version in version_identity_forms(target_revision)
         ),
     )
 

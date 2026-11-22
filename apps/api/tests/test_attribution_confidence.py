@@ -35,7 +35,6 @@ def attribution_input(
     case_object_type: str | None = "skill",
     case_object_name: str | None = "deep-research",
     case_object_version: str | None = "v2.0.0",
-    target_version: str | None = "v2.0.0",
 ) -> AttributionInput:
     """Build one engine input whose default evidence names the target object/version."""
     return AttributionInput(
@@ -58,7 +57,6 @@ def attribution_input(
         case_object_type=case_object_type,
         case_object_name=case_object_name,
         case_object_version=case_object_version,
-        target_version=target_version,
     )
 
 
@@ -70,10 +68,13 @@ def test_failure_signature_is_case_folded_and_blank_safe() -> None:
 
 
 def test_version_identity_forms_keep_prefix_free_variants() -> None:
-    """A selected tag and a normalized digest both accept their bare form."""
-    forms = version_identity_forms("v2.0.0", "digest:" + "a" * 64)
-
-    assert forms == {"v2.0.0", "digest:" + "a" * 64, "a" * 64}
+    """A normalized tag and a normalized digest both accept their bare form."""
+    assert version_identity_forms("tag:v2.0.0") == {"tag:v2.0.0", "v2.0.0"}
+    assert version_identity_forms("digest:" + "a" * 64) == {
+        "digest:" + "a" * 64,
+        "a" * 64,
+    }
+    assert version_identity_forms(None) == frozenset()
 
 
 def test_extract_signals_accepts_a_bare_body_hash_case_version() -> None:
@@ -85,7 +86,6 @@ def test_extract_signals_accepts_a_bare_body_hash_case_version() -> None:
         case_object_version="a" * 64,
         probe_type="skill",
         probe_object="deep-research",
-        target_version="v2.0.0",
         target_revision="digest:" + "a" * 64,
     )
 
@@ -106,7 +106,6 @@ def test_extract_signals_marks_a_different_object_as_no_signature() -> None:
         case_object_version=None,
         probe_type="skill",
         probe_object="deep-research",
-        target_version="v2.0.0",
         target_revision="tag:v2.0.0",
     )
 

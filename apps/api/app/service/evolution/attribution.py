@@ -91,7 +91,6 @@ class AttributionInput:
     case_object_type: str | None = None
     case_object_name: str | None = None
     case_object_version: str | None = None
-    target_version: str | None = None
 
     def evidence_signals(self) -> EvidenceSignals:
         """Return the three deterministic evidence checks for this input."""
@@ -102,7 +101,6 @@ class AttributionInput:
             case_object_version=self.case_object_version,
             probe_type=self.probe_type,
             probe_object=self.probe_object,
-            target_version=self.target_version,
             target_revision=self.object_version,
         )
 
@@ -546,7 +544,6 @@ class AttributionRunner:
             case_object_type=evidence.object_type,
             case_object_name=evidence.object_name,
             case_object_version=evidence.object_version,
-            target_version=run.target_version,
         )
 
     def _blocked(

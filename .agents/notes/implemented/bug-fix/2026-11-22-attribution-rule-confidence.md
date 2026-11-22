@@ -10,10 +10,11 @@ Status: implemented
 
 ## Decision
 
-- 三信号计票：时间序可比（`order=comparable`）、失败签名匹配（bad case 声明的对象身份与归因对象一致）、版本直证（bad case 声明的版本或 revision 命中 run 的 `target_version` / `target_revision`，含裸 body hash）。
+- 三信号计票：时间序可比（`order=comparable`）、失败签名匹配（bad case 声明的对象身份与归因对象一致）、版本直证（bad case 声明的版本或 revision 命中 run 解析出的 revision 身份或其裸 body hash）。
 - 区间：三票 0.9；两票 0.8；一票 0.5；零票 0.3；版本直证但对象身份不一致视为信号矛盾，0.2。
 - 非目标结论的置信度取证据完整度的补数：归因证据越充分，「非该对象问题」越不确定；因此顺序未知但对象与版本都命中的 case 为 0.2，完全没有信号时为 0.7。
-- 信号只取已持久化、重试仍能重建的数据：`order_state` 来自候选快照，对象身份与版本来自 `bad_cases` 行，目标身份与版本来自 run；不新增表列、不改 cache key、不改 API 字段，引擎名仍是 `rule-v1`。
+- 信号只取已持久化、重试仍能重建的数据：`order_state` 来自候选快照，对象身份与版本来自 `bad_cases` 行，目标身份与 revision 来自 run；不新增表列、不改 cache key、不改 API 字段，引擎名仍是 `rule-v1`。
+- 版本直证只认解析后的 revision（`tag:` / `digest:` / `provider:`），不认 run 的选版本：选版本不在缓存键里，把它纳入信号会让同一缓存键在不同选版本下得到不同分数却仍共用缓存。
 - 「低置信不入簇」只落两个常量（开关 `False`、阈值 0.5），本 issue 不接线；启用时需要同时改聚类输入查询。
 
 ## Alternatives considered

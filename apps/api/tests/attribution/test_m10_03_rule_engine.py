@@ -30,7 +30,6 @@ def attribution_input(
     case_object_type: str = "skill",
     case_object_name: str = "deep-research",
     case_object_version: str | None = "v2.0.0",
-    target_version: str = "v2.0.0",
 ) -> AttributionInput:
     """Build one pure engine input with deterministic defaults.
 
@@ -58,7 +57,6 @@ def attribution_input(
         case_object_type=case_object_type,
         case_object_name=case_object_name,
         case_object_version=case_object_version,
-        target_version=target_version,
     )
 
 

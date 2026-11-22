@@ -10,10 +10,11 @@ The case-level confidence written by attribution is three constants in the engin
 
 ## Decision
 
-- Count three signals: order comparable (`order=comparable`), failure signature match (the object identity the bad case declares equals the attributed object), and direct version proof (the version or revision the bad case declares hits the run's `target_version` / `target_revision`, including a bare body hash).
+- Count three signals: order comparable (`order=comparable`), failure signature match (the object identity the bad case declares equals the attributed object), and direct version proof (the version or revision the bad case declares hits the revision identity the run resolved, or its bare body hash).
 - Bands: three votes 0.9; two votes 0.8; one vote 0.5; zero votes 0.3; direct version proof with a different object identity is contradictory evidence at 0.2.
 - A non-target conclusion takes the complement of attribution completeness: the stronger the attribution evidence, the less certain "this is not the object" becomes. An order-unknown case that names both the object and the exact version therefore scores 0.2, while a case with no signal scores 0.7.
-- Signals only use persisted data that a retry can reconstruct: `order_state` from the candidate snapshot, object identity and version from the `bad_cases` row, and target identity and version from the run. No schema column, cache key, or API field changes, and the engine stays `rule-v1`.
+- Signals only use persisted data that a retry can reconstruct: `order_state` from the candidate snapshot, object identity and version from the `bad_cases` row, and target identity and revision from the run. No schema column, cache key, or API field changes, and the engine stays `rule-v1`.
+- Version proof only accepts the resolved revision (`tag:` / `digest:` / `provider:`), never the run's selected version: the selected version is not part of the cache key, so including it would let one cache key produce different scores and still share the cached row.
 - The optional "low-confidence stays out of clusters" gate ships as two constants (switch `False`, threshold 0.5) and is not wired in this issue; enabling it also needs the cluster-input query change.
 
 ## Alternatives considered
