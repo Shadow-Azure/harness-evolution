@@ -820,7 +820,7 @@ RunDetail.vue
 - 生成 patch 中：展示“正在生成/应用 patch、commit candidate”，不显示 candidate ref。
 - 评测中：展示 **candidate ref + commit**（如 `.../candidate/r2`），表示已 push、等待评测；显示 `evalStatus` 与下一次轮询时间。
 - 本地模式：`HE_GIT_PUSH=false` 时 candidate 只存在本地；卡片显示“本地候选（未推送）”，candidate 标签显示“已生成 · 未推送”，推送状态显示“已跳过（本地模式）”，不进入评测。
-- 已接纳：展示 **amend 后的 commit**（保留追溯信息并追加 current/candidate/delta/verdict），以及 `Harness-Evaluated-Commit`（评测时的 commit）。
+- 已接纳：展示 **amend 后的 commit**（保留追溯信息并追加 current/candidate/delta/verdict），以及 `Harness-Evaluated-Commit`（评测时的 commit）。commit 区块默认只显示 12 位 hash 与首行 subject；完整 `finalCommit.message`（Markdown）通过「查看完整 commit message」展开，复用 `renderMarkdown()` 渲染标题、列表、链接与 trailer，不得按纯文本插值；仅单行 message 不显示展开入口。
 - 未接纳：显示“candidate 已删除，run 分支不变”；不展示 commit hash。
 - blocked：显示是 patch、push 还是 eval 阶段失败；patch/push 阶段保留本轮中间状态，可重试。
 - `DiffView`：行首 `+`/`-`/`@@` 着色；原型的 diff 行数组直接渲染即可，不需要解析 unified diff。

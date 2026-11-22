@@ -2,6 +2,7 @@
 import type { EvolutionStepIteration, StepRound } from "@harness/contracts";
 import { computed, ref } from "vue";
 
+import { renderMarkdown } from "../../../utils/markdown";
 import DiffView from "./DiffView.vue";
 import EvalCompare from "./EvalCompare.vue";
 import StepCaseTable from "./StepCaseTable.vue";
@@ -14,6 +15,7 @@ const props = defineProps<{
 
 const rounds = computed(() => props.step.payload.rounds);
 const expanded = ref<Set<string>>(initialExpanded(rounds.value));
+const commitOpen = ref<Set<string>>(new Set());
 
 function initialExpanded(items: StepRound[]): Set<string> {
   const active = items.find((round) => !isTerminal(round));
@@ -135,6 +137,25 @@ function pushLabel(status: string): string {
       skipped: "已跳过（本地模式）",
     }[status] ?? status
   );
+}
+
+function commitSubject(message: string): string {
+  return message.split("\n")[0]?.trim() ?? "";
+}
+
+function commitBody(message: string): string {
+  return message.split("\n").slice(1).join("\n").trim();
+}
+
+function commitBodyHtml(message: string): string {
+  return renderMarkdown(commitBody(message), { images: false });
+}
+
+function toggleCommit(roundId: string): void {
+  const next = new Set(commitOpen.value);
+  if (next.has(roundId)) next.delete(roundId);
+  else next.add(roundId);
+  commitOpen.value = next;
 }
 </script>
 
@@ -259,8 +280,37 @@ function pushLabel(status: string): string {
             <span class="hash">{{ round.candidate.commit.slice(0, 12) }}</span>
           </div>
           <div class="commit">
-            <span class="hash">{{ round.finalCommit.hash.slice(0, 12) }}</span>
-            <span>{{ round.finalCommit.message }}</span>
+            <div class="commit-head">
+              <span class="hash">{{ round.finalCommit.hash.slice(0, 12) }}</span>
+              <span
+                class="commit-subject"
+                :title="commitSubject(round.finalCommit.message)"
+              >{{ commitSubject(round.finalCommit.message) }}</span>
+            </div>
+            <template v-if="commitBody(round.finalCommit.message)">
+              <button
+                class="commit-toggle"
+                type="button"
+                :aria-expanded="commitOpen.has(round.roundId)"
+                :aria-controls="`commit-message-${round.roundId}`"
+                @click="toggleCommit(round.roundId)"
+              >
+                <span>
+                  {{ commitOpen.has(round.roundId)
+                    ? "收起完整 commit message"
+                    : "查看完整 commit message" }}
+                </span>
+                <span class="commit-caret">{{ commitOpen.has(round.roundId) ? "▾" : "▸" }}</span>
+              </button>
+              <!-- eslint-disable vue/no-v-html -- MarkdownIt raw HTML is disabled and links are hardened. -->
+              <div
+                v-if="commitOpen.has(round.roundId)"
+                :id="`commit-message-${round.roundId}`"
+                class="commit-message markdown"
+                v-html="commitBodyHtml(round.finalCommit.message)"
+              />
+              <!-- eslint-enable vue/no-v-html -->
+            </template>
           </div>
         </section>
 
@@ -475,7 +525,14 @@ function pushLabel(status: string): string {
   color: var(--text-dim);
   font-family: var(--mono);
   font-size: 11.5px;
+}
+
+.candidate {
   word-break: break-all;
+}
+
+.commit {
+  overflow-wrap: anywhere;
 }
 
 .candidate.empty {
@@ -499,10 +556,148 @@ function pushLabel(status: string): string {
 }
 
 .commit {
-  display: grid;
-  gap: 6px;
   border-color: color-mix(in srgb, var(--green) 35%, transparent);
   background: color-mix(in srgb, var(--green) 6%, transparent);
+}
+
+.commit-head {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.commit-subject {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-toggle {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.commit-toggle:hover {
+  text-decoration: underline;
+}
+
+.commit-caret {
+  font-size: 10px;
+}
+
+.commit-message {
+  overflow: auto;
+  max-height: 520px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px dashed var(--border);
+  color: var(--text-dim);
+  font-family:
+    -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.commit-message :deep(p) {
+  margin: 0 0 6px;
+}
+
+.commit-message :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.commit-message :deep(h1),
+.commit-message :deep(h2),
+.commit-message :deep(h3),
+.commit-message :deep(h4),
+.commit-message :deep(h5),
+.commit-message :deep(h6) {
+  margin: 9px 0 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.commit-message :deep(h1:first-child),
+.commit-message :deep(h2:first-child),
+.commit-message :deep(h3:first-child),
+.commit-message :deep(h4:first-child),
+.commit-message :deep(h5:first-child),
+.commit-message :deep(h6:first-child) {
+  margin-top: 0;
+}
+
+.commit-message :deep(ul),
+.commit-message :deep(ol) {
+  margin: 3px 0 8px;
+  padding-left: 18px;
+}
+
+.commit-message :deep(li) {
+  margin: 1px 0;
+}
+
+.commit-message :deep(a) {
+  color: var(--blue);
+}
+
+.commit-message :deep(code) {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-inset);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.commit-message :deep(pre) {
+  overflow-x: auto;
+  margin: 6px 0 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-inset);
+}
+
+.commit-message :deep(pre code) {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 10.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.commit-message :deep(strong) {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.commit-message :deep(em) {
+  font-style: italic;
+}
+
+.commit-message :deep(hr) {
+  margin: 9px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
 }
 
 .evaluated-commit {
@@ -525,6 +720,7 @@ function pushLabel(status: string): string {
 .hash {
   color: var(--green);
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .reject-note {

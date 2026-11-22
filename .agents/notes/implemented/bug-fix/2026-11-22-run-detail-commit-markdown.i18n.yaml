@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/bug-fix/2026-11-22-run-detail-commit-markdown.md
+2026-11-22-run-detail-commit-markdown.md: b6475abb60ff0b05ffdb5ede3bd99acc76bb4285
+2026-11-22-run-detail-commit-markdown.en.md: 8fd30f63c56e8cfd75697f029c0d362e5fe38677
