@@ -46,6 +46,10 @@
 
 数据目录与评测配置经同一通道写入服务器 `.env`：`Deploy` 从 GitHub Environment `vars.HE_DATA_DIR` 取绝对路径（空值用默认），评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入；`apiKeyRef` 只存环境变量名，未配置时跳过。Git 推送凭据同通道注入：`HE_GIT_PUSH_PROVIDER` 总是写入，`HE_GIT_PUSH_TOKEN` 为空时移除旧键，`GIT_ASKPASS` 指向 `/opt/harness/shared/git-askpass.sh`。值经 base64 传输、`inject-config.py` 原子写入并保持 `.env` 0600，注入前备份 `.env.bak.<sha>`；解码失败告警跳过，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [deploy/env.production.example](../deploy/env.production.example)。
 
+### AI Agent 配置
+
+自进化的模型审查与 patch 生成经三个 Secrets 注入：`AI_AGENT_PROVIDER`（`fake` / `claude-code`，默认 `claude-code`）、`HE_AI_AGENT_CLAUDE_BIN`（`claude` CLI 路径，默认 `~/.local/bin/claude`）、`HE_PATCH_SOURCE_MODE`（`placeholder` / `minimal-config`，默认 `placeholder`）。Secret 存在且非空时写入 `.env`，缺失或为空时显式 `--unset`，服务回退 Settings 默认值；`agent-edit` 取值需先由 #488（bugfix-21）扩展枚举，当前写入会启动失败。
+
 ## Claude Code
 
 发布流水线在切换 `current` 之前为 `deploy` 用户安装 Claude Code，并用 GitHub Secrets 写入模型配置；安装包在 runner 侧获取，服务器只解包，不访问 `claude.ai`，不需要 root 或 Node.js。三个 Secret、MiniMax 配置、验证与回滚见 [Claude Code 运维](claude-code.md)。

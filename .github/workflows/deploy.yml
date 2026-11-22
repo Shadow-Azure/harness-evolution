@@ -8,6 +8,10 @@
 #       未配置、配置非法或探测失败时移除 HE_GIT_PROXY，git 直连。
 #       可选 Git 推送凭据：Secrets HE_GIT_PUSH_PROVIDER（github/gitlab，默认 github）
 #       与 HE_GIT_PUSH_TOKEN（PAT）；未配置 token 时移除旧值并保留 GIT_ASKPASS。
+#       可选 AI Agent：Secrets AI_AGENT_PROVIDER（fake/claude-code，默认 claude-code）、
+#       HE_AI_AGENT_CLAUDE_BIN（CLI 路径，默认 ~/.local/bin/claude）与
+#       HE_PATCH_SOURCE_MODE（placeholder/minimal-config，默认 placeholder；agent-edit 见 #488）；
+#       未配置的键从服务器 .env 移除，服务回退 Settings 默认值。
 name: Deploy
 
 on:
@@ -261,6 +265,9 @@ jobs:
           HE_EVAL_API_KEY: ${{ secrets.HE_EVAL_API_KEY }}
           HE_GIT_PUSH_PROVIDER: ${{ secrets.HE_GIT_PUSH_PROVIDER }}
           HE_GIT_PUSH_TOKEN: ${{ secrets.HE_GIT_PUSH_TOKEN }}
+          AI_AGENT_PROVIDER: ${{ secrets.AI_AGENT_PROVIDER }}
+          HE_AI_AGENT_CLAUDE_BIN: ${{ secrets.HE_AI_AGENT_CLAUDE_BIN }}
+          HE_PATCH_SOURCE_MODE: ${{ secrets.HE_PATCH_SOURCE_MODE }}
           GIT_PROXY_URL: ${{ steps.git_proxy.outputs.proxy_url }}
         run: |
           set -euo pipefail
@@ -306,6 +313,23 @@ jobs:
           else
             UNSET_ARGS="$UNSET_ARGS --unset HE_GIT_PUSH_TOKEN"
           fi
+          # AI Agent 三键与 Secret 同名：存在且非空则写入，缺失或空则显式 unset，
+          # 避免删除 Secret 后服务器旧值继续生效；值同样只经 base64 + stdin 传输。
+          if [ -n "${AI_AGENT_PROVIDER:-}" ]; then
+            ENTRIES+=("AI_AGENT_PROVIDER $(printf '%s' "$AI_AGENT_PROVIDER" | base64 | tr -d '\n')")
+          else
+            UNSET_ARGS="$UNSET_ARGS --unset AI_AGENT_PROVIDER"
+          fi
+          if [ -n "${HE_AI_AGENT_CLAUDE_BIN:-}" ]; then
+            ENTRIES+=("HE_AI_AGENT_CLAUDE_BIN $(printf '%s' "$HE_AI_AGENT_CLAUDE_BIN" | base64 | tr -d '\n')")
+          else
+            UNSET_ARGS="$UNSET_ARGS --unset HE_AI_AGENT_CLAUDE_BIN"
+          fi
+          if [ -n "${HE_PATCH_SOURCE_MODE:-}" ]; then
+            ENTRIES+=("HE_PATCH_SOURCE_MODE $(printf '%s' "$HE_PATCH_SOURCE_MODE" | base64 | tr -d '\n')")
+          else
+            UNSET_ARGS="$UNSET_ARGS --unset HE_PATCH_SOURCE_MODE"
+          fi
           # 值以 base64 传输、服务器侧 inject-config.py 解码并原子重写 .env：
           # `&`/`$`/反引号/`|`/引号等特殊字符全部安全；HE_DATA_DIR 总是注入（空值用默认绝对路径）。
           # 注入前备份到 .env.bak.<sha>，release.sh 失败时恢复；单键解码失败只告警跳过。
@@ -323,7 +347,11 @@ jobs:
           fi
           TOKEN_STATE="未配置"
           [ -n "${HE_GIT_PUSH_TOKEN:-}" ] && TOKEN_STATE="已配置"
-          echo "已注入 ${#ENTRIES[@]} 个配置变量（数据目录：$DATA_DIR，Git 代理：${GIT_PROXY_URL:-直连}，Git 推送：$GIT_PUSH_PROVIDER，token $TOKEN_STATE）"
+          AI_AGENT_COUNT=0
+          [ -n "${AI_AGENT_PROVIDER:-}" ] && AI_AGENT_COUNT=$((AI_AGENT_COUNT + 1))
+          [ -n "${HE_AI_AGENT_CLAUDE_BIN:-}" ] && AI_AGENT_COUNT=$((AI_AGENT_COUNT + 1))
+          [ -n "${HE_PATCH_SOURCE_MODE:-}" ] && AI_AGENT_COUNT=$((AI_AGENT_COUNT + 1))
+          echo "已注入 ${#ENTRIES[@]} 个配置变量（数据目录：$DATA_DIR，Git 代理：${GIT_PROXY_URL:-直连}，Git 推送：$GIT_PUSH_PROVIDER，token $TOKEN_STATE，AI Agent Secret：$AI_AGENT_COUNT/3）"
 
       - name: 执行发布（迁移 + 切换 + 重启 + 探活）
         env:

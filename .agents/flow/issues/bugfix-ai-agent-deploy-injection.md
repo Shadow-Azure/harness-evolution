@@ -21,6 +21,7 @@ scope:
   - apps/api/tests/**
   - plans/**
   - .agents/**
+  - scripts/doc-budgets.manifest.json
 adr:
   - ../../notes/proposed/feature/2026-11-22-evolution-real-ai-design.md
 github:

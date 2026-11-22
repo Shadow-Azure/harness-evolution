@@ -46,6 +46,10 @@ Only the private key lives in GitHub; its public half sits in `deploy`'s `author
 
 The data directory and evaluation config share one channel into the server `.env`: `Deploy` takes an absolute path from the GitHub Environment `vars.HE_DATA_DIR` (the default applies when empty), and evaluation-platform secrets (`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`) arrive from GitHub Secrets; `apiKeyRef` stores only an environment-variable name and the step is skipped when absent. Git push credentials ride the same channel: `HE_GIT_PUSH_PROVIDER` is always written, `HE_GIT_PUSH_TOKEN` is unset when empty, and `GIT_ASKPASS` points at `/opt/harness/shared/git-askpass.sh`. Values travel base64-encoded and `inject-config.py` writes them atomically while keeping `.env` at 0600, backing up `.env.bak.<sha>` first; decode failures warn and skip, disk-write failures abort the release. Steps: [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md); template: [deploy/env.production.example](../deploy/env.production.example).
 
+### AI Agent configuration
+
+Model review and patch generation in the evolution loop take three Secrets: `AI_AGENT_PROVIDER` (`fake` / `claude-code`, default `claude-code`), `HE_AI_AGENT_CLAUDE_BIN` (the `claude` CLI path, default `~/.local/bin/claude`), and `HE_PATCH_SOURCE_MODE` (`placeholder` / `minimal-config`, default `placeholder`). A present, non-empty Secret is written to `.env`; a missing or empty one is explicitly `--unset`, and the service falls back to the Settings default. `agent-edit` requires #488 (bugfix-21) to extend the enum first; writing it now fails startup validation.
+
 ## Claude Code
 
 Before switching `current`, the deploy pipeline installs Claude Code for the `deploy` user and writes model configuration from GitHub Secrets; the runner fetches the package and the server only extracts it, with no `claude.ai` access, root, or Node.js. The three secrets, MiniMax setup, verification and rollback live in [Claude Code operations](claude-code.en.md).
