@@ -48,7 +48,7 @@
 
 ### AI Agent 配置
 
-自进化的模型审查与 patch 生成经三个 Secrets 注入：`AI_AGENT_PROVIDER`（`fake` / `claude-code`，默认 `claude-code`）、`HE_AI_AGENT_CLAUDE_BIN`（`claude` CLI 路径，默认 `~/.local/bin/claude`）、`HE_PATCH_SOURCE_MODE`（`placeholder` / `minimal-config`，默认 `placeholder`）。Secret 存在且非空时写入 `.env`，缺失或为空时显式 `--unset`，服务回退 Settings 默认值；`agent-edit` 取值需先由 #488（bugfix-21）扩展枚举，当前写入会启动失败。
+自进化的模型审查与 patch 生成经三个 Secrets 注入：`AI_AGENT_PROVIDER`（`fake` / `claude-code`，默认 `claude-code`）、`HE_AI_AGENT_CLAUDE_BIN`（`claude` CLI 路径，默认 `~/.local/bin/claude`）、`HE_PATCH_SOURCE_MODE`（`placeholder` / `minimal-config`，默认 `placeholder`）。Secret 存在且非空时写入 `.env`，缺失或为空时显式 `--unset`，服务回退 Settings 默认值；`agent-edit` 取值需先由 #488（bugfix-21）扩展枚举，当前写入会启动失败。API 以 `harness` 用户运行且无 home；`~` 不展开，路径不同请把 `HE_AI_AGENT_CLAUDE_BIN` 设为绝对路径。
 
 ## Claude Code
 

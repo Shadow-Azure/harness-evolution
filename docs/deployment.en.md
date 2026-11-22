@@ -48,7 +48,7 @@ The data directory and evaluation config share one channel into the server `.env
 
 ### AI Agent configuration
 
-Model review and patch generation in the evolution loop take three Secrets: `AI_AGENT_PROVIDER` (`fake` / `claude-code`, default `claude-code`), `HE_AI_AGENT_CLAUDE_BIN` (the `claude` CLI path, default `~/.local/bin/claude`), and `HE_PATCH_SOURCE_MODE` (`placeholder` / `minimal-config`, default `placeholder`). A present, non-empty Secret is written to `.env`; a missing or empty one is explicitly `--unset`, and the service falls back to the Settings default. `agent-edit` requires #488 (bugfix-21) to extend the enum first; writing it now fails startup validation.
+Model review and patch generation in the evolution loop take three Secrets: `AI_AGENT_PROVIDER` (`fake` / `claude-code`, default `claude-code`), `HE_AI_AGENT_CLAUDE_BIN` (the `claude` CLI path, default `~/.local/bin/claude`), and `HE_PATCH_SOURCE_MODE` (`placeholder` / `minimal-config`, default `placeholder`). A present, non-empty Secret is written to `.env`; a missing or empty one is explicitly `--unset`, and the service falls back to the Settings default. `agent-edit` requires #488 (bugfix-21) to extend the enum first; writing it now fails startup validation. The API runs as `harness` with no home, so `~` does not expand; set `HE_AI_AGENT_CLAUDE_BIN` to an absolute path when it differs.
 
 ## Claude Code
 
