@@ -15,6 +15,7 @@ scope:
   - apps/api/app/main.py
   - apps/api/tests/**
   - .agents/**
+  - plans/**
 adr:
   - ../../notes/proposed/feature/2026-11-22-evolution-real-ai-design.md
 github:
