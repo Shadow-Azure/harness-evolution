@@ -11,12 +11,15 @@ depends:
   - bugfix-17
   - bugfix-21
 priority: P2
-status: backlog
+status: in-progress
 scope:
   - deploy/**
   - .github/workflows/deploy.yml
   - docs/deployment.md
+  - docs/deployment.en.md
+  - docs/deployment.i18n.yaml
   - apps/api/tests/**
+  - plans/**
   - .agents/**
 adr:
   - ../../notes/proposed/feature/2026-11-22-evolution-real-ai-design.md
