@@ -43,7 +43,7 @@ Reproduction: production Evolution → history → any run with an accepted turn
 
 ### V2 prototype comparison
 
-The corresponding V2 prototype location `plans/ui-prototype-v2/harness-evolution.html#L5435` does not put the full commit body into the card. It uses `commit <short hash>　evolve(<target>): <title>` as the title line and then `cluster:`, `cases:`, and `phenomenon:` as a structured summary; `.commit .cline` only declares `white-space: pre-wrap` (`#L807`) and there is no Markdown parser. In other words, the prototype's treatment is a **bounded structured summary**, not a raw Markdown dump.
+Before this change, the corresponding V2 prototype location `plans/ui-prototype-v2/harness-evolution.html#L5435` did not put the full commit body into the card. It uses `commit <short hash>　evolve(<target>): <title>` as the title line and then `cluster:`, `cases:`, and `phenomenon:` as a structured summary; `.commit .cline` only declares `white-space: pre-wrap` (`#L807`) and there is no Markdown parser. In other words, the prototype's treatment is a **bounded structured summary**, not a raw Markdown dump.
 
 The accepted-turn block in prototype step 6:
 
@@ -63,7 +63,7 @@ Production diverges from the prototype in two ways:
 ### Root cause
 
 1. **The backend already upgraded the commit message to full Markdown.** `build_accepted_message()` in `apps/api/app/service/evolution/git_candidate.py#L108-L147` joins `subject + _message_sections() + "---\n" + trailers`; `_message_sections()` (`#L753-L773`) always emits `## 问题`, `## 分析`, `## 改动`, `## 追溯` with `-` lists, URLs, and `Harness-*` trailers. `apps/api/app/service/evolution/stages.py#L1071-L1078` maps the stored commit message verbatim into `finalCommit.message`; the `StepFinalCommit.message` contract is a plain `string` with no "this is a short subject" constraint.
-2. **The frontend still renders it as a one-line label.** `apps/web/src/pages/evolution/components/StepIterations.vue#L261-L264` interpolates the interpolated `finalCommit.message` as text and never invokes Markdown rendering. The `.commit` style (`#L469-L479`) only sets a monospace font and `word-break: break-all`, with no `white-space: pre-wrap`, so Markdown newlines collapse into spaces and `##` / `---` can only appear literally. Even adding `pre-wrap` would only preserve the raw text, not render Markdown.
+2. **The frontend still renders it as a one-line label.** `apps/web/src/pages/evolution/components/StepIterations.vue#L261-L264` interpolates `finalCommit.message` as text and never invokes Markdown rendering. The `.commit` style (`#L469-L479`) only sets a monospace font and `word-break: break-all`, with no `white-space: pre-wrap`, so Markdown newlines collapse into spaces and `##` / `---` can only appear literally. Even adding `pre-wrap` would only preserve the raw text, not render Markdown.
 3. **The design contract never defined how this message should be displayed.** The `finalCommit.message` example in `plans/fullstack-design/05-api-design.md#L422` is a single line, `evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取`; `plans/fullstack-design/08-frontend-implementation.md#L823` only says "show the amended commit" and does not state that the message is multi-section Markdown or how to render it. So the backend writes Markdown, the frontend reads a single line, and the prototype draws a structured summary; each is locally consistent, and together they produce the raw-text dump in the screenshot.
 4. **Tests do not cover long Markdown.** `apps/web/src/pages/evolution/components/RunDetailConformance.test.ts#L427-L458` only asserts that `Harness-Evaluated-Commit` and the short hash appear; it has no fixture with `##` headings, lists, links, and newlines, and no collapsed/expanded behavior assertion. The regression therefore reaches production with green checks.
 
@@ -79,11 +79,21 @@ Recommend **A: compact summary by default + expandable Markdown**:
 
 - Keep the default view compact: 12-character hash + commit subject + expansion entry; the cluster id/title/category/caseCount/severity already live in the cluster header, and source bad-case details live in the table above, so neither is duplicated in the commit card.
 - Expand the full `finalCommit.message` through "View full commit message" and render it with the existing `renderMarkdown()` so headings, lists, and links are readable and clickable; keep the commit hash and `Harness-Evaluated-Commit`.
-- Update the V2 prototype and the 05/08 design docs to state that `message` is the full Markdown body and that plain-text interpolation is forbidden.
+- This change already implements collapsed-by-default + expandable Markdown rendering in the V2 prototype file on the registration PR (see below); production and the 05/08 design docs still need to state that `message` is the full Markdown body and that plain-text interpolation is forbidden.
 
 Alternative B: render the full body as Markdown without collapsing. Smaller change, but a long message still makes the page very tall and diverges from the prototype's information density.
 
 Alternative C: keep only the prototype's structured summary and hide the full body. Closest to the prototype, but it loses the run/cluster/source-problem traceability, so it is not recommended.
+
+### Option A prototype implementation
+
+Option A is implemented in the V2 prototype: by default only the hash + commit subject + expansion entry are shown; after expansion the full message is rendered as Markdown, so headings, lists, links, and trailers are presented separately. The prototype uses a small inline renderer for the demo; the production implementation reuses `renderMarkdown()`.
+
+Collapsed and expanded states of the same prototype page (`EV-20261109-01`, step 6, 1500×1000 viewport):
+
+![Option A prototype: collapsed by default, showing only the hash, commit subject, and expansion entry](https://github.com/Shadow-Azure/harness-evolution/releases/download/run-detail-commit-markdown-evidence-20261122/option-a-collapsed-clip.png)
+
+![Option A prototype: expanded full commit message rendered as Markdown with readable headings, lists, links, and trailers](https://github.com/Shadow-Azure/harness-evolution/releases/download/run-detail-commit-markdown-evidence-20261122/option-a-expanded-clip.png)
 
 ## Goals
 

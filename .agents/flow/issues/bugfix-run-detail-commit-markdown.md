@@ -43,7 +43,7 @@ github:
 
 ### V2 原型对照
 
-V2 原型对应位置 `plans/ui-prototype-v2/harness-evolution.html#L5435` 没有把完整 commit 正文塞进卡片。它用 `commit <短 hash>　evolve(<target>): <title>` 作为标题行，再用 `cluster:`、`cases:`、`phenomenon:` 三行输出结构化摘要；`.commit .cline` 只声明 `white-space: pre-wrap`（`#L807`），也没有 Markdown 解析器。也就是说，原型的处理是「有边界的结构化摘要」，不是「把 Markdown 原文原样展示」。
+V2 原型原状（本次改动前）对应位置 `plans/ui-prototype-v2/harness-evolution.html#L5435` 没有把完整 commit 正文塞进卡片。它用 `commit <短 hash>　evolve(<target>): <title>` 作为标题行，再用 `cluster:`、`cases:`、`phenomenon:` 三行输出结构化摘要；`.commit .cline` 只声明 `white-space: pre-wrap`（`#L807`），也没有 Markdown 解析器。也就是说，原型的处理是「有边界的结构化摘要」，不是「把 Markdown 原文原样展示」。
 
 V2 原型第 6 步已接纳轮次的对应区块：
 
@@ -79,11 +79,21 @@ V2 原型第 6 步已接纳轮次的对应区块：
 
 - 默认视图保持紧凑：12 位 hash + commit subject + 展开入口；聚类 id/title/category/caseCount/severity 已由 cluster 卡头展示，来源 bad case 明细已由上方表格承载，都不在 commit 卡里重复。
 - 完整 `finalCommit.message` 通过「查看完整 commit message」展开，用现有 `renderMarkdown()` 渲染，标题、列表、链接可读且可点击；commit hash 与 `Harness-Evaluated-Commit` 保留。
-- 同步更新 V2 原型与 05/08 设计文档，明确 `message` 是完整 Markdown 正文，禁止按纯文本插值。
+- 本次已在登记 PR 的 V2 原型文件内实现默认收起 + 按需展开 + Markdown 渲染（见下节）；生产实现与 05/08 设计文档仍需同步，明确 `message` 是完整 Markdown 正文，禁止按纯文本插值。
 
 备选 B：不折叠，直接把完整正文 Markdown 渲染。改动更小，但长消息仍会把页面撑得很高，信息密度与原型不一致。
 
 备选 C：只保留原型的结构化摘要，不展示完整正文。最贴原型，但会丢失 run/cluster/来源问题的追溯信息，不推荐。
+
+### 方案 A 原型实现
+
+按方案 A 在 V2 原型内落地：默认只显示 hash + commit subject + 展开入口；展开后完整 message 按 Markdown 渲染，标题、列表、链接与 trailer 分别呈现。原型内使用轻量渲染函数演示展示层，生产实现复用 `renderMarkdown()`。
+
+同一原型页面（`EV-20261109-01` 第 6 步，1500×1000 视口）的收起与展开状态：
+
+![方案 A 原型：默认收起，只显示 hash、commit subject 与展开入口](https://github.com/Shadow-Azure/harness-evolution/releases/download/run-detail-commit-markdown-evidence-20261122/option-a-collapsed-clip.png)
+
+![方案 A 原型：展开后完整 commit message 按 Markdown 渲染，标题、列表、链接与 trailer 可读](https://github.com/Shadow-Azure/harness-evolution/releases/download/run-detail-commit-markdown-evidence-20261122/option-a-expanded-clip.png)
 
 ## 目标
 
