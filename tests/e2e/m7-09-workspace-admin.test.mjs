@@ -160,6 +160,7 @@ async function openAdmin(page, workspaceId, tab = "spaces") {
         path: location.pathname,
         tabs,
         text: document.body.innerText,
+        pageWidth: page.getBoundingClientRect().width,
       };
     })()`,
     `workspace admin page for ${workspaceId}`,
@@ -355,6 +356,10 @@ test("m7-09 workspace-admin renders the global table and creates a workspace", a
     await installBrowser(page, chat);
     const initial = await openAdmin(page, "ws-default");
     assert.equal(initial.path, "/workspaces/ws-default/admin");
+    assert.ok(
+      Math.abs(initial.pageWidth - 1080) <= 1,
+      JSON.stringify({ pageWidth: initial.pageWidth }),
+    );
     assert.match(initial.text, /全部工作空间/);
     assert.match(initial.text, /默认空间/);
     assert.match(initial.text, /E2E 管理空间/);

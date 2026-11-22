@@ -38,8 +38,9 @@ At a 1408×788 CSS viewport, the production 「Evolution → Target config」 pa
 
 ## Implementation
 
-- `apps/web/src/styles/main.css`: add a page-width modifier for the target config page, `.workspace-main .evolution-page-frame.target-config-page { width: min(1720px, 100%); }`. Only the target config page is widened; the evolution list and workspace admin pages stay at 1080px.
+- `apps/web/src/styles/main.css`: the shared width becomes `min(var(--evolution-page-max-width, 1080px), 100%)`, and `.target-config-page` sets `--evolution-page-max-width: 1720px`. The 1080px default still applies to the evolution list and workspace admin pages, and the ≤640px `width: 100%` branch stays effective.
 - `tests/e2e/m5-target-config.test.mjs`: at 1408px assert page width 1408, content width 1360, table `scrollWidth === clientWidth`, and fully visible actions; add a 1920px assertion for page width 1720, content width 1672 and no table overflow; keep the 1024px horizontal-scroll fallback.
+- `tests/e2e/m5-run-list.test.mjs` and `tests/e2e/m7-09-workspace-admin.test.mjs`: continue to assert that the evolution list and workspace admin pages keep 1080px.
 - Add an Agent Note recording the decision to widen one page to 1720px while other pages keep 1080px, and that boundary.
 
 ## Implementation steps
@@ -58,6 +59,8 @@ At a 1408×788 CSS viewport, the production 「Evolution → Target config」 pa
 
 ```sh
 pnpm test:e2e -- "m5 target configuration"
+pnpm test:e2e -- "m5 run list"
+pnpm test:e2e -- "m7-09 workspace-admin"
 pnpm typecheck:web
 pnpm lint:web
 pnpm verify:flow
@@ -73,7 +76,7 @@ pnpm test:gates
 
 - At 1408×788 the content column grows from 1080px to 1408px and the content panel is 1360px, matching the V2 prototype at the same viewport; all 8 columns are visible, the actions column is not clipped, and the table has no horizontal scrollbar.
 - At 1920×1080 the page width is capped at 1720px and centered; at 1024px and below the table scrolls horizontally and the page has no horizontal overflow.
-- The page width and layout of the evolution list and workspace admin pages are unchanged.
+- The page width and layout of the evolution list and workspace admin pages are unchanged, covered by the run-list and m7-09 width assertions.
 - Before/After screenshots share the scenario, viewport, theme and data; Before is labelled with the baseline commit.
 - All verification commands pass.
 

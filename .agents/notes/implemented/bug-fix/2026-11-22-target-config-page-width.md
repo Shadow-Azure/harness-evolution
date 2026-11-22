@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-- 只对进化对象配置页放开 V2 页宽：在共享样式增加 `.workspace-main .evolution-page-frame.target-config-page { width: min(1720px, 100%); }`。共享的 `.workspace-main .evolution-page-frame` 仍是 1080px，继续作用于自进化列表与空间管理页。
+- 把共享页宽表达为可覆盖的上限：`.workspace-main .evolution-page-frame { width: min(var(--evolution-page-max-width, 1080px), 100%); }`，并只在 `.target-config-page` 上设 `--evolution-page-max-width: 1720px`。默认 1080px 继续作用于自进化列表与空间管理页；≤640px 的 `width: 100%` 媒体规则仍按原优先级生效。
 - 沿用既有 frame 的 24px 左右内边距与 `margin: 0 auto` 居中，不新增内容容器、页宽类或表格列改动；8 列、字段、排序与操作保持原样。
 - E2E 在 1408×788、1920×1080、1024×768 断言页宽与内容宽（1408 / 1360、1720 / 1672、1024 / 976）、表格 `scrollWidth === clientWidth`、操作列右缘不超出滚动容器；1024 下要求表格保留横向滚动兜底。1408 与 1920 同时要求页面本身无横向溢出。
 

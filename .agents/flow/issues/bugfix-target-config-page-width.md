@@ -38,8 +38,9 @@ github:
 
 ## 实现内容
 
-- `apps/web/src/styles/main.css`：为目标配置页增加页宽修饰 `.workspace-main .evolution-page-frame.target-config-page { width: min(1720px, 100%); }`，只放开对象配置页；自进化列表与空间管理页保持 1080px。
+- `apps/web/src/styles/main.css`：共享页宽改为 `min(var(--evolution-page-max-width, 1080px), 100%)`，并在 `.target-config-page` 上设 `--evolution-page-max-width: 1720px`；默认 1080px 继续作用于自进化列表与空间管理页，≤640px 的 `width: 100%` 分支保持有效。
 - `tests/e2e/m5-target-config.test.mjs`：1408 视口断言页面宽 1408、内容宽 1360、表格 `scrollWidth === clientWidth` 且操作列完整可见；补 1920 视口断言页面宽 1720、内容宽 1672、表格不横向溢出；1024 视口保留横向滚动兜底。
+- `tests/e2e/m5-run-list.test.mjs` 与 `tests/e2e/m7-09-workspace-admin.test.mjs`：继续断言自进化列表与空间管理页保持 1080px。
 - 新增 Agent Note 记录「按页放开 1720px、其余页仍保持 1080px」的决策与边界。
 
 ## 实施步骤
@@ -58,6 +59,8 @@ github:
 
 ```sh
 pnpm test:e2e -- "m5 target configuration"
+pnpm test:e2e -- "m5 run list"
+pnpm test:e2e -- "m7-09 workspace-admin"
 pnpm typecheck:web
 pnpm lint:web
 pnpm verify:flow
@@ -73,7 +76,7 @@ pnpm test:gates
 
 - 1408×788 下内容列由 1080px 扩到 1408px，内容面板 1360px，与 V2 原型同视口一致；8 列完整显示，操作列不被裁切，表格底部无横向滚动条。
 - 1920×1080 下页宽 1720px 居中；1024 及更窄视口表格可横向滚动，页面无横向溢出。
-- 自进化列表、空间管理页的页宽与布局不变。
+- 自进化列表、空间管理页的页宽与布局不变（run-list 与 m7-09 的页面宽度断言覆盖）。
 - Before/After 截图同场景、同视口、同主题、同数据；Before 标注基线提交。
 - 校验命令全绿。
 

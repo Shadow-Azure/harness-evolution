@@ -131,7 +131,8 @@ async function waitForTargetConfigPage(page, label, violations) {
   try {
     await waitForDocument(
       page.session,
-      `document.querySelector("h1")?.textContent === "进化对象配置"`,
+      `document.querySelector("h1")?.textContent === "进化对象配置" &&
+        document.querySelectorAll(".target-table tbody tr").length > 0`,
       label,
     );
   } catch (error) {
@@ -359,7 +360,7 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
     await installCookie(page, admin.cookie);
     await page.session.send("Emulation.setDeviceMetricsOverride", {
       width: 1408,
-      height: 960,
+      height: 788,
       deviceScaleFactor: 1,
       mobile: false,
     });
@@ -378,9 +379,8 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
         const headingStyle = getComputedStyle(heading);
         const noteStyle = getComputedStyle(note);
         const scroller = page.querySelector(".target-table-scroll");
-        const actions = page.querySelector(".row-actions");
+        const actions = [...page.querySelectorAll(".row-actions")];
         const scrollerRect = scroller.getBoundingClientRect();
-        const actionsRect = actions.getBoundingClientRect();
         return {
           width: rect.width,
           contentWidth:
@@ -402,7 +402,10 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
           noteColor: noteStyle.color,
           tableScrollWidth: scroller.scrollWidth,
           tableClientWidth: scroller.clientWidth,
-          actionsFullyVisible: actionsRect.right <= scrollerRect.right + 0.5,
+          actionsFullyVisible: actions.length > 0 &&
+            actions.every(
+              (node) => node.getBoundingClientRect().right <= scrollerRect.right + 0.5,
+            ),
         };
       })()`,
     );
@@ -440,9 +443,8 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
         const rect = page.getBoundingClientRect();
         const style = getComputedStyle(page);
         const scroller = page.querySelector(".target-table-scroll");
-        const actions = page.querySelector(".row-actions");
+        const actions = [...page.querySelectorAll(".row-actions")];
         const scrollerRect = scroller.getBoundingClientRect();
-        const actionsRect = actions.getBoundingClientRect();
         return {
           width: rect.width,
           contentWidth:
@@ -455,7 +457,10 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
           pageClientWidth: document.documentElement.clientWidth,
           tableScrollWidth: scroller.scrollWidth,
           tableClientWidth: scroller.clientWidth,
-          actionsFullyVisible: actionsRect.right <= scrollerRect.right + 0.5,
+          actionsFullyVisible: actions.length > 0 &&
+            actions.every(
+              (node) => node.getBoundingClientRect().right <= scrollerRect.right + 0.5,
+            ),
         };
       })()`,
     );

@@ -10,7 +10,7 @@ The workspace shell's `.workspace-main .evolution-page-frame` caps every workspa
 
 ## Decision
 
-- Widen only the target config page to the V2 page width: add `.workspace-main .evolution-page-frame.target-config-page { width: min(1720px, 100%); }` to the shared stylesheet. The shared `.workspace-main .evolution-page-frame` stays at 1080px and continues to apply to the evolution list and workspace admin pages.
+- Express the shared page width as an overridable cap: `.workspace-main .evolution-page-frame { width: min(var(--evolution-page-max-width, 1080px), 100%); }`, with `--evolution-page-max-width: 1720px` set only on `.target-config-page`. The 1080px default still applies to the evolution list and workspace admin pages, and the ≤640px `width: 100%` media rule keeps its original precedence.
 - Reuse the existing frame's 24px inline padding and `margin: 0 auto` centering; add no content wrapper, page-width class or table-column change. The 8 columns, fields, sorting and actions stay as they are.
 - E2E asserts page and content widths at 1408×788, 1920×1080 and 1024×768 (1408/1360, 1720/1672, 1024/976), table `scrollWidth === clientWidth`, and the actions column's right edge staying inside the scroller; 1024 must keep the table's horizontal-scroll fallback. At 1408 and 1920 the page itself must have no horizontal overflow.
 

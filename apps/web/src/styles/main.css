@@ -59,16 +59,17 @@ a {
    V1 frame must not compensate for the old centered 1280px column. */
 .workspace-main .evolution-page-frame {
   left: 0;
-  width: min(1080px, 100%);
+  width: min(var(--evolution-page-max-width, 1080px), 100%);
   margin: 0 auto;
   padding: 20px 24px 64px;
 }
 
 /* The target config page follows the V2 prototype's 1720px content column:
-   its 8-column table no longer fits the 1080px reading frame. The run list and
-   workspace admin pages keep 1080px until they are migrated separately. */
+   its 8-column table no longer fits the 1080px reading frame. Only this page
+   raises the shared frame's cap; the run list and workspace admin pages keep
+   1080px until they are migrated separately. */
 .workspace-main .evolution-page-frame.target-config-page {
-  width: min(1720px, 100%);
+  --evolution-page-max-width: 1720px;
 }
 
 @media (max-width: 640px) {
