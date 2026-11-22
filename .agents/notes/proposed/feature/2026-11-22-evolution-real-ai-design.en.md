@@ -26,6 +26,7 @@ Clustering, confidence, severity, and patch generation in the self-evolution loo
 
 - The design has landed in `plans/fullstack-design` (07 §5.5.1–§5.5.4, the 04 tree and seam table); follow-up implementation issues use it as the design basis, and this note syncs status and facts as landing proceeds.
 - Implementation proceeds in stages (skeleton → three clustering layers → optional vectorization → instruction-style patch), each reversible via env (fake / placeholder); the worst case equals today's behavior.
-- Adds the pure-Python dependency `json5`; `edit_workspace` semantics shift from "edit directly" to "submit a plan, apply deterministically" — no in-turn trial loop, compensated by the turn-level iteration loop.
+- Adds the pure-Python dependencies `json5` and `json-repair`; `edit_workspace` semantics shift from "edit directly" to "submit a plan, apply deterministically" — no in-turn trial loop, compensated by the turn-level iteration loop.
 - The contrast between the declared intent (EditPlan) and the actual diff becomes a per-turn audit signal; any mismatch is a quality alarm.
-- On 2026-11-22 the skeleton landed (bugfix-15): the four `ai_agent` modules, only two Settings entries, a deterministic `fake`, and a `claude-code` placeholder; the real CLI subclass, the submission channel, and business wiring remain in follow-up issues.
+- On 2026-11-22 the skeleton landed (bugfix-15): the four `ai_agent` modules, only two Settings entries, a deterministic `fake`, and a `claude-code` placeholder; the real CLI subclass and business wiring remain in follow-up issues.
+- On 2026-11-22 the submission channel landed (bugfix-16): `third_party_api/ai_agent/submission.py` collects through a one-shot task directory whose sole tool whitelist is `Write(./result.json5)`; parsing runs strict JSON → JSON5 → json-repair (fallback only), the payload goes through Pydantic `model_validate`, and `feedback_prompt` feeds failures back to a one-turn `--resume` retry.

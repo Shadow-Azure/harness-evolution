@@ -26,6 +26,7 @@ Status: proposed
 
 - 设计已落 `plans/fullstack-design`（07 §5.5.1–§5.5.4、04 目录树与接缝表），后续实现 issue 以其为设计依据；本文随实际落地同步状态与事实。
 - 实现按阶段推进（骨架 → 聚类三层 → 可选向量化 → 指令式 patch），每步 env 可回退（fake / placeholder），最坏情况等于今天的行为。
-- 新增纯 Python 依赖 `json5`；`edit_workspace` 语义从「直接编辑」变为「提交计划 + 确定性应用」，round 内无试错循环，由 round 级迭代闭环补偿。
+- 新增纯 Python 依赖 `json5` 与 `json-repair`；`edit_workspace` 语义从「直接编辑」变为「提交计划 + 确定性应用」，round 内无试错循环，由 round 级迭代闭环补偿。
 - 声明（EditPlan）与实际（git diff）的对照成为每 round 的审计信号；两者不一致即质量报警。
-- 2026-11-22 骨架已落地（bugfix-15）：`ai_agent` 四模块、Settings 仅两个配置项、确定性的 `fake` 与 `claude-code` 占位；真实 CLI 子类、提交通道与业务接入仍在后续 issue。
+- 2026-11-22 骨架已落地（bugfix-15）：`ai_agent` 四模块、Settings 仅两个配置项、确定性的 `fake` 与 `claude-code` 占位；真实 CLI 子类与业务接入仍在后续 issue。
+- 2026-11-22 提交通道已落地（bugfix-16）：`third_party_api/ai_agent/submission.py` 以一次性任务目录收货，唯一工具白名单为 `Write(./result.json5)`；解析顺序为严格 JSON → JSON5 → json-repair（仅兜底），结果交 Pydantic `model_validate`，失败文案经 `feedback_prompt` 回喂 `--resume` 重试一轮。
