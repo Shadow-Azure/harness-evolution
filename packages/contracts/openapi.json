@@ -10568,8 +10568,28 @@
     },
     "/api/acquisition/status": {
       "get": {
-        "description": "Return durable acquisition progress for all authenticated users.",
+        "description": "Return platform counters and scoped trace and attribution progress.",
         "operationId": "acquisition_status_api_acquisition_status_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspaceId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 36,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workspaceid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -10600,6 +10620,16 @@
               }
             },
             "description": "Password change is required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [

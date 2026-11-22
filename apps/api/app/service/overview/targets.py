@@ -31,9 +31,9 @@ from app.db.crud.overview_targets import (
 )
 from app.db.crud.potential import window_day_boundaries
 from app.errors import AppError, ErrorCode
+from app.service.evolution.attribution_contracts import REPORT_SCHEMA_VERSION
 from app.service.evolution.potential import (
     MatchCondition,
-    PotentialCase,
     PotentialMatch,
     PotentialMatcher,
     ResolvedPolicy,
@@ -888,6 +888,25 @@ class TargetOverviewService:
             object_name=target.object_name,
             limit=RUN_VERSION_LOOKBACK,
         )
+        links = await self._repository.list_attributions(
+            workspace_id=workspace_id,
+            object_type=target.object_type,
+            object_name=target.object_name,
+            case_ids=tuple(facts_by_id),
+        )
+        # A V2 report records the source that was actually analyzed, even when
+        # the trace has no version or the selected Git ref has since moved.
+        analyzed_versions = {
+            link.object_version
+            for link in links
+            if link.report_schema_version == REPORT_SCHEMA_VERSION and link.object_version
+        }
+        observed = (*observed, *(ObjectVersionRecord(None, v) for v in sorted(analyzed_versions)))
+        if target.definition:
+            observed = (
+                *observed,
+                ObjectVersionRecord(target.default_ref, target.definition["revision"]),
+            )
         versions, labels = _build_version_labels(target.default_ref, observed, runs)
         associated_sessions: set[str] = set()
         version_sessions: dict[str, frozenset[str]] = {}
@@ -897,48 +916,38 @@ class TargetOverviewService:
         entries: list[TargetCaseEntry] = []
         unresolved_versions: set[str] = set()
         for version, resolution in zip(versions, resolved, strict=True):
-            if resolution is None:
-                # Content is the only identity source: keep the observed version
-                # visible but never fall back to tag matching.
-                unresolved_versions.add(version)
-                version_sessions[version] = frozenset()
-                continue
             label = labels[version]
-            association, match = await self._evaluate_resolved(
-                target,
-                version,
-                resolution,
-                workspace_id=workspace_id,
-                window_start=window_start,
-                window_end=window_end,
-            )
-            associated_sessions.update(session.session_id for session in association.sessions)
-            version_sessions[version] = frozenset(
-                session.session_id for session in association.sessions
-            )
-            if not match.included:
-                continue
-            links = await self._repository.list_attributions(
-                workspace_id=workspace_id,
-                object_type=target.object_type,
-                object_name=target.object_name,
-                case_ids=tuple(item.bad_case_id for item in match.included),
-            )
             newest = _newest_link_by_case(links, label.aliases)
-            for item in match.included:
-                fact = facts_by_id.get(item.bad_case_id)
-                if fact is None:
-                    continue
-                link = newest.get(item.bad_case_id)
+            case_ids = {
+                case_id
+                for case_id, link in newest.items()
+                if link.report_schema_version == REPORT_SCHEMA_VERSION
+            }
+            sessions = {facts_by_id[case_id].session_id for case_id in case_ids}
+            if resolution is None:
+                unresolved_versions.add(version)
+            else:
+                association, match = await self._evaluate_resolved(
+                    target,
+                    version,
+                    resolution,
+                    workspace_id=workspace_id,
+                    window_start=window_start,
+                    window_end=window_end,
+                )
+                sessions.update(item.session_id for item in association.sessions)
+                case_ids.update(item.bad_case_id for item in match.included)
+            associated_sessions.update(sessions)
+            version_sessions[version] = frozenset(sessions)
+            for case_id in sorted(case_ids):
                 entries.append(
                     _entry(
-                        item,
                         target=target,
                         version=version,
                         display_version=label.display,
-                        fact=fact,
-                        link=link,
-                    ),
+                        fact=facts_by_id[case_id],
+                        link=newest.get(case_id),
+                    )
                 )
         return TargetAnalysis(
             target=target,
@@ -1084,7 +1093,6 @@ def _selected_versions(
 
 
 def _entry(
-    item: PotentialCase,
     *,
     target: EvolutionTargetRecord,
     version: str,
@@ -1095,7 +1103,7 @@ def _entry(
     """Combine one matcher row with the case facts and its newest attribution."""
     state = _state(link)
     return TargetCaseEntry(
-        bad_case_id=item.bad_case_id,
+        bad_case_id=fact.bad_case_id,
         target=target,
         version=version,
         session_id=fact.session_id,

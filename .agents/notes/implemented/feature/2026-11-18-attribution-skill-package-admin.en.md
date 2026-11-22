@@ -12,6 +12,8 @@ Workspace owners need to share a multi-file Skill across targets and inspect exa
 
 Keep uploaded archives in workspace-scoped storage. A target write records one package and durable batch intent together. The worker freezes the resolved object revision and package for the batch. An evolution launch may reuse existing reports or choose a package for a single run. Historical reports retain Skill provenance.
 
+The target overview combines observed-version candidates with completed V2 reports by analysis version and Badcase, including reports whose trace has no version. The sync panel counts trace roots and Badcases in the selected workspace, using each case’s latest completed conclusion. Catalog acquisition and normalization counters cover the platform.
+
 ## Alternatives considered
 
 Workspace-wide activation changes unrelated targets. Counting every historical report inflates case counts after recomputation. Deduplicate by case and resolved target revision before grouping by Skill.
@@ -24,4 +26,4 @@ Each batch stops after three consecutive failures, with delays of 30 and 60 seco
 
 Retries in a batch need the inputs first supplied to the model. A per-case manifest pins the redacted prompt, Session evidence version and Skill snapshot. Cases in one Session share evidence. A new batch can use backfilled transcripts, while reuse keeps the original report.
 
-Pin the definition and commit before registering the Git target binding. Trace matching uses the normalized body digest. The archived file uses its raw digest to preserve the complete metadata.
+Pin the definition and commit before registering the Git target binding. The analysis version uses the normalized body digest. The archived file uses its raw digest to preserve the complete metadata.

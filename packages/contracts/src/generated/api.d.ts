@@ -31,7 +31,7 @@ export interface paths {
         };
         /**
          * Acquisition Status
-         * @description Return durable acquisition progress for all authenticated users.
+         * @description Return platform counters and scoped trace and attribution progress.
          */
         get: operations["acquisition_status_api_acquisition_status_get"];
         put?: never;
@@ -6370,7 +6370,9 @@ export interface operations {
     };
     acquisition_status_api_acquisition_status_get: {
         parameters: {
-            query?: never;
+            query?: {
+                workspaceId?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6402,6 +6404,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

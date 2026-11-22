@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, and_, case, func, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -145,7 +145,9 @@ class BadCaseRepositoryProtocol(Protocol):
     async def get_analysis(self, case_id: str) -> BadCaseAnalysisRow | None:
         """Return one attribution row by case id."""
 
-    async def analysis_progress(self) -> AnalysisProgress:
+    async def analysis_progress(
+        self, workspace_ids: tuple[str, ...] | None = None
+    ) -> AnalysisProgress:
         """Return aggregate attribution counts over all cases."""
 
     async def probes_by_ids(
@@ -276,27 +278,61 @@ class BadCaseRepository:
             row = (await session.execute(statement)).mappings().one_or_none()
         return _row_bad_case(row) if row is not None else None
 
-    async def analysis_progress(self) -> AnalysisProgress:
+    async def analysis_progress(
+        self, workspace_ids: tuple[str, ...] | None = None
+    ) -> AnalysisProgress:
         """Aggregate attribution states without materializing new columns."""
+        cases = select(bad_cases.c.bad_case_id, bad_cases.c.workspace_id)
+        if workspace_ids is not None:
+            cases = cases.where(bad_cases.c.workspace_id.in_(workspace_ids))
+        scope = cases.subquery()
+        v2 = probe_reports.c.report_schema_version == "probe-report/v2"
+        legacy = bad_case_analysis.c.analysis_status
+        verdict = case(
+            (
+                and_(
+                    v2, probe_reports.c.conclusion.in_(("attributed", "non_target", "inconclusive"))
+                ),
+                probe_reports.c.conclusion,
+            ),
+            (legacy == "analyzed_issue", "attributed"),
+            (legacy == "analyzed_nonissue", "non_target"),
+        )
+        # Count a case once, using its most recent completed result across objects.
+        ranked = (
+            select(
+                verdict.label("verdict"),
+                func.row_number()
+                .over(
+                    partition_by=scope.c.bad_case_id,
+                    order_by=(
+                        verdict.is_(None),
+                        bad_case_analysis.c.updated_at.desc(),
+                        bad_case_analysis.c.id.desc(),
+                    ),
+                )
+                .label("rank"),
+            )
+            .select_from(
+                scope.outerjoin(
+                    bad_case_analysis, scope.c.bad_case_id == bad_case_analysis.c.bad_case_id
+                ).outerjoin(
+                    probe_reports,
+                    and_(
+                        probe_reports.c.probe_id == bad_case_analysis.c.probe_id,
+                        probe_reports.c.workspace_id == scope.c.workspace_id,
+                    ),
+                )
+            )
+            .subquery()
+        )
         try:
             async with self._database.session() as session:
-                total = int(
-                    (
-                        await session.execute(
-                            select(func.count()).select_from(bad_cases),
-                        )
-                    ).scalar_one(),
-                )
                 rows = (
                     await session.execute(
-                        select(bad_case_analysis.c.analysis_status, func.count())
-                        .select_from(
-                            bad_case_analysis.join(
-                                bad_cases,
-                                bad_cases.c.bad_case_id == bad_case_analysis.c.bad_case_id,
-                            ),
-                        )
-                        .group_by(bad_case_analysis.c.analysis_status),
+                        select(ranked.c.verdict, func.count())
+                        .where(ranked.c.rank == 1)
+                        .group_by(ranked.c.verdict)
                     )
                 ).all()
         except (OperationalError, ProgrammingError, DBAPIError) as exc:
@@ -328,9 +364,10 @@ class BadCaseRepository:
         for status, count in rows:
             if isinstance(count, int):
                 counts[str(status)] = count
-        issue = counts.get("analyzed_issue", 0)
-        non_issue = counts.get("analyzed_nonissue", 0)
-        analyzed = min(issue + non_issue, total)
+        issue = counts.get("attributed", 0)
+        non_issue = counts.get("non_target", 0)
+        total = sum(counts.values())
+        analyzed = issue + non_issue + counts.get("inconclusive", 0)
         return AnalysisProgress(
             total=total,
             analyzed=analyzed,

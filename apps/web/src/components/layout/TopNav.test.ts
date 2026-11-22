@@ -349,7 +349,7 @@ describe("top navigation user area", () => {
     });
     await flushPromises();
 
-    expect(wrapper.get("[data-testid='sync-status']").text()).toContain("待处理 3");
+    expect(wrapper.get("[data-testid='sync-status']").text()).toContain("待归一化 3");
     expect(wrapper.get("[data-testid='sync-status']").attributes("aria-label")).toContain(
       "已处理 8",
     );
@@ -661,8 +661,8 @@ describe("top navigation user area", () => {
     expect(order.every((index) => index >= 0)).toBe(true);
     expect(order).toEqual([...order].sort((left, right) => left - right));
     expect(text).toContain("总 136 · 已同步 128 · 未同步 8");
-    expect(text).toContain("已分析 96 · 待分析 40");
-    expect(text).toContain("问题 58 · 非问题 38");
+    expect(text).toContain("已分析 96 · 暂无报告 40");
+    expect(text).toContain("归因到对象 58 · 非该对象 38");
     expect(wrapper.get("[data-testid='sync-catalog']").text()).toContain("游标 #128");
   });
 
@@ -735,7 +735,7 @@ describe("top navigation user area", () => {
       "总 0 · 已同步 0 · 未同步 0",
     );
     expect(wrapper.get("[data-testid='sync-analysis']").text()).toContain(
-      "已分析 0 · 待分析 0",
+      "已分析 0 · 暂无报告 0",
     );
   });
 

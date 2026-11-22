@@ -186,9 +186,11 @@ class BadCaseService:
         )
         return result.items[0] if result.items else None
 
-    async def analysis_progress(self) -> AnalysisProgress:
+    async def analysis_progress(
+        self, workspace_ids: tuple[str, ...] | None = None
+    ) -> AnalysisProgress:
         """Return aggregate attribution counts for the sync popover."""
-        return await self._repository.analysis_progress()
+        return await self._repository.analysis_progress(workspace_ids)
 
     async def get_probe(self, probe_id: str) -> ProbeReportReadModel | None:
         """Return one root-cause report with reverse-linked source issues."""

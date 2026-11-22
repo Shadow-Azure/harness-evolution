@@ -166,9 +166,12 @@ def _candidate_condition(now: datetime) -> ColumnElement[bool]:
     )
 
 
-def _distinct_roots() -> Subquery:
+def _distinct_roots(workspace_ids: tuple[str, ...] | None = None) -> Subquery:
     """Return distinct bad-case root ids as a subquery."""
-    return select(bad_cases.c.bad_case_session_id.label("root_session_id")).distinct().subquery()
+    query = select(bad_cases.c.bad_case_session_id.label("root_session_id"))
+    if workspace_ids is not None:
+        query = query.where(bad_cases.c.workspace_id.in_(workspace_ids))
+    return query.distinct().subquery()
 
 
 def _candidate_query(now: datetime) -> Select[Any]:
@@ -395,11 +398,15 @@ class BadCaseRootSyncRepository:
             raise
         return int(value)
 
-    async def has_report_source(self) -> bool:
+    async def has_report_source(self, workspace_ids: tuple[str, ...] | None = None) -> bool:
         """Return whether any report carries a session source to sync."""
         statement = (
-            select(bad_cases.c.bad_case_id).where(bad_cases.c.session_source.is_not(None)).limit(1)
+            select(bad_cases.c.bad_case_id)
+            .where(bad_cases.c.session_source["sessionUrlTemplate"].as_string() != "")
+            .limit(1)
         )
+        if workspace_ids is not None:
+            statement = statement.where(bad_cases.c.workspace_id.in_(workspace_ids))
         try:
             async with self._database.session() as session:
                 return (await session.execute(statement)).scalar_one_or_none() is not None
@@ -421,7 +428,7 @@ class BadCaseRootSyncRepository:
             )
             .where(
                 bad_cases.c.bad_case_session_id == root_session_id,
-                bad_cases.c.session_source.is_not(None),
+                bad_cases.c.session_source["sessionUrlTemplate"].as_string() != "",
             )
             .order_by(bad_cases.c.created_at.desc(), bad_cases.c.bad_case_id.desc())
             .limit(1)
@@ -625,9 +632,9 @@ class BadCaseRootSyncRepository:
                 .values(**values),
             )
 
-    async def stats(self) -> BadCaseRootSyncStats:
+    async def stats(self, workspace_ids: tuple[str, ...] | None = None) -> BadCaseRootSyncStats:
         """Aggregate status counts for roots still present in bad_cases."""
-        roots = _distinct_roots()
+        roots = _distinct_roots(workspace_ids)
         total_statement = select(func.count()).select_from(roots)
         grouped_statement = (
             select(bad_case_root_sync.c.status, func.count().label("count"))
@@ -657,9 +664,9 @@ class BadCaseRootSyncRepository:
             failed=counts.get(_FAILED, 0),
         )
 
-    async def last_run_at(self) -> datetime | None:
+    async def last_run_at(self, workspace_ids: tuple[str, ...] | None = None) -> datetime | None:
         """Return the newest state change for a root still in bad_cases."""
-        roots = _distinct_roots()
+        roots = _distinct_roots(workspace_ids)
         statement = select(func.max(bad_case_root_sync.c.updated_at)).select_from(
             roots.join(
                 bad_case_root_sync,
@@ -675,9 +682,9 @@ class BadCaseRootSyncRepository:
             raise
         return as_shanghai(value) if isinstance(value, datetime) else None
 
-    async def last_error(self) -> str | None:
+    async def last_error(self, workspace_ids: tuple[str, ...] | None = None) -> str | None:
         """Return the newest failed current root's sanitized error, if any."""
-        roots = _distinct_roots()
+        roots = _distinct_roots(workspace_ids)
         statement = (
             select(bad_case_root_sync.c.last_error)
             .select_from(

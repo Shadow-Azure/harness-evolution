@@ -133,7 +133,9 @@ class FakeRepository:
             None,
         )
 
-    async def analysis_progress(self) -> AnalysisProgress:
+    async def analysis_progress(
+        self, workspace_ids: tuple[str, ...] | None = None
+    ) -> AnalysisProgress:
         """Return empty aggregate counts; drift tests do not read the popover."""
         return AnalysisProgress(
             total=0,
