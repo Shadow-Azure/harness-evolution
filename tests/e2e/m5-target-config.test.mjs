@@ -378,7 +378,6 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
         const headingStyle = getComputedStyle(heading);
         const noteStyle = getComputedStyle(note);
         const scroller = page.querySelector(".target-table-scroll");
-        const table = page.querySelector(".target-table");
         const actions = page.querySelector(".row-actions");
         const scrollerRect = scroller.getBoundingClientRect();
         const actionsRect = actions.getBoundingClientRect();
@@ -403,9 +402,6 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
           noteColor: noteStyle.color,
           tableScrollWidth: scroller.scrollWidth,
           tableClientWidth: scroller.clientWidth,
-          tableWidth: table.getBoundingClientRect().width,
-          actionsRight: actionsRect.right,
-          scrollerRight: scrollerRect.right,
           actionsFullyVisible: actionsRect.right <= scrollerRect.right + 0.5,
         };
       })()`,
