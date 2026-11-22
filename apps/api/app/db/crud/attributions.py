@@ -172,6 +172,7 @@ class BadCaseEvidenceRecord:
     title: str
     description: str
     metadata: Mapping[str, object]
+    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -516,7 +517,8 @@ class AttributionRepository:
 
         The object identity columns feed the deterministic evidence-completeness
         score; they are read in the same batch so a retried attribution step
-        reconstructs exactly the same signals as the first pass.
+        reconstructs exactly the same signals as the first pass. ``created_at``
+        supplies the deterministic cluster time span without a second query.
         """
         found: dict[str, BadCaseEvidenceRecord] = {}
         for chunk in _chunks(tuple(dict.fromkeys(case_ids))):
@@ -529,6 +531,7 @@ class AttributionRepository:
                 bad_cases.c.title,
                 bad_cases.c.bad_case_description,
                 bad_cases.c.meta_data,
+                bad_cases.c.created_at,
             ).where(bad_cases.c.bad_case_id.in_(chunk))
             async with self._database.session() as session:
                 rows = (await session.execute(statement)).mappings().all()
@@ -544,6 +547,7 @@ class AttributionRepository:
                     title=str(row["title"]),
                     description=str(row["bad_case_description"]),
                     metadata=dict(metadata) if isinstance(metadata, Mapping) else {},
+                    created_at=row["created_at"],
                 )
         return found
 

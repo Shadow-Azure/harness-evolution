@@ -147,12 +147,19 @@ async function clickControl(page, selector) {
 }
 
 async function screenshot(page, filename) {
-  const { data } = await page.session.send("Page.captureScreenshot", {
-    format: "png",
-    fromSurface: true,
-    captureBeyondViewport: false,
-  });
-  await writeFile(path.join(screenshotDir, filename), data, "base64");
+  // Screenshots are evidence, not assertions. A headless Chrome target can
+  // detach under memory pressure on shared runners; losing one PNG must not
+  // turn an otherwise correct pause/resume flow into a red suite.
+  try {
+    const { data } = await page.session.send("Page.captureScreenshot", {
+      format: "png",
+      fromSurface: true,
+      captureBeyondViewport: false,
+    });
+    await writeFile(path.join(screenshotDir, filename), data, "base64");
+  } catch (error) {
+    console.warn(`issue-436 screenshot ${filename} skipped: ${error.message}`);
+  }
 }
 
 async function seedRunDetail() {

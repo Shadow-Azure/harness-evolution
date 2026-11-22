@@ -38,17 +38,15 @@ class ClusterReviewOutput(BaseModel):
 
 
 class ClusterScoreOutput(BaseModel):
-    """Minimal caller schema for the cluster confidence task."""
+    """Minimal caller schema for the batch cluster confidence task."""
 
-    confidence: float = Field(ge=0, le=1)
-    evidence_refs: list[str] = Field(default_factory=list)
+    scores: list[dict[str, object]] = Field(default_factory=list)
 
 
 class SeverityScoreOutput(BaseModel):
-    """Minimal caller schema for the severity task."""
+    """Minimal caller schema for the batch severity task."""
 
-    overall: float
-    vector: str
+    severities: list[dict[str, object]] = Field(default_factory=list)
 
 
 class EchoOutput(BaseModel):
@@ -165,14 +163,19 @@ def test_factory_rejects_an_unknown_value_that_bypasses_settings() -> None:
         (
             "cluster.score",
             ClusterScoreOutput,
-            {"confidence": 0.5, "evidence_refs": []},
+            {"scores": [{"cluster": "C1", "confidence": 0.5, "evidence_refs": []}]},
         ),
         (
             "severity.score",
             SeverityScoreOutput,
             {
-                "overall": 5.0,
-                "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L",
+                "severities": [
+                    {
+                        "cluster": "C1",
+                        "overall": 5.0,
+                        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L",
+                    },
+                ],
             },
         ),
         ("unknown.task", EchoOutput, {"task": "unknown.task"}),

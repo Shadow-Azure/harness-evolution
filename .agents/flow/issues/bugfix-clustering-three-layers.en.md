@@ -10,11 +10,18 @@ depends:
   - bugfix-15
   - bugfix-16
 priority: P2
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/service/evolution/**
   - apps/api/app/third_party_api/ai_agent/**
+  - apps/api/app/db/crud/attributions.py
+  - apps/api/app/main.py
   - apps/api/tests/**
+  - tests/**
+  - packages/contracts/**
+  - scripts/**
+  - .github/workflows/ci.yml
+  - plans/**
   - .agents/**
 adr:
   - ../../notes/proposed/feature/2026-11-22-evolution-real-ai-design.md
