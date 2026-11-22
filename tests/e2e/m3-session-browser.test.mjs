@@ -504,19 +504,16 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
       expression: `document.querySelectorAll("[data-session-id^='layout-clone-']").forEach((node) => node.remove())`,
     });
 
-    await page.session.send("Runtime.evaluate", {
-      expression: `document.querySelector("[data-testid='session-overview']").scrollTop = 1e6`,
-    });
     const lowContentBottom = await waitForDocument(
       page.session,
       `(() => {
         const overview = document.querySelector("[data-testid='session-overview']");
         const list = document.querySelector("[data-testid='problem-list']");
         if (!overview || !list) return null;
-        return {
-          scrollTop: overview.scrollTop,
-          gap: innerHeight - list.getBoundingClientRect().bottom,
-        };
+        overview.scrollTop = overview.scrollHeight;
+        const gap = innerHeight - list.getBoundingClientRect().bottom;
+        if (overview.scrollTop <= 0 || gap < 0 || gap > 24) return null;
+        return { scrollTop: overview.scrollTop, gap };
       })()`,
       "right column scrolled to the last problem",
     );
