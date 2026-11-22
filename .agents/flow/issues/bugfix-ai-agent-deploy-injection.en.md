@@ -11,7 +11,7 @@ depends:
   - bugfix-17
   - bugfix-21
 priority: P2
-status: in-progress
+status: done
 scope:
   - deploy/**
   - .github/workflows/deploy.yml
