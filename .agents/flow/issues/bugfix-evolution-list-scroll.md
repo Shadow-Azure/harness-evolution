@@ -4,11 +4,11 @@
 
 ```yaml flow
 kind: issue
-id: bugfix-15
+id: bugfix-25
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/web/**
   - tests/e2e/**
