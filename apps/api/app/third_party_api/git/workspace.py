@@ -329,10 +329,9 @@ class GitWorkspaceManager:
 
         Delegates to :meth:`create_candidate_bundle` with a one-file bundle so
         the multi-file and single-file paths share commit, trailer, reuse, and
-        diff logic. Protected paths stay stageable here because the legacy
-        placeholder source intentionally commits a document under
-        ``.harness-evolution/``; only the bundle primitive defaults to the
-        agent-scope exclusion.
+        diff logic. Only ``.harness-evolution/**`` stays stageable here because
+        the legacy placeholder source intentionally commits a document under
+        that directory; ``.git/**`` is never stageable, even on this path.
         """
         return await self.create_candidate_bundle(
             prepared,
@@ -360,9 +359,11 @@ class GitWorkspaceManager:
         """Create one candidate commit from a multi-file bundle.
 
         Every stageable bundle file is written and passed to one
-        ``git add -- <path> ...`` invocation. ``.harness-evolution/**`` and
-        ``.git/**`` are never staged unless ``allow_protected_paths`` is set
-        for the legacy single-patch path. The commit records
+        ``git add -- <path> ...`` invocation. ``.git/**`` is never stageable.
+        ``.harness-evolution/**`` is stageable only when
+        ``allow_protected_paths`` is set for the legacy single-patch path; a
+        non-legacy bundle that contains it raises instead of silently dropping
+        a requested file. The commit records
         ``Harness-Patch-Hash: sha256:<bundle.sha256>`` and a replay from the
         same base, message, and hash reuses the existing commit. The returned
         snapshot carries the real ``git diff`` of the commit against its
@@ -491,7 +492,13 @@ class GitWorkspaceManager:
         *,
         allow_protected_paths: bool,
     ) -> tuple[Patch, ...]:
-        """Return the deterministic, deduplicated set of files to stage."""
+        """Return the deterministic, deduplicated set of files to stage.
+
+        ``allow_protected_paths`` only relaxes the ``.harness-evolution``
+        exclusion for the legacy placeholder; ``.git`` is rejected regardless.
+        A requested protected file is an error rather than a silent drop, so a
+        caller never believes a file was committed when git never saw it.
+        """
         files = tuple(sorted(bundle.files, key=lambda patch: patch.file))
         if not files:
             raise GitOperationError("candidate bundle is empty", stage="patch")
@@ -501,15 +508,13 @@ class GitWorkspaceManager:
             if patch.file in seen:
                 raise GitOperationError("candidate bundle repeats a file", stage="patch")
             seen.add(patch.file)
-            relative = PurePosixPath(patch.file)
-            if (
-                not relative.parts
-                or relative.is_absolute()
-                or any(part in {"", ".", ".."} for part in relative.parts)
-            ):
-                raise GitOperationError("candidate bundle path is unsafe", stage="patch")
-            if not allow_protected_paths and _is_protected_path(patch.file):
-                continue
+            _validated_patch_path(patch.file)
+            if _is_harness_evolution_path(patch.file) and not allow_protected_paths:
+                raise GitOperationError(
+                    f"candidate bundle path {patch.file!r} is outside the agent edit scope; "
+                    ".harness-evolution is only stageable for the legacy placeholder",
+                    stage="patch",
+                )
             selected.append(patch)
         if not selected:
             raise GitOperationError("candidate bundle has no stageable files", stage="patch")
@@ -1625,9 +1630,7 @@ class GitWorkspaceManager:
     @staticmethod
     def _write_patch(workspace_path: Path, patch: Patch) -> None:
         """Write a bounded repository-relative patch without path traversal."""
-        relative = PurePosixPath(patch.file)
-        if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
-            raise GitOperationError("patch path is unsafe", stage="patch")
+        relative = _validated_patch_path(patch.file)
         destination = workspace_path.joinpath(*relative.parts)
         try:
             destination.parent.resolve().relative_to(workspace_path.resolve())
@@ -1784,9 +1787,51 @@ def _safe_component(value: str) -> str:
     return cleaned
 
 
-def _is_protected_path(file: str) -> bool:
-    """Return whether a bundle path lives under a protected directory."""
-    return any(part in {".git", ".harness-evolution"} for part in PurePosixPath(file).parts)
+def _validated_patch_path(file: str) -> PurePosixPath:
+    """Validate one canonical, relative bundle path outside Git metadata."""
+    if not file or file != file.strip():
+        raise GitOperationError("patch path is empty or padded with whitespace", stage="patch")
+    if "\x00" in file:
+        raise GitOperationError("patch path contains a NUL byte", stage="patch")
+    if "\\" in file:
+        raise GitOperationError("patch path must use POSIX separators", stage="patch")
+    if re.match(r"^[A-Za-z]:", file):
+        raise GitOperationError("patch path must not start with a drive prefix", stage="patch")
+    relative = PurePosixPath(file)
+    if relative.is_absolute() or relative.as_posix() != file:
+        raise GitOperationError(
+            "patch path must be a canonical relative POSIX path",
+            stage="patch",
+        )
+    if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+        raise GitOperationError("patch path is unsafe", stage="patch")
+    if _is_git_path(file):
+        raise GitOperationError(
+            f"patch path {file!r} targets .git, which is never stageable",
+            stage="patch",
+        )
+    return relative
+
+
+def _is_git_path(file: str) -> bool:
+    """Return whether a path has a case-insensitive ``.git`` segment.
+
+    Case folding matters on macOS, where ``.GIT`` resolves to the same
+    directory as ``.git`` on the default case-insensitive filesystem.
+    """
+    return any(part.casefold() == _GIT_DIR for part in PurePosixPath(file).parts)
+
+
+def _is_harness_evolution_path(file: str) -> bool:
+    """Return whether a path has a case-insensitive ``.harness-evolution`` segment."""
+    return any(part.casefold() == _HARNESS_EVOLUTION_DIR for part in PurePosixPath(file).parts)
+
+
+_GIT_DIR = ".git"
+"""Git metadata directory; never part of a candidate patch or bundle."""
+
+_HARNESS_EVOLUTION_DIR = ".harness-evolution"
+"""Agent scratch directory; only the legacy placeholder may stage it."""
 
 
 _FULL_COMMIT = re.compile(r"[0-9a-f]{40}")

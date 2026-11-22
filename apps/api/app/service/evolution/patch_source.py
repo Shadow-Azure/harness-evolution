@@ -37,8 +37,12 @@ class PatchBundle:
 
     ``note`` is the human one-liner for the commit message, ``intent`` is the
     auditable EditPlan when the change came from an agent, and ``report`` holds
-    the per-edit outcomes. ``unified_diff`` stays empty until the git commit
-    collects the real diff; git is the single source of truth.
+    the per-edit outcomes. When ``intent`` is present, ``note`` must equal
+    ``intent.summary`` so the commit message and the audited intent cannot
+    drift apart. ``unified_diff`` is reserved for the real ``git diff`` that
+    the agent-edit source collects before committing (bugfix-21); the default
+    legacy wrapper leaves it empty, and ``CandidateWorkspace.unified_diff``
+    always carries the git-produced diff after the commit.
 
     Hash compatibility is a hard requirement: a single-file bundle returns
     :attr:`Patch.sha256` byte-for-byte, so ``Harness-Patch-Hash`` trailers from
@@ -58,6 +62,8 @@ class PatchBundle:
             raise ValueError("PatchBundle.files must not be empty")
         if not self.note.strip():
             raise ValueError("PatchBundle.note must not be blank")
+        if self.intent is not None and self.note != self.intent.summary:
+            raise ValueError("PatchBundle.note must equal intent.summary")
         ordered = tuple(sorted(self.files, key=lambda patch: patch.file))
         paths = [patch.file for patch in ordered]
         if len(set(paths)) != len(paths):

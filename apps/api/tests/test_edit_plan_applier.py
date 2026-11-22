@@ -302,10 +302,13 @@ def test_allowed_paths_use_posix_globs(
         " a.md",
         "a.md ",
         ".harness-evolution/edits.json5",
+        ".Harness-Evolution/edits.json5",
         ".git/config",
+        ".GIT/config",
         "skills/.harness-evolution/candidate.md",
         "../escape.md",
         "/absolute.md",
+        "C:/escape.md",
         "a\\b.md",
         "a//b.md",
         "./a.md",
@@ -535,6 +538,54 @@ def test_symlink_escape_is_an_error(tmp_path: Path) -> None:
     assert outside.read_text(encoding="utf-8") == "secret\n"
 
 
+@pytest.mark.parametrize("protected", [".harness-evolution", ".git"])
+def test_symlink_into_a_protected_directory_is_an_error(
+    tmp_path: Path,
+    protected: str,
+) -> None:
+    """A workspace-internal symlink cannot smuggle an edit into a protected dir."""
+    workspace = tmp_path / "ws"
+    protected_dir = workspace / protected
+    protected_dir.mkdir(parents=True)
+    secret = protected_dir / "secret.md"
+    _write(secret, "secret\n")
+    (workspace / "link.md").symlink_to(secret)
+    plan = EditPlan(
+        summary="protected symlink",
+        edits=[
+            EditOp(op="replace", file="link.md", target="secret", content="leaked", rationale="r"),
+        ],
+    )
+
+    application = apply_edit_plan(plan, workspace=workspace)
+
+    assert application.report[0].status == "error"
+    assert "protected directory" in application.report[0].message
+    assert secret.read_text(encoding="utf-8") == "secret\n"
+
+
+def test_symlink_outside_allowed_paths_is_an_error(tmp_path: Path) -> None:
+    """The resolved target, not just the lexical path, must satisfy the scope."""
+    workspace = tmp_path / "ws"
+    _write(workspace / "README.md", "outside\n")
+    _write(workspace / "skills" / "deep" / "SKILL.md", "inside\n")
+    (workspace / "skills" / "link.md").symlink_to(workspace / "README.md")
+    plan = EditPlan(
+        summary="scope symlink",
+        edits=[
+            EditOp(
+                op="replace", file="skills/link.md", target="outside", content="x", rationale="r"
+            )
+        ],
+    )
+
+    application = apply_edit_plan(plan, workspace=workspace, allowed_paths=("skills/**",))
+
+    assert application.report[0].status == "error"
+    assert "resolved path is outside allowed_paths" in application.report[0].message
+    assert (workspace / "README.md").read_text(encoding="utf-8") == "outside\n"
+
+
 def test_invalid_utf8_is_an_error(tmp_path: Path) -> None:
     """A non-UTF-8 target fails the edit instead of being rewritten lossily."""
     workspace = tmp_path / "ws"
@@ -666,6 +717,34 @@ def test_workspace_must_be_absolute_and_existing(tmp_path: Path) -> None:
         apply_edit_plan(plan, workspace=tmp_path / "missing")
 
 
+def test_bypassed_edit_instance_is_revalidated_before_applying(tmp_path: Path) -> None:
+    """An EditOp built with model_construct cannot skip the Pydantic contract."""
+    workspace = tmp_path / "ws"
+    _write(workspace / "doc.md", "line\n")
+    unknown_op = EditOp.model_construct(
+        op=cast("EditOpName", "move"),
+        file="doc.md",
+        target="line",
+        content="x",
+        rationale="r",
+    )
+    blank_append = EditOp.model_construct(
+        op="append",
+        file="doc.md",
+        target=None,
+        content="",
+        rationale="r",
+    )
+    plan = EditPlan.model_construct(summary="bypassed", edits=[unknown_op, blank_append])
+
+    application = apply_edit_plan(plan, workspace=workspace)
+
+    assert [status.status for status in application.report] == ["error", "error"]
+    assert "op" in application.report[0].message
+    assert "content" in application.report[1].message
+    assert (workspace / "doc.md").read_text(encoding="utf-8") == "line\n"
+
+
 def test_invalid_bypassed_edit_is_reported_locatably(tmp_path: Path) -> None:
     """A malformed bypassed entry names its index, file, and violated field."""
     workspace = tmp_path / "ws"
@@ -750,6 +829,30 @@ def test_bundle_rejects_empty_duplicate_and_blank_inputs() -> None:
         PatchBundle(files=(patch,), note=" ")
     with pytest.raises(ValueError, match="must not repeat"):
         PatchBundle(files=(patch, patch), note="duplicate")
+
+
+def test_bundle_note_is_the_intent_summary() -> None:
+    """An intent-bearing bundle uses the EditPlan summary as its note."""
+    plan = EditPlan(
+        summary="timeout 30s to 120s",
+        edits=[
+            EditOp(
+                op="replace",
+                file="config/a.json",
+                target='"timeout": 30',
+                content='"timeout": 120',
+                rationale="r",
+            )
+        ],
+    )
+    patch = Patch(file="config/a.json", lines=("{", "}"), overwrite=True)
+
+    with pytest.raises(ValueError, match=r"intent\.summary"):
+        PatchBundle(files=(patch,), note="different", intent=plan)
+
+    bundle = PatchBundle(files=(patch,), note=plan.summary, intent=plan)
+    assert bundle.note == plan.summary
+    assert bundle.intent is plan
 
 
 async def test_placeholder_bundle_preserves_legacy_build_and_note() -> None:

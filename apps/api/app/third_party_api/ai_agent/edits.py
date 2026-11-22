@@ -57,6 +57,11 @@ EditStatusKind = Literal["applied", "skipped_anchor_missing", "error"]
 _PROTECTED_DIRS: Final[frozenset[str]] = frozenset({".git", ".harness-evolution"})
 """Directories that never belong to an EditPlan's writable scope."""
 
+_PROTECTED_DIRS_FOLDED: Final[frozenset[str]] = frozenset(
+    name.casefold() for name in _PROTECTED_DIRS
+)
+"""Case-folded protected names, because macOS filesystems resolve case-insensitively."""
+
 _MAX_ERROR_CHARS: Final = 1_000
 """Upper bound for a validation or I/O detail echoed back to the caller."""
 
@@ -69,6 +74,15 @@ def _require_non_blank(value: str | None, *, field: str, op: str) -> str:
     if value is None or not value.strip():
         raise ValueError(f"{field} is required for op={op!r} and must not be blank")
     return value
+
+
+def _has_protected_part(parts: tuple[str, ...]) -> bool:
+    """Return whether any path segment names a protected directory.
+
+    Matching is case-insensitive because macOS resolves ``.GIT`` to ``.git``
+    on its default case-insensitive filesystem.
+    """
+    return any(part.casefold() in _PROTECTED_DIRS_FOLDED for part in parts)
 
 
 def _safe_relative_path(value: str) -> PurePosixPath:
@@ -86,6 +100,8 @@ def _safe_relative_path(value: str) -> PurePosixPath:
         raise ValueError("file must not contain a NUL byte")
     if "\\" in value:
         raise ValueError("file must use POSIX separators")
+    if re.match(r"^[A-Za-z]:", value):
+        raise ValueError("file must not start with a drive prefix")
     path = PurePosixPath(value)
     if path.is_absolute():
         raise ValueError("file must be a relative POSIX path")
@@ -94,7 +110,7 @@ def _safe_relative_path(value: str) -> PurePosixPath:
     parts = path.parts
     if not parts or any(part in {"", ".", ".."} for part in parts):
         raise ValueError("file must not contain '.', '..', or empty segments")
-    if any(part in _PROTECTED_DIRS for part in parts):
+    if _has_protected_part(parts):
         raise ValueError(f"file must not target {sorted(_PROTECTED_DIRS)!r}")
     return path
 
@@ -272,9 +288,15 @@ def _raw_field(raw: object, field: str) -> str:
 
 
 def _coerce_edit(raw: object, index: int) -> EditOp:
-    """Validate one plan entry, including one built by bypassing EditPlan."""
+    """Validate one plan entry, including one built by bypassing EditPlan.
+
+    An ``EditOp`` produced with ``model_construct`` skips the Pydantic
+    validators, so it is re-validated from its field values rather than trusted
+    by isinstance. Otherwise a bypassed blank content or unknown op could reach
+    the text applier.
+    """
     if isinstance(raw, EditOp):
-        return raw
+        raw = raw.model_dump()
     try:
         return EditOp.model_validate(raw)
     except ValidationError as exc:
@@ -364,11 +386,29 @@ def _load_target(
             ),
         ) from None
     try:
-        resolved.relative_to(root)
+        resolved_relative = resolved.relative_to(root)
     except ValueError:
         raise EditPlanError(
             _constraint_message(index, edit.file, edit.op, "path escapes the workspace"),
         ) from None
+    if _has_protected_part(resolved_relative.parts):
+        raise EditPlanError(
+            _constraint_message(
+                index,
+                edit.file,
+                edit.op,
+                "path resolves into a protected directory",
+            ),
+        )
+    if not _matches_allowed(resolved_relative.as_posix(), allowed_paths):
+        raise EditPlanError(
+            _constraint_message(
+                index,
+                edit.file,
+                edit.op,
+                f"resolved path is outside allowed_paths {list(allowed_paths)!r}",
+            ),
+        )
     if not resolved.exists():
         raise _AnchorMissing(
             _constraint_message(index, edit.file, edit.op, "file does not exist"),
