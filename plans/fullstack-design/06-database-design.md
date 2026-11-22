@@ -568,6 +568,9 @@ erDiagram
 
 ### 5.2 `evolution_runs`
 
+暂停控制由增量迁移 `0026` 添加：`control_state VARCHAR(16) NOT NULL DEFAULT running`、`pause_requested_at/paused_at/resumed_at DATETIME NULL`、`paused_by VARCHAR(36) NULL`；当前暂停请求与确认时间独立，操作者及历次转换保留在持久化运行事件中。`evolution_rounds.eval_paused_seconds` 为非空浮点秒数，默认 0，用于排除本地暂停等待。执行状态、unit、轮次产物、外部评测 ID 和原始输入快照继续作为恢复事实，不改变运行身份。并发暂停、确认与继续通过行锁事务和 job 认领互斥；暂停工作区不进入普通终态清理。
+
+
 | 列 | 类型 | 说明 |
 |---|---|---|
 | `id` | `VARCHAR(36)` PK | `evo-…` |

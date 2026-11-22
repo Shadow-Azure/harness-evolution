@@ -9,6 +9,7 @@ const props = defineProps<{
   workspaceName: string;
   kind: "running" | "history";
   runs: EvolutionRunCard[];
+  canManage?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -28,7 +29,7 @@ const title = computed(() => props.kind === "running"
   >
     <h2 class="group-label">
       <span
-        v-if="kind === 'running'"
+        v-if="kind === 'running' && runs.some(run => run.controlState !== 'paused')"
         class="pulse"
         aria-hidden="true"
       />
@@ -44,6 +45,7 @@ const title = computed(() => props.kind === "running"
         :wid="wid"
         :workspace-name="workspaceName"
         :run="run"
+        :can-manage="canManage"
         @open="emit('open', $event)"
       />
     </div>

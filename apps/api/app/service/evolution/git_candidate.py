@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from app.db.crud.evolution import EvolutionRepository
 from app.db.models.evolution import EvolutionRoundRecord, EvolutionRunRecord
 from app.service.evolution.backoff import next_retry_at
+from app.service.evolution.control import checkpoint
 from app.service.evolution.engine.contracts import ConfigError, RunBlocked
 from app.service.evolution.events import (
     EvolutionRunEventLevel,
@@ -213,24 +214,44 @@ class EvolutionCandidateService:
         """Create, commit, and push one candidate with bounded immediate retries."""
         if round_.status in {"evaluating", "deciding", "accepted", "rejected", "skipped"}:
             return round_
+        await checkpoint(self._runs, run.id)
+        if round_.candidate_commit:
+            return await self.repush_existing(run, round_, job_id=job_id)
         prepared = _prepared_workspace(run)
         current = await self._runs.mark_round_patching(
             round_.id,
-            started_at=self._now(),
+            started_at=round_.started_at or self._now(),
         )
-        patch_source = self._patch_source_factory(run)
-        try:
-            patch = await patch_source.build(run, current.seq, trace)
-            change_note = await patch_source.change_note(run, current.seq, trace)
-        except ConfigError as exc:
-            await self._fail_patch_generation(run, current.id, exc, job_id=job_id)
+        saved = current.patch
+        if saved is not None and "file" in saved and "lines" in saved:
+            patch = Patch(
+                file=saved["file"],
+                lines=tuple(saved["lines"]),
+                overwrite=saved.get("overwrite", False),
+            )
+            change_note = saved.get("note", "")
+        else:
+            patch_source = self._patch_source_factory(run)
+            try:
+                patch = await patch_source.build(run, current.seq, trace)
+                change_note = await patch_source.change_note(run, current.seq, trace)
+            except ConfigError as exc:
+                await self._fail_patch_generation(run, current.id, exc, job_id=job_id)
+            saved = {
+                "file": patch.file,
+                "lines": list(patch.lines),
+                "note": change_note,
+                "overwrite": patch.overwrite,
+            }
+            await self._runs.save_round_patch(current.id, saved)
+        await checkpoint(self._runs, run.id)
         candidate_ref = f"{prepared.branch}/candidate/r{current.seq}"
         message = build_candidate_message(
             run,
             round_seq=current.seq,
             trace=_with_patch_file(trace, patch.file, change_note),
             patch_sha256=patch.sha256,
-            created_at=self._now(),
+            created_at=current.started_at or self._now(),
             web_base_url=self._web_base_url,
         )
         try:
@@ -254,7 +275,7 @@ class EvolutionCandidateService:
             candidate_ref=candidate.ref,
             candidate_commit=candidate.commit,
             candidate_message=candidate.message,
-            patch={"file": patch.file, "lines": list(patch.lines), "note": change_note},
+            patch=saved,
         )
         await self._record(
             run.id,
@@ -266,6 +287,7 @@ class EvolutionCandidateService:
             payload={"files": [patch.file], "patchHash": f"sha256:{patch.sha256}"},
         )
 
+        await checkpoint(self._runs, run.id)
         if not self._workspaces.push_enabled:
             return await self._runs.mark_round_and_run_push_skipped(
                 run.id,
@@ -276,6 +298,7 @@ class EvolutionCandidateService:
 
         async def attempt_push() -> None:
             nonlocal attempt_counter
+            await checkpoint(self._runs, run.id)
             attempt_counter += 1
             await self._runs.mark_round_pushing(
                 current.id,
@@ -383,14 +406,16 @@ class EvolutionCandidateService:
         retry_attempts: int = 0,
     ) -> EvolutionRoundRecord:
         """Push one already-committed candidate exactly once and re-enter evaluation."""
+        if round_.push_status == "succeeded":
+            return await self._runs.mark_round_evaluating(round_.id)
+        if not self._workspaces.push_enabled:
+            return await self._runs.mark_round_and_run_push_skipped(run.id, round_.id)
         if (
             round_.candidate_ref is None
             or round_.candidate_commit is None
             or not round_.candidate_message
         ):
             raise ValueError("candidate push retry requires a persisted candidate")
-        if not self._workspaces.push_enabled:
-            raise ValueError("push-disabled runs cannot resume a candidate push")
         prepared = _prepared_workspace(run)
         candidate = CandidateWorkspace(
             workspace_path=prepared.path,
@@ -403,6 +428,7 @@ class EvolutionCandidateService:
             base_commit=prepared.base_commit,
             push_url=prepared.push_url,
         )
+        await checkpoint(self._runs, run.id)
         attempt = round_.push_attempts + 1
         pushing = await self._runs.mark_round_pushing(round_.id, attempt=attempt)
         await self._record(

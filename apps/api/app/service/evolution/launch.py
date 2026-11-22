@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, Protocol, cast
 
@@ -28,6 +29,9 @@ from app.service.evolution.target_content import (
     TargetVersionResolver,
 )
 from app.service.jobs import JobRunner, sanitize_job_payload
+from app.utils.ids import new_id
+
+logger = logging.getLogger(__name__)
 
 
 class LaunchTargetRecord(Protocol):
@@ -160,6 +164,7 @@ class EvolutionLaunchService:
         policy = resolve_policy(body.policy)
         condition = _match_condition(query, config.workspace_id, resolved)
         await self._require_potential(condition, policy)
+        job_id = new_id()
         run = await self._runs.create_run(
             self._run_values(
                 body,
@@ -169,28 +174,30 @@ class EvolutionLaunchService:
                 policy=policy,
                 created_by=created_by,
             ),
+            initial_job_id=job_id,
         )
-        if self._events is not None:
-            await self._events.record(
-                run.id,
-                "run_created",
-                level="info",
-                stage="prepare",
-                message="运行已创建",
-                payload={
-                    "mode": run.mode,
-                    "targetType": run.target_type,
-                    "targetName": run.target_name,
-                    "targetVersion": run.target_version,
-                },
+        try:
+            if self._events is not None:
+                await self._events.record(
+                    run.id,
+                    "run_created",
+                    level="info",
+                    stage="prepare",
+                    message="运行已创建",
+                    payload={
+                        "mode": run.mode,
+                        "targetType": run.target_type,
+                        "targetName": run.target_name,
+                        "targetVersion": run.target_version,
+                    },
+                )
+        except Exception:
+            logger.exception(
+                "failed to record run creation event", extra={"run_id": run.id, "job_id": job_id}
             )
-        job = await self._jobs.submit(
-            kind="evolution_prepare",
-            payload={"runId": run.id},
-            ref_id=run.id,
-            created_by=created_by,
-        )
-        return RunAccepted(run_id=run.id, job_id=job.id, status="preparing")
+        finally:
+            self._jobs.schedule(job_id)
+        return RunAccepted(run_id=run.id, job_id=job_id, status="preparing")
 
     async def _require_potential(
         self,
@@ -260,6 +267,7 @@ class EvolutionLaunchService:
         Returns:
             Column values for one `preparing` run row.
         """
+        start, end = resolve_window(query.window_from, query.window_to)
         return {
             "title": f"{query.target_name} {resolved.target_version} 自进化",
             "workspace_id": config.workspace_id,
@@ -274,13 +282,14 @@ class EvolutionLaunchService:
             "target_name": query.target_name,
             "target_version": resolved.target_version,
             "target_revision": resolved.target_revision,
+            "base_commit": resolved.base_commit,
             "repo_url": config.repo_url,
             "sub_dir": config.sub_dir,
             "validation_project_id": config.validation_project_id,
             "test_project_id": config.test_project_id,
             "base_ref": resolved.target_version,
-            "window_from": query.window_from,
-            "window_to": query.window_to,
+            "window_from": start,
+            "window_to": end,
             "models": list(query.models),
             "status": "preparing",
             "created_by": created_by,

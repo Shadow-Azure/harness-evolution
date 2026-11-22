@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
 from app.config import Settings
 from app.db.crud.fixtures import ensure_fixture_external_tables
+from app.db.crud.jobs import JobRepository
 from app.db.models.evolution import evolution_runs
 from app.main import create_app
+from app.service.evolution.events import EvolutionRunEventService
 from app.service.evolution.target_content import ResolvedTargetVersion
+from app.service.jobs import JobRunner
 from tests.identity.helpers import identity_settings
 from tests.m10_02_potential_support import (
     NOW,
@@ -31,6 +36,93 @@ from tests.v2_acceptance_support import seed_identity
 WORKSPACE_ID = "ws-m13-launch"
 TARGET_NAME = "deep-research"
 TARGET_VERSION = "v2.0.0"
+
+
+async def test_pause_during_launch_returns_the_durable_initial_job(
+    launch_client: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, headers, database = launch_client
+    record = EvolutionRunEventService.record
+    created: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+    release = asyncio.Event()
+
+    async def wait_at_created(service: Any, run_id: str, event_type: Any, **kwargs: Any) -> Any:
+        event = await record(service, run_id, event_type, **kwargs)
+        if event_type == "run_created":
+            created.set_result(run_id)
+            await release.wait()
+        return event
+
+    monkeypatch.setattr(EvolutionRunEventService, "record", wait_at_created)
+    path = f"/api/workspaces/{WORKSPACE_ID}/evolution"
+    launch = asyncio.create_task(
+        client.post(
+            path + "/cluster-previews",
+            headers=headers,
+            json={
+                "targetType": "skill",
+                "targetName": TARGET_NAME,
+                "targetVersion": TARGET_VERSION,
+                "mode": "cluster_only",
+            },
+        )
+    )
+    try:
+        run_id = await asyncio.wait_for(asyncio.shield(created), timeout=60)
+        paused = await client.post(f"{path}/runs/{run_id}/pause", headers=headers)
+        assert paused.json()["controlState"] == "paused"
+    finally:
+        release.set()
+        response = await launch
+    assert response.status_code == 202
+    initial = await JobRepository(database).get(response.json()["jobId"])
+    assert initial and initial.ref_id == run_id == response.json()["runId"] and initial.attempt == 0
+    resume = await client.post(f"{path}/runs/{run_id}/resume", headers=headers)
+    assert resume.status_code == 200
+    jobs = [row for row in await JobRepository(database).list_recent() if row.ref_id == run_id]
+    assert len(jobs) == 2
+    assert sum(job.payload.get("continuation") is True for job in jobs) == 1
+
+
+async def test_launch_runs_committed_job_when_created_event_fails(
+    launch_client: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    client, headers, database = launch_client
+    record = EvolutionRunEventService.record
+    schedule = JobRunner.schedule
+    failed_events: list[str] = []
+    scheduled: list[tuple[JobRunner, str]] = []
+
+    async def fail_creation_event(service: Any, run_id: str, event_type: Any, **kwargs: Any) -> Any:
+        if event_type == "run_created":
+            failed_events.append(run_id)
+            raise RuntimeError("synthetic event write failure")
+        return await record(service, run_id, event_type, **kwargs)
+
+    def schedule_and_track(runner: JobRunner, job_id: str) -> None:
+        scheduled.append((runner, job_id))
+        schedule(runner, job_id)
+
+    monkeypatch.setattr(EvolutionRunEventService, "record", fail_creation_event)
+    monkeypatch.setattr(JobRunner, "schedule", schedule_and_track)
+    response = await client.post(
+        f"/api/workspaces/{WORKSPACE_ID}/evolution/cluster-previews",
+        headers=headers,
+        json={
+            "targetType": "skill",
+            "targetName": TARGET_NAME,
+            "targetVersion": TARGET_VERSION,
+            "mode": "cluster_only",
+        },
+    )
+    assert response.status_code == 202
+    run_id, job_id = response.json()["runId"], response.json()["jobId"]
+    assert failed_events == [run_id]
+    assert [queued_id for _, queued_id in scheduled] == [job_id]
+    job = await scheduled[0][0].wait(job_id)
+    assert job.status == "completed" and job.attempt == 1 and job.ref_id == run_id
+    assert job == await JobRepository(database).get(job_id)
+    assert any(getattr(entry, "run_id", None) == run_id for entry in caplog.records)
 
 
 class DigestTargetResolver:

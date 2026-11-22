@@ -196,6 +196,7 @@ const finalStep = {
 
 const run = {
   runId: "run-1",
+  controlState: "running" as const, canPause: false, canResume: false,
   title: "run",
   mode: "full" as const,
   target: { type: "skill" as const, name: "deep-research", version: "v2.0.0" },

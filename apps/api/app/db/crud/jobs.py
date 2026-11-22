@@ -8,6 +8,7 @@ from sqlalchemy import and_, insert, or_, select, update
 from sqlalchemy.engine import CursorResult
 
 from app.db.base import Database
+from app.db.crud.evolution_lock import lock_run_row
 from app.db.models.jobs import JobRunRecord, job_runs, record_from_row
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
@@ -197,8 +198,13 @@ class JobRepository:
         """
         if lease_seconds <= 0:
             raise ValueError("job lease must be positive")
+        job = await self.get(job_id)
+        if job is None or job.status not in ACTIVE_JOB_STATUSES:
+            return None
         now = now_shanghai()
         async with self._database.transaction() as session:
+            if job.ref_id and job.kind in EVOLUTION_JOB_KINDS:
+                await lock_run_row(session, job.ref_id)
             result = cast(
                 CursorResult[Any],
                 await session.execute(

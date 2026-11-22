@@ -10,6 +10,7 @@ import { useEvolutionRuns } from "../../composables/useEvolutionRuns";
 import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import { workspacePath } from "../../router/workspace";
 import { useAuthStore } from "../../stores/auth";
+import { canManageWorkspace } from "../../utils/workspaceDisplay";
 import LaunchWizard from "./components/LaunchWizard.vue";
 import RunGroup from "./components/RunGroup.vue";
 import TargetConfigEntry from "./targets/components/TargetConfigEntry.vue";
@@ -21,6 +22,7 @@ const route = useRoute();
 const queryClient = useQueryClient();
 const auth = useAuthStore();
 const workspaceId = useWorkspaceId();
+const canManage = computed(() => canManageWorkspace(auth.workspaceById(workspaceId.value)?.role));
 const workspaceName = computed(
   () => auth.workspaceById(workspaceId.value)?.name ?? "",
 );
@@ -135,6 +137,7 @@ async function openRun(path: string): Promise<void> {
         :wid="workspaceId"
         :workspace-name="workspaceName"
         kind="running"
+        :can-manage="canManage"
         :runs="running"
         @open="openRun"
       />
@@ -142,6 +145,7 @@ async function openRun(path: string): Promise<void> {
         :wid="workspaceId"
         :workspace-name="workspaceName"
         kind="history"
+        :can-manage="canManage"
         :runs="history"
         @open="openRun"
       />

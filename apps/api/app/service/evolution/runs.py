@@ -10,6 +10,7 @@ from typing import Literal, Protocol, cast
 from pydantic import Field
 
 from app.db.models.evolution import EvolutionRunSummaryRecord
+from app.service.evolution.control import EvolutionRunControl, control_view
 from app.service.evolution.state import (
     PREPARE_COMPLETE_UNIT,
     effective_unit,
@@ -146,7 +147,7 @@ class EvolutionRunFinal(IdentityModel):
     init_score: float
 
 
-class EvolutionRunCard(IdentityModel):
+class EvolutionRunCard(EvolutionRunControl):
     """One complete run-list card contract."""
 
     run_id: str
@@ -369,7 +370,7 @@ def _card(summary: EvolutionRunSummaryRecord) -> EvolutionRunCard:
     """Map one repository summary to the public list card."""
     run = summary.run
     return EvolutionRunCard(
-        run_id=run.id,
+        **control_view(run).model_dump(),
         title=run.title,
         mode=cast(Literal["full", "cluster_only"], run.mode),
         target=EvolutionRunTarget(

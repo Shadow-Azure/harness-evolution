@@ -105,6 +105,8 @@ export type ProbeListResponse = components["schemas"]["ProbeListResponse"];
 
 /** One complete run-list card grouped by backend state. */
 export type EvolutionRunCard = components["schemas"]["EvolutionRunCard"];
+/** Durable pause/resume state and server-owned action availability. */
+export type EvolutionRunControl = components["schemas"]["EvolutionRunControl"];
 
 /** Running and history groups already ordered by the backend. */
 export type EvolutionRunList = components["schemas"]["EvolutionRunList"];

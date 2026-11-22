@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -25,7 +26,7 @@ class FakeRuns:
 
     async def get_run(self, run_id: str) -> Any:
         """Return a running full-mode run."""
-        return SimpleNamespace(id=run_id, mode="full", status="running")
+        return SimpleNamespace(id=run_id, mode="full", status="running", control_state="running")
 
     async def list_rounds(self, run_id: str) -> tuple[Any, ...]:
         """Return the one persisted round."""
@@ -180,8 +181,14 @@ async def test_pushing_round_repushes_the_persisted_candidate() -> None:
 
 
 @pytest.mark.asyncio
-async def test_stale_evaluating_round_is_reset_and_resubmitted() -> None:
-    """A failed or deadline-less eval is resubmitted instead of polling forever."""
+@pytest.mark.parametrize(
+    ("status", "continuation", "resubmits"),
+    [("failed", False, True), ("completed", False, False), ("running", True, False)],
+)
+async def test_recovery_preserves_completed_and_user_resumed_evaluations(
+    status: str, continuation: bool, resubmits: bool
+) -> None:
+    """Only stale unfinished process recovery may submit another evaluation."""
     round_ = SimpleNamespace(
         id="round-3",
         status="evaluating",
@@ -189,7 +196,7 @@ async def test_stale_evaluating_round_is_reset_and_resubmitted() -> None:
         candidate_commit="a" * 40,
         candidate_message="message",
         eval_external_id="old-eval",
-        eval_status="failed",
+        eval_status=status,
         eval_next_poll_at=None,
         probe_cluster_id="cluster-1",
         seq=1,
@@ -203,10 +210,10 @@ async def test_stale_evaluating_round_is_reset_and_resubmitted() -> None:
         eval_submitter,
     )
 
-    result = await service.handle(_job("run-3"))
+    result = await service.handle(replace(_job("run-3"), payload={"continuation": continuation}))
 
-    assert runs.reset == ["round-3"]
-    assert eval_submitter.submitted == ["round-3"]
+    assert runs.reset == (["round-3"] if resubmits else [])
+    assert eval_submitter.submitted == runs.reset
     assert result["published"] is True
 
 

@@ -10,10 +10,12 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
+from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.jobs import DEFAULT_LEASE_SECONDS, JobRepository
 from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
 from app.service.events import EventBus, RunEventRecorder
+from app.service.evolution.control import EvolutionControlService, PauseAtCheckpoint, checkpoint
 from app.service.evolution.engine.contracts import RunBlocked
 from app.utils.ids import new_id
 from app.utils.redaction import sanitize_job_error, sanitize_job_payload
@@ -110,6 +112,14 @@ class JobRunner:
         self._heartbeat_seconds = heartbeat_seconds
         self._drain_timeout_seconds = drain_timeout_seconds
         self._owner = (owner or f"{socket.gethostname()}:{os.getpid()}")[:64]
+        self._control: EvolutionControlService | None = None
+        self._runs: EvolutionRepository | None = None
+
+    def set_evolution_control(
+        self, control: EvolutionControlService, runs: EvolutionRepository
+    ) -> None:
+        self._control = control
+        self._runs = runs
 
     def register_handler(self, kind: str, handler: JobHandler) -> None:
         """Register the single callable that owns one durable job kind."""
@@ -160,6 +170,10 @@ class JobRunner:
             if queued is not None and job.kind != "sync":
                 await self._record_recovery(job, queued.id)
 
+        if self._control:
+            for run_id in await self._control.repository.pending_acknowledgements():
+                await self._control.acknowledge(run_id)
+
     async def _requeue_interrupted(self, job: JobRunRecord) -> JobRunRecord | None:
         """Persist the replacement row for one resumable interrupted job."""
         if job.kind not in _INTERRUPTIBLE_KINDS:
@@ -171,6 +185,9 @@ class JobRunner:
                 ref_id=new_id(),
                 created_by=job.created_by,
             )
+        if self._control:
+            queued_id = await self._control.repository.requeue_interrupted(job)
+            return await self.repository.get(queued_id) if queued_id else None
         if await self.repository.find_active(job.kind, job.ref_id) is not None:
             return None
         payload = dict(job.payload)
@@ -205,6 +222,15 @@ class JobRunner:
         async with self._submit_lock:
             if self._closed and not self._draining:
                 raise RuntimeError("job runner is closed")
+            if self._control and ref_id and kind in _KIND_TO_STAGE:
+                job_id, reused = await self._control.repository.admit(
+                    ref_id,
+                    kind,
+                    sanitize_job_payload(payload),
+                    created_by,
+                )
+                self.schedule(job_id)
+                return JobSubmission(await self.get(job_id), reused)
             existing = await self.repository.find_active(kind, ref_id)
             if existing is not None:
                 if existing.kind == kind and kind in _REUSABLE_DUPLICATE_KINDS:
@@ -328,8 +354,14 @@ class JobRunner:
             try:
                 if handler is None:
                     raise RuntimeError(f"no handler registered for job kind {job.kind}")
+                if self._runs and job.ref_id and job.kind in _KIND_TO_STAGE:
+                    await checkpoint(self._runs, job.ref_id)
                 result = await handler(job)
                 await self.repository.complete(job.id, result, owner=self._owner)
+            except PauseAtCheckpoint:
+                await self.repository.complete(
+                    job.id, {"runId": job.ref_id, "yielded": True}, owner=self._owner
+                )
             except asyncio.CancelledError:
                 await self.repository.interrupt(
                     job.id,
@@ -349,7 +381,6 @@ class JobRunner:
                 raise
             except RunBlocked as exc:
                 error = sanitize_job_error(str(exc))
-                await self.repository.fail(job.id, error, owner=self._owner)
                 record_blocked = getattr(self._run_events, "record_blocked", None)
                 event_stage = _BLOCKED_STAGE_TO_EVENT_STAGE[exc.stage]
                 if callable(record_blocked) and job.ref_id:
@@ -374,6 +405,8 @@ class JobRunner:
                                 "run_id": job.ref_id,
                             },
                         )
+                # Keep the claim until the recoverable failure is visible to pause/resume.
+                await self.repository.fail(job.id, error, owner=self._owner)
                 logger.warning(
                     "job execution blocked",
                     extra={
@@ -384,7 +417,6 @@ class JobRunner:
                 )
             except Exception as exc:
                 error = sanitize_job_error(str(exc))
-                await self.repository.fail(job.id, error, owner=self._owner)
                 record_failed = getattr(self._run_events, "record_failed", None)
                 stage = _failure_event_stage(job, exc)
                 if callable(record_failed) and job.ref_id and stage is not None:
@@ -412,6 +444,7 @@ class JobRunner:
                                 "run_id": job.ref_id,
                             },
                         )
+                await self.repository.fail(job.id, error, owner=self._owner)
                 logger.error(
                     "job execution failed",
                     extra={"job_id": job.id, "kind": job.kind, "error_type": type(exc).__name__},
@@ -491,6 +524,8 @@ class JobRunner:
 
     async def _notify_terminal(self, job: JobRunRecord) -> None:
         """Run terminal lifecycle handling without masking the job outcome."""
+        if self._control and job.ref_id and job.kind in _KIND_TO_STAGE:
+            await self._control.acknowledge(job.ref_id)
         if self._on_terminal is None:
             return
         try:
@@ -519,6 +554,10 @@ class JobRunner:
                 extra={"job_id": job.id, "kind": job.kind},
             )
             return None
+        if self._runs:
+            run = await self._runs.get_run(job.ref_id)
+            if run and run.control_state != "running":
+                return None
         event_seq = await self._run_events.record_interrupted(
             run_id=job.ref_id,
             stage=stage,

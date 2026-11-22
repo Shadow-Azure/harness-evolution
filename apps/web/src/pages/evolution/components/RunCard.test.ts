@@ -2,12 +2,14 @@
 
 import type { EvolutionRunCard } from "@harness/contracts";
 import { mount } from "@vue/test-utils";
+import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { describe, expect, it } from "vitest";
 
 import RunCard from "./RunCard.vue";
 
 const run = (overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard => ({
   runId: "run-1",
+  controlState: "running", canPause: false, canResume: false,
   title: "deep-research v2.0.0 自进化",
   mode: "full",
   target: {
@@ -53,6 +55,21 @@ const run = (overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard => ({
 });
 
 describe("RunCard", () => {
+  it("keeps paused progress visible without an active pulse or member actions", () => {
+    const wrapper = mount(RunCard, {
+      props: { wid: "ws-test", workspaceName: "测试空间", run: run({
+        controlState: "paused", canPause: false, canResume: true,
+        pauseRequestedAt: null, pausedAt: null, pausedBy: null,
+      }) },
+      global: { plugins: [[VueQueryPlugin, { queryClient: new QueryClient() }]] },
+    });
+    expect(wrapper.get(".badge").text()).toBe("已暂停");
+    expect(wrapper.find(".pulse").exists()).toBe(false);
+    expect(wrapper.text()).toContain("第 6/7 步");
+    expect(wrapper.find(".control-button").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("renders the preparing status explicitly", () => {
     const wrapper = mount(RunCard, {
       props: {

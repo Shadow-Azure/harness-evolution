@@ -534,7 +534,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0025"
+        assert result.scalar_one() == "0026"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -834,7 +834,7 @@ async def test_v2_workspace_foundation_backfills_default_workspace(
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-            assert revision == "0025"
+            assert revision == "0026"
             workspace_rows = (
                 (await session.execute(text("SELECT * FROM workspaces"))).mappings().all()
             )
@@ -1088,7 +1088,7 @@ async def test_bad_case_title_migration_backfills_legacy_rows(tmp_path: Path) ->
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-        assert revision == "0025"
+        assert revision == "0026"
         assert [dict(row) for row in rows] == [
             {
                 "bad_case_id": "legacy-long",
@@ -1166,6 +1166,61 @@ class RepositoryContract:
     """Same repository behavior executed against each configured dialect."""
 
     dialect = ""
+
+    async def test_pause_fences_queued_claim_and_disables_push_backoff(
+        self, database: Database
+    ) -> None:
+        from app.db.crud.evolution_control import EvolutionControlRepository
+        from app.db.crud.jobs import JobRepository
+        from tests.workspaces.helpers import create_user
+
+        await upgrade_database(database)
+        runs = EvolutionRepository(database)
+        control = EvolutionControlRepository(database)
+        jobs = JobRepository(database)
+        actor = await create_user(database, username=f"pause-{new_id()}")
+        run_id, original_job = new_id(), new_id()
+        try:
+            run = await runs.create_run(
+                {
+                    "id": run_id,
+                    "title": "queued prepare",
+                    "mode": "full",
+                    "engine_key": "full",
+                    "eval_config": {},
+                    "target_config_id": None,
+                    "target_type": "skill",
+                    "target_name": "demo",
+                    "target_version": "frozen",
+                    "repo_url": "https://example.invalid/repo",
+                    "sub_dir": "demo",
+                },
+                initial_job_id=original_job,
+            )
+            assert (
+                await control.pause(run.id, run.workspace_id, actor)
+            ).run.control_state == "paused"
+            resumes = await asyncio.gather(
+                *(control.resume(run.id, run.workspace_id, actor) for _ in range(2))
+            )
+            continued = [change.job_id for change in resumes if change.job_id is not None]
+            assert len(continued) == 1 and continued[0] != original_job
+            assert await jobs.claim(original_job) is None
+            assert await jobs.claim(continued[0]) is not None
+            assert (await control.pause(run.id, run.workspace_id, actor)).run.control_state == (
+                "pause_requested"
+            )
+            for _ in range(2):
+                await runs.mark_blocked(
+                    run.id, stage="push", message="remote unavailable", next_retry_at=now_shanghai()
+                )
+            blocked = await runs.get_run(run.id)
+            assert blocked and blocked.blocked_stage == "push" and blocked.next_retry_at is None
+        finally:
+            async with database.transaction() as session:
+                await session.execute(delete(job_runs).where(job_runs.c.ref_id == run_id))
+                await session.execute(delete(evolution_runs).where(evolution_runs.c.id == run_id))
+                await session.execute(delete(users).where(users.c.id == actor))
 
     @pytest_asyncio.fixture
     async def database(self, request: pytest.FixtureRequest) -> AsyncIterator[Database]:
@@ -1259,7 +1314,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0025"
+        assert result.scalar_one() == "0026"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")

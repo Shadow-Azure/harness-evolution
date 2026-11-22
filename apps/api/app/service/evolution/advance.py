@@ -12,6 +12,7 @@ from typing import Any, Protocol
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.probe_query import ProbeHitRow
 from app.db.models.jobs import JobRunRecord
+from app.service.evolution.control import checkpoint
 from app.service.evolution.git_candidate import (
     CandidateSource,
     CandidateTrace,
@@ -101,10 +102,12 @@ class EvolutionAdvanceService:
                 "published": False,
                 "reason": "run is not ready for candidate advancement",
             }
+        await checkpoint(self._runs, run.id)
         rounds = await self._runs.list_rounds(run.id)
+        continuation = job.payload.get("continuation") is True
         target = None
         for round_ in rounds:
-            if round_.status in {"accepted", "rejected"}:
+            if round_.status in {"accepted", "rejected", "skipped"}:
                 continue
             if round_.status in {"patching", "pushing"}:
                 # A process restart re-enters the same durable stage. Reuse the
@@ -127,8 +130,15 @@ class EvolutionAdvanceService:
                     )
                 return await self._submit_evaluation(run, current)
             if round_.status == "evaluating":
-                stale = round_.eval_status in {"failed", "timeout"} or (
-                    round_.eval_external_id is not None and round_.eval_next_poll_at is None
+                stale = (
+                    not continuation
+                    and round_.eval_status != "completed"
+                    and (
+                        round_.eval_status in {"failed", "timeout"}
+                        or (
+                            round_.eval_external_id is not None and round_.eval_next_poll_at is None
+                        )
+                    )
                 )
                 current = (
                     await self._runs.reset_round_for_eval_retry(run.id, round_.id)
@@ -258,10 +268,16 @@ class EvolutionJobLifecycle:
             self._schedule_candidate_advance
             and job.kind in {"evolution_prepare", "evolution_advance", "evolution_apply"}
             and job.status == "completed"
+            and not (job.result and job.result.get("yielded"))
             and job.ref_id
         ):
             run = await self._runs.get_run(job.ref_id)
-            if run is not None and run.mode == "full" and run.status == "running":
+            if (
+                run is not None
+                and run.mode == "full"
+                and run.status == "running"
+                and run.control_state == "running"
+            ):
                 rounds = await self._runs.list_rounds(run.id)
                 active = {
                     "patching",

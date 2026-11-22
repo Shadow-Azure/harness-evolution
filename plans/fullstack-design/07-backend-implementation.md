@@ -518,6 +518,14 @@ stateDiagram-v2
 
 `status` 映射与前端不推算的约定不变（[05 §3.6](05-api-design.md)）：`range / sessions / potential / attribution / clusters / iteration / final`，进度公式 `5 + M + 1`。历史 V1 run 只由 `build_step_payload` 的兼容分支映射为同样的七步 DTO。
 
+### 5.1.1 协作式暂停
+
+用户控制状态独立于执行状态：`running → pause_requested → paused → running`。控制服务统一暂停请求、检查点确认及继续入队。暂停先持久化意图，当前不可分的模型调用、Git 操作或提交操作可结束；worker 在阶段及批次边界保存产物并退出，不持有串行执行锁等待用户。确认暂停后不得开始新的外部副作用；其他 run 可以使用 worker。
+
+prepare、advance、apply/final、blocked sweeper、eval poller、重启恢复和清理统一检查控制状态。继续在行锁事务内检查现有 queued/running job，使用冻结快照、unit、轮次状态、候选提交与远端评测 ID 确定唯一后续工作。候选提交、推送和提交评测均沿用持久化产物，禁止因继续而重做。暂停不等价于 blocked 或 interrupted，终态竞争应保留真实执行结果。
+
+已提交评测暂停期间仍可由 poller 观测与落库，但不能 apply 或推进后续轮次；继续时先查询远端结果，再判定超时。暂停等待从本地评测等待预算扣除。暂停及待确认运行跨进程重启保留控制状态和工作区，已执行产物作为恢复依据；控制转换只在状态改变时发出持久化事件。
+
 ### 5.2 对象配置（`service/evolution/targets.py`）
 
 - CRUD 维护 `evolution_targets`；V2 写操作要求当前空间的 `space_admin`，全局管理员直通，`member/viewer` 只读。资源级权限在 `require_workspace_role`，middleware 只负责身份与全局路由边界。

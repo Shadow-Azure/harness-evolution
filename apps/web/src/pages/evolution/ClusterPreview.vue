@@ -16,6 +16,9 @@ import {
 import { useEvolutionRunStep } from "../../composables/useEvolutionRunStep";
 import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import { workspacePath } from "../../router/workspace";
+import { useAuthStore } from "../../stores/auth";
+import { canManageWorkspace } from "../../utils/workspaceDisplay";
+import RunControl from "./components/RunControl.vue";
 import StepClusters from "./components/StepClusters.vue";
 
 defineOptions({ name: "ClusterPreviewPage" });
@@ -24,6 +27,8 @@ const route = useRoute();
 const router = useRouter();
 const queryClient = useQueryClient();
 const workspaceId = useWorkspaceId();
+const auth = useAuthStore();
+const canManage = computed(() => canManageWorkspace(auth.workspaceById(workspaceId.value)?.role));
 const runId = computed(() => String(route.params.runId ?? ""));
 const { data, error, isPending, refetch } = useEvolutionRunDetail(
   workspaceId,
@@ -82,6 +87,8 @@ const clusterHeading = computed(() =>
 );
 
 const statusLabel = computed(() => {
+  if (run.value?.controlState === "paused") return "已暂停";
+  if (run.value?.controlState === "pause_requested") return "暂停中";
   switch (run.value?.status) {
     case "preparing":
       return "准备中";
@@ -101,6 +108,8 @@ const statusLabel = computed(() => {
 });
 
 const statusDetail = computed(() => {
+  if (run.value?.controlState === "paused") return "进度已保留，继续后从原检查点恢复。";
+  if (run.value?.controlState === "pause_requested") return "等待当前操作结束后暂停。";
   if (!run.value) return "";
   if (run.value.status === "preparing") {
     return "正在关联 Session / 筛选潜在 bad case / 生成归因 / 聚类…";
@@ -240,6 +249,12 @@ function backToList(): void {
       <header class="detail-head">
         <h1>问题聚类结果</h1>
         <span class="target-chip">{{ targetLabel }}</span>
+        <RunControl
+          v-if="run.controlState"
+          :wid="workspaceId"
+          :run="run"
+          :can-manage="canManage"
+        />
       </header>
 
       <div class="banner">

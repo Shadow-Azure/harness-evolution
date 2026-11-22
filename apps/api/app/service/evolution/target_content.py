@@ -12,7 +12,7 @@ import asyncio
 from collections import OrderedDict
 from collections.abc import Awaitable
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 from app.errors import AppError, ErrorCode
 from app.third_party_api.git.content import GitContentUnavailable
@@ -40,6 +40,15 @@ class ResolvedTargetVersion:
 
     target_version: str
     target_revision: str
+    base_commit: str | None = None
+
+
+@runtime_checkable
+class CommitContentSource(Protocol):
+    async def read_file_at_commit(
+        self, *, repo_url: str, sub_dir: str, ref: str, file_name: str
+    ) -> tuple[str, str]:
+        """Return a definition body and the exact Git commit read."""
 
 
 class TargetContentSource(Protocol):
@@ -216,17 +225,26 @@ class TargetContentResolver:
                 reason="ref_invalid",
             )
         file_content: str | None = None
+        base_commit = None
         for file_name in file_names:
             try:
-                file_content = await self._bounded(
-                    self._content.read_file(
-                        repo_url=repo_url,
-                        sub_dir=sub_dir,
-                        ref=version,
-                        file_name=file_name,
-                    ),
-                    object_type=object_type,
-                )
+                if isinstance(self._content, CommitContentSource):
+                    file_content, base_commit = await self._bounded(
+                        self._content.read_file_at_commit(
+                            repo_url=repo_url, sub_dir=sub_dir, ref=version, file_name=file_name
+                        ),
+                        object_type=object_type,
+                    )
+                else:
+                    file_content = await self._bounded(
+                        self._content.read_file(
+                            repo_url=repo_url,
+                            sub_dir=sub_dir,
+                            ref=version,
+                            file_name=file_name,
+                        ),
+                        object_type=object_type,
+                    )
                 break
             except AppError as error:
                 # Only try the next casing for a genuinely missing file.
@@ -249,14 +267,14 @@ class TargetContentResolver:
                 object_type=object_type,
                 reason="empty_definition_body",
             )
-        return ResolvedTargetVersion(version, f"digest:{digest}")
+        return ResolvedTargetVersion(version, f"digest:{digest}", base_commit)
 
-    async def _bounded(
+    async def _bounded[T](
         self,
-        operation: Awaitable[str | None],
+        operation: Awaitable[T],
         *,
         object_type: str,
-    ) -> str | None:
+    ) -> T:
         """Await one content read under a timeout and stable failure mapping."""
         try:
             return await asyncio.wait_for(operation, timeout=self._timeout_seconds)

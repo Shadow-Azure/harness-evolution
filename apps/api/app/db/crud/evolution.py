@@ -10,6 +10,8 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
+from app.db.crud.evolution_lock import lock_run_row
+from app.db.crud.jobs import queued_job_values
 from app.db.models.evolution import (
     ClusterWrite,
     EvolutionFinalRecord,
@@ -29,6 +31,7 @@ from app.db.models.evolution import (
     record_from_probe_cluster,
     record_from_probe_cluster_link,
 )
+from app.db.models.jobs import job_runs
 from app.db.models.users import users
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.service.evolution.state import StageConflict, validate_transition
@@ -43,7 +46,9 @@ class EvolutionRepository:
         """Bind the repository to the application database."""
         self._database = database
 
-    async def create_run(self, values: Mapping[str, Any]) -> EvolutionRunRecord:
+    async def create_run(
+        self, values: Mapping[str, Any], *, initial_job_id: str | None = None
+    ) -> EvolutionRunRecord:
         """Insert one run with immutable configuration snapshots."""
         now = now_shanghai()
         payload = {
@@ -100,6 +105,19 @@ class EvolutionRepository:
         }
         async with self._database.transaction() as session:
             await session.execute(insert(evolution_runs).values(**payload))
+            if initial_job_id is not None:
+                run_id = str(payload["id"])
+                await session.execute(
+                    insert(job_runs).values(
+                        **queued_job_values(
+                            job_id=initial_job_id,
+                            kind="evolution_prepare",
+                            payload={"runId": run_id},
+                            ref_id=run_id,
+                            created_by=values.get("created_by"),
+                        )
+                    )
+                )
         created = await self.get_run(str(payload["id"]))
         if created is None:
             raise RuntimeError("created evolution run disappeared")
@@ -143,6 +161,7 @@ class EvolutionRepository:
                     ),
                 )
                 .values(
+                    control_state="running",
                     status="failed",
                     error_stage=stage,
                     error_message=message,
@@ -165,7 +184,8 @@ class EvolutionRepository:
                 update(evolution_runs)
                 .where(
                     evolution_runs.c.id == run_id,
-                    evolution_runs.c.status.notin_(("completed", "failed")),
+                    evolution_runs.c.control_state == "running",
+                    evolution_runs.c.status.in_(("preparing", "running")),
                 )
                 .values(
                     status="interrupted",
@@ -189,6 +209,7 @@ class EvolutionRepository:
         """Persist a retryable blocked state and its next-attempt facts."""
         now = now_shanghai()
         values: dict[str, object] = {
+            "control_state": "running",
             "status": "blocked",
             "blocked_stage": stage,
             "eval_status": "failed" if stage == "eval" else "pending",
@@ -209,6 +230,22 @@ class EvolutionRepository:
         if retry_attempts is not None:
             values["retry_attempts"] = retry_attempts
         async with self._database.transaction() as session:
+            await lock_run_row(session, run_id)
+            prior = (
+                await session.execute(
+                    select(
+                        evolution_runs.c.control_state,
+                        evolution_runs.c.status,
+                        evolution_runs.c.next_retry_at,
+                    ).where(evolution_runs.c.id == run_id)
+                )
+            ).one_or_none()
+            if prior is None or prior.status in {"completed", "failed", "interrupted"}:
+                return
+            if prior.control_state != "running" or (
+                prior.status == "blocked" and prior.next_retry_at is None
+            ):
+                values["next_retry_at"] = None
             await session.execute(
                 update(evolution_runs).where(evolution_runs.c.id == run_id).values(**values),
             )
@@ -218,7 +255,11 @@ class EvolutionRepository:
         async with self._database.transaction() as session:
             await session.execute(
                 update(evolution_runs)
-                .where(evolution_runs.c.id == run_id)
+                .where(
+                    evolution_runs.c.id == run_id,
+                    evolution_runs.c.status == "interrupted",
+                    evolution_runs.c.control_state == "running",
+                )
                 .values(
                     status="running",
                     blocked_stage=None,
@@ -269,8 +310,14 @@ class EvolutionRepository:
         async with self._database.transaction() as session:
             await session.execute(
                 update(evolution_runs)
-                .where(evolution_runs.c.id == run_id)
-                .values(retry_attempts=0, next_retry_at=None),
+                .where(evolution_runs.c.id == run_id, evolution_runs.c.status == "blocked")
+                .values(
+                    retry_attempts=0,
+                    next_retry_at=None,
+                    pause_requested_at=None,
+                    paused_at=None,
+                    paused_by=None,
+                ),
             )
         run = await self.get_run(run_id)
         if run is None:
@@ -295,6 +342,7 @@ class EvolutionRepository:
                     await session.execute(
                         select(evolution_runs)
                         .where(
+                            evolution_runs.c.control_state == "running",
                             evolution_runs.c.status == "blocked",
                             evolution_runs.c.blocked_stage == "push",
                             evolution_runs.c.next_retry_at.is_not(None),
@@ -313,6 +361,25 @@ class EvolutionRepository:
                 .all()
             )
         return tuple(record_from_evolution_run(cast(Mapping[str, Any], row)) for row in rows)
+
+    async def freeze_revision(self, run_id: str, revision: str) -> None:
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs)
+                .where(
+                    evolution_runs.c.id == run_id,
+                    evolution_runs.c.target_revision.is_(None),
+                )
+                .values(target_revision=revision)
+            )
+
+    async def save_round_patch(self, round_id: str, patch: Mapping[str, Any]) -> None:
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_rounds)
+                .where(evolution_rounds.c.id == round_id, evolution_rounds.c.status == "patching")
+                .values(patch=dict(patch))
+            )
 
     async def write_stats(self, run_id: str, stats: Mapping[str, Any]) -> None:
         """Persist partial prepare stats so a retried stage keeps its counts."""
@@ -333,9 +400,19 @@ class EvolutionRepository:
         branch_name: str,
         workspace_path: str,
         push_repo_url: str,
+        prepared: bool = False,
     ) -> None:
-        """Persist the pre-push workspace facts so a restart can reconcile them."""
+        """Persist local workspace facts and distinguish successful publication."""
         async with self._database.transaction() as session:
+            values: dict[str, Any] = {}
+            if prepared:
+                await lock_run_row(session, run_id)
+                stats: Mapping[str, Any] | None = (
+                    await session.execute(
+                        select(evolution_runs.c.stats).where(evolution_runs.c.id == run_id)
+                    )
+                ).scalar_one()
+                values["stats"] = {**(stats or {}), "workspacePrepared": True}
             await session.execute(
                 update(evolution_runs)
                 .where(evolution_runs.c.id == run_id)
@@ -346,6 +423,7 @@ class EvolutionRepository:
                     branch_name=branch_name,
                     workspace_path=workspace_path,
                     push_repo_url=push_repo_url,
+                    **values,
                 ),
             )
 
@@ -381,6 +459,8 @@ class EvolutionRepository:
             "stats": deepcopy(dict(stats)),
             "finished_at": now if status == "completed" else None,
         }
+        if status == "completed":
+            values["control_state"] = "running"
         if target_revision is not None:
             values["target_revision"] = target_revision
         if push_repo_url is not None:
@@ -612,9 +692,13 @@ class EvolutionRepository:
         expected: int,
         target: int,
         cluster_count: int,
+        stats: Mapping[str, Any] | None = None,
     ) -> EvolutionRunRecord:
-        """Advance one cursor unit only when the persisted cursor still matches."""
+        """Advance the cursor and commit its checkpoint data in one conditional write."""
         validate_transition(expected, target, cluster_count)
+        values: dict[str, Any] = {"progress_unit": target}
+        if stats is not None:
+            values["stats"] = dict(stats)
         async with self._database.transaction() as session:
             result = cast(
                 CursorResult[Any],
@@ -624,7 +708,7 @@ class EvolutionRepository:
                         evolution_runs.c.id == run_id,
                         evolution_runs.c.progress_unit == expected,
                     )
-                    .values(progress_unit=target),
+                    .values(**values),
                 ),
             )
         if result.rowcount != 1:
@@ -1041,6 +1125,7 @@ class EvolutionRepository:
                     ),
                 )
                 .values(
+                    control_state="running",
                     status="failed",
                     error_stage=stage,
                     error_message=message,
@@ -1388,6 +1473,7 @@ class EvolutionRepository:
                             evolution_rounds.c.eval_result.is_not(None),
                             evolution_runs.c.mode == "full",
                             evolution_runs.c.status == "running",
+                            evolution_runs.c.control_state == "running",
                         )
                         .order_by(
                             evolution_rounds.c.eval_finished_at,
@@ -1418,6 +1504,7 @@ class EvolutionRepository:
                         .where(
                             evolution_runs.c.mode == "full",
                             evolution_runs.c.status == "running",
+                            evolution_runs.c.control_state == "running",
                         )
                         .order_by(evolution_runs.c.created_at, evolution_runs.c.id)
                         .limit(limit),
@@ -1477,6 +1564,11 @@ class EvolutionRepository:
         ):
             raise ValueError("evaluation result scores are invalid")
         async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(control_state=evolution_runs.c.control_state)
+            )
             changed = cast(
                 CursorResult[Any],
                 await session.execute(
@@ -1517,16 +1609,33 @@ class EvolutionRepository:
         status: str,
         error: str,
         finished_at: datetime,
+        expected_paused_seconds: float | None = None,
     ) -> bool:
         """Persist one terminal external failure and block the aggregate run."""
         if status not in {"failed", "timeout"}:
             raise ValueError("evaluation terminal status must be failed or timeout")
         async with self._database.transaction() as session:
+            run_lock = update(evolution_runs).where(evolution_runs.c.id == run_id)
+            round_conditions = []
+            if expected_paused_seconds is not None:
+                run_lock = run_lock.where(evolution_runs.c.control_state == "running")
+                round_conditions.append(
+                    evolution_rounds.c.eval_paused_seconds == expected_paused_seconds
+                )
+            locked = cast(
+                CursorResult[Any],
+                await session.execute(
+                    run_lock.values(control_state=evolution_runs.c.control_state)
+                ),
+            )
+            if locked.rowcount != 1:
+                return False
             changed = cast(
                 CursorResult[Any],
                 await session.execute(
                     update(evolution_rounds)
                     .where(
+                        *round_conditions,
                         evolution_rounds.c.id == round_id,
                         evolution_rounds.c.run_id == run_id,
                         evolution_rounds.c.status == "evaluating",
@@ -1544,7 +1653,7 @@ class EvolutionRepository:
                 return False
             await session.execute(
                 update(evolution_runs)
-                .where(evolution_runs.c.id == run_id)
+                .where(evolution_runs.c.id == run_id, evolution_runs.c.control_state == "running")
                 .values(
                     status="blocked",
                     blocked_stage="eval",
@@ -1578,6 +1687,7 @@ class EvolutionRepository:
                     eval_status="pending",
                     eval_external_id=None,
                     eval_next_poll_at=None,
+                    eval_paused_seconds=0,
                     eval_started_at=None,
                     eval_finished_at=None,
                     eval_result=null(),
@@ -1717,6 +1827,7 @@ class EvolutionRepository:
         if push_status not in {"succeeded", "skipped"}:
             raise ValueError("completed run requires succeeded or skipped push state")
         values: dict[str, Any] = {
+            "control_state": "running",
             "status": "completed",
             "push_status": push_status,
             "pushed_at": finished_at if push_status == "succeeded" else None,

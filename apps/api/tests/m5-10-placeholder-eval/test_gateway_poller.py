@@ -727,6 +727,100 @@ async def test_inactive_due_row_does_not_consume_batch_slot(
     assert [job.payload["evolutionRoundId"] for job in jobs.jobs] == ["round-healthy"]
 
 
+async def test_long_user_pause_collects_completed_eval_without_applying(
+    eval_state: tuple[Database, EvolutionRepository],
+) -> None:
+    database, repository = eval_state
+    async with database.transaction() as session:
+        await session.execute(
+            update(evolution_runs)
+            .where(evolution_runs.c.id == "run-eval")
+            .values(
+                control_state="paused",
+                paused_at=NOW - timedelta(hours=4),
+            )
+        )
+        await session.execute(
+            update(evolution_rounds)
+            .where(evolution_rounds.c.id == "round-eval")
+            .values(
+                eval_started_at=NOW - timedelta(hours=5),
+            )
+        )
+    jobs = JobCapture()
+    gateway = FakeEvalGateway(EvalGatewayConfig.from_mapping({"status": "completed"}))
+    poller = EvolutionEvalPoller(repository, lambda _: gateway, jobs, events=None, now=lambda: NOW)
+    await poller.run_once()
+    run = await repository.get_run("run-eval")
+    round_ = await repository.get_round("round-eval")
+    assert run and run.status == "running" and run.control_state == "paused"
+    assert round_ and round_.eval_result is not None
+    assert jobs.jobs == []
+
+
+async def test_resume_waiting_eval_excludes_pause_and_reuses_external_id(
+    eval_state: tuple[Database, EvolutionRepository],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.db.crud import evolution_control
+
+    database, repository = eval_state
+    monkeypatch.setattr(evolution_control, "now_shanghai", lambda: NOW)
+    run = await repository.get_run("run-eval")
+    before = await repository.get_round("round-eval")
+    assert run and before
+    async with database.transaction() as session:
+        await session.execute(
+            update(evolution_runs)
+            .where(evolution_runs.c.id == run.id)
+            .values(
+                control_state="paused",
+                paused_at=NOW - timedelta(hours=4),
+            )
+        )
+        await session.execute(
+            update(evolution_rounds)
+            .where(evolution_rounds.c.id == before.id)
+            .values(
+                eval_started_at=NOW - timedelta(hours=5),
+            )
+        )
+    control = evolution_control.EvolutionControlRepository(database)
+    change = await control.resume(run.id, run.workspace_id, "operator")
+    assert change.job_id is None
+    gateway = FakeEvalGateway(EvalGatewayConfig.from_mapping({"status": "running"}))
+    jobs = JobCapture()
+    poller = EvolutionEvalPoller(repository, lambda _: gateway, jobs, events=None, now=lambda: NOW)
+    assert await poller.run_once() == 1
+    after = await repository.get_round(before.id)
+    assert after and after.eval_status == "evaluating" and after.eval_paused_seconds == 4 * 3600
+    assert after.eval_external_id == before.eval_external_id
+    assert after.eval_next_poll_at == NOW + timedelta(minutes=5)
+    assert jobs.jobs == []
+
+
+async def test_remote_failure_while_paused_waits_for_explicit_resume(
+    eval_state: tuple[Database, EvolutionRepository],
+) -> None:
+    from app.db.crud.evolution_control import EvolutionControlRepository
+
+    database, repository = eval_state
+    run = await repository.get_run("run-eval")
+    assert run
+    control = EvolutionControlRepository(database)
+    await control.pause(run.id, run.workspace_id, "operator")
+    jobs = JobCapture()
+    gateway = FakeEvalGateway(EvalGatewayConfig.from_mapping({"status": "failed"}))
+    poller = EvolutionEvalPoller(repository, lambda _: gateway, jobs, events=None, now=lambda: NOW)
+    await poller.run_once()
+    paused = await repository.get_run(run.id)
+    assert paused and paused.status == "running" and paused.control_state == "paused"
+    assert not jobs.jobs
+    change = await control.resume(run.id, run.workspace_id, "operator")
+    assert change.run.status == "blocked" and change.run.blocked_stage == "eval"
+    assert change.job_id is None
+
+
 async def test_poller_timeout_wins_even_when_gateway_still_reports_running(
     eval_state: tuple[Database, EvolutionRepository],
 ) -> None:

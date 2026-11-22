@@ -34,6 +34,7 @@ export interface EvolutionRunDetailOptions {
 export function runDetailRefetchInterval(
   run: EvolutionRunDetail | undefined,
 ): number | false {
+  if (run?.controlState === "pause_requested") return 1_000;
   switch (run?.status) {
     case "blocked":
     case "interrupted":

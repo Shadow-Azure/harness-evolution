@@ -14,6 +14,7 @@ from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
 from app.service.evolution.advance import build_candidate_trace
 from app.service.evolution.backoff import next_retry_delay
+from app.service.evolution.control import PauseAtCheckpoint, checkpoint
 from app.service.evolution.engine.contracts import EvolutionBlockedStage, RunBlocked
 from app.service.evolution.events import (
     EvolutionRunEventService,
@@ -212,6 +213,7 @@ class EvolutionRetryService:
         refreshed = await self._runs.get_run(run.id)
         if refreshed is not None:
             run = refreshed
+        await checkpoint(self._runs, run.id)
         try:
             if blocked_stage == "eval":
                 if cleared_round is None:
@@ -224,6 +226,8 @@ class EvolutionRetryService:
                 )
             else:
                 dispatched = await self._dispatch(run, blocked_stage, job)
+        except PauseAtCheckpoint:
+            raise
         except RunBlocked as exc:
             raise self._with_backoff(attempts, exc) from None
         except Exception as exc:
@@ -452,7 +456,7 @@ class EvolutionRetryService:
     ) -> EvolutionRoundRecord | None:
         """Find an evaluating round whose external poll can no longer progress."""
         for round_ in await self._runs.list_rounds(run_id):
-            if round_.status != "evaluating":
+            if round_.status != "evaluating" or round_.eval_status == "completed":
                 continue
             if round_.eval_status in {"failed", "timeout"}:
                 return round_
