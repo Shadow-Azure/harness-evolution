@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-三个 Secret 与键同名：存在且非空时，deploy 步骤把 `KEY base64(值)` 追加进 `ENTRIES`，经既有 base64 + stdin 通道交给 `inject-config.py`；缺失或为空时，把 `--unset KEY` 追加进 `UNSET_ARGS`。三键的写入与移除因此和代理/token 的条件 unset 走同一套机制，日志只报计数与状态，不出现值。`HE_PATCH_SOURCE_MODE=agent-edit` 不在本 issue 扩展：当前 Settings 只接受 `placeholder` / `minimal-config`，在 #488（bugfix-21）落地前写入 `agent-edit` 会让服务启动校验失败。
+三个 Secret 与键同名：存在且非空时，deploy 步骤把 `KEY base64(值)` 追加进 `ENTRIES`，经既有 base64 + stdin 通道交给 `inject-config.py`；缺失或为空时，把 `--unset KEY` 追加进 `UNSET_ARGS`。三键的写入与移除因此和代理/token 的条件 unset 走同一套机制，日志只报已写入计数与其余已移除，不出现值。`HE_PATCH_SOURCE_MODE=agent-edit` 不在本 issue 扩展：当前 Settings 只接受 `placeholder` / `minimal-config`，在 #488（bugfix-21）落地前写入 `agent-edit` 会让服务启动校验失败。
 
 ## Alternatives considered
 
@@ -18,4 +18,4 @@ Status: implemented
 
 ## Consequences
 
-每次发布都会显式设置或移除三键，服务器 `.env` 与 Secrets 保持同构；删除 Secret 后重启即回退 Settings 默认值（`claude-code` / `~/.local/bin/claude` / `placeholder`）。注入通道不校验取值，非法值仍由服务启动校验拦截；`agent-edit` 的可用性取决于 #488。新增同源配置项时沿用「存在写入 / 缺失 unset」模式，避免陈旧键长期生效。
+每次发布都会显式设置或移除三键，服务器 `.env` 与 Secrets 保持同构；删除 Secret 后重启即回退 Settings 默认值（`claude-code` / `~/.local/bin/claude` / `placeholder`）。workflow 在组装前拒绝含换行/回车的三键值并中止发布：跳过不是删除，旧值不会因解码跳过而保留；其余键解码失败仍告警跳过。注入通道不校验枚举，非法值仍由服务启动校验拦截；回退默认值不保证在 `harness` 下可用——CLI 的 settings 与凭据须对该用户可读，稳定路径与共享 settings 归 bugfix-17/M15。`agent-edit` 的可用性取决于 #488。新增同源配置项时沿用「存在写入 / 缺失 unset」模式，避免陈旧键长期生效。

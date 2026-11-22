@@ -44,11 +44,11 @@
 
 ## 配置注入
 
-数据目录与评测配置经同一通道写入服务器 `.env`：`Deploy` 从 GitHub Environment `vars.HE_DATA_DIR` 取绝对路径（空值用默认），评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入；`apiKeyRef` 只存环境变量名，未配置时跳过。Git 推送凭据同通道注入：`HE_GIT_PUSH_PROVIDER` 总是写入，`HE_GIT_PUSH_TOKEN` 为空时移除旧键，`GIT_ASKPASS` 指向 `/opt/harness/shared/git-askpass.sh`。值经 base64 传输、`inject-config.py` 原子写入并保持 `.env` 0600，注入前备份 `.env.bak.<sha>`；解码失败告警跳过，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [deploy/env.production.example](../deploy/env.production.example)。
+数据目录与评测配置经同一通道写入服务器 `.env`：`Deploy` 从 GitHub Environment `vars.HE_DATA_DIR` 取绝对路径（空值用默认），评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入；`apiKeyRef` 只存环境变量名，未配置时跳过。Git 推送凭据同通道注入：`HE_GIT_PUSH_PROVIDER` 总是写入，`HE_GIT_PUSH_TOKEN` 为空时移除旧键，`GIT_ASKPASS` 指向 `/opt/harness/shared/git-askpass.sh`。值经 base64 传输、`inject-config.py` 原子写入并保持 `.env` 0600，注入前备份 `.env.bak.<sha>`；解码失败告警跳过并保留旧值，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [deploy/env.production.example](../deploy/env.production.example)。
 
 ### AI Agent 配置
 
-自进化的模型审查与 patch 生成经三个 Secrets 注入：`AI_AGENT_PROVIDER`（`fake` / `claude-code`，默认 `claude-code`）、`HE_AI_AGENT_CLAUDE_BIN`（`claude` CLI 路径，默认 `~/.local/bin/claude`）、`HE_PATCH_SOURCE_MODE`（`placeholder` / `minimal-config`，默认 `placeholder`）。Secret 存在且非空时写入 `.env`，缺失或为空时显式 `--unset`，服务回退 Settings 默认值；`agent-edit` 取值需先由 #488（bugfix-21）扩展枚举，当前写入会启动失败。API 以 `harness` 用户运行且无 home；`~` 不展开，路径不同请把 `HE_AI_AGENT_CLAUDE_BIN` 设为绝对路径。
+模型审查与 patch 生成经三个 Secrets 注入：`AI_AGENT_PROVIDER`、`HE_AI_AGENT_CLAUDE_BIN`、`HE_PATCH_SOURCE_MODE`；存在且非空写入 `.env`，缺失或空显式 `--unset`，服务回退 Settings 默认值（默认值与合法值见[模板](../deploy/env.production.example)）。三键值含换行/回车时注入前直接失败（跳过不是删除）；其余键解码失败仍告警跳过并保留旧值。API 以 `harness` 运行且无 home：`HE_AI_AGENT_CLAUDE_BIN` 须为 `harness` 可执行的绝对路径，且 CLI 的 `~/.claude/settings.json` 与凭据（`apiKeyHelper`/`api-key`）须对 `harness` 可读，只填路径不够；稳定路径与共享 settings 归 bugfix-17/M15。`agent-edit` 需 #488（bugfix-21）先扩展枚举，当前写入会启动失败。
 
 ## Claude Code
 

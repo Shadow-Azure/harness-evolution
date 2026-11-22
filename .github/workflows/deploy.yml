@@ -315,6 +315,20 @@ jobs:
           fi
           # AI Agent 三键与 Secret 同名：存在且非空则写入，缺失或空则显式 unset，
           # 避免删除 Secret 后服务器旧值继续生效；值同样只经 base64 + stdin 传输。
+          # 含换行/回车的值无法落盘（inject-config.py 会告警跳过并保留旧值），
+          # 因此在组装前直接失败：显式配置的坏值必须立刻暴露，不能静默漂移。
+          # BEGIN AI_AGENT_NEWLINE_GUARD
+          reject_ai_newline() {
+            case "$2" in
+              *$'\n'*|*$'\r'*)
+                echo "::error::$1 must not contain a newline/carriage return"
+                exit 1 ;;
+            esac
+          }
+          reject_ai_newline AI_AGENT_PROVIDER "${AI_AGENT_PROVIDER:-}"
+          reject_ai_newline HE_AI_AGENT_CLAUDE_BIN "${HE_AI_AGENT_CLAUDE_BIN:-}"
+          reject_ai_newline HE_PATCH_SOURCE_MODE "${HE_PATCH_SOURCE_MODE:-}"
+          # END AI_AGENT_NEWLINE_GUARD
           if [ -n "${AI_AGENT_PROVIDER:-}" ]; then
             ENTRIES+=("AI_AGENT_PROVIDER $(printf '%s' "$AI_AGENT_PROVIDER" | base64 | tr -d '\n')")
           else
@@ -351,7 +365,7 @@ jobs:
           [ -n "${AI_AGENT_PROVIDER:-}" ] && AI_AGENT_COUNT=$((AI_AGENT_COUNT + 1))
           [ -n "${HE_AI_AGENT_CLAUDE_BIN:-}" ] && AI_AGENT_COUNT=$((AI_AGENT_COUNT + 1))
           [ -n "${HE_PATCH_SOURCE_MODE:-}" ] && AI_AGENT_COUNT=$((AI_AGENT_COUNT + 1))
-          echo "已注入 ${#ENTRIES[@]} 个配置变量（数据目录：$DATA_DIR，Git 代理：${GIT_PROXY_URL:-直连}，Git 推送：$GIT_PUSH_PROVIDER，token $TOKEN_STATE，AI Agent Secret：$AI_AGENT_COUNT/3）"
+          echo "已注入 ${#ENTRIES[@]} 个配置变量（数据目录：$DATA_DIR，Git 代理：${GIT_PROXY_URL:-直连}，Git 推送：$GIT_PUSH_PROVIDER，token $TOKEN_STATE，AI Agent Secret：$AI_AGENT_COUNT/3 已写入、其余已移除）"
 
       - name: 执行发布（迁移 + 切换 + 重启 + 探活）
         env:
