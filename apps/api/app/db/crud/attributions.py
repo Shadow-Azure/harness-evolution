@@ -167,6 +167,8 @@ class BadCaseEvidenceRecord:
     bad_case_id: str
     session_id: str
     bad_case_type: str
+    object_name: str
+    object_version: str | None
     title: str
     description: str
     metadata: Mapping[str, object]
@@ -510,13 +512,20 @@ class AttributionRepository:
         self,
         case_ids: Sequence[str],
     ) -> dict[str, BadCaseEvidenceRecord]:
-        """Load titles, descriptions, and metadata for a bounded case set."""
+        """Load identity, titles, descriptions, and metadata for one case set.
+
+        The object identity columns feed the deterministic evidence-completeness
+        score; they are read in the same batch so a retried attribution step
+        reconstructs exactly the same signals as the first pass.
+        """
         found: dict[str, BadCaseEvidenceRecord] = {}
         for chunk in _chunks(tuple(dict.fromkeys(case_ids))):
             statement = select(
                 bad_cases.c.bad_case_id,
                 bad_cases.c.bad_case_session_id,
                 bad_cases.c.bad_case_type,
+                bad_cases.c.object_name,
+                bad_cases.c.object_version,
                 bad_cases.c.title,
                 bad_cases.c.bad_case_description,
                 bad_cases.c.meta_data,
@@ -525,10 +534,13 @@ class AttributionRepository:
                 rows = (await session.execute(statement)).mappings().all()
             for row in rows:
                 metadata = row["meta_data"]
+                object_version = row["object_version"]
                 found[str(row["bad_case_id"])] = BadCaseEvidenceRecord(
                     bad_case_id=str(row["bad_case_id"]),
                     session_id=str(row["bad_case_session_id"]),
                     bad_case_type=str(row["bad_case_type"]),
+                    object_name=str(row["object_name"]),
+                    object_version=(str(object_version) if object_version is not None else None),
                     title=str(row["title"]),
                     description=str(row["bad_case_description"]),
                     metadata=dict(metadata) if isinstance(metadata, Mapping) else {},
