@@ -10,6 +10,16 @@ from app.third_party_api.ai_agent.contracts import (
     EditResult,
     ProviderHealth,
 )
+from app.third_party_api.ai_agent.edits import (
+    EDIT_BUDGET,
+    MAX_CONTENT_LINES,
+    EditApplication,
+    EditOp,
+    EditPlan,
+    EditPlanError,
+    EditStatus,
+    apply_edit_plan,
+)
 from app.third_party_api.ai_agent.factory import (
     build_agent_provider,
     register_provider,
@@ -26,6 +36,8 @@ from app.third_party_api.ai_agent.submission import (
 )
 
 __all__ = [
+    "EDIT_BUDGET",
+    "MAX_CONTENT_LINES",
     "RESULT_FILENAME",
     "SCHEMA_FILENAME",
     "SUBMISSION_TOOLS",
@@ -34,13 +46,19 @@ __all__ = [
     "AgentUsage",
     "AnalysisRequest",
     "AnalysisResult",
+    "EditApplication",
+    "EditOp",
+    "EditPlan",
+    "EditPlanError",
     "EditRequest",
     "EditResult",
+    "EditStatus",
     "FakeAIAgentProvider",
     "ProviderHealth",
     "StructuredSubmission",
     "SubmissionOutcome",
     "SubmissionPrep",
+    "apply_edit_plan",
     "build_agent_provider",
     "register_provider",
     "registered_provider_ids",
