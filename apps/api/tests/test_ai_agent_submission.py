@@ -332,6 +332,8 @@ def test_missing_state_when_no_result_file_exists(tmp_path: Path) -> None:
     assert "result.json5" in feedback
     assert "不存在" in feedback
     assert "./result.json5" in feedback
+    # A minted task directory does write schema.json, so feedback can name it.
+    assert f"./{SCHEMA_FILENAME}" in feedback
 
 
 def test_feedback_prompt_leaks_no_absolute_path_and_no_duplicated_prefix(tmp_path: Path) -> None:
@@ -456,6 +458,8 @@ def test_prompt_addendum_points_at_result_and_schema(tmp_path: Path) -> None:
     assert "./result.json5" in prep.prompt_addendum
     assert "schema.json" in prep.prompt_addendum
     assert "JSON5" in prep.prompt_addendum
+    assert prep.owned is True
+    assert prep.schema_reference == f"./{SCHEMA_FILENAME}"
 
 
 def test_default_root_is_a_disposable_temp_directory() -> None:
@@ -493,6 +497,72 @@ def test_discard_forgets_a_tracked_temp_directory() -> None:
 
     assert not prep.directory.exists()
     assert prep.directory not in channel._temp_directories
+
+
+def test_discard_is_a_no_op_for_an_explicit_caller_directory(tmp_path: Path) -> None:
+    """A symmetric ``finally: discard(prep)`` around edit must never delete the workspace."""
+    channel = StructuredSubmission()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    sentinel = workspace / "keep.txt"
+    sentinel.write_text("keep me\n", encoding="utf-8")
+    prep = channel.prepare(
+        "agent.edit",
+        EditPlan,
+        directory=workspace,
+        filename=".harness-evolution/edits.json5",
+    )
+
+    assert prep.owned is False
+    channel.discard(prep)
+    channel.discard(prep)
+
+    assert workspace.is_dir()
+    assert sentinel.read_text(encoding="utf-8") == "keep me\n"
+
+
+def test_prepare_rejects_a_symlinked_target_that_escapes_the_directory(
+    tmp_path: Path,
+) -> None:
+    """A workspace symlink cannot make prepare unlink a file outside the workspace."""
+    channel = StructuredSubmission()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    external = outside / "edits.json5"
+    external.write_text('{"summary": "outside", "edits": []}', encoding="utf-8")
+    (workspace / ".harness-evolution").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="stay inside the submission directory"):
+        channel.prepare(
+            "agent.edit",
+            EditPlan,
+            directory=workspace,
+            filename=".harness-evolution/edits.json5",
+        )
+
+    assert external.read_text(encoding="utf-8") == '{"summary": "outside", "edits": []}'
+
+
+def test_collect_refuses_to_read_through_an_escaping_symlink(tmp_path: Path) -> None:
+    """The collector validates containment before reading, so outside text is never read."""
+    channel = StructuredSubmission()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    prep = channel.prepare("cluster.score", ScoreOutput, directory=workspace)
+    outside = tmp_path / "outside.json5"
+    outside.write_text('{"confidence": 0.5, "summary": "outside"}', encoding="utf-8")
+    prep.result_path.symlink_to(outside)
+
+    outcome = channel.collect(prep, ScoreOutput.model_validate)
+
+    assert outcome.status == "invalid"
+    assert outcome.payload is None
+    assert outcome.validated is None
+    assert outcome.parse_error is not None
+    assert "之外" in outcome.parse_error
+    assert outside.read_text(encoding="utf-8") == '{"confidence": 0.5, "summary": "outside"}'
 
 
 def test_prepare_rejects_blank_key_and_non_pydantic_schema(tmp_path: Path) -> None:
@@ -575,6 +645,8 @@ def test_explicit_directory_and_filename_override_the_disposable_default(
     )
 
     assert prep.directory == workspace
+    assert prep.owned is False
+    assert prep.schema_reference is None
     assert prep.result_path == workspace / ".harness-evolution" / "edits.json5"
     assert prep.schema_path is None
     assert prep.allowed_tools == ("Write(./.harness-evolution/edits.json5)",)
@@ -659,6 +731,11 @@ def test_explicit_filename_is_named_in_the_missing_feedback(tmp_path: Path) -> N
     feedback = channel.feedback_prompt(outcome)
     assert "edits.json5" in feedback
     assert "result.json5" not in feedback
+    # The explicit directory has no schema file; feedback must point at the
+    # inlined schema in the prompt instead of a nonexistent ./schema.json.
+    assert "./schema.json" not in feedback
+    assert "上方 prompt" in feedback
+    assert "内联" in feedback
 
 
 def test_custom_filename_in_a_disposable_directory_keeps_the_written_schema(

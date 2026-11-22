@@ -40,6 +40,10 @@ from app.third_party_api.ai_agent.claude_code import (
     AsyncioClaudeCliRunner,
 )
 
+_REAL_RESULT_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "ai_agent_claude_code" / "real_model_usage_result.json"
+)
+
 
 class ScoreOutput(BaseModel):
     """Minimal caller schema for the confidence-scoring task."""
@@ -371,8 +375,8 @@ async def test_analyze_tolerates_a_missing_session_id(tmp_path: Path) -> None:
     assert result.output["summary"] == "ok"
 
 
-async def test_invalid_submission_resumes_once_with_feedback(tmp_path: Path) -> None:
-    """The first invalid literal triggers one ``--resume`` call with feedback."""
+async def test_invalid_submission_retries_once_with_feedback(tmp_path: Path) -> None:
+    """The first invalid literal triggers one fresh stateless retry with feedback."""
     runner = MockRunner(
         _analyze_step({"confidence": 2.0, "summary": "too high"}, session_id="session-1"),
         _analyze_step({"confidence": 0.5, "summary": "fixed"}, session_id="session-2"),
@@ -388,20 +392,19 @@ async def test_invalid_submission_resumes_once_with_feedback(tmp_path: Path) -> 
     assert result.output["confidence"] == 0.5
     assert result.session_id == "session-2"
     assert len(runner.calls) == 2
-    first_argv = runner.calls[0].argv
-    assert "--resume" not in first_argv
-    resume_argv = runner.calls[1].argv
-    assert resume_argv[resume_argv.index("--resume") + 1] == "session-1"
-    resume_prompt = resume_argv[resume_argv.index("-p") + 1]
-    assert "rate the cluster" in resume_prompt
-    assert "confidence" in resume_prompt
-    assert "重新写入" in resume_prompt
-    assert "--allowed-tools" in resume_argv
-    assert resume_argv[resume_argv.index("--allowed-tools") + 1] == ("Write(./result.json5)")
+    for call in runner.calls:
+        assert "--resume" not in call.argv
+        assert "--no-session-persistence" in call.argv
+    retry_argv = runner.calls[1].argv
+    retry_prompt = retry_argv[retry_argv.index("-p") + 1]
+    assert "rate the cluster" in retry_prompt
+    assert "confidence" in retry_prompt
+    assert "重新写入" in retry_prompt
+    assert retry_argv[retry_argv.index("--allowed-tools") + 1] == ("Write(./result.json5)")
 
 
 async def test_second_invalid_submission_fails_with_bounded_detail(tmp_path: Path) -> None:
-    """After one failed resume the provider raises instead of retrying forever."""
+    """After one failed retry the provider raises instead of retrying forever."""
     runner = MockRunner(
         _analyze_step({"confidence": 2.0, "summary": "still high"}, session_id="session-1"),
         _analyze_step({"confidence": 3.0, "summary": "higher"}, session_id="session-2"),
@@ -422,14 +425,16 @@ async def test_second_invalid_submission_fails_with_bounded_detail(tmp_path: Pat
     assert "confidence" in error.detail
     assert len(error.detail) <= 1_000
     assert len(runner.calls) == 2
+    assert "--resume" not in runner.calls[1].argv
 
 
-async def test_invalid_submission_without_session_id_does_not_resume(
+async def test_invalid_submission_without_session_id_still_retries(
     tmp_path: Path,
 ) -> None:
-    """No session id means there is nothing to resume; fail after one call."""
+    """The feedback retry is stateless, so it does not need a session id."""
     runner = MockRunner(
         _analyze_step({"confidence": 2.0, "summary": "bad"}, session_id=None),
+        _analyze_step({"confidence": 0.5, "summary": "fixed"}, session_id=None),
     )
     provider = ClaudeCodeProvider(
         _settings(tmp_path),
@@ -437,11 +442,13 @@ async def test_invalid_submission_without_session_id_does_not_resume(
         settings_path=tmp_path / "missing-settings.json",
     )
 
-    with pytest.raises(AgentProviderError) as caught:
-        await provider.analyze(_request())
+    result = await provider.analyze(_request())
 
-    assert caught.value.retryable is False
-    assert len(runner.calls) == 1
+    assert dict(result.output) == {"confidence": 0.5, "summary": "fixed"}
+    assert len(runner.calls) == 2
+    assert "--resume" not in runner.calls[0].argv
+    assert "--resume" not in runner.calls[1].argv
+    assert any("字段违反约束" in argument for argument in runner.calls[1].argv)
 
 
 @pytest.mark.parametrize(
@@ -529,6 +536,41 @@ async def test_is_error_result_raises_without_echoing_model_text(tmp_path: Path)
     assert "model secret text" not in error.detail
 
 
+async def test_is_error_result_detail_reports_the_api_status_not_only_subtype(
+    tmp_path: Path,
+) -> None:
+    """A zero-exit ``is_error`` result with ``subtype=success`` still names the real failure."""
+    runner = MockRunner(
+        ClaudeCliResult(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "type": "result",
+                    "is_error": True,
+                    "subtype": "success",
+                    "api_error_status": 401,
+                    "result": "model secret text",
+                },
+            ),
+            stderr="",
+        ),
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    with pytest.raises(AgentProviderError) as caught:
+        await provider.analyze(_request())
+
+    detail = caught.value.detail
+    assert detail is not None
+    assert "api_error_status=401" in detail
+    assert "subtype=success" in detail
+    assert "model secret text" not in detail
+
+
 async def test_unparseable_stdout_fails_with_a_bounded_diagnostic(tmp_path: Path) -> None:
     """A zero-exit process without a JSON result is a format failure, not success."""
     runner = MockRunner(ClaudeCliResult(returncode=0, stdout="not-json", stderr=""))
@@ -572,6 +614,29 @@ async def test_usage_maps_model_usage_without_double_counting(tmp_path: Path) ->
     assert result.usage.output_tokens == 4
     assert result.usage.cost_usd == pytest.approx(0.25)
     assert result.usage.model == "claude-haiku+claude-sonnet"
+
+
+async def test_usage_maps_the_real_cli_model_usage_shape(tmp_path: Path) -> None:
+    """The real CLI's camelCase ``modelUsage`` keeps the model identity and tokens."""
+    document = _REAL_RESULT_FIXTURE.read_text(encoding="utf-8")
+
+    def step(cwd: Path) -> ClaudeCliResult:
+        _write_result(cwd, {"confidence": 0.5, "summary": "golden"})
+        return ClaudeCliResult(returncode=0, stdout=document, stderr="")
+
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=MockRunner(step),
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    result = await provider.analyze(_request())
+
+    assert result.session_id == "6f1c2a1e-9d4b-4f7a-8c3e-2b5d7a9c0e11"
+    assert result.usage.model == "claude-sonnet-4-5-20250929"
+    assert result.usage.input_tokens == 11
+    assert result.usage.output_tokens == 7
+    assert result.usage.cost_usd == pytest.approx(0.0123)
 
 
 async def test_usage_falls_back_to_aggregate_usage_fields(tmp_path: Path) -> None:
@@ -760,6 +825,78 @@ async def test_health_check_reports_healthy_and_probes_version(tmp_path: Path) -
     call = runner.calls[0]
     assert call.argv == (str(binary), "--version")
     assert call.timeout_seconds == HEALTH_TIMEOUT_SECONDS
+
+
+async def test_health_check_names_the_environment_api_key_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A present ``ANTHROPIC_API_KEY`` is reported by name, never by value."""
+    secret = "sk-ant-fake-api-key-value"  # noqa: S105 - fake credential for redaction
+    monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
+    runner = MockRunner(ClaudeCliResult(returncode=0, stdout="2.1.278\n", stderr=""))
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    health = await provider.health_check()
+
+    assert health.healthy is True
+    detail = health.detail or ""
+    assert "ANTHROPIC_API_KEY" in detail
+    assert secret not in detail
+    assert "apiKeyHelper" not in detail
+
+
+async def test_health_check_names_the_settings_api_key_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An ``apiKeyHelper`` in the deployment settings is reported without its text."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text(
+        json.dumps({"apiKeyHelper": "echo sk-ant-helper-secret"}),
+        encoding="utf-8",
+    )
+    runner = MockRunner(ClaudeCliResult(returncode=0, stdout="2.1.278\n", stderr=""))
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=settings_file,
+    )
+
+    health = await provider.health_check()
+
+    assert health.healthy is True
+    detail = health.detail or ""
+    assert "apiKeyHelper" in detail
+    assert "sk-ant-helper-secret" not in detail
+    assert "ANTHROPIC_API_KEY" not in detail
+
+
+async def test_health_check_warns_when_no_bare_mode_auth_is_configured(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A working binary stays healthy but the detail records the missing auth source."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    runner = MockRunner(ClaudeCliResult(returncode=0, stdout="2.1.278\n", stderr=""))
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    health = await provider.health_check()
+
+    assert health.healthy is True
+    detail = health.detail or ""
+    assert "no bare-mode auth configured" in detail
+    assert "ANTHROPIC_API_KEY" in detail
+    assert "apiKeyHelper" in detail
 
 
 async def test_health_check_reports_unhealthy_on_nonzero_exit(tmp_path: Path) -> None:
@@ -968,4 +1105,8 @@ async def test_e2e_real_cli_analyze_smoke() -> None:
 
     assert dict(result.output) == {"ok": True}
     assert result.provider_id == "claude-code"
-    assert result.usage.model
+    # The real CLI reports camelCase ``modelUsage``; the mapped identity must be
+    # the concrete model, not the provider fallback, and tokens must be present.
+    assert result.usage.model != "claude-code"
+    assert result.usage.input_tokens + result.usage.output_tokens > 0
+    assert result.usage.cost_usd >= 0

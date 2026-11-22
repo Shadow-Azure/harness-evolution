@@ -29,7 +29,7 @@ import tempfile
 import uuid
 import weakref
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import Any, Final, Literal, cast
 
@@ -76,6 +76,11 @@ class SubmissionPrep:
     that directory. ``schema_path`` is the written ``schema.json`` for a
     disposable task directory; for an explicit directory the schema is inlined
     in ``prompt_addendum`` instead and ``schema_path`` is ``None``.
+    ``owned`` records the lifecycle owner: ``True`` for a directory the channel
+    minted and may delete, ``False`` for an explicit caller directory that
+    :meth:`StructuredSubmission.discard` must never touch. ``schema_reference``
+    names where the schema lives for retry feedback (``./schema.json``), or is
+    ``None`` when the schema was inlined in the prompt.
     ``allowed_tools`` is exactly the single write tool the agent may call.
     """
 
@@ -86,6 +91,8 @@ class SubmissionPrep:
     prompt_addendum: str
     result_relative: str = RESULT_FILENAME
     allowed_tools: tuple[str, ...] = SUBMISSION_TOOLS
+    owned: bool = True
+    schema_reference: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +121,7 @@ class SubmissionOutcome:
     parsed_by: Literal["strict", "json5", "repair"] | None = None
     repair_log: tuple[str, ...] = ()
     result_name: str = RESULT_FILENAME
+    schema_reference: str | None = None
 
     @property
     def is_ok(self) -> bool:
@@ -140,11 +148,13 @@ class StructuredSubmission:
     instance; a supplied root is kept for the caller and each call still mints
     a unique child below it.
 
-    Lifecycle: a long-lived instance keeps every ``prepare`` directory until
-    :meth:`discard` removes it or the instance itself is collected (which
-    removes the remaining temp dirs). :meth:`collect` never discards, because
-    layer-5 raw evidence may still be wanted. A caller that analyzes many tasks
-    should call :meth:`discard` once it stops retrying that task.
+    Lifecycle: a long-lived instance keeps every minted ``prepare`` directory
+    until :meth:`discard` removes it or the instance itself is collected (which
+    removes the remaining temp dirs). :meth:`discard` is a no-op for an explicit
+    caller directory, which this instance never owns. :meth:`collect` never
+    discards, because layer-5 raw evidence may still be wanted. A caller that
+    analyzes many tasks should call :meth:`discard` once it stops retrying that
+    task.
     """
 
     def __init__(self, root: Path | None = None) -> None:
@@ -184,6 +194,11 @@ class StructuredSubmission:
         ``.git`` segment are rejected, while the edit scope
         (``.harness-evolution/``) is allowed. The write tool whitelist is
         derived from the resulting path.
+
+        The returned prep records ownership: a minted directory is ``owned``
+        (``discard`` may remove it), an explicit directory is not (``discard``
+        is a no-op). ``schema_reference`` is ``./schema.json`` for the minted
+        branch and ``None`` when the schema was inlined in the prompt.
         """
         normalized_key = task_key.strip()
         if not normalized_key:
@@ -203,6 +218,8 @@ class StructuredSubmission:
         )
         if directory is None:
             task_directory = self._new_task_directory(normalized_key)
+            owned = True
+            schema_reference: str | None = f"./{SCHEMA_FILENAME}"
             written_schema = task_directory / SCHEMA_FILENAME
             written_schema.write_text(f"{schema_json}\n", encoding="utf-8")
             schema_path: Path | None = written_schema
@@ -214,29 +231,37 @@ class StructuredSubmission:
             )
         else:
             task_directory = _existing_directory(directory)
+            owned = False
+            schema_reference = None
             schema_path = None
-            # An explicit directory survives between rounds, so a previous
-            # round's plan must not be collectable when this call's agent does
-            # not write a new one. The target is the channel's own output path,
-            # so removing it before the call is safe and keeps "one submission
-            # per prepare" true for workspaces too.
-            target = task_directory.joinpath(*result_relative.parts)
-            with contextlib.suppress(FileNotFoundError):
-                target.unlink()
             addendum = self._prompt_addendum(
                 normalized_key,
                 result_relative,
                 schema_json,
                 schema_file=None,
             )
+        # Follow symlinks before any unlink or read: a workspace entry such as
+        # ``.harness-evolution -> /outside`` must not let the channel delete or
+        # collect a file beyond the submission directory.
+        target = _contained_target(task_directory, result_relative)
+        if not owned:
+            # An explicit directory survives between rounds, so a previous
+            # round's plan must not be collectable when this call's agent does
+            # not write a new one. The target is the channel's own output path,
+            # so removing it before the call is safe and keeps "one submission
+            # per prepare" true for workspaces too.
+            with contextlib.suppress(FileNotFoundError):
+                target.unlink()
         return SubmissionPrep(
             task_key=normalized_key,
             directory=task_directory,
-            result_path=task_directory.joinpath(*result_relative.parts),
+            result_path=target,
             schema_path=schema_path,
             prompt_addendum=addendum,
             result_relative=result_relative.as_posix(),
             allowed_tools=(f"Write(./{result_relative.as_posix()})",),
+            owned=owned,
+            schema_reference=schema_reference,
         )
 
     def collect(
@@ -252,7 +277,30 @@ class StructuredSubmission:
         1 MiB is rejected unread. Any exception from ``validate`` is folded into
         ``validation_error``; malformed bytes and oversized files never escape
         as a traceback.
+
+        Before reading, the result path is resolved and must stay inside
+        ``prep.directory``; a symlink that escapes it yields ``invalid`` rather
+        than reading the outside file. ``schema_reference`` is copied from the
+        prep so retry feedback can point at the schema's real location.
         """
+        try:
+            _ensure_contained(prep.directory, prep.result_path)
+        except ValueError:
+            return SubmissionOutcome(
+                status="invalid",
+                result_name=prep.result_relative,
+                parse_error=_bounded(f"{prep.result_relative} 指向提交目录之外，已拒绝读取"),
+                schema_reference=prep.schema_reference,
+            )
+        outcome = self._collect(prep, validate)
+        return replace(outcome, schema_reference=prep.schema_reference)
+
+    def _collect(
+        self,
+        prep: SubmissionPrep,
+        validate: Callable[[Mapping[str, Any]], BaseModel],
+    ) -> SubmissionOutcome:
+        """Run the read/parse/validate ladder for one already-contained prep."""
         try:
             size = prep.result_path.stat().st_size
         except OSError as exc:
@@ -328,13 +376,17 @@ class StructuredSubmission:
         )
 
     def discard(self, prep: SubmissionPrep) -> None:
-        """Remove one task directory after the caller stops retrying its task.
+        """Remove one channel-owned task directory after the caller stops retrying.
 
         Idempotent: a directory that is already gone is ignored, and the
         directory is dropped from the instance's tracked temp list either way.
-        The caller-owned root itself is never touched; only the one-shot child
-        directory named by ``prep`` is removed.
+        An explicit caller directory (``prep.owned`` is ``False``) is a no-op:
+        a symmetric ``finally: discard(prep)`` around ``edit_workspace`` must
+        never delete the workspace. The caller-owned root itself is never
+        touched; only the one-shot child directory named by ``prep`` is removed.
         """
+        if not prep.owned:
+            return
         shutil.rmtree(prep.directory, ignore_errors=True)
         with contextlib.suppress(ValueError):
             self._temp_directories.remove(prep.directory)
@@ -343,15 +395,20 @@ class StructuredSubmission:
         """Render a localized retry prompt for a non-ok outcome.
 
         ``ok`` returns the empty string: the caller has its validated payload
-        and must not resume the session. Every other state names the concrete
-        reason and the relative write path, repeats no ``parse_error`` prefix,
-        and never leaks the absolute task directory.
+        and must not send a retry prompt. Every other state names the concrete
+        reason, the relative write path, and where the schema lives (a written
+        ``./schema.json`` or the inlined prompt schema), repeats no
+        ``parse_error`` prefix, and never leaks the absolute task directory.
         """
         if outcome.status == "ok":
             return ""
+        if outcome.schema_reference is not None:
+            shape = f"形状见 {outcome.schema_reference}"
+        else:
+            shape = "形状见上方 prompt 中内联的 JSON Schema"
         retry = (
             f"{outcome.result_name} 未通过校验，请修正后重新写入 ./{outcome.result_name}"
-            f"（JSON5 宽松格式，形状见 ./{SCHEMA_FILENAME}）。"
+            f"（JSON5 宽松格式，{shape}）。"
         )
         if outcome.status == "missing":
             detail = outcome.parse_error or f"{outcome.result_name} 不存在或不可读"
@@ -408,6 +465,27 @@ def _safe_task_key(task_key: str) -> str:
     """Collapse a task key into a filesystem-safe directory prefix."""
     collapsed = _UNSAFE_TASK_KEY_CHARS.sub("-", task_key).strip("-._")[:_MAX_TASK_KEY_CHARS]
     return collapsed or "task"
+
+
+def _contained_target(directory: Path, relative: PurePosixPath) -> Path:
+    """Return the result path only when it resolves inside ``directory``."""
+    target = directory.joinpath(*relative.parts)
+    return _ensure_contained(directory, target)
+
+
+def _ensure_contained(directory: Path, target: Path) -> Path:
+    """Require ``target`` to resolve inside ``directory`` and return it.
+
+    ``_safe_submission_filename`` is the lexical first gate; this is the
+    filesystem second gate. It resolves every existing symlink, so a workspace
+    entry such as ``.harness-evolution -> /outside`` cannot make ``prepare``
+    unlink or ``collect`` read a file outside the submission directory. The
+    resolved directory is the containment root, so a symlinked system temp path
+    compares equal to itself.
+    """
+    if not target.resolve().is_relative_to(directory.resolve()):
+        raise ValueError("submission target must stay inside the submission directory")
+    return target
 
 
 def _existing_directory(directory: Path) -> Path:

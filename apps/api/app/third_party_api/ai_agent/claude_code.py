@@ -13,6 +13,12 @@ lets it exit, and a still-running group receives ``SIGKILL``. A cancelled call
 is classified as ``detail="cancelled"`` with ``retryable=False``, and exit code
 143 (128+SIGTERM) is treated the same way instead of as a generic failure.
 
+A failed analyze submission gets exactly one fresh, stateless retry that repeats
+the original prompt plus the concrete validation feedback. Analyze never resumes
+a CLI session: the real CLI's ``--no-session-persistence`` explicitly makes a
+session unavailable for ``--resume``, so the retry is a new call, not a resumed
+conversation.
+
 Credentials and model endpoints stay in ``~/.claude``; this module never reads
 them, never passes a key on the command line, and never logs stdout/stderr
 verbatim. Diagnostics are bounded and redacted before they become a
@@ -86,6 +92,9 @@ _MAX_DETAIL_CHARS: Final = 1_000
 
 _MAX_VERSION_CHARS: Final = 120
 """Upper bound for the sanitized version text kept in a health detail."""
+
+_MAX_SETTINGS_BYTES: Final = 1024 * 1024
+"""Settings files larger than this are ignored by the auth-source probe."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -298,7 +307,7 @@ class ClaudeCodeProvider(AIAgentProvider):
         request: AnalysisRequest,
         started: float,
     ) -> AnalysisResult:
-        """Run the analysis and one feedback resume against one prepared directory."""
+        """Run the analysis and one feedback retry against one prepared directory."""
         prompt = _compose_prompt(request.prompt, prep.prompt_addendum)
         settings_file = self._settings_file()
         argv = self._analyze_argv(prompt, prep, settings_file=settings_file)
@@ -310,18 +319,17 @@ class ClaudeCodeProvider(AIAgentProvider):
         )
 
         outcome = self._submission.collect(prep, request.output_model.model_validate)
-        if not outcome.is_ok and parsed.session_id is not None:
+        if not outcome.is_ok:
+            # Analyze is stateless, so the retry cannot continue the first CLI
+            # session; it repeats the original prompt plus the concrete
+            # validation feedback as a fresh call. The budget stays exactly one,
+            # and a session id is not needed because nothing is resumed.
             feedback = self._submission.feedback_prompt(outcome)
-            resume_prompt = _compose_prompt(prompt, feedback)
-            resume_argv = self._analyze_argv(
-                resume_prompt,
-                prep,
-                settings_file=settings_file,
-                resume_session_id=parsed.session_id,
-            )
+            retry_prompt = _compose_prompt(prompt, feedback)
+            retry_argv = self._analyze_argv(retry_prompt, prep, settings_file=settings_file)
             _, parsed = await self._call(
                 "analysis",
-                resume_argv,
+                retry_argv,
                 cwd=prep.directory,
                 timeout_seconds=ANALYZE_TIMEOUT_SECONDS,
             )
@@ -420,6 +428,7 @@ class ClaudeCodeProvider(AIAgentProvider):
         detail = f"claude CLI available: {version}" if version else "claude CLI available"
         if self._capabilities:
             detail = f"{detail}; capabilities={','.join(self._capabilities)}"
+        detail = f"{detail}; {self._bare_mode_auth_hint()}"
         return ProviderHealth(
             provider_id=self.provider_id,
             healthy=True,
@@ -498,9 +507,8 @@ class ClaudeCodeProvider(AIAgentProvider):
         prep: SubmissionPrep,
         *,
         settings_file: Path,
-        resume_session_id: str | None = None,
     ) -> tuple[str, ...]:
-        """Build one analyze argv; only analyze carries ``--no-session-persistence``."""
+        """Build one analyze argv; analyze is stateless and never resumes a session."""
         argv = [
             self._binary(),
             "--bare",
@@ -514,8 +522,6 @@ class ClaudeCodeProvider(AIAgentProvider):
             prep.allowed_tools[0],
             "--no-session-persistence",
         ]
-        if resume_session_id is not None:
-            argv.extend(("--resume", resume_session_id))
         if settings_file.is_file():
             argv.extend(("--settings", str(settings_file)))
         return tuple(argv)
@@ -556,6 +562,21 @@ class ClaudeCodeProvider(AIAgentProvider):
             return self._settings_path_override
         return Path.home() / ".claude" / CLAUDE_SETTINGS_FILENAME
 
+    def _bare_mode_auth_hint(self) -> str:
+        """Name the bare-mode credential *source*, never a credential value.
+
+        ``--bare`` accepts only ``ANTHROPIC_API_KEY`` or an ``apiKeyHelper`` from
+        the deployment settings file; OAuth and the keychain are never read. The
+        probe still reports healthy when neither is configured because the
+        binary itself works, but the detail says so instead of implying that a
+        real analysis would authenticate.
+        """
+        if _env_declares("ANTHROPIC_API_KEY"):
+            return "bare-mode auth: ANTHROPIC_API_KEY"
+        if _settings_declare_api_key_helper(self._settings_file()):
+            return "bare-mode auth: apiKeyHelper"
+        return "no bare-mode auth configured (ANTHROPIC_API_KEY / apiKeyHelper)"
+
     @staticmethod
     def _environment() -> Mapping[str, str]:
         """Pass the deployment environment through without reading any value."""
@@ -579,6 +600,33 @@ def _binary_available(binary: str) -> bool:
     if os.sep in binary or (os.altsep is not None and os.altsep in binary):
         return Path(binary).is_file()
     return shutil.which(binary) is not None
+
+
+def _env_declares(name: str) -> bool:
+    """Return whether an environment variable holds a non-blank value.
+
+    The value is only tested for presence and is never logged or returned, so a
+    health detail can name the credential source without echoing a secret.
+    """
+    return bool(os.environ.get(name, "").strip())
+
+
+def _settings_declare_api_key_helper(settings_file: Path) -> bool:
+    """Return whether the settings file declares a non-empty ``apiKeyHelper``.
+
+    Only the key's presence and non-blank-ness are consulted; the helper command
+    itself may embed a token, so its text never reaches a health detail.
+    """
+    try:
+        if settings_file.stat().st_size > _MAX_SETTINGS_BYTES:
+            return False
+        document = json.loads(settings_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(document, Mapping):
+        return False
+    helper = document.get("apiKeyHelper")
+    return isinstance(helper, str) and bool(helper.strip())
 
 
 def _compose_prompt(prompt: str, addendum: str) -> str:
@@ -670,16 +718,22 @@ def _session_id_from(payload: Mapping[str, Any] | None) -> str | None:
 
 
 def _usage_from(payload: Mapping[str, Any] | None, *, fallback_model: str) -> AgentUsage:
-    """Map ``total_cost_usd`` / ``model_usage`` / ``usage`` into ``AgentUsage``."""
+    """Map the CLI usage documents into ``AgentUsage``.
+
+    The real CLI mixes spellings: the result document carries snake_case
+    ``usage``/``total_cost_usd`` and a camelCase ``modelUsage`` whose entries use
+    ``inputTokens``/``outputTokens``/``costUSD``. Both spellings are accepted so
+    the per-model branch actually fires against the real shape. The per-model
+    breakdown is the token truth when present; the aggregate ``usage`` is never
+    added on top of it, which would double-count tokens.
+    """
     if payload is None:
         return AgentUsage(model=fallback_model)
     usage = _as_mapping(payload.get("usage"))
-    model_usage = _as_mapping(payload.get("model_usage"))
+    model_usage = _as_mapping(_first_present(payload, "model_usage", "modelUsage"))
     models: list[str] = []
     model_cost = 0.0
     if model_usage:
-        # ``model_usage`` is the per-model breakdown and ``usage`` its
-        # aggregate; summing both would double-count tokens.
         input_tokens = 0
         output_tokens = 0
         for name, raw_entry in model_usage.items():
@@ -687,15 +741,17 @@ def _usage_from(payload: Mapping[str, Any] | None, *, fallback_model: str) -> Ag
             if entry is None:
                 continue
             models.append(name)
-            input_tokens += _as_int(entry.get("input_tokens"))
-            output_tokens += _as_int(entry.get("output_tokens"))
-            model_cost += _as_float(entry.get("cost_usd"))
+            input_tokens += _as_int(_first_present(entry, "input_tokens", "inputTokens"))
+            output_tokens += _as_int(_first_present(entry, "output_tokens", "outputTokens"))
+            model_cost += _as_float(_first_present(entry, "cost_usd", "costUSD"))
     else:
-        input_tokens = _as_int(usage.get("input_tokens")) if usage is not None else 0
-        output_tokens = _as_int(usage.get("output_tokens")) if usage is not None else 0
+        input_tokens = _as_int(_first_present(usage, "input_tokens", "inputTokens"))
+        output_tokens = _as_int(_first_present(usage, "output_tokens", "outputTokens"))
 
     raw_total_cost = payload.get("total_cost_usd")
     cost = _as_float(raw_total_cost) if raw_total_cost is not None else model_cost
+    # The real CLI has no top-level ``model``; deriving the identity from the
+    # ``modelUsage`` keys is what makes the model answerable in call events.
     model_value = payload.get("model")
     if isinstance(model_value, str) and model_value.strip():
         model = model_value.strip()
@@ -709,6 +765,16 @@ def _usage_from(payload: Mapping[str, Any] | None, *, fallback_model: str) -> Ag
         output_tokens=output_tokens,
         cost_usd=cost,
     )
+
+
+def _first_present(payload: Mapping[str, Any] | None, *keys: str) -> Any:
+    """Return the first present key's value, or ``None`` when none is present."""
+    if payload is None:
+        return None
+    for key in keys:
+        if key in payload:
+            return payload[key]
+    return None
 
 
 def _as_mapping(value: object) -> Mapping[str, Any] | None:
@@ -762,10 +828,24 @@ def _diagnostics(result: ClaudeCliResult) -> str:
 
 
 def _error_result_detail(payload: Mapping[str, Any], result: ClaudeCliResult) -> str:
-    """Render an ``is_error`` result without including its model text."""
+    """Render an ``is_error`` result without including its model text.
+
+    The real CLI may report ``is_error=true`` together with ``subtype=success``
+    and a concrete HTTP status, so ``subtype`` alone can describe a failed call
+    as a success. The API status (when present) is what makes the detail
+    actionable; the model's result text is never echoed.
+    """
+    parts = ["is_error"]
     subtype = payload.get("subtype")
-    subtype_text = subtype.strip() if isinstance(subtype, str) else "unknown"
-    return f"is_error; subtype={subtype_text}; exit_code={result.returncode}"
+    if isinstance(subtype, str) and subtype.strip():
+        parts.append(f"subtype={subtype.strip()}")
+    status = payload.get("api_error_status")
+    if isinstance(status, (int, float, str)) and not isinstance(status, bool):
+        status_text = str(status).strip()
+        if status_text:
+            parts.append(f"api_error_status={status_text[:40]}")
+    parts.append(f"exit_code={result.returncode}")
+    return "; ".join(parts)
 
 
 def _submission_detail(outcome: SubmissionOutcome) -> str:
