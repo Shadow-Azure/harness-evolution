@@ -9,12 +9,13 @@ milestone: bugfix
 depends:
   - bugfix-15
 priority: P2
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/third_party_api/ai_agent/**
   - apps/api/app/third_party_api/git/workspace.py
   - apps/api/app/service/evolution/patch_source.py
   - apps/api/tests/**
+  - plans/**
   - .agents/**
 adr:
   - ../../notes/proposed/feature/2026-11-22-evolution-real-ai-design.md

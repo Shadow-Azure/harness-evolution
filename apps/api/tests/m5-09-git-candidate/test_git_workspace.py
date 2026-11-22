@@ -6,7 +6,7 @@ import asyncio
 import os
 import subprocess
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,6 +20,7 @@ from app.service.evolution.git_candidate import (
     build_accepted_message,
     build_candidate_message,
 )
+from app.service.evolution.patch_source import PatchBundle
 from app.third_party_api.git.workspace import (
     GitOperationError,
     GitProcessResult,
@@ -102,6 +103,23 @@ def _run(repo_url: str, base_commit: str) -> EvolutionRunRecord:
         created_by=None,
         created_at=NOW,
         finished_at=None,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _StubBundle:
+    """Minimal structural bundle for seam-validation tests."""
+
+    files: tuple[Patch, ...]
+    sha256: str
+
+
+def _bundle_message(run_id: str, patch_hash: str, subject: str = "candidate") -> str:
+    """Build a minimal message carrying the two candidate trailers."""
+    return (
+        f"{subject}\n\n"
+        f"Harness-Run-Id: {run_id}\n"
+        f"Harness-Patch-Hash: sha256:{patch_hash}"
     )
 
 
@@ -264,6 +282,119 @@ async def test_replaying_an_unacknowledged_local_commit_keeps_the_candidate_bran
     await manager.push_candidate(replay, expected_remote_commit=None)
     assert _git(fork, "rev-parse", f"refs/tags/{ref}") == candidate.commit
     assert _git(bare, "tag", "--list", ref) == ""
+
+
+async def test_create_candidate_bundle_commits_stageable_files_and_reuses_the_commit(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+) -> None:
+    """A bundle commits every stageable file, excludes agent scratch paths, and replays."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+        push_enabled=False,
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+    bundle = PatchBundle(
+        files=(
+            Patch(file="skills/deep-research/a.md", lines=("alpha",), overwrite=True),
+            Patch(file="skills/deep-research/b.md", lines=("beta",), overwrite=True),
+            Patch(
+                file=".harness-evolution/edits.json5",
+                lines=("{ summary: 'x' }",),
+                overwrite=True,
+            ),
+        ),
+        note="two files",
+    )
+    trace = CandidateTrace("cluster-1", "检索索引读取失败", ("probe-1",), ("case-1",), "分析")
+    message = build_candidate_message(
+        run,
+        round_seq=1,
+        trace=trace,
+        patch_sha256=bundle.sha256,
+        created_at=NOW,
+        web_base_url=None,
+    )
+    ref = f"{prepared.branch}/candidate/r1"
+
+    candidate = await manager.create_candidate_bundle(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=ref,
+        bundle=bundle,
+        message=message,
+    )
+
+    committed = set(
+        _git(prepared.path, "ls-tree", "-r", "--name-only", candidate.commit).splitlines()
+    )
+    assert {"skills/deep-research/a.md", "skills/deep-research/b.md"} <= committed
+    assert ".harness-evolution/edits.json5" not in committed
+    assert not (prepared.path / ".harness-evolution").exists()
+    assert "skills/deep-research/a.md" in candidate.unified_diff
+    assert "skills/deep-research/b.md" in candidate.unified_diff
+    assert ".harness-evolution" not in candidate.unified_diff
+    assert f"Harness-Patch-Hash: sha256:{bundle.sha256}" in (
+        await manager._commit_message(prepared.path, candidate.commit)
+    )
+    assert (prepared.path / "skills" / "deep-research" / "a.md").read_text(
+        encoding="utf-8"
+    ) == "alpha\n"
+
+    replay = await manager.create_candidate_bundle(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=ref,
+        bundle=bundle,
+        message=message,
+    )
+
+    assert replay.commit == candidate.commit
+    assert replay.unified_diff == candidate.unified_diff
+
+
+async def test_create_candidate_still_commits_the_legacy_harness_evolution_patch(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+) -> None:
+    """The single-patch path preserves the placeholder's protected document."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+    patch = Patch(
+        file=".harness-evolution/candidate-r1.md",
+        lines=("placeholder candidate",),
+        overwrite=True,
+    )
+    message = build_candidate_message(
+        run,
+        round_seq=1,
+        trace=CandidateTrace("cluster-1", "检索索引读取失败", ("probe-1",), ("case-1",), "分析"),
+        patch_sha256=patch.sha256,
+        created_at=NOW,
+        web_base_url=None,
+    )
+
+    candidate = await manager.create_candidate(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=f"{prepared.branch}/candidate/r1",
+        patch=patch,
+        message=message,
+    )
+
+    committed = set(
+        _git(prepared.path, "ls-tree", "-r", "--name-only", candidate.commit).splitlines()
+    )
+    assert ".harness-evolution/candidate-r1.md" in committed
+    assert ".harness-evolution/candidate-r1.md" in candidate.unified_diff
 
 
 async def test_candidate_accept_amends_ffs_run_branch_and_removes_candidate(

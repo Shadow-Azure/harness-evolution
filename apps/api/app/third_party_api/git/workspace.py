@@ -14,7 +14,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Literal
+from typing import Literal, Protocol
 
 from app.db.models.evolution import EvolutionRunRecord
 from app.third_party_api.git.provider import (
@@ -102,7 +102,12 @@ class Patch:
 
 @dataclass(frozen=True, slots=True)
 class CandidateWorkspace:
-    """A committed candidate branch ready to push."""
+    """A committed candidate branch ready to push.
+
+    ``unified_diff`` is the real ``git diff`` of the candidate commit against
+    its parent, collected after the commit; an empty string means the caller
+    did not ask for it (older constructions keep working).
+    """
 
     workspace_path: Path
     run_branch: str
@@ -113,6 +118,42 @@ class CandidateWorkspace:
     run_id: str
     base_commit: str
     push_url: str | None = None
+    unified_diff: str = ""
+
+
+class CandidateBundle(Protocol):
+    """Structural view of one multi-file candidate bundle.
+
+    The service layer owns the concrete bundle type; this seam only needs the
+    file patches and the stable hash recorded in the candidate trailer.
+    """
+
+    @property
+    def files(self) -> tuple[Patch, ...]:
+        """Return the file patches owned by this bundle."""
+        ...
+
+    @property
+    def sha256(self) -> str:
+        """Return the digest written into the ``Harness-Patch-Hash`` trailer."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class _SinglePatchBundle:
+    """Legacy ``create_candidate`` adapter: one patch, one file, same hash."""
+
+    patch: Patch
+
+    @property
+    def files(self) -> tuple[Patch, ...]:
+        """Expose the single patch as a bundle file list."""
+        return (self.patch,)
+
+    @property
+    def sha256(self) -> str:
+        """Delegate to the patch digest so existing trailers stay identical."""
+        return self.patch.sha256
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,7 +325,49 @@ class GitWorkspaceManager:
         expected_run_id: str | None = None,
         reset_workspace: bool = False,
     ) -> CandidateWorkspace:
-        """Create one candidate commit, optionally resetting a resumed worktree."""
+        """Create one candidate commit from a single patch.
+
+        Delegates to :meth:`create_candidate_bundle` with a one-file bundle so
+        the multi-file and single-file paths share commit, trailer, reuse, and
+        diff logic. Protected paths stay stageable here because the legacy
+        placeholder source intentionally commits a document under
+        ``.harness-evolution/``; only the bundle primitive defaults to the
+        agent-scope exclusion.
+        """
+        return await self.create_candidate_bundle(
+            prepared,
+            run_branch=run_branch,
+            candidate_ref=candidate_ref,
+            bundle=_SinglePatchBundle(patch),
+            message=message,
+            expected_run_id=expected_run_id,
+            reset_workspace=reset_workspace,
+            allow_protected_paths=True,
+        )
+
+    async def create_candidate_bundle(
+        self,
+        prepared: PreparedWorkspace,
+        *,
+        run_branch: str,
+        candidate_ref: str,
+        bundle: CandidateBundle,
+        message: str,
+        expected_run_id: str | None = None,
+        reset_workspace: bool = False,
+        allow_protected_paths: bool = False,
+    ) -> CandidateWorkspace:
+        """Create one candidate commit from a multi-file bundle.
+
+        Every stageable bundle file is written and passed to one
+        ``git add -- <path> ...`` invocation. ``.harness-evolution/**`` and
+        ``.git/**`` are never staged unless ``allow_protected_paths`` is set
+        for the legacy single-patch path. The commit records
+        ``Harness-Patch-Hash: sha256:<bundle.sha256>`` and a replay from the
+        same base, message, and hash reuses the existing commit. The returned
+        snapshot carries the real ``git diff`` of the commit against its
+        parent.
+        """
         if reset_workspace:
             await self._reset_candidate_workspace(prepared.path, run_branch)
         await self._require_clean(prepared.path)
@@ -303,6 +386,10 @@ class GitWorkspaceManager:
                 stage="workspace",
             )
         await self._require_ancestry(prepared.path, prepared.base_commit)
+        patch_hash = bundle.sha256
+        if not _FULL_DIGEST.fullmatch(patch_hash):
+            raise GitOperationError("candidate bundle hash is invalid", stage="patch")
+        files = self._stageable_files(bundle, allow_protected_paths=allow_protected_paths)
         local_branch = candidate_local_branch(candidate_ref)
         existing_candidate = await self._optional_ref(
             prepared.path,
@@ -310,7 +397,7 @@ class GitWorkspaceManager:
         )
         if existing_candidate is not None:
             # A worker can restart after commit succeeds and before its response
-            # reaches the DB. Only reuse a commit from this exact base and patch.
+            # reaches the DB. Only reuse a commit from this exact base and bundle.
             parent = await self._optional_ref(
                 prepared.path, ("git", "rev-parse", f"{existing_candidate}^")
             )
@@ -319,7 +406,7 @@ class GitWorkspaceManager:
                 parent == head
                 and (await self._commit_message(prepared.path, existing_candidate)).strip()
                 == message.strip()
-                and _has_trailer(message, "Harness-Patch-Hash", f"sha256:{patch.sha256}")
+                and _has_trailer(message, "Harness-Patch-Hash", f"sha256:{patch_hash}")
             ):
                 await self._git_checked(
                     prepared.path,
@@ -337,6 +424,10 @@ class GitWorkspaceManager:
                     run_id=run_id,
                     base_commit=prepared.base_commit,
                     push_url=prepared.push_url,
+                    unified_diff=await self._candidate_diff(
+                        prepared.path,
+                        existing_candidate,
+                    ),
                 )
             await self._git_checked(
                 prepared.path,
@@ -350,12 +441,13 @@ class GitWorkspaceManager:
             stage="workspace",
             failure="candidate branch creation failed",
         )
-        self._write_patch(prepared.path, patch)
+        for patch in files:
+            self._write_patch(prepared.path, patch)
         await self._git_checked(
             prepared.path,
-            ("git", "add", "--", patch.file),
+            ("git", "add", "--", *(patch.file for patch in files)),
             stage="patch",
-            failure="candidate patch could not be staged",
+            failure="candidate bundle could not be staged",
         )
         await self._git_checked(
             prepared.path,
@@ -390,7 +482,58 @@ class GitWorkspaceManager:
             run_id=run_id,
             base_commit=prepared.base_commit,
             push_url=prepared.push_url,
+            unified_diff=await self._candidate_diff(prepared.path, commit),
         )
+
+    @staticmethod
+    def _stageable_files(
+        bundle: CandidateBundle,
+        *,
+        allow_protected_paths: bool,
+    ) -> tuple[Patch, ...]:
+        """Return the deterministic, deduplicated set of files to stage."""
+        files = tuple(sorted(bundle.files, key=lambda patch: patch.file))
+        if not files:
+            raise GitOperationError("candidate bundle is empty", stage="patch")
+        seen: set[str] = set()
+        selected: list[Patch] = []
+        for patch in files:
+            if patch.file in seen:
+                raise GitOperationError("candidate bundle repeats a file", stage="patch")
+            seen.add(patch.file)
+            relative = PurePosixPath(patch.file)
+            if (
+                not relative.parts
+                or relative.is_absolute()
+                or any(part in {"", ".", ".."} for part in relative.parts)
+            ):
+                raise GitOperationError("candidate bundle path is unsafe", stage="patch")
+            if not allow_protected_paths and _is_protected_path(patch.file):
+                continue
+            selected.append(patch)
+        if not selected:
+            raise GitOperationError("candidate bundle has no stageable files", stage="patch")
+        return tuple(selected)
+
+    async def _candidate_diff(self, workspace_path: Path, commit: str) -> str:
+        """Collect one candidate commit's real unified diff straight from git."""
+        return (
+            await self._git_checked(
+                workspace_path,
+                (
+                    "git",
+                    "diff",
+                    "--no-color",
+                    "--no-ext-diff",
+                    "--src-prefix=a/",
+                    "--dst-prefix=b/",
+                    f"{commit}^",
+                    commit,
+                ),
+                stage="commit",
+                failure="candidate diff could not be collected",
+            )
+        ).stdout
 
     async def _reset_candidate_workspace(
         self,
@@ -1641,8 +1784,16 @@ def _safe_component(value: str) -> str:
     return cleaned
 
 
+def _is_protected_path(file: str) -> bool:
+    """Return whether a bundle path lives under a protected directory."""
+    return any(part in {".git", ".harness-evolution"} for part in PurePosixPath(file).parts)
+
+
 _FULL_COMMIT = re.compile(r"[0-9a-f]{40}")
 """Only a full object id can be fetched directly from a single-ref cache."""
+
+_FULL_DIGEST = re.compile(r"[0-9a-f]{64}")
+"""Candidate bundle hashes are lowercase SHA-256 hex digits."""
 
 _SYNTHETIC_REF = "harness-target"
 """Clone-visible local branch used to carry a directly fetched full commit."""

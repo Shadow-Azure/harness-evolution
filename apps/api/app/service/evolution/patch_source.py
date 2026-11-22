@@ -11,21 +11,80 @@ strategies only add a subclass plus configuration — business code stays put.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Protocol, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 from app.db.models.evolution import EvolutionRunRecord
 from app.service.evolution.engine.contracts import ConfigError
+from app.third_party_api.ai_agent.edits import EditPlan, EditStatus
 from app.third_party_api.git.workspace import Patch
 
-PATCH_SOURCE_MODES = ("placeholder", "minimal-config")
+PATCH_SOURCE_MODES = ("placeholder", "minimal-config", "agent-edit")
 DEFAULT_PATCH_SOURCE_MODE = "placeholder"
 PLACEHOLDER_PATCH_NOTE = "V1 占位 patch；真实文件已写入 isolated workspace"
 _CONFIG_FILENAME = "config/{}.json"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 _MAX_NAME_LENGTH = 64
+
+
+@dataclass(frozen=True, slots=True)
+class PatchBundle:
+    """One candidate change as an ordered set of file patches.
+
+    ``note`` is the human one-liner for the commit message, ``intent`` is the
+    auditable EditPlan when the change came from an agent, and ``report`` holds
+    the per-edit outcomes. ``unified_diff`` stays empty until the git commit
+    collects the real diff; git is the single source of truth.
+
+    Hash compatibility is a hard requirement: a single-file bundle returns
+    :attr:`Patch.sha256` byte-for-byte, so ``Harness-Patch-Hash`` trailers from
+    existing runs stay idempotent. A multi-file bundle hashes the sorted file
+    list with an explicit separator (see :attr:`sha256`).
+    """
+
+    files: tuple[Patch, ...]
+    note: str
+    intent: EditPlan | None = None
+    report: tuple[EditStatus, ...] = ()
+    unified_diff: str = ""
+
+    def __post_init__(self) -> None:
+        """Reject an empty bundle, a blank note, or a repeated file path."""
+        if not self.files:
+            raise ValueError("PatchBundle.files must not be empty")
+        if not self.note.strip():
+            raise ValueError("PatchBundle.note must not be blank")
+        ordered = tuple(sorted(self.files, key=lambda patch: patch.file))
+        paths = [patch.file for patch in ordered]
+        if len(set(paths)) != len(paths):
+            raise ValueError("PatchBundle.files must not repeat a file path")
+        object.__setattr__(self, "files", ordered)
+        object.__setattr__(self, "report", tuple(self.report))
+
+    @property
+    def sha256(self) -> str:
+        """Return the stable digest recorded in candidate trailers.
+
+        A single-file bundle returns :attr:`Patch.sha256` verbatim, which hashes
+        ``file`` + one NUL + the newline-joined lines. A multi-file bundle
+        initializes one SHA-256 and, for each file in ascending path order,
+        updates it with the file path, one NUL, the newline-joined lines, and
+        one trailing NUL. The sorted order makes the digest independent of
+        caller ordering.
+        """
+        if len(self.files) == 1:
+            return self.files[0].sha256
+        digest = hashlib.sha256()
+        for patch in self.files:
+            digest.update(patch.file.encode("utf-8"))
+            digest.update(b"\0")
+            digest.update("\n".join(patch.lines).encode("utf-8"))
+            digest.update(b"\0")
+        return digest.hexdigest()
 
 
 @runtime_checkable
@@ -41,6 +100,15 @@ class PatchSource(Protocol):
         """Return the patch applied and committed inside the candidate."""
         ...
 
+    async def build_bundle(
+        self,
+        run: EvolutionRunRecord,
+        round_seq: int,
+        trace: object,
+    ) -> PatchBundle:
+        """Return the candidate change bundle for one round."""
+        ...
+
     async def change_note(
         self,
         run: EvolutionRunRecord,
@@ -51,7 +119,50 @@ class PatchSource(Protocol):
         ...
 
 
-class PlaceholderPatchSource:
+class _PatchBuilder(Protocol):
+    """The two legacy hooks a default single-file bundle wraps."""
+
+    async def build(
+        self,
+        run: EvolutionRunRecord,
+        round_seq: int,
+        trace: object,
+    ) -> Patch: ...
+
+    async def change_note(
+        self,
+        run: EvolutionRunRecord,
+        round_seq: int,
+        trace: object,
+    ) -> str: ...
+
+
+async def build_default_bundle(
+    source: _PatchBuilder,
+    run: EvolutionRunRecord,
+    round_seq: int,
+    trace: object,
+) -> PatchBundle:
+    """Wrap the legacy ``build()``/``change_note()`` pair as a single-file bundle."""
+    patch = await source.build(run, round_seq, trace)
+    note = await source.change_note(run, round_seq, trace)
+    return PatchBundle(files=(patch,), note=note)
+
+
+class _DefaultBundleSource:
+    """Give a legacy source the additive ``build_bundle()`` behavior."""
+
+    async def build_bundle(
+        self,
+        run: EvolutionRunRecord,
+        round_seq: int,
+        trace: object,
+    ) -> PatchBundle:
+        """Return a one-file bundle without changing the legacy methods."""
+        return await build_default_bundle(cast("_PatchBuilder", self), run, round_seq, trace)
+
+
+class PlaceholderPatchSource(_DefaultBundleSource):
     """Deterministic V1 patch that is still written and committed for real."""
 
     async def build(
@@ -110,7 +221,7 @@ _CONFIG_RULES: tuple[tuple[tuple[str, ...], str, object], ...] = (
 _DEFAULT_RULE = ("harnessGuardEnabled", True)
 
 
-class MinimalConfigPatchSource:
+class MinimalConfigPatchSource(_DefaultBundleSource):
     """Merge one deterministic configuration fix into the target repository."""
 
     async def build(
@@ -219,6 +330,10 @@ def default_patch_source_factory(
         return PlaceholderPatchSource()
     if mode == "minimal-config":
         return MinimalConfigPatchSource()
+    if mode == "agent-edit":
+        raise ConfigError(
+            "patch source mode 'agent-edit' is reserved for bugfix-21 and not implemented yet",
+        )
     raise ConfigError(f"unknown patch source mode: {mode}")
 
 
@@ -227,7 +342,9 @@ __all__ = [
     "PATCH_SOURCE_MODES",
     "PLACEHOLDER_PATCH_NOTE",
     "MinimalConfigPatchSource",
+    "PatchBundle",
     "PatchSource",
     "PlaceholderPatchSource",
+    "build_default_bundle",
     "default_patch_source_factory",
 ]
