@@ -94,9 +94,11 @@ class SubmissionOutcome:
     Provenance for layer 4/5: ``parsed_by`` names the ladder tier that produced
     the document (``None`` when no tier did, e.g. ``missing`` or all tiers
     failed; a non-object top level still names its tier). ``repair_log`` carries
-    at most five bounded repair actions and is non-empty only when the repair
-    tier produced the payload. ``parse_error`` covers the read/parse ladder;
-    ``validation_error`` preserves the caller validator's concrete error text.
+    up to five bounded repair actions reported by the repairer; it can still be
+    empty when the repairer silently normalizes (for example, closing a missing
+    brace), so ``parsed_by == "repair"`` is the authoritative provenance flag.
+    ``parse_error`` covers the read/parse ladder; ``validation_error`` preserves
+    the caller validator's concrete error text.
     """
 
     status: Literal["ok", "invalid", "missing"]
