@@ -6256,14 +6256,15 @@ function v2LoginAs(userId, opts) {
   if (!opts || !opts.keepPage) v2SetPage(V2.page || 'overview');
   else v2RenderPage();
   if (!opts || !opts.silent) v2Toast(`已登录：${u.name} · ${v2RoleLabel(V2.wsId)}`);
+  const controlQuery = new URLSearchParams(location.search);
+  if (controlQuery.has('runcontrol') && window.EV_RUNS) {
+    const state = controlQuery.get('runcontrol');
+    const rm = location.hash.match(/#\/run\/([^/?]+)/);
+    const run = rm ? EV_RUNS.find(r => r.id === rm[1]) : EV_RUNS.find(r => r.workspace === evCurrentWs() && !evIsDone(r));
+    if (run && ['running', 'pause_requested', 'paused'].includes(state)) { run.controlState = state; evRoute(); }
+  }
   if (!opts || !opts.auto) {
     const q = new URLSearchParams(location.search);
-    if (q.has('runcontrol') && window.EV_RUNS) {
-      const state = q.get('runcontrol');
-      const rm = location.hash.match(/#\/run\/([^/?]+)/);
-      const run = rm ? EV_RUNS.find(r => r.id === rm[1]) : EV_RUNS.find(r => r.workspace === evCurrentWs() && !evIsDone(r));
-      if (run && ['running', 'pause_requested', 'paused'].includes(state)) { run.controlState = state; evRoute(); }
-    }
     if (q.get('page') === 'session' && q.get('view') === 'errors') {
       v2SetPage('session');
       setTimeout(() => { if (window.__bootDeepLink) window.__bootDeepLink(q); }, 320);
