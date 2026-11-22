@@ -49,6 +49,8 @@ The accepted-round block in prototype step 6:
 
 ![V2 prototype step 6: the accepted commit uses a structured summary instead of the full Markdown body](https://github.com/Shadow-Azure/harness-evolution/releases/download/run-detail-commit-markdown-evidence-20261122/proto-commit-closeup-2x.png)
 
+The prototype screenshot uses local demo data (`EV-20261109-01`, pushed to completion with the prototype's built-in `runprogress` demo parameter at a 1500×1000 viewport); its target differs from the production screenshot. The comparison is about the same page location (the accepted-round commit block at step 6) and information structure, not the same run or target.
+
 The same prototype screen with context (evaluation comparison and following rounds stay near the first screen):
 
 ![V2 prototype step 6: the commit block is a compact card and later rounds remain visible](https://github.com/Shadow-Azure/harness-evolution/releases/download/run-detail-commit-markdown-evidence-20261122/proto-commit.png)

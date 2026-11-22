@@ -49,6 +49,8 @@ V2 原型第 6 步已接纳轮次的对应区块：
 
 ![V2 原型第 6 步：已接纳 commit 使用结构化摘要，不展示完整 Markdown 正文](https://github.com/Shadow-Azure/harness-evolution/releases/download/run-detail-commit-markdown-evidence-20261122/proto-commit-closeup-2x.png)
 
+原型截图为本地打桩样例（`EV-20261109-01`，使用原型自带的 `runprogress` 演示参数推到完成态，视口 1500×1000），target 与生产截图不同；这里对照的是同一页面位置（第 6 步已接纳轮次的 commit 区块）与信息结构，不是同一个 run/target。
+
 同场景的原型整页上下文（保留评测对比与后续轮次位置）：
 
 ![V2 原型第 6 步整页：commit 块只占一个紧凑卡片，后续轮次仍在首屏附近](https://github.com/Shadow-Azure/harness-evolution/releases/download/run-detail-commit-markdown-evidence-20261122/proto-commit.png)
