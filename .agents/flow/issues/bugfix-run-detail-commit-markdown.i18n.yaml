@@ -2,4 +2,4 @@
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-run-detail-commit-markdown.md
 bugfix-run-detail-commit-markdown.md: c12efd5c8ec786eb96150ec4578c1ed58ae51bb5
-bugfix-run-detail-commit-markdown.en.md: 5a44bb7e6bf186a345213318552e65f68b537d50
+bugfix-run-detail-commit-markdown.en.md: 4437b3ea45a2a58e96fe90316b9c959f7758ae14
