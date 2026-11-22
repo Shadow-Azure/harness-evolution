@@ -105,6 +105,7 @@ apps/api/
     third_party_api/
       trajectory/            # 上游轨迹查询：http.py（HttpTrajectorySource）
       llm/                   # 预留：client.py + openai_client.py
+      ai_agent/              # AI 代理出站适配：base/claude_code/factory/fake/submission/edits（自进化模型调用统一收口）
     utils/                   # 纯工具（JSONL 行辅助、哈希、时间、JWT）
   tests/
     conftest.py              # 参数化 DB fixture：默认 SQLite，-m mysql 时用 MySQL
@@ -216,8 +217,9 @@ def create_database(settings: Settings) -> Database:
 | 问题（bad case） | `api/ingest.py` + `service/workspaces` | **V2 主通道**：空间上报接口（凭据 + 额度）写 `bad_cases`；目录同步默认停用 |
 | 归因（V2） | `service/evolution/attribution.py` | run 内按对象·版本 upsert `probe_reports`，并写 `bad_case_analysis` 一对多关联与缓存标签 |
 | 演示数据 | `fixtures/` + `app/cli.py seed` | 仅开发/演示时灌入真实表，运行时无 stub 分支 |
+| 模型出站（自进化） | `third_party_api/ai_agent/` | 审查/评分/patch 的模型调用统一收口：父类接口 + 子类（claude-code 当前）+ 工厂按 `AI_AGENT_PROVIDER` 选择；[07 §5.5.1](07-backend-implementation.md) |
 
-早期"六类 Provider + stub 实现"的设计已取消：V2 bad case 与归因均在本服务写入边界内，不需要“读表 Provider”；历史问题数据只保留显式开关的兼容同步。
+早期"六类 Provider + stub 实现"的设计已取消：V2 bad case 与归因均在本服务写入边界内，不需要“读表 Provider”；历史问题数据只保留显式开关的兼容同步。`ai_agent` 不是那套统一 Provider 的复活——它只服务模型出站这一个接缝，数据接入仍按上表分散接线。
 
 ### 5.2 原始 payload 与归一化
 
