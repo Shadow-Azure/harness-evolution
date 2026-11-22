@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/bugfix-evolution-list-scroll.md
+bugfix-evolution-list-scroll.md: 7c37f22f26d5b0e223232d5c1fc8143227f9296f
+bugfix-evolution-list-scroll.en.md: 319e2f5695d22c1d6dee8118fbb961453e4b52a3
