@@ -30,7 +30,7 @@ import uuid
 import weakref
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Final, Literal, cast
 
 import json5
@@ -70,15 +70,19 @@ _ParsedBy = Literal["strict", "json5", "repair"]
 class SubmissionPrep:
     """Everything one one-shot submission round needs.
 
-    ``directory`` is minted by :meth:`StructuredSubmission.prepare` and is
-    never reused across calls. ``allowed_tools`` is exactly the single write
-    tool the agent may call; the result path is relative to ``directory``.
+    ``directory`` is either a disposable directory minted by
+    :meth:`StructuredSubmission.prepare` (the default) or an explicit caller
+    directory such as a prepared workspace. ``result_path`` is always inside
+    that directory. ``schema_path`` is the written ``schema.json`` for a
+    disposable task directory; for an explicit directory the schema is inlined
+    in ``prompt_addendum`` instead and ``schema_path`` is ``None``.
+    ``allowed_tools`` is exactly the single write tool the agent may call.
     """
 
     task_key: str
     directory: Path
     result_path: Path
-    schema_path: Path
+    schema_path: Path | None
     prompt_addendum: str
     allowed_tools: tuple[str, ...] = SUBMISSION_TOOLS
 
@@ -151,12 +155,33 @@ class StructuredSubmission:
             self._temp_directories,
         )
 
-    def prepare(self, task_key: str, output_schema: type[BaseModel]) -> SubmissionPrep:
-        """Create one fresh task directory, write ``schema.json``, and build the prompt.
+    def prepare(
+        self,
+        task_key: str,
+        output_schema: type[BaseModel],
+        *,
+        directory: Path | None = None,
+        filename: str | None = None,
+    ) -> SubmissionPrep:
+        """Create a task directory (or reuse one), write the schema, and build the prompt.
 
         ``task_key`` must be non-blank and ``output_schema`` must be a Pydantic
         model; both are rejected with :class:`ValueError` before any directory
         is created, so a caller mistake never leaves a half-built task dir.
+
+        Without ``directory`` the channel mints a fresh disposable task
+        directory and writes ``schema.json`` into it, preserving the historical
+        behavior. An explicit ``directory`` (for example a prepared workspace)
+        is used in place and must already be an absolute directory; the schema
+        is inlined in the prompt rather than written into the caller's tree, so
+        the submission channel never leaves a stray file in a workspace.
+
+        ``filename`` overrides the relative write target. It is validated as a
+        canonical relative POSIX path: absolute paths, backslashes, NUL,
+        ``.``/``..``/empty segments, a drive prefix, a trailing slash, and any
+        ``.git`` segment are rejected, while the edit scope
+        (``.harness-evolution/``) is allowed. The write tool whitelist is
+        derived from the resulting path.
         """
         normalized_key = task_key.strip()
         if not normalized_key:
@@ -164,19 +189,43 @@ class StructuredSubmission:
         if not (isinstance(output_schema, type) and issubclass(output_schema, BaseModel)):
             raise ValueError("output_schema must be a Pydantic BaseModel subclass")
 
-        directory = self._new_task_directory(normalized_key)
-        schema_path = directory / SCHEMA_FILENAME
-        schema_path.write_text(
-            f"{json.dumps(output_schema.model_json_schema(), ensure_ascii=False, indent=2)}\n",
-            encoding="utf-8",
+        result_relative = (
+            _safe_submission_filename(filename)
+            if filename is not None
+            else PurePosixPath(RESULT_FILENAME)
         )
+        schema_json = json.dumps(
+            output_schema.model_json_schema(),
+            ensure_ascii=False,
+            indent=2,
+        )
+        if directory is None:
+            task_directory = self._new_task_directory(normalized_key)
+            written_schema = task_directory / SCHEMA_FILENAME
+            written_schema.write_text(f"{schema_json}\n", encoding="utf-8")
+            schema_path: Path | None = written_schema
+            addendum = self._prompt_addendum(
+                normalized_key,
+                result_relative,
+                schema_json,
+                schema_file=SCHEMA_FILENAME,
+            )
+        else:
+            task_directory = _existing_directory(directory)
+            schema_path = None
+            addendum = self._prompt_addendum(
+                normalized_key,
+                result_relative,
+                schema_json,
+                schema_file=None,
+            )
         return SubmissionPrep(
             task_key=normalized_key,
-            directory=directory,
-            result_path=directory / RESULT_FILENAME,
+            directory=task_directory,
+            result_path=task_directory.joinpath(*result_relative.parts),
             schema_path=schema_path,
-            prompt_addendum=self._prompt_addendum(normalized_key),
-            allowed_tools=SUBMISSION_TOOLS,
+            prompt_addendum=addendum,
+            allowed_tools=(f"Write(./{result_relative.as_posix()})",),
         )
 
     def collect(
@@ -302,11 +351,33 @@ class StructuredSubmission:
         directory.mkdir()
         return directory
 
-    def _prompt_addendum(self, task_key: str) -> str:
-        """Build the instruction fragment appended to the caller's prompt."""
+    def _prompt_addendum(
+        self,
+        task_key: str,
+        filename: PurePosixPath,
+        schema_json: str,
+        *,
+        schema_file: str | None,
+    ) -> str:
+        """Build the instruction fragment appended to the caller's prompt.
+
+        A disposable task directory names its ``schema.json``; an explicit
+        caller directory inlines the same derived schema so the channel writes
+        nothing beside the one result file.
+        """
+        target = filename.as_posix()
+        if schema_file is None:
+            shape = (
+                "1. 文件内容必须是单个 JSON5 对象，字段形状以以下 JSON Schema 为准：\n"
+                f"```json\n{schema_json}\n```\n"
+            )
+        else:
+            shape = (
+                f"1. 文件内容必须是单个 JSON5 对象，字段形状以当前目录的 ./{schema_file} 为准。\n"
+            )
         return (
-            f"任务 {task_key}：只把最终结论写进当前目录的 ./{RESULT_FILENAME}，然后停止。\n"
-            f"1. 文件内容必须是单个 JSON5 对象，字段形状以当前目录的 ./{SCHEMA_FILENAME} 为准。\n"
+            f"任务 {task_key}：只把最终结论写进当前目录的 ./{target}，然后停止。\n"
+            f"{shape}"
             "2. JSON5 是宽松格式：允许 // 与 /* */ 注释、尾逗号、单引号字符串、不加引号的裸键。\n"
             "3. 不要在文件之外输出解释、Markdown 围栏或任何散文，结论只存在于该文件里。\n"
         )
@@ -316,6 +387,52 @@ def _safe_task_key(task_key: str) -> str:
     """Collapse a task key into a filesystem-safe directory prefix."""
     collapsed = _UNSAFE_TASK_KEY_CHARS.sub("-", task_key).strip("-._")[:_MAX_TASK_KEY_CHARS]
     return collapsed or "task"
+
+
+def _existing_directory(directory: Path) -> Path:
+    """Return one caller-supplied absolute directory that already exists.
+
+    The submission channel never creates a caller directory: silently minting a
+    workspace-shaped path would hide a composition mistake, and an explicit
+    directory is expected to be a prepared workspace (or a test temp dir).
+    """
+    if not directory.is_absolute():
+        raise ValueError("submission directory must be an absolute path")
+    if not directory.is_dir():
+        raise ValueError("submission directory must be an existing directory")
+    return directory
+
+
+def _safe_submission_filename(filename: str) -> PurePosixPath:
+    """Validate one workspace-relative write target for the submission channel.
+
+    The edit scope (``.harness-evolution/``) is deliberately allowed, while
+    ``.git`` is always rejected: a plan submission may never stage Git
+    internals. Canonical-form checking rejects ``./a``, ``a//b``, ``a/.`` and
+    trailing slashes, so the derived ``Write(./<filename>)`` tool string is
+    exactly the path the collector later reads.
+    """
+    if not filename or not filename.strip():
+        raise ValueError("filename must not be empty")
+    if filename != filename.strip():
+        raise ValueError("filename must not have leading or trailing whitespace")
+    if "\x00" in filename:
+        raise ValueError("filename must not contain a NUL byte")
+    if "\\" in filename:
+        raise ValueError("filename must use POSIX separators")
+    if re.match(r"^[A-Za-z]:", filename):
+        raise ValueError("filename must not start with a drive prefix")
+    path = PurePosixPath(filename)
+    if path.is_absolute():
+        raise ValueError("filename must be a relative POSIX path")
+    if path.as_posix() != filename:
+        raise ValueError("filename must be a canonical POSIX path")
+    parts = path.parts
+    if not parts or any(part in {"", ".", ".."} for part in parts):
+        raise ValueError("filename must not contain '.', '..', or empty segments")
+    if any(part.casefold() == ".git" for part in parts):
+        raise ValueError("filename must not target .git")
+    return path
 
 
 def _discard_directories(directories: list[Path]) -> None:

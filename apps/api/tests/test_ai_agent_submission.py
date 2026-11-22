@@ -18,6 +18,7 @@ from app.third_party_api.ai_agent import (
     RESULT_FILENAME,
     SCHEMA_FILENAME,
     SUBMISSION_TOOLS,
+    EditPlan,
     StructuredSubmission,
     SubmissionOutcome,
     SubmissionPrep,
@@ -433,7 +434,9 @@ def test_prepare_mints_unique_one_shot_directories(tmp_path: Path) -> None:
     assert escaped.directory.parent == tmp_path
     assert first.result_path == first.directory / "result.json5"
     assert first.schema_path == first.directory / "schema.json"
+    assert first.schema_path is not None
     assert first.schema_path.exists()
+    assert second.schema_path is not None
     assert second.schema_path.exists()
     assert not first.result_path.exists()
 
@@ -554,3 +557,156 @@ def test_outcomes_are_frozen_value_objects() -> None:
     with pytest.raises(AttributeError):
         outcome.status = "ok"  # type: ignore[misc]
     assert outcome.is_ok is False
+
+
+def test_explicit_directory_and_filename_override_the_disposable_default(
+    tmp_path: Path,
+) -> None:
+    """The edit phase submits into the workspace, not into a one-shot temp dir."""
+    channel = StructuredSubmission()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    prep = channel.prepare(
+        "agent.edit",
+        EditPlan,
+        directory=workspace,
+        filename=".harness-evolution/edits.json5",
+    )
+
+    assert prep.directory == workspace
+    assert prep.result_path == workspace / ".harness-evolution" / "edits.json5"
+    assert prep.schema_path is None
+    assert prep.allowed_tools == ("Write(./.harness-evolution/edits.json5)",)
+    assert "agent.edit" in prep.prompt_addendum
+    assert "./.harness-evolution/edits.json5" in prep.prompt_addendum
+    assert "JSON5" in prep.prompt_addendum
+    assert "./schema.json" not in prep.prompt_addendum
+
+
+def test_explicit_directory_inlines_the_schema_instead_of_writing_a_file(
+    tmp_path: Path,
+) -> None:
+    """No schema file is left in a caller-owned workspace; the prompt carries it."""
+    channel = StructuredSubmission()
+
+    prep = channel.prepare(
+        "agent.edit",
+        EditPlan,
+        directory=tmp_path,
+        filename=".harness-evolution/edits.json5",
+    )
+
+    assert not (tmp_path / SCHEMA_FILENAME).exists()
+    assert prep.schema_path is None
+    assert "JSON Schema" in prep.prompt_addendum
+    assert '"properties"' in prep.prompt_addendum
+    assert '"summary"' in prep.prompt_addendum
+    assert '"edits"' in prep.prompt_addendum
+
+
+def test_explicit_directory_with_the_default_filename_still_inlines_the_schema(
+    tmp_path: Path,
+) -> None:
+    """An explicit directory always keeps the caller tree free of a schema file."""
+    channel = StructuredSubmission()
+
+    prep = channel.prepare("cluster.score", ScoreOutput, directory=tmp_path)
+
+    assert prep.result_path == tmp_path / "result.json5"
+    assert prep.schema_path is None
+    assert not (tmp_path / SCHEMA_FILENAME).exists()
+    assert prep.allowed_tools == SUBMISSION_TOOLS
+    assert '"confidence"' in prep.prompt_addendum
+
+
+def test_custom_filename_in_a_disposable_directory_keeps_the_written_schema(
+    tmp_path: Path,
+) -> None:
+    """A custom name in a channel-owned task dir keeps the schema file contract."""
+    channel = StructuredSubmission(root=tmp_path)
+
+    prep = channel.prepare("cluster.score", ScoreOutput, filename="nested/answer.json5")
+
+    assert prep.directory.parent == tmp_path
+    assert prep.result_path == prep.directory / "nested" / "answer.json5"
+    assert prep.schema_path == prep.directory / SCHEMA_FILENAME
+    assert prep.schema_path is not None
+    assert prep.schema_path.exists()
+    assert prep.allowed_tools == ("Write(./nested/answer.json5)",)
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "",
+        "   ",
+        " leading.json5",
+        "trailing.json5 ",
+        "/abs/result.json5",
+        "../escape.json5",
+        "a/../b.json5",
+        "./result.json5",
+        "a//b.json5",
+        "a/./b.json5",
+        "a/",
+        "a\\b.json5",
+        "a\x00b.json5",
+        "./",
+        ".",
+        "..",
+        "C:/result.json5",
+        ".git/config",
+        ".git",
+        "nested/.GIT/config",
+    ],
+    ids=[
+        "empty",
+        "blank",
+        "leading-space",
+        "trailing-space",
+        "absolute",
+        "parent",
+        "inner-parent",
+        "dot-prefix",
+        "double-slash",
+        "dot-segment",
+        "trailing-slash",
+        "backslash",
+        "nul",
+        "dot-slash",
+        "dot",
+        "dotdot",
+        "drive-prefix",
+        "git-file",
+        "git-dir",
+        "case-folded-git",
+    ],
+)
+def test_unsafe_filename_matrix_is_rejected(tmp_path: Path, filename: str) -> None:
+    """Every traversal, platform, and Git-internal spelling fails before writing."""
+    channel = StructuredSubmission()
+
+    with pytest.raises(ValueError):
+        channel.prepare(
+            "agent.edit",
+            EditPlan,
+            directory=tmp_path,
+            filename=filename,
+        )
+
+
+def test_explicit_directory_must_be_absolute_and_exist(tmp_path: Path) -> None:
+    """An explicit directory is validated before any file is written."""
+    channel = StructuredSubmission()
+
+    with pytest.raises(ValueError, match="absolute"):
+        channel.prepare("agent.edit", EditPlan, directory=Path("relative"))
+    with pytest.raises(ValueError, match="existing"):
+        channel.prepare(
+            "agent.edit",
+            EditPlan,
+            directory=tmp_path / "missing",
+            filename=".harness-evolution/edits.json5",
+        )
+    assert not (tmp_path / "missing").exists()

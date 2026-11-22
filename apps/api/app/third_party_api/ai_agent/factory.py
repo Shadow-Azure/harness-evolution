@@ -7,57 +7,19 @@ registry entry, never a branch in a service.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING
 
 from app.third_party_api.ai_agent.base import AIAgentProvider
-from app.third_party_api.ai_agent.contracts import (
-    AnalysisRequest,
-    AnalysisResult,
-    EditRequest,
-    EditResult,
-    ProviderHealth,
-)
+from app.third_party_api.ai_agent.claude_code import ClaudeCodeProvider
 from app.third_party_api.ai_agent.fake import FakeAIAgentProvider
 
 if TYPE_CHECKING:
     from app.config import Settings
 
 
-class _PendingClaudeCodeProvider(AIAgentProvider):
-    """Startup-safe placeholder until the real CLI subclass arrives.
-
-    The default ``claude-code`` selection must assemble without a real backend
-    so a zero-config deployment still starts. Health is reported unhealthy and
-    the capability calls fail loudly rather than silently degrading behavior.
-    """
-
-    provider_id: ClassVar[str] = "claude-code"
-
-    async def analyze(self, request: AnalysisRequest) -> AnalysisResult:
-        """Fail loudly until the real subclass replaces this placeholder."""
-        raise NotImplementedError(
-            "claude-code provider is not implemented yet; see bugfix-17",
-        )
-
-    async def edit_workspace(self, request: EditRequest) -> EditResult:
-        """Fail loudly until the real subclass replaces this placeholder."""
-        raise NotImplementedError(
-            "claude-code provider is not implemented yet; see bugfix-17",
-        )
-
-    async def health_check(self) -> ProviderHealth:
-        """Report that the reserved backend has no implementation yet."""
-        return ProviderHealth(
-            provider_id=self.provider_id,
-            healthy=False,
-            detail="claude-code provider is not implemented yet; see bugfix-17",
-            latency_ms=0,
-        )
-
-
 _REGISTRY: dict[str, type[AIAgentProvider]] = {
     FakeAIAgentProvider.provider_id: FakeAIAgentProvider,
-    _PendingClaudeCodeProvider.provider_id: _PendingClaudeCodeProvider,
+    ClaudeCodeProvider.provider_id: ClaudeCodeProvider,
 }
 """Registered implementations; the keys are the legal ``AI_AGENT_PROVIDER`` values."""
 
