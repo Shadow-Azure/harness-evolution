@@ -8,7 +8,7 @@ id: bugfix-15
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/app/third_party_api/ai_agent/**
   - apps/api/app/config.py
