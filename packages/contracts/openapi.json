@@ -4492,6 +4492,16 @@
             "title": "Defaultref",
             "type": "string"
           },
+          "definition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetDefinitionPreview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "enabled": {
             "default": true,
             "title": "Enabled",
@@ -9036,6 +9046,31 @@
           "pageSize"
         ],
         "title": "TargetCaseListResponse",
+        "type": "object"
+      },
+      "TargetDefinitionPreview": {
+        "additionalProperties": false,
+        "description": "Source pinned to this target binding.",
+        "properties": {
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "string"
+          }
+        },
+        "required": [
+          "commit",
+          "path",
+          "preview"
+        ],
+        "title": "TargetDefinitionPreview",
         "type": "object"
       },
       "TargetDetailResponse": {

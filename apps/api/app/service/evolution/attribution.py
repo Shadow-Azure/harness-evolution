@@ -55,7 +55,7 @@ from app.service.evolution.potential import (
     OrderState,
     PotentialCase,
 )
-from app.service.evolution.target_content import resolve_legacy_target_version
+from app.service.evolution.target_content import GitDefinitionRef, resolve_legacy_target_version
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
 
@@ -119,6 +119,7 @@ class AttributionInput:
     selected_version: str = ""
     report_source: str = ""
     local_input: Mapping[str, str] = field(default_factory=dict)
+    definition: GitDefinitionRef | None = None
     local_input_hash: str | None = None
     batch_trigger: Literal["target_binding", "evolution_run"] = "evolution_run"
 
@@ -578,6 +579,7 @@ class BindingBatch:
     attribution_skill_key: str
     attribution_skill_revision: int
     attribution_skill_content_hash: str
+    definition: GitDefinitionRef | None = None
 
 
 class AttributionStore(Protocol):
@@ -987,6 +989,7 @@ class AttributionRunner:
         return AttributionInput(
             bad_case_id=candidate.bad_case_id,
             run_id=run.id,
+            definition=run.definition if isinstance(run, BindingBatch) else None,
             batch_trigger="target_binding" if isinstance(run, BindingBatch) else "evolution_run",
             workspace_id=run.workspace_id,
             session_id=candidate.session_id,

@@ -1,5 +1,7 @@
 """Immutable, workspace-local evidence and inputs for individual attribution executions."""
 
+from __future__ import annotations
+
 import errno
 import hashlib
 import json
@@ -7,10 +9,12 @@ import re
 import tempfile
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from app.service.evolution.attribution import AttributionInput
 from app.service.evolution.attribution_contracts import canonical_json_hash
+
+if TYPE_CHECKING:
+    from app.service.evolution.attribution import AttributionInput
 
 SESSION_FILES = ("session_tree.json", "traces.json", "trace_coverage.json")
 
@@ -28,7 +32,7 @@ def disk_id(value: str) -> str:
     )
 
 
-def _publish(directory: Path, files: Mapping[str, str]) -> None:
+def publish_directory(directory: Path, files: Mapping[str, str]) -> None:
     """Expose complete directories atomically. A concurrent publisher may win."""
     if directory.is_dir():
         return
@@ -62,11 +66,8 @@ class CaseInputArchive:
 
     def _identity(self) -> dict[str, Any]:
         item = self.item
-        return {
+        identity: dict[str, Any] = {
             "schemaVersion": 1,
-            "definitionKey": canonical_json_hash(
-                [item.probe_type, item.probe_object, item.object_version]
-            ),
             "workspaceId": item.workspace_id,
             "batchId": item.run_id,
             "trigger": item.batch_trigger,
@@ -84,6 +85,19 @@ class CaseInputArchive:
                 "snapshotHash": item.attribution_skill_content_hash,
             },
         }
+
+        if item.definition:
+            identity["definitionKey"] = item.definition.key
+            identity["gitSource"] = {
+                "repoUrl": item.repo_url,
+                "commit": item.definition.commit,
+                "path": item.definition.path,
+            }
+        else:
+            identity["definitionKey"] = canonical_json_hash(
+                [item.probe_type, item.probe_object, item.object_version]
+            )
+        return identity
 
     def load(self) -> dict[str, str] | None:
         if not self.case_path.exists():
@@ -110,15 +124,17 @@ class CaseInputArchive:
         evidence = {name: data[name] for name in SESSION_FILES}
         evidence_hash = canonical_json_hash({k: file_digest(v) for k, v in evidence.items()})
         source_hash = file_digest(data["attribute_source.md"])
-        _publish(self.sessions / evidence_hash, evidence)
-        _publish(self.sources / source_hash, {"attribute_source.md": data["attribute_source.md"]})
+        publish_directory(self.sessions / evidence_hash, evidence)
+        publish_directory(
+            self.sources / source_hash, {"attribute_source.md": data["attribute_source.md"]}
+        )
         manifest = {
             **self._identity(),
             "evidenceHash": evidence_hash,
             "sourceHash": source_hash,
             "inputHash": canonical_json_hash(data),
         }
-        _publish(
+        publish_directory(
             self.case_path,
             {
                 "manifest.json": json.dumps(manifest, ensure_ascii=False, indent=2),

@@ -122,6 +122,7 @@ from app.service.evolution.target_content import (
     TargetContentResolver,
     TargetVersionResolver,
 )
+from app.service.evolution.target_definition import TargetDefinitions, VersionedFileSource
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.service import IdentityService
 from app.service.jobs import JobRunner
@@ -162,6 +163,7 @@ def create_app(
     git_remote: GitRemote | None = None,
     git_workspaces: WorkspacePreparer | None = None,
     target_version_resolver: TargetVersionResolver | None = None,
+    definition_source: VersionedFileSource | None = None,
 ) -> FastAPI:
     """Compose middleware, exception handling, and routes."""
     resolved_settings = settings or Settings()
@@ -313,7 +315,13 @@ def create_app(
         runner=cast(Any, proxy_runner.run),
     )
     resolver = target_version_resolver or TargetContentResolver(git_content)
-    evolution_targets = EvolutionTargetService(target_repository, resolved_git_remote)
+    evolution_targets = EvolutionTargetService(
+        target_repository,
+        resolved_git_remote,
+        TargetDefinitions(
+            definition_source or git_content, resolved_settings.attribution_package_dir
+        ),
+    )
     attribution_skills = AttributionSkillService(
         AttributionSkillRepository(resolved_database),
         resolved_settings.attribution_golden_set_path,

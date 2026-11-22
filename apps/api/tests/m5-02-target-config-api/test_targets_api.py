@@ -7,6 +7,7 @@ import os
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -33,12 +34,14 @@ from app.service.evolution.targets import (
     EvolutionTargetService,
     EvolutionTargetWrite,
 )
+from app.third_party_api.git.content import GitContentUnavailable
 from app.third_party_api.git.remote import (
     GitProcessResult,
     RepoInvalid,
     SubprocessGitRemote,
 )
 from app.utils.redaction import redact_command_output
+from tests.target_content_support import FakeDefinitionSource
 from tests.workspaces.helpers import insert_member
 
 TARGET_ADMIN_TEMP_PASSWORD = "admin-target-temp-password"
@@ -290,12 +293,13 @@ async def target_http(tmp_path: Path) -> AsyncIterator[TargetHttpEnvironment]:
     settings = Settings(
         db_dialect=DatabaseDialect.SQLITE,
         data_dir=tmp_path,
+        attribution_package_dir=tmp_path / "attribute",
         jwt_secret=SecretStr("target-http-signing-secret-with-sufficient-length"),
         admin_username="admin",
         admin_password=SecretStr(TARGET_ADMIN_TEMP_PASSWORD),
     )
     remote = FakeGitRemote(tags=("v2.0.0", "v1.9.0"))
-    app = create_app(settings, git_remote=remote)
+    app = create_app(settings, git_remote=remote, definition_source=FakeDefinitionSource())
     transport = httpx.ASGITransport(app=app)
     admin = httpx.AsyncClient(transport=transport, base_url="http://testserver")
     member = httpx.AsyncClient(transport=transport, base_url="http://testserver")
@@ -387,6 +391,64 @@ async def test_target_routes_round_trip_with_camel_case_and_member_reads(
     )
     assert deleted.status_code == 204
     assert deleted.content == b""
+
+
+async def test_definition_is_pinned_before_binding_and_failed_edit_preserves_it(
+    target_http: TargetHttpEnvironment, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = _write().model_dump(by_alias=True)
+    payload.update(objectType="agent", objectName="code-generator", subDir="agents/code-generator")
+    endpoint = "/api/evolution/targets"
+    commit = "a" * 40
+    body = "---\nname: code-generator\n---\nGenerate code."
+
+    async def read(
+        source: object, *, repo_url: str, sub_dir: str, ref: str, file_name: str
+    ) -> tuple[str, str]:
+        assert repo_url == payload["repoUrl"].strip() and ref == payload["defaultRef"].strip()
+        if file_name != "agent.md" or sub_dir != "agents/code-generator":
+            raise GitContentUnavailable("file_not_found")
+        return commit, body
+
+    monkeypatch.setattr(FakeDefinitionSource, "read_versioned_file", read)
+    rejected = await target_http.admin.post(endpoint, json={**payload, "subDir": "missing"})
+    assert rejected.status_code == 422
+    assert (await target_http.admin.get(endpoint)).json()["items"] == []
+    saved = await target_http.admin.post(endpoint, json=payload)
+    assert saved.status_code == 201
+    target = saved.json()
+    assert target["definition"] == dict(
+        commit=commit, path="agents/code-generator/agent.md", preview=body
+    )
+    folder = tmp_path / "attribute/ws-default/attribute_source"
+
+    async def generation() -> str:
+        async with target_http.database.session() as session:
+            return str(
+                await session.scalar(
+                    select(evolution_targets.c.attribution_generation).where(
+                        evolution_targets.c.id == target["id"]
+                    )
+                )
+            )
+
+    first_generation = await generation()
+    original = folder / sha256(body.encode()).hexdigest() / "definition.md"
+    assert original.read_text() == body
+    endpoint += "/" + target["id"]
+    assert (
+        await target_http.admin.put(endpoint, json={**payload, "subDir": "missing"})
+    ).status_code == 422
+    assert await generation() == first_generation
+    assert (await target_http.admin.put(endpoint, json=payload)).status_code == 200
+    assert await generation() == first_generation
+    commit = "b" * 40
+    body = body.replace("name:", "description:")
+    changed = await target_http.admin.put(endpoint, json=payload)
+    assert changed.json()["definition"]["commit"] == commit
+    assert await generation() != first_generation
+    assert original.read_text() == target["definition"]["preview"]
+    assert (folder / sha256(body.encode()).hexdigest() / "definition.md").read_text() == body
 
 
 def test_target_write_schema_requires_project_ids() -> None:

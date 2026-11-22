@@ -255,8 +255,16 @@ describe("TargetFormDialog", () => {
     const wrapper = await mountDialog();
 
     expect(wrapper.text()).toContain(
-      "目录是否存在在启动运行时校验",
+      "保存时从指定版本读取此目录的对象定义",
     );
+  });
+
+  it("shows the pinned commit, definition path and preview on edit", async () => {
+    const definition = { commit: "a".repeat(40), path: "agents/example/AGENT.md", preview: "Agent instructions" };
+    const wrapper = await mountDialog({ target: { ...target, definition } });
+    expect(wrapper.text()).toContain(definition.commit);
+    expect(wrapper.text()).toContain(definition.path);
+    expect(wrapper.get(".definition-preview").text()).toBe(definition.preview);
   });
 
   it("prefills edits, exposes remote suggestions and submits disabled state", async () => {

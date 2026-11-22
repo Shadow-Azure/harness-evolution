@@ -44,7 +44,7 @@
 
 1. 平台按选定对象及版本匹配 Session 触发事件，为每个待分析 Badcase 建立独立输入。`input_badcase.json` 中的 `selected_target` 是分析对象，`bad_cases[0]` 保留问题上报对象、位置和元数据。
 2. 一次 Runner 调用内，同一 Session 的待处理 case 共享一次证据读取。`session_tree.json` 保存已归一化的 Agent 节点及事件；`traces.json` 以 Agent ID 为键保存已采集的脱敏轨迹。`trace_coverage.json` 的 `available_agent_ids` 和 `missing_agent_ids` 列出有非空轨迹的节点和缺轨迹的已知节点。`available`、`partial`、`normalized_events_only` 分别表示已知节点都有轨迹、部分缺失、只有归一化证据。覆盖状态反映轨迹是否存在，消息内容仍可能截断。补采或树变更后，新分析可生成新的证据版本。
-3. 平台读取对象版本的定义，保留定义原文和本次实际交给模型的脱敏副本。默认归因 Skill 来自平台内置包，自定义 Skill 来自当前空间上传包；选中的包在执行前冻结，快照包含平台脚本、追加的执行约定、Agent 和模型身份。
+3. 保存 Git Agent 或 Skill 对象时，平台从选定提交读取定义，按原文哈希存入 `attribute_source/<definition_key>/definition.md`。绑定批次固定该提交与文件，执行时校验并脱敏。默认归因 Skill 来自平台内置包，自定义 Skill 来自当前空间上传包；选中的包在执行前冻结，快照包含平台脚本、追加的执行约定、Agent 和模型身份。
 4. 实际调用 Agent 前，平台原子发布单 case 输入目录。清单同时记录工作空间、批次、触发来源、Badcase、Session、对象版本、Skill 及各项哈希。同一批次同一 case 首次成功归档后，后续重试读取并校验它；多个批次可引用同一份 Session 证据或提示词。
 
 ## Claude 的工作目录与报告
@@ -57,7 +57,7 @@ Skill 必须调用包中的 `make_probe_report.py`，指定 `--output probe_repo
 
 1. 从 `attribute_output/<batch_id>/<case_key>/probe_report.json` 取相同的两个路径段，打开 `attribute_input/batches/<batch_id>/<case_key>/manifest.json` 及同目录的 `input_badcase.json`。
 2. 取清单的 `sessionId`（按上述规则转换为目录名）和 `evidenceHash`，到 `attribute_input/sessions/<session_key>/<evidenceHash>/` 查看当时的树、轨迹和覆盖清单。
-3. `definitionKey` 定位对象定义缓存；`sourceHash` 定位当次模型看到的提示词副本。用 `skill.snapshotHash` 到 `attribute_skill/snapshots/` 查看实际使用的 Skill 文件和模型身份。
+3. 绑定批次的 `gitSource` 记录仓库、提交和文件路径。`definitionKey` 定位定义原文；`sourceHash` 定位当次模型看到的提示词副本。用 `skill.snapshotHash` 到 `attribute_skill/snapshots/` 查看实际使用的 Skill 文件和模型身份。
 4. 用数据库报告的 `execution_manifest.contextSnapshotHash` 对照输入清单的 `inputHash`，用 `execution_manifest.skill.contentHash` 对照 `skill.snapshotHash`。SQLite 可按数据库报告 ID 查询批次来源：
 
 ```sql

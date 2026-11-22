@@ -321,6 +321,11 @@ watch(
             保存绑定后，后台将分析当前与该对象关联的 Badcase。
           </p>
         </ElFormItem>
+        <details v-if="target?.definition">
+          <summary>查看已保存的对象原文</summary>
+          <p>{{ target.definition.path }} · {{ target.definition.commit }}</p>
+          <pre class="definition-preview">{{ target.definition.preview }}</pre>
+        </details>
         <ElFormItem label="仓库地址">
           <ElInput
             v-model="form.repoUrl"
@@ -359,7 +364,7 @@ watch(
               @input="onFieldInput('subDir', $event)"
             />
             <p class="field-help">
-              相对仓库根的路径；格式在保存时校验，目录是否存在在启动运行时校验。
+              {{ form.objectType === "knowledge" ? "相对仓库根的路径。" : "保存时从指定版本读取此目录的对象定义，并保存原文快照。" }}
             </p>
             <p
               v-if="hasFieldError('subDir')"
@@ -712,4 +717,5 @@ watch(
     gap: 0;
   }
 }
+.definition-preview { white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>

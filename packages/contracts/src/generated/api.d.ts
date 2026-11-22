@@ -3843,6 +3843,7 @@ export interface components {
             attributionSkillName?: string | null;
             /** Defaultref */
             defaultRef: string;
+            definition?: components["schemas"]["TargetDefinitionPreview"] | null;
             /**
              * Enabled
              * @default true
@@ -5692,6 +5693,18 @@ export interface components {
             pageSize: number;
             /** Total */
             total: number;
+        };
+        /**
+         * TargetDefinitionPreview
+         * @description Source pinned to this target binding.
+         */
+        TargetDefinitionPreview: {
+            /** Commit */
+            commit: string;
+            /** Path */
+            path: string;
+            /** Preview */
+            preview: string;
         };
         /**
          * TargetDetailResponse

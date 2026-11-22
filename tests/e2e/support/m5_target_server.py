@@ -8,6 +8,7 @@ import uvicorn
 
 from app.config import Settings
 from app.main import create_app
+from tests.target_content_support import FakeDefinitionSource
 from app.third_party_api.git.remote import RepoInvalid
 
 
@@ -44,7 +45,7 @@ class DeterministicGitRemote:
 
 def main() -> None:
     """Serve the composed application on the requested loopback port."""
-    app = create_app(Settings(), git_remote=DeterministicGitRemote())
+    app = create_app(Settings(), git_remote=DeterministicGitRemote(), definition_source=FakeDefinitionSource())
     uvicorn.run(
         app,
         host="127.0.0.1",

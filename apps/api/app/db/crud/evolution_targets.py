@@ -42,6 +42,7 @@ class EvolutionTargetRecord:
     attribution_failures: int = 0
     attribution_error: str | None = None
     attribution_will_retry: bool = False
+    definition: dict[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +87,7 @@ def _record(row: RowMapping) -> EvolutionTargetRecord:
         attribution_failures=row["attribution_failures"],
         attribution_error=row["attribution_error"],
         attribution_will_retry=row["attribution_due"] is not None,
+        definition=(row["attribution_snapshot"] or {}).get("definition"),
         workspace_id=(str(workspace_id) if workspace_id is not None else DEFAULT_WORKSPACE_ID),
     )
 
@@ -167,7 +169,7 @@ class EvolutionTargetRepository:
         return tuple(_record(row) for row in rows)
 
     async def _binding(
-        self, session: Any, workspace: str, package: str, enabled: bool
+        self, session: Any, workspace: str, package: str, enabled: bool, definition: object = None
     ) -> dict[str, Any]:
         name = "attribute-badcases"
         if package != "default-attribute-badcases":
@@ -195,7 +197,7 @@ class EvolutionTargetRepository:
             attribution_owner=None,
             attribution_failures=0,
             attribution_error=None,
-            attribution_snapshot=None,
+            attribution_snapshot={"definition": definition} if definition else None,
             attribution_due=now if enabled else None,
             attribution_cutoff=now,
         )
@@ -219,7 +221,15 @@ class EvolutionTargetRepository:
                 await session.execute(
                     update(table)
                     .where(*query)
-                    .values(**await self._binding(session, workspace, package, row["enabled"]))
+                    .values(
+                        **await self._binding(
+                            session,
+                            workspace,
+                            package,
+                            row["enabled"],
+                            (row["attribution_snapshot"] or {}).get("definition"),
+                        )
+                    )
                 )
 
     async def insert(self, values: Mapping[str, object]) -> EvolutionTargetRecord:
@@ -234,6 +244,7 @@ class EvolutionTargetRepository:
                     workspace_id,
                     str(values.get("attribution_package_id") or "default-attribute-badcases"),
                     bool(values["enabled"]),
+                    values.get("definition"),
                 )
                 await session.execute(
                     insert(evolution_targets).values(
@@ -303,8 +314,15 @@ class EvolutionTargetRepository:
                 if existing is None:
                     raise LookupError("evolution target not found")
                 package = values.get("attribution_package_id") or existing["attribution_package_id"]
+                if not package and values.get("definition"):
+                    # A legacy inline Skill remains bound until a package is selected.
+                    statement = statement.values(
+                        attribution_snapshot={"definition": values["definition"]}
+                    )
                 if package and (
                     package != existing["attribution_package_id"]
+                    or values.get("definition")
+                    != (existing["attribution_snapshot"] or {}).get("definition")
                     or any(
                         existing[k] != values[k]
                         for k in (
@@ -319,7 +337,11 @@ class EvolutionTargetRepository:
                 ):
                     statement = statement.values(
                         **await self._binding(
-                            session, existing["workspace_id"], str(package), bool(values["enabled"])
+                            session,
+                            existing["workspace_id"],
+                            str(package),
+                            bool(values["enabled"]),
+                            values.get("definition"),
                         )
                     )
                 elif (

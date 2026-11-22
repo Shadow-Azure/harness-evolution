@@ -16,7 +16,7 @@ from app.service.evolution.attribution import (
 )
 from app.service.evolution.local_attribution import ENGINE, LocalAttribution
 from app.service.evolution.potential import MatchCondition, PotentialMatcher, resolve_policy
-from app.service.evolution.target_content import TargetVersionResolver
+from app.service.evolution.target_content import GitDefinitionRef, TargetVersionResolver
 from app.utils.time import SHANGHAI, now_shanghai
 
 logger = logging.getLogger(__name__)
@@ -88,18 +88,23 @@ class BindingWorker:
         target = await self.runtime.targets.get(claim.target, workspace_ids=(workspace,))
         if target is None or not target.enabled or not target.attribution_package_id:
             return False
-        snapshot = claim.snapshot
-        if not snapshot:
-            resolved = await self.resolver.resolve(
-                object_type=target.object_type,
-                repo_url=target.repo_url,
-                sub_dir=target.sub_dir,
-                version=target.default_ref,
-            )
+        snapshot = dict(claim.snapshot or {})
+        definition = snapshot.get("definition")
+        if "skill" not in snapshot:
+            if definition:
+                version, revision = target.default_ref, definition["revision"]
+            else:
+                resolved = await self.resolver.resolve(
+                    object_type=target.object_type,
+                    repo_url=target.repo_url,
+                    sub_dir=target.sub_dir,
+                    version=target.default_ref,
+                )
+                version, revision = resolved.target_version, resolved.target_revision
             skill = await self.runtime.resolve_package(workspace, target.attribution_package_id)
-            snapshot = dict(
-                version=resolved.target_version,
-                revision=resolved.target_revision,
+            snapshot.update(
+                version=version,
+                revision=revision,
                 skill=skill.skill_key,
                 skillRevision=skill.revision,
                 hash=skill.content_hash,
@@ -144,6 +149,9 @@ class BindingWorker:
             snapshot["skill"],
             snapshot["skillRevision"],
             snapshot["hash"],
+            definition=GitDefinitionRef(definition["key"], definition["commit"], definition["path"])
+            if definition
+            else None,
         )
 
         async def renew(_: AttributionRunProgress) -> None:

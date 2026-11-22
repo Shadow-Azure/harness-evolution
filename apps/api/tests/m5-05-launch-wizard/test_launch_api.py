@@ -28,7 +28,8 @@ from app.db.models.domain import (
 from app.db.models.evolution import evolution_runs
 from app.main import create_app
 from app.third_party_api.git.workspace import PreparedWorkspace
-from tests.target_content_support import FakeTargetVersionResolver
+from app.utils.definition import definition_file_hash
+from tests.target_content_support import FakeDefinitionSource, FakeTargetVersionResolver
 
 ADMIN_TEMP_PASSWORD = "launch-wizard-admin-temp-password"
 ADMIN_PASSWORD = "launch-wizard-admin-password"
@@ -162,7 +163,7 @@ def _analysis_values(
     }
 
 
-async def _seed_hits(app: Any) -> None:
+async def _seed_hits(app: Any, revision: str = "tag:v2.0.0") -> None:
     """Insert divergent reported objects, probe root causes, and foreign targets."""
     await ensure_fixture_external_tables(app.state.database)
     async with app.state.database.transaction() as session:
@@ -257,7 +258,7 @@ async def _seed_hits(app: Any) -> None:
                     "kind": "skill",
                     "name": "deep-research",
                     "object_version": "v2.0.0",
-                    "object_revision": "tag:v2.0.0",
+                    "object_revision": revision,
                     "triggered_at": datetime(2026, 8, 25, 8, 0, tzinfo=UTC),
                 },
                 {
@@ -268,7 +269,7 @@ async def _seed_hits(app: Any) -> None:
                     "kind": "skill",
                     "name": "deep-research",
                     "object_version": "v2.0.0",
-                    "object_revision": "tag:v2.0.0",
+                    "object_revision": revision,
                     "triggered_at": datetime(2026, 9, 5, 8, 0, tzinfo=UTC),
                 },
                 {
@@ -279,7 +280,7 @@ async def _seed_hits(app: Any) -> None:
                     "kind": "skill",
                     "name": "reported-object",
                     "object_version": "v2.0.0",
-                    "object_revision": "tag:v2.0.0",
+                    "object_revision": revision,
                     "triggered_at": datetime(2026, 9, 20, 8, 0, tzinfo=UTC),
                 },
             ],
@@ -382,6 +383,11 @@ async def launch_api(
     tmp_path: Path, request: pytest.FixtureRequest
 ) -> AsyncIterator[httpx.AsyncClient]:
     """Provide an authenticated admin client over a migrated, seeded app."""
+    revision = (
+        f"digest:{definition_file_hash(FakeDefinitionSource.body)}"
+        if getattr(request, "param", None)
+        else "tag:v2.0.0"
+    )
     app = create_app(
         Settings(
             db_dialect=DatabaseDialect.SQLITE,
@@ -393,7 +399,8 @@ async def launch_api(
             admin_password=SecretStr(ADMIN_TEMP_PASSWORD),
         ),
         git_workspaces=_FakeWorkspacePreparer(tmp_path),
-        target_version_resolver=FakeTargetVersionResolver(),
+        target_version_resolver=FakeTargetVersionResolver(revisions={"v2.0.0": revision}),
+        definition_source=FakeDefinitionSource(),
     )
     transport = httpx.ASGITransport(app=app)
     client = httpx.AsyncClient(transport=transport, base_url="http://testserver")
@@ -415,7 +422,7 @@ async def launch_api(
                 json={"username": "admin", "password": ADMIN_PASSWORD},
             )
             client.headers["Authorization"] = f"Bearer {relogin.json()['accessToken']}"
-            await _seed_hits(app)
+            await _seed_hits(app, revision)
             yield client
     finally:
         await client.aclose()
@@ -958,7 +965,9 @@ async def test_local_attribution_from_wizard_to_cluster(
 
     monkeypatch.setitem(AgentFactory.providers, "test-local", ScriptAgent)
     app = _app_of(launch_api)
-    app.state.local_attribution.source = Source()
+    # The binding must use its saved file even if runtime Git reads are unavailable.
+    runtime_source = Source()
+    app.state.local_attribution.source = runtime_source
     workspace = "/api/workspaces/ws-default"
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w") as bundle:
@@ -977,6 +986,10 @@ async def test_local_attribution_from_wizard_to_cluster(
     import asyncio
     from unittest.mock import AsyncMock
 
+    runtime_read = runtime_source.read_file
+    offline = AsyncMock(side_effect=AssertionError("bound batch fetched the mutable ref"))
+    monkeypatch.setattr(runtime_source, "read_file", offline)
+
     # Exercise the same atomic create used by the overview form.
     old = await launch_api.get(f"{workspace}/evolution/targets")
     target = next(t for t in old.json()["items"] if t["id"] == "target-enabled")
@@ -986,7 +999,7 @@ async def test_local_attribution_from_wizard_to_cluster(
     body = {
         k: v
         for k, v in target.items()
-        if k not in {"id", "attributionSkillName", "attributionFailure"}
+        if k not in {"id", "attributionSkillName", "attributionFailure", "definition"}
     }
     body["attributionPackageId"] = uploaded.json()["id"]
     created = await launch_api.post(f"{workspace}/evolution/targets", json=body)
@@ -1016,7 +1029,13 @@ async def test_local_attribution_from_wizard_to_cluster(
     binding_inputs = [
         json.loads(path.read_bytes()) for path in binding_batch.glob("*/manifest.json")
     ]
+    offline.assert_not_awaited()
+    monkeypatch.setattr(runtime_source, "read_file", runtime_read)
     assert binding_inputs
+    for manifest in binding_inputs:
+        definition = root / "attribute_source" / manifest["definitionKey"] / "definition.md"
+        assert definition.read_text() == created.json()["definition"]["preview"]
+        assert manifest["gitSource"]["commit"] == created.json()["definition"]["commit"]
     assert all(
         m["batchId"] == binding_batch.name and m["trigger"] == "target_binding"
         for m in binding_inputs

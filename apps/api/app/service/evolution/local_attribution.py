@@ -372,6 +372,12 @@ class LocalAttribution:
     async def _target_prompt(self, item: AttributionInput) -> str:
         # Content-addressed definitions can also be provisioned by the intranet importer.
         root = self.root(item.workspace_id) / "attribute_source"
+        if item.definition is not None:
+            key = _component(item.definition.key)
+            raw = await asyncio.to_thread((root / key / "definition.md").read_bytes)
+            if _digest(raw) != key:
+                raise ValueError("frozen target definition checksum mismatch")
+            return raw.decode("utf-8")
         dest = (
             root
             / canonical_json_hash([item.probe_type, item.probe_object, item.object_version])

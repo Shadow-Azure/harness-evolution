@@ -104,6 +104,15 @@ class SubprocessGitContent:
         file_name: str,
     ) -> str:
         """Return the exact file body at ``ref`` or raise a stable failure."""
+        _, body = await self.read_versioned_file(
+            repo_url=repo_url, sub_dir=sub_dir, ref=ref, file_name=file_name
+        )
+        return body
+
+    async def read_versioned_file(
+        self, *, repo_url: str, sub_dir: str, ref: str, file_name: str
+    ) -> tuple[str, str]:
+        """Read the commit and file together, even when the ref moves."""
         relative = _relative_path(sub_dir, file_name)
         checked_ref = _checked_ref(ref)
         repo_path = self._cache_path(repo_url, checked_ref)
@@ -115,7 +124,7 @@ class SubprocessGitContent:
             result = await self._git(repo_path, ("git", "show", f"{commit}:{relative}"))
         if result.returncode != 0:
             raise GitContentUnavailable(_show_failure(result.stderr))
-        return result.stdout
+        return commit, result.stdout
 
     def _cache_path(self, repo_url: str, ref: str) -> Path:
         """Return the one cache directory for a repository and ref pair."""
