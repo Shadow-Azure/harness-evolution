@@ -73,6 +73,18 @@ V2 原型第 6 步已接纳轮次的对应区块：
 - 长 commit message 会把后续轮次和底部内容推离首屏，增加滚动成本；在窄视口下 `break-all` 还会把 URL 和 ID 切得难以复制。
 - 不影响数据、评测、推送与 git 历史；这是展示层与设计契约的偏差。
 
+### 推荐修改方案
+
+推荐 **A：默认紧凑摘要 + 按需展开 Markdown**：
+
+- 默认视图对齐原型：只显示 12 位 hash、commit subject，以及 `StepRound` 已有的聚类摘要（cluster id/title/category/caseCount/severity）；来源 bad case 明细仍由上方表格承载，不在 commit 卡里重复。
+- 完整 `finalCommit.message` 通过「查看完整 commit message」展开，用现有 `renderMarkdown()` 渲染，标题、列表、链接可读且可点击；commit hash 与 `Harness-Evaluated-Commit` 保留。
+- 同步更新 V2 原型与 05/08 设计文档，明确 `message` 是完整 Markdown 正文，禁止按纯文本插值。
+
+备选 B：不折叠，直接把完整正文 Markdown 渲染。改动更小，但长消息仍会把页面撑得很高，信息密度与原型不一致。
+
+备选 C：只保留原型的结构化摘要，不展示完整正文。最贴原型，但会丢失 run/cluster/来源问题的追溯信息，不推荐。
+
 ## 目标
 
 - 已接纳轮次的 commit 区块恢复为可扫描结构：保留 12 位 hash 与 `Harness-Evaluated-Commit`，标题行显示 commit subject（`message` 第一行），不再把 `##`、`---`、`-` 当普通文本展示。

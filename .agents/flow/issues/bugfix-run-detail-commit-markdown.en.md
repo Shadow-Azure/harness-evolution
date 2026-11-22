@@ -73,6 +73,18 @@ Production diverges from the prototype in two ways:
 - Long commit messages push later rounds and the bottom of the page off the first screen; at narrow viewports `break-all` also splits URLs and IDs in ways that are hard to copy.
 - Data, evaluation, push, and git history are unaffected; this is a display-layer and design-contract divergence.
 
+### Recommended approach
+
+Recommend **A: compact summary by default + expandable Markdown**:
+
+- The default view matches the prototype: show only the 12-character hash, the commit subject, and the cluster summary already in `StepRound` (cluster id/title/category/caseCount/severity); the source bad-case details stay in the table above instead of being duplicated in the commit card.
+- Expand the full `finalCommit.message` through "View full commit message" and render it with the existing `renderMarkdown()` so headings, lists, and links are readable and clickable; keep the commit hash and `Harness-Evaluated-Commit`.
+- Update the V2 prototype and the 05/08 design docs to state that `message` is the full Markdown body and that plain-text interpolation is forbidden.
+
+Alternative B: render the full body as Markdown without collapsing. Smaller change, but a long message still makes the page very tall and diverges from the prototype's information density.
+
+Alternative C: keep only the prototype's structured summary and hide the full body. Closest to the prototype, but it loses the run/cluster/source-problem traceability, so it is not recommended.
+
 ## Goals
 
 - Restore a scannable structure to the accepted-round commit block: keep the 12-character hash and `Harness-Evaluated-Commit`, show the commit subject (the first line of `message`) in the title row, and stop showing `##`, `---`, and `-` as ordinary text.
