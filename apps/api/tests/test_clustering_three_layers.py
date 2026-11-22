@@ -31,6 +31,7 @@ from app.service.evolution.cluster import (
     cluster_severity,
 )
 from app.service.evolution.cluster_llm import (
+    CLUSTER_KEY_PREFIX,
     CLUSTER_SCORE_TASK,
     REVIEW_TASK,
     SEVERITY_SCORE_TASK,
@@ -38,10 +39,14 @@ from app.service.evolution.cluster_llm import (
     ClusterCaseEvidence,
     ClusterContractError,
     ClusterDraftStats,
+    ClusterPlan,
     ClusterReviewOutput,
+    ClusterSummary,
     DegradedCall,
     EnhancedClusters,
+    build_cluster_score_request,
     build_review_request,
+    build_severity_request,
     enhance_clusters,
     select_samples,
     validate_review_partition,
@@ -88,7 +93,24 @@ _REVIEW_MERGED = {
         },
     ],
 }
-_SEVERITY_OK = {
+_REVIEW_IDENTITY = {
+    "clusters": [
+        {"from": ["D1"], "title": "检索索引问题"},
+        {"from": ["D2"], "title": "工具调用超时"},
+    ],
+}
+_CLUSTER_SCORE_MERGED = {
+    "scores": [
+        {"cluster": "C1", "confidence": 0.9, "evidence_refs": ["c-1", "c-2"]},
+    ],
+}
+_CLUSTER_SCORE_TWO = {
+    "scores": [
+        {"cluster": "C1", "confidence": 0.8, "evidence_refs": []},
+        {"cluster": "C2", "confidence": 0.6, "evidence_refs": []},
+    ],
+}
+_SEVERITY_ITEM = {
     "overall": 8.6,
     "dimensions": {
         "impact": 9.0,
@@ -98,6 +120,17 @@ _SEVERITY_OK = {
         "blast_radius": 6.0,
     },
     "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+}
+_SEVERITY_OK = {"severities": [{"cluster": "C1", **_SEVERITY_ITEM}]}
+_SEVERITY_TWO = {
+    "severities": [
+        {"cluster": "C1", **_SEVERITY_ITEM},
+        {
+            "cluster": "C2",
+            "overall": 4.2,
+            "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L",
+        },
+    ],
 }
 
 
@@ -263,6 +296,25 @@ def _scale_fixture(
     return tuple(drafts), evidence, stats
 
 
+def _plans_from_fixture(total: int) -> tuple[ClusterPlan, ...]:
+    """Build the final-cluster plans the batch scoring prompts receive."""
+    drafts, evidence, stats = _scale_fixture(total)
+    return tuple(
+        ClusterPlan(
+            key=f"{CLUSTER_KEY_PREFIX}{index + 1}",
+            summary=ClusterSummary(
+                type=draft.type,
+                title=draft.description,
+                description="",
+                member_count=stats[index].member_count,
+            ),
+            members=select_samples(stats[index].case_ids, evidence),
+            stats=stats[index],
+        )
+        for index, draft in enumerate(drafts)
+    )
+
+
 def test_review_prompt_uses_draft_keys_and_bounded_samples() -> None:
     """The review prompt carries keys, statistics, one summary, and 3-5 samples."""
     drafts, evidence, stats = _scale_fixture(50)
@@ -279,6 +331,21 @@ def test_review_prompt_uses_draft_keys_and_bounded_samples() -> None:
     assert "summary: prompt 类问题 · 组0" in request.prompt
     assert request.prompt.count("- case-") == 3 * 5
     assert "case-0001" in request.prompt
+
+
+def test_score_prompts_are_bounded_and_decoupled_from_case_volume() -> None:
+    """Both batch scoring prompts keep 3x5 samples and equal length at N=50/200."""
+    small = _plans_from_fixture(50)
+    large = _plans_from_fixture(200)
+
+    for builder in (build_cluster_score_request, build_severity_request):
+        small_request = builder(small)
+        large_request = builder(large)
+        assert large_request.prompt.count("Samples (") == 3
+        assert large_request.prompt.count("- case-") == 3 * 5
+        assert len(large_request.prompt) == len(small_request.prompt)
+        for index in range(1, len(large) + 1):
+            assert f"[C{index}]" in large_request.prompt
 
 
 def test_review_prompt_length_is_decoupled_from_the_case_volume() -> None:
@@ -365,11 +432,11 @@ def test_review_output_rejects_an_empty_partition() -> None:
 
 
 async def test_review_merge_names_expands_members_and_scores() -> None:
-    """A valid merge is named by the LLM and expanded by code, then scored twice."""
+    """A valid merge is named by the LLM and expanded by code, then batch scored."""
     provider = _fake_with(
         {
             REVIEW_TASK: _REVIEW_MERGED,
-            CLUSTER_SCORE_TASK: {"confidence": 0.9, "evidence_refs": ["c-1", "c-2"]},
+            CLUSTER_SCORE_TASK: _CLUSTER_SCORE_MERGED,
             SEVERITY_SCORE_TASK: _SEVERITY_OK,
         },
     )
@@ -388,7 +455,7 @@ async def test_review_merge_names_expands_members_and_scores() -> None:
     assert cluster.severity == 8.6
     assert cluster.formula_severity == cluster_severity("prompt", 3)
     assert cluster.evidence_refs == ("c-1", "c-2")
-    assert cluster.vector == _SEVERITY_OK["vector"]
+    assert cluster.vector == _SEVERITY_ITEM["vector"]
     assert dict(cluster.dimensions)["impact"] == 9.0
     assert [call.task for call in result.calls] == [
         REVIEW_TASK,
@@ -402,12 +469,35 @@ async def test_review_merge_names_expands_members_and_scores() -> None:
     assert calls[0].session_id == "fake-session"
 
 
+async def test_two_final_clusters_still_cost_exactly_three_calls() -> None:
+    """Batch scoring keeps one call per task regardless of the cluster count."""
+    provider = _fake_with(
+        {
+            REVIEW_TASK: _REVIEW_IDENTITY,
+            CLUSTER_SCORE_TASK: _CLUSTER_SCORE_TWO,
+            SEVERITY_SCORE_TASK: _SEVERITY_TWO,
+        },
+    )
+
+    result, calls, degraded = await _enhance(provider)
+
+    assert degraded == []
+    assert [call.task for call in calls] == [
+        REVIEW_TASK,
+        CLUSTER_SCORE_TASK,
+        SEVERITY_SCORE_TASK,
+    ]
+    assert [call.outcome for call in calls] == ["ok", "ok", "ok"]
+    assert [cluster.confidence for cluster in result.clusters] == [0.8, 0.6]
+    assert [cluster.severity for cluster in result.clusters] == [8.6, 4.2]
+
+
 async def test_review_provider_failure_degrades_the_whole_batch() -> None:
-    """A raising review call falls back to the drafts and still scores them."""
+    """A raising review call falls back to the drafts and still batch scores them."""
     provider = _RawProvider(
         {
-            CLUSTER_SCORE_TASK: {"confidence": 0.8, "evidence_refs": []},
-            SEVERITY_SCORE_TASK: _SEVERITY_OK,
+            CLUSTER_SCORE_TASK: _CLUSTER_SCORE_TWO,
+            SEVERITY_SCORE_TASK: _SEVERITY_TWO,
         },
         failures={
             REVIEW_TASK: AgentProviderError(
@@ -424,7 +514,7 @@ async def test_review_provider_failure_degrades_the_whole_batch() -> None:
         "prompt 类问题 · 检索索引读取失败",
         "prompt 类问题 · 工具调用超时",
     ]
-    assert [call.outcome for call in result.calls] == ["error", "ok", "ok", "ok", "ok"]
+    assert [call.outcome for call in result.calls] == ["error", "ok", "ok"]
     assert calls[0].task == REVIEW_TASK
     assert calls[0].model == "unknown"
     assert degraded[0].task == REVIEW_TASK
@@ -456,8 +546,8 @@ async def test_review_partition_violation_degrades_and_records_events(
     provider = _fake_with(
         {
             REVIEW_TASK: review_output,
-            CLUSTER_SCORE_TASK: {"confidence": 0.8},
-            SEVERITY_SCORE_TASK: _SEVERITY_OK,
+            CLUSTER_SCORE_TASK: _CLUSTER_SCORE_TWO,
+            SEVERITY_SCORE_TASK: _SEVERITY_TWO,
         },
     )
 
@@ -470,7 +560,7 @@ async def test_review_partition_violation_degrades_and_records_events(
     assert calls[0].outcome == "degraded"
     assert degraded[0].task == REVIEW_TASK
     assert fragment in degraded[0].reason
-    assert len(calls) == 5
+    assert len(calls) == 3
 
 
 async def test_cluster_score_failure_keeps_the_formula_confidence_only() -> None:
@@ -503,7 +593,9 @@ async def test_cluster_score_invalid_payload_degrades_that_score_only() -> None:
     provider = _RawProvider(
         {
             REVIEW_TASK: _REVIEW_MERGED,
-            CLUSTER_SCORE_TASK: {"confidence": 1.5, "evidence_refs": []},
+            CLUSTER_SCORE_TASK: {
+                "scores": [{"cluster": "C1", "confidence": 1.5, "evidence_refs": []}],
+            },
             SEVERITY_SCORE_TASK: _SEVERITY_OK,
         },
     )
@@ -518,13 +610,94 @@ async def test_cluster_score_invalid_payload_degrades_that_score_only() -> None:
     assert "output failed schema" in degraded[0].reason
 
 
+async def test_cluster_score_batch_coverage_violation_degrades_every_confidence() -> None:
+    """A batch missing one cluster key falls back for every cluster, not one."""
+    provider = _fake_with(
+        {
+            REVIEW_TASK: _REVIEW_IDENTITY,
+            CLUSTER_SCORE_TASK: {
+                "scores": [{"cluster": "C1", "confidence": 0.9, "evidence_refs": []}],
+            },
+            SEVERITY_SCORE_TASK: _SEVERITY_TWO,
+        },
+    )
+
+    result, calls, degraded = await _enhance(provider)
+
+    assert [cluster.confidence for cluster in result.clusters] == [
+        TYPE_CONFIDENCE["prompt"],
+        TYPE_CONFIDENCE["prompt"],
+    ]
+    assert [cluster.severity for cluster in result.clusters] == [8.6, 4.2]
+    assert calls[1].outcome == "degraded"
+    assert [item.task for item in degraded] == [CLUSTER_SCORE_TASK]
+    assert "dropped final-cluster keys C2" in degraded[0].reason
+
+
+async def test_severity_batch_coverage_violation_degrades_every_severity() -> None:
+    """A severity batch missing one key falls back for every cluster, not one."""
+    provider = _fake_with(
+        {
+            REVIEW_TASK: _REVIEW_IDENTITY,
+            CLUSTER_SCORE_TASK: _CLUSTER_SCORE_TWO,
+            SEVERITY_SCORE_TASK: {
+                "severities": [{"cluster": "C1", **_SEVERITY_ITEM}],
+            },
+        },
+    )
+
+    result, calls, degraded = await _enhance(provider)
+
+    assert [cluster.confidence for cluster in result.clusters] == [0.8, 0.6]
+    assert [cluster.severity for cluster in result.clusters] == [
+        cluster_severity("prompt", 2),
+        cluster_severity("prompt", 1),
+    ]
+    assert calls[2].outcome == "degraded"
+    assert [item.task for item in degraded] == [SEVERITY_SCORE_TASK]
+    assert "dropped final-cluster keys C2" in degraded[0].reason
+
+
+async def test_evidence_refs_must_belong_to_the_same_cluster_batch() -> None:
+    """A cluster may only cite its own prompt samples; the batch degrades otherwise."""
+    provider = _fake_with(
+        {
+            REVIEW_TASK: _REVIEW_IDENTITY,
+            CLUSTER_SCORE_TASK: {
+                "scores": [
+                    {"cluster": "C1", "confidence": 0.9, "evidence_refs": ["c-3"]},
+                    {"cluster": "C2", "confidence": 0.7, "evidence_refs": []},
+                ],
+            },
+            SEVERITY_SCORE_TASK: _SEVERITY_TWO,
+        },
+    )
+
+    result, _, degraded = await _enhance(provider)
+
+    assert [cluster.confidence for cluster in result.clusters] == [
+        TYPE_CONFIDENCE["prompt"],
+        TYPE_CONFIDENCE["prompt"],
+    ]
+    assert "cluster.score [C1]" in degraded[0].reason
+    assert "outside the prompt samples" in degraded[0].reason
+
+
 async def test_severity_failure_keeps_the_llm_confidence_and_formula_severity() -> None:
-    """The two score calls are isolated; severity alone may fall back."""
+    """The two batch score calls are isolated; severity alone may fall back."""
     provider = _fake_with(
         {
             REVIEW_TASK: _REVIEW_MERGED,
-            CLUSTER_SCORE_TASK: {"confidence": 0.88, "evidence_refs": ["c-1"]},
-            SEVERITY_SCORE_TASK: {"overall": 11.0, "vector": "CVSS:3.1/AV:N"},
+            CLUSTER_SCORE_TASK: {
+                "scores": [
+                    {"cluster": "C1", "confidence": 0.88, "evidence_refs": ["c-1"]},
+                ],
+            },
+            SEVERITY_SCORE_TASK: {
+                "severities": [
+                    {"cluster": "C1", "overall": 11.0, "vector": "CVSS:3.1/AV:N"},
+                ],
+            },
         },
     )
 
@@ -545,7 +718,9 @@ async def test_evidence_refs_outside_the_prompt_samples_degrade_that_score() -> 
     provider = _RawProvider(
         {
             REVIEW_TASK: _REVIEW_MERGED,
-            CLUSTER_SCORE_TASK: {"confidence": 0.9, "evidence_refs": ["c-999"]},
+            CLUSTER_SCORE_TASK: {
+                "scores": [{"cluster": "C1", "confidence": 0.9, "evidence_refs": ["c-999"]}],
+            },
             SEVERITY_SCORE_TASK: _SEVERITY_OK,
         },
     )
@@ -766,8 +941,13 @@ async def test_prepare_hybrid_persists_llm_values_and_records_calls(
         {
             REVIEW_TASK: _REVIEW_MERGED,
             CLUSTER_SCORE_TASK: {
-                "confidence": 0.91,
-                "evidence_refs": ["case-three-layers-a"],
+                "scores": [
+                    {
+                        "cluster": "C1",
+                        "confidence": 0.91,
+                        "evidence_refs": ["case-three-layers-a"],
+                    },
+                ],
             },
             SEVERITY_SCORE_TASK: _SEVERITY_OK,
         },
@@ -801,8 +981,8 @@ async def test_prepare_hybrid_persists_llm_values_and_records_calls(
     assert comparison[0]["severityFormula"] == cluster_severity("prompt", 3)
     assert comparison[0]["severity"] == pytest.approx(8.6)
     assert len(str(comparison[0]["clusterHash"])) == 64
-    assert comparison[0]["vector"] == _SEVERITY_OK["vector"]
-    assert comparison[0]["dimensions"] == _SEVERITY_OK["dimensions"]
+    assert comparison[0]["vector"] == _SEVERITY_ITEM["vector"]
+    assert comparison[0]["dimensions"] == _SEVERITY_ITEM["dimensions"]
 
     calls = [event for event in events.records if event.event_type == "ai_agent_call"]
     assert [event.payload["task"] for event in calls if event.payload] == [
@@ -869,14 +1049,24 @@ async def test_prepare_degrades_gracefully_when_every_call_fails(
         cluster.severity == pytest.approx(cluster_severity("prompt", count))
         for cluster, count in zip(clusters, (2, 1), strict=True)
     )
+    assert [cluster.probe_cluster_description for cluster in clusters] == [
+        "prompt 类问题 · 检索索引读取失败",
+        "prompt 类问题 · 工具调用超时",
+    ]
+    assert [cluster.rank for cluster in clusters] == [1, 2]
+    created = next(event for event in events.records if event.event_type == "clusters_created")
+    assert created.payload is not None
+    comparison = created.payload["severityFormula"]
+    assert [row["severityFormula"] for row in comparison] == [
+        cluster.severity for cluster in clusters
+    ]
+    assert [row["severity"] for row in comparison] == [cluster.severity for cluster in clusters]
     calls = [event for event in events.records if event.event_type == "ai_agent_call"]
     degraded = [event for event in events.records if event.event_type == "degraded"]
-    assert len(calls) == 5
+    assert len(calls) == 3
     assert all(event.payload["outcome"] == "error" for event in calls if event.payload)
     assert [event.payload["task"] for event in degraded if event.payload] == [
         REVIEW_TASK,
-        CLUSTER_SCORE_TASK,
-        SEVERITY_SCORE_TASK,
         CLUSTER_SCORE_TASK,
         SEVERITY_SCORE_TASK,
     ]

@@ -32,10 +32,17 @@ if TYPE_CHECKING:
 _DEFAULT_ANALYSIS_OUTPUTS: Mapping[str, Mapping[str, Any]] = MappingProxyType(
     {
         "cluster.review": {"clusters": []},
-        "cluster.score": {"confidence": 0.5, "evidence_refs": []},
+        "cluster.score": {
+            "scores": [{"cluster": "C1", "confidence": 0.5, "evidence_refs": []}],
+        },
         "severity.score": {
-            "overall": 5.0,
-            "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L",
+            "severities": [
+                {
+                    "cluster": "C1",
+                    "overall": 5.0,
+                    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L",
+                },
+            ],
         },
     },
 )

@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/proposed/feature/2026-11-22-evolution-real-ai-design.md
-2026-11-22-evolution-real-ai-design.md: 61a557a8d20d933c39b443068eb02dce0ce3d2b4
-2026-11-22-evolution-real-ai-design.en.md: 1f6c7c7030d96fe18b3b49af1da7336808e8c4c4
+2026-11-22-evolution-real-ai-design.md: 4d836d181fa425c185c64a335db1c1d90857f1bf
+2026-11-22-evolution-real-ai-design.en.md: 8bc73b2daf46d6746cac30543246b8b7a6d01f21

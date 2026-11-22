@@ -84,6 +84,9 @@ MAX_REASON_CHARS = 300
 DRAFT_KEY_PREFIX = "D"
 """Prefix of the draft references the review output must use (``D1``..``Dk``)."""
 
+CLUSTER_KEY_PREFIX = "C"
+"""Prefix of the final-cluster references the batch scoring output must use (``C1``..``Cm``)."""
+
 EVIDENCE_REF_ALIAS = "evidence_refs"
 """Output field that must cite only the sample ids passed in the prompt."""
 
@@ -183,18 +186,44 @@ class ClusterReviewOutput(BaseModel):
     clusters: list[ClusterReviewItem] = Field(min_length=1)
 
 
-class ClusterScoreOutput(BaseModel):
-    """Direct cluster-confidence rating with the samples it cites."""
+class ClusterScoreItem(BaseModel):
+    """One cluster's confidence inside the single batch ``cluster.score`` output."""
 
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    cluster: str
     confidence: float = Field(ge=0, le=1)
     evidence_refs: list[str] = Field(default_factory=list)
+
+
+class ClusterScoresOutput(BaseModel):
+    """The batch confidence output: exactly one item per final cluster.
+
+    The two scoring tasks run once per run over every final cluster, so the cost
+    shape stays at one review call plus two scoring calls regardless of the
+    cluster count (07 §5.5.2). Cluster keys keep the values attached to the
+    right cluster without asking the model to repeat member lists.
+    """
+
+    scores: list[ClusterScoreItem] = Field(min_length=1)
 
 
 SeverityDimension = Annotated[float, Field(ge=0, le=10)]
 
 
-class SeverityScoreOutput(BaseModel):
-    """Severity grading: one decision score, five dimensions, one vector.
+class SeverityScoreItem(BaseModel):
+    """One cluster's severity grading inside the single batch ``severity.score`` output."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    cluster: str
+    overall: float = Field(ge=0, le=10)
+    dimensions: dict[str, SeverityDimension] = Field(default_factory=dict)
+    vector: str = Field(pattern=SEVERITY_VECTOR_PATTERN)
+
+
+class SeverityScoresOutput(BaseModel):
+    """The batch severity output: one decision score, dimensions, and vector per cluster.
 
     ``dimensions`` defaults to an empty mapping because the model may keep the
     grading in ``overall`` alone; when dimensions are present every documented
@@ -202,9 +231,7 @@ class SeverityScoreOutput(BaseModel):
     is a CVSS-3.1-style audit string checked by a permissive regex.
     """
 
-    overall: float = Field(ge=0, le=10)
-    dimensions: dict[str, SeverityDimension] = Field(default_factory=dict)
-    vector: str = Field(pattern=SEVERITY_VECTOR_PATTERN)
+    severities: list[SeverityScoreItem] = Field(min_length=1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,6 +331,21 @@ class EnhancedClusters:
     algorithm: str
     degraded: tuple[DegradedCall, ...]
     calls: tuple[CallRecord, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ClusterPlan:
+    """One final cluster as the two batch scoring prompts see it.
+
+    ``members`` is already sampled to at most five cases, so the prompt size is
+    a function of the cluster count and the sample cap rather than of the
+    attribution volume.
+    """
+
+    key: str
+    summary: ClusterSummary
+    members: tuple[ClusterCaseEvidence, ...]
+    stats: ClusterDraftStats
 
 
 RecordCall = Callable[[CallRecord], Awaitable[None]]
@@ -415,97 +457,116 @@ def build_review_request(
     )
 
 
-def build_cluster_score_request(
-    cluster: ClusterSummary,
-    members: Sequence[ClusterCaseEvidence],
-    stats: ClusterDraftStats,
-) -> AnalysisRequest:
-    """Build the ``cluster.score`` request from a final cluster and its samples.
+def build_cluster_score_request(plans: Sequence[ClusterPlan]) -> AnalysisRequest:
+    """Build the single batch ``cluster.score`` request for every final cluster.
 
-    The prompt anchors confidence on observable evidence so the value is
-    comparable across runs, and it limits ``evidence_refs`` to the sample ids
-    rendered in the same prompt.
+    One call carries all final-cluster summaries, their sampled cases, and the
+    deterministic statistics; the prompt therefore scales with cluster count and
+    the sample cap, never with the attribution volume. The confidence rubric
+    anchors the value across runs, and ``evidence_refs`` is restricted to the
+    sample ids rendered under the same cluster key.
 
     Args:
-        cluster: Final cluster identity after review.
-        members: Representative samples selected for this prompt.
-        stats: Deterministic statistics of the final cluster.
+        plans: Final clusters in deterministic order, each with sampled members.
 
     Returns:
-        One ``AnalysisRequest`` whose output model is ``ClusterScoreOutput``.
+        One ``AnalysisRequest`` whose output model is ``ClusterScoresOutput``.
+
+    Raises:
+        ValueError: When there is no final cluster to score.
     """
+    if not plans:
+        raise ValueError("cluster.score needs at least one final cluster")
     lines = [
-        "Task: cluster.score — rate how confidently this cluster is one real problem.",
+        "Task: cluster.score — rate how confidently each cluster is one real problem.",
         "",
         "Confidence rubric:",
         *(f"- {anchor}: {description}" for anchor, description in CONFIDENCE_ANCHORS),
         "",
+        "Rules:",
         (
-            f'Cite supporting samples with "{EVIDENCE_REF_ALIAS}"; every entry must be '
-            "one of the sample ids below."
+            '1. Return only JSON: {"scores": [{"cluster": "C1", "confidence": <0..1>, '
+            f'"{EVIDENCE_REF_ALIAS}": [<sample ids>]}}]}}.'
         ),
-        "Never cite an id that is not listed, and never cite a draft key.",
+        (
+            f"2. Use the cluster keys {CLUSTER_KEY_PREFIX}1..{CLUSTER_KEY_PREFIX}{len(plans)} "
+            "exactly as listed; every key appears exactly once and no other key is legal."
+        ),
+        (
+            f'3. "{EVIDENCE_REF_ALIAS}" entries for one cluster must be sample ids listed '
+            "under that same cluster; never cite another cluster's sample or a draft key."
+        ),
+        ("4. 0.0 means no usable evidence; 1.0 means every sample shares one signature."),
         "",
-        _render_cluster_header(cluster, stats),
-        f"Samples ({len(members)}):",
-        *(_render_sample(sample) for sample in members),
-        "",
-        (f'Return only JSON: {{"confidence": <0..1>, "{EVIDENCE_REF_ALIAS}": [<sample ids>]}}.'),
+        "Cluster blocks:",
     ]
+    for plan in plans:
+        lines.append(f"[{plan.key}] {_render_cluster_header(plan.summary, plan.stats)}")
+        lines.append(f"Samples ({len(plan.members)}):")
+        lines.extend(_render_sample(sample) for sample in plan.members)
+        lines.append("")
     return AnalysisRequest(
         task=CLUSTER_SCORE_TASK,
         prompt="\n".join(lines),
-        output_model=ClusterScoreOutput,
+        output_model=ClusterScoresOutput,
     )
 
 
-def build_severity_request(
-    cluster: ClusterSummary,
-    members: Sequence[ClusterCaseEvidence],
-    stats: ClusterDraftStats,
-) -> AnalysisRequest:
-    """Build the ``severity.score`` request from a final cluster and its samples.
+def build_severity_request(plans: Sequence[ClusterPlan]) -> AnalysisRequest:
+    """Build the single batch ``severity.score`` request for every final cluster.
 
-    The model grades the five stable dimensions in a fixed order and then gives
-    one decision score; the deterministic formula score is kept separately by
-    the caller for comparison.
+    The model grades the stable dimensions in a fixed order and then gives one
+    decision score per cluster; the deterministic formula score is kept
+    separately by the caller for comparison. One call per run keeps the cost
+    shape fixed while the prompt stays bounded by cluster count and sample cap.
 
     Args:
-        cluster: Final cluster identity after review.
-        members: Representative samples selected for this prompt.
-        stats: Deterministic statistics of the final cluster.
+        plans: Final clusters in deterministic order, each with sampled members.
 
     Returns:
-        One ``AnalysisRequest`` whose output model is ``SeverityScoreOutput``.
+        One ``AnalysisRequest`` whose output model is ``SeverityScoresOutput``.
+
+    Raises:
+        ValueError: When there is no final cluster to score.
     """
+    if not plans:
+        raise ValueError("severity.score needs at least one final cluster")
     lines = [
-        "Task: severity.score — grade the severity of this failure cluster.",
+        "Task: severity.score — grade the severity of each failure cluster.",
         "",
         ("Think in this order, one dimension at a time, then give one overall decision score:"),
         *(f"- {name}: {anchor}" for name, anchor in SEVERITY_DIMENSION_ANCHORS.items()),
         "",
+        "Rules:",
         (
-            'Return only JSON: {"overall": <0..10>, "dimensions": '
-            '{<dimension>: <0..10>}, "vector": "<CVSS 3.1 vector>"}.'
+            '1. Return only JSON: {"severities": [{"cluster": "C1", "overall": <0..10>, '
+            '"dimensions": {<dimension>: <0..10>}, "vector": "<CVSS 3.1 vector>"}]}.'
         ),
-        f"Use exactly these dimension keys: {', '.join(SEVERITY_DIMENSIONS)}.",
         (
-            'The "vector" must follow the CVSS 3.1 shape, for example '
+            f"2. Use the cluster keys {CLUSTER_KEY_PREFIX}1..{CLUSTER_KEY_PREFIX}{len(plans)} "
+            "exactly as listed; every key appears exactly once and no other key is legal."
+        ),
+        f"3. Use exactly these dimension keys: {', '.join(SEVERITY_DIMENSIONS)}.",
+        (
+            '4. The "vector" must follow the CVSS 3.1 shape, for example '
             '"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L".'
         ),
         (
-            '"overall" is your decision score; a deterministic formula score is kept '
+            '5. "overall" is your decision score; a deterministic formula score is kept '
             "separately for comparison."
         ),
         "",
-        _render_cluster_header(cluster, stats),
-        f"Samples ({len(members)}):",
-        *(_render_sample(sample) for sample in members),
+        "Cluster blocks:",
     ]
+    for plan in plans:
+        lines.append(f"[{plan.key}] {_render_cluster_header(plan.summary, plan.stats)}")
+        lines.append(f"Samples ({len(plan.members)}):")
+        lines.extend(_render_sample(sample) for sample in plan.members)
+        lines.append("")
     return AnalysisRequest(
         task=SEVERITY_SCORE_TASK,
         prompt="\n".join(lines),
-        output_model=SeverityScoreOutput,
+        output_model=SeverityScoresOutput,
     )
 
 
@@ -589,6 +650,99 @@ def validate_evidence_refs(
     return tuple(dict.fromkeys(refs))
 
 
+def validate_cluster_scores(
+    output: ClusterScoresOutput,
+    plans: Sequence[ClusterPlan],
+) -> dict[str, tuple[float, tuple[str, ...]]]:
+    """Enforce the batch ``cluster.score`` coverage and per-cluster citations.
+
+    The single call must return exactly one item per final cluster key; each
+    item's ``evidence_refs`` must be a subset of the sample ids rendered under
+    that same key. A missing, duplicated, unknown, or mis-cited item rejects the
+    whole batch so the caller can degrade every confidence together.
+
+    Args:
+        output: Validated batch confidence output.
+        plans: The final clusters the prompt listed, in key order.
+
+    Returns:
+        Confidence and cited sample ids by cluster key.
+
+    Raises:
+        ClusterContractError: On any coverage or citation violation.
+    """
+    by_key = {plan.key: plan for plan in plans}
+    expected = [plan.key for plan in plans]
+    scores: dict[str, tuple[float, tuple[str, ...]]] = {}
+    for item in output.scores:
+        if item.cluster not in by_key:
+            raise ClusterContractError(
+                f"cluster.score returned unknown cluster key {item.cluster!r}; expected one of "
+                f"{CLUSTER_KEY_PREFIX}1..{CLUSTER_KEY_PREFIX}{len(plans)}",
+            )
+        if item.cluster in scores:
+            raise ClusterContractError(
+                f"cluster.score returned cluster key {item.cluster} more than once; every final "
+                "cluster must appear exactly once",
+            )
+        try:
+            refs = validate_evidence_refs(item.evidence_refs, by_key[item.cluster].members)
+        except ClusterContractError as exc:
+            raise ClusterContractError(f"cluster.score [{item.cluster}]: {exc.reason}") from None
+        scores[item.cluster] = (item.confidence, refs)
+    missing = [key for key in expected if key not in scores]
+    if missing:
+        raise ClusterContractError(
+            "cluster.score dropped final-cluster keys "
+            f"{', '.join(missing)}; every final cluster must appear exactly once",
+        )
+    return scores
+
+
+def validate_severity_scores(
+    output: SeverityScoresOutput,
+    plans: Sequence[ClusterPlan],
+) -> dict[str, tuple[float, Mapping[str, float], str | None]]:
+    """Enforce the batch ``severity.score`` coverage of every final cluster.
+
+    Args:
+        output: Validated batch severity output.
+        plans: The final clusters the prompt listed, in key order.
+
+    Returns:
+        Decision score, dimensions, and vector by cluster key.
+
+    Raises:
+        ClusterContractError: When a key is missing, duplicated, or unknown.
+    """
+    by_key = {plan.key: plan for plan in plans}
+    expected = [plan.key for plan in plans]
+    severities: dict[str, tuple[float, Mapping[str, float], str | None]] = {}
+    for item in output.severities:
+        if item.cluster not in by_key:
+            raise ClusterContractError(
+                f"severity.score returned unknown cluster key {item.cluster!r}; expected one of "
+                f"{CLUSTER_KEY_PREFIX}1..{CLUSTER_KEY_PREFIX}{len(plans)}",
+            )
+        if item.cluster in severities:
+            raise ClusterContractError(
+                f"severity.score returned cluster key {item.cluster} more than once; every final "
+                "cluster must appear exactly once",
+            )
+        severities[item.cluster] = (
+            item.overall,
+            MappingProxyType(dict(item.dimensions)),
+            item.vector,
+        )
+    missing = [key for key in expected if key not in severities]
+    if missing:
+        raise ClusterContractError(
+            "severity.score dropped final-cluster keys "
+            f"{', '.join(missing)}; every final cluster must appear exactly once",
+        )
+    return severities
+
+
 def _sample_target(member_count: int) -> int:
     """Return how many representative samples one prompt should render.
 
@@ -641,10 +795,13 @@ async def enhance_clusters(
 ) -> EnhancedClusters:
     """Run the review and scoring layers over lexical drafts with degradation.
 
-    Order of operations is deterministic: one review call, then for each final
-    cluster (ordered by the first input draft it contains) one ``cluster.score``
-    call followed by one ``severity.score`` call. Each call has its own
-    try/except, so one failure never changes the value of another layer.
+    Order of operations is deterministic and costs exactly three bounded
+    ``analyze`` calls for every non-empty run: one ``cluster.review`` call over
+    the lexical drafts, then one batch ``cluster.score`` call over every final
+    cluster, then one batch ``severity.score`` call. The two scoring calls are
+    isolated, so a failed confidence batch changes only confidence and a failed
+    severity batch changes only severity; the cluster count never changes the
+    call count.
 
     Args:
         agent: Outbound provider used for the three analysis tasks.
@@ -678,37 +835,14 @@ async def enhance_clusters(
         )
 
     groups = await _review(agent, drafts, evidence, stats_by_draft, note_call, note_degraded)
+    plans = _build_plans(groups, drafts, evidence, stats_by_draft)
+    confidence_by_key = await _score_confidences(agent, plans, note_call, note_degraded)
+    severity_by_key = await _score_severities(agent, plans, note_call, note_degraded)
     clusters: list[EnhancedCluster] = []
-    for group in groups:
-        stats = _merged_stats(group.draft_indexes, drafts, stats_by_draft, evidence)
-        summary = ClusterSummary(
-            type=group.type,
-            title=group.title,
-            description=group.description,
-            member_count=stats.member_count,
-        )
-        members = select_samples(
-            stats.case_ids,
-            evidence,
-            limit=_sample_target(stats.member_count),
-        )
-        confidence, evidence_refs = await _score_confidence(
-            agent,
-            summary,
-            members,
-            stats,
-            note_call,
-            note_degraded,
-        )
-        severity, dimensions, vector = await _score_severity(
-            agent,
-            summary,
-            members,
-            stats,
-            note_call,
-            note_degraded,
-        )
-        formula_severity = cluster_severity(group.type, stats.member_count)
+    for group, plan in zip(groups, plans, strict=True):
+        confidence, evidence_refs = confidence_by_key[plan.key]
+        severity, dimensions, vector = severity_by_key[plan.key]
+        formula_severity = cluster_severity(group.type, plan.stats.member_count)
         description = (
             group.title
             if group.fallback
@@ -734,6 +868,36 @@ async def enhance_clusters(
         degraded=tuple(degraded),
         calls=tuple(calls),
     )
+
+
+def _build_plans(
+    groups: Sequence[_Group],
+    drafts: Sequence[ClusterDraft],
+    evidence: Mapping[str, ClusterCaseEvidence],
+    stats_by_draft: Mapping[int, ClusterDraftStats],
+) -> tuple[ClusterPlan, ...]:
+    """Expand validated groups into deterministic final-cluster scoring plans."""
+    plans: list[ClusterPlan] = []
+    for index, group in enumerate(groups):
+        stats = _merged_stats(group.draft_indexes, drafts, stats_by_draft, evidence)
+        plans.append(
+            ClusterPlan(
+                key=f"{CLUSTER_KEY_PREFIX}{index + 1}",
+                summary=ClusterSummary(
+                    type=group.type,
+                    title=group.title,
+                    description=group.description,
+                    member_count=stats.member_count,
+                ),
+                members=select_samples(
+                    stats.case_ids,
+                    evidence,
+                    limit=_sample_target(stats.member_count),
+                ),
+                stats=stats,
+            ),
+        )
+    return tuple(plans)
 
 
 async def _review(
@@ -769,61 +933,73 @@ async def _review(
     return _groups_from_review(items, drafts)
 
 
-async def _score_confidence(
+async def _score_confidences(
     agent: AIAgentProvider,
-    cluster: ClusterSummary,
-    members: Sequence[ClusterCaseEvidence],
-    stats: ClusterDraftStats,
+    plans: Sequence[ClusterPlan],
     note_call: _CallSink,
     note_degraded: _DegradedSink,
-) -> tuple[float, tuple[str, ...]]:
-    """Score one cluster's confidence, falling back to the category constant."""
-    request = build_cluster_score_request(cluster, members, stats)
+) -> dict[str, tuple[float, tuple[str, ...]]]:
+    """Run the single batch confidence call, degrading every cluster on failure."""
+    fallback: dict[str, tuple[float, tuple[str, ...]]] = {
+        plan.key: (TYPE_CONFIDENCE[plan.summary.type], ()) for plan in plans
+    }
+    if not plans:
+        return fallback
+    request = build_cluster_score_request(plans)
     started = time.perf_counter()
     try:
         result = await agent.analyze(request)
     except Exception as exc:
         await note_call(_failure_record(CLUSTER_SCORE_TASK, agent, _elapsed_ms(started)))
         await note_degraded(DegradedCall(CLUSTER_SCORE_TASK, _provider_reason(exc)))
-        return TYPE_CONFIDENCE[cluster.type], ()
+        return fallback
     elapsed = _elapsed_ms(started)
     try:
-        output = ClusterScoreOutput.model_validate(dict(result.output))
-        refs = validate_evidence_refs(output.evidence_refs, members)
+        output = ClusterScoresOutput.model_validate(dict(result.output))
+        scores = validate_cluster_scores(output, plans)
     except (ValidationError, ClusterContractError) as exc:
         await note_call(_result_record(CLUSTER_SCORE_TASK, result, "degraded", elapsed))
         await note_degraded(DegradedCall(CLUSTER_SCORE_TASK, _contract_reason(exc)))
-        return TYPE_CONFIDENCE[cluster.type], ()
+        return fallback
     await note_call(_result_record(CLUSTER_SCORE_TASK, result, "ok", elapsed))
-    return output.confidence, refs
+    return scores
 
 
-async def _score_severity(
+async def _score_severities(
     agent: AIAgentProvider,
-    cluster: ClusterSummary,
-    members: Sequence[ClusterCaseEvidence],
-    stats: ClusterDraftStats,
+    plans: Sequence[ClusterPlan],
     note_call: _CallSink,
     note_degraded: _DegradedSink,
-) -> tuple[float, Mapping[str, float], str | None]:
-    """Score one cluster's severity, falling back to the formula value later."""
-    request = build_severity_request(cluster, members, stats)
+) -> dict[str, tuple[float, Mapping[str, float], str | None]]:
+    """Run the single batch severity call, degrading every cluster on failure."""
+    fallback: dict[str, tuple[float, Mapping[str, float], str | None]] = {
+        plan.key: (
+            cluster_severity(plan.summary.type, plan.stats.member_count),
+            MappingProxyType({}),
+            None,
+        )
+        for plan in plans
+    }
+    if not plans:
+        return fallback
+    request = build_severity_request(plans)
     started = time.perf_counter()
     try:
         result = await agent.analyze(request)
     except Exception as exc:
         await note_call(_failure_record(SEVERITY_SCORE_TASK, agent, _elapsed_ms(started)))
         await note_degraded(DegradedCall(SEVERITY_SCORE_TASK, _provider_reason(exc)))
-        return cluster_severity(cluster.type, stats.member_count), MappingProxyType({}), None
+        return fallback
     elapsed = _elapsed_ms(started)
     try:
-        output = SeverityScoreOutput.model_validate(dict(result.output))
-    except ValidationError as exc:
+        output = SeverityScoresOutput.model_validate(dict(result.output))
+        severities = validate_severity_scores(output, plans)
+    except (ValidationError, ClusterContractError) as exc:
         await note_call(_result_record(SEVERITY_SCORE_TASK, result, "degraded", elapsed))
         await note_degraded(DegradedCall(SEVERITY_SCORE_TASK, _contract_reason(exc)))
-        return cluster_severity(cluster.type, stats.member_count), MappingProxyType({}), None
+        return fallback
     await note_call(_result_record(SEVERITY_SCORE_TASK, result, "ok", elapsed))
-    return output.overall, MappingProxyType(dict(output.dimensions)), output.vector
+    return severities
 
 
 _CallSink = Callable[[CallRecord], Awaitable[None]]
@@ -1073,6 +1249,7 @@ def _bounded(text: str, limit: int) -> str:
 
 
 __all__ = [
+    "CLUSTER_KEY_PREFIX",
     "CLUSTER_SCORE_TASK",
     "DRAFT_KEY_PREFIX",
     "DRAFT_SUMMARY_MAX_CHARS",
@@ -1088,19 +1265,24 @@ __all__ = [
     "ClusterCaseEvidence",
     "ClusterContractError",
     "ClusterDraftStats",
+    "ClusterPlan",
     "ClusterReviewItem",
     "ClusterReviewOutput",
-    "ClusterScoreOutput",
+    "ClusterScoreItem",
+    "ClusterScoresOutput",
     "ClusterSummary",
     "DegradedCall",
     "EnhancedCluster",
     "EnhancedClusters",
-    "SeverityScoreOutput",
+    "SeverityScoreItem",
+    "SeverityScoresOutput",
     "build_cluster_score_request",
     "build_review_request",
     "build_severity_request",
     "enhance_clusters",
     "select_samples",
+    "validate_cluster_scores",
     "validate_evidence_refs",
     "validate_review_partition",
+    "validate_severity_scores",
 ]
