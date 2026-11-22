@@ -8,11 +8,13 @@ id: bugfix-18
 milestone: bugfix
 depends: []
 priority: P2
-status: backlog
+status: in-progress
 scope:
+  - apps/api/app/db/crud/attributions.py
   - apps/api/app/db/crud/bad_cases.py
   - apps/api/app/service/**
   - apps/api/tests/**
+  - plans/**
   - .agents/**
 adr:
   - ../../notes/proposed/feature/2026-11-22-evolution-real-ai-design.md

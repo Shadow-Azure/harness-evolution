@@ -27,8 +27,16 @@ def attribution_input(
     metadata: dict[str, object] | None = None,
     knowledge: tuple[KnowledgeEvidence, ...] = (),
     object_version: str | None = "tag:v2.0.0",
+    case_object_type: str = "skill",
+    case_object_name: str = "deep-research",
+    case_object_version: str | None = "v2.0.0",
+    target_version: str = "v2.0.0",
 ) -> AttributionInput:
-    """Build one pure engine input with deterministic defaults."""
+    """Build one pure engine input with deterministic defaults.
+
+    The default evidence names the attributed object and the selected version,
+    so the three signals all hold and the completeness score is the top band.
+    """
     return AttributionInput(
         bad_case_id="bc-rule-a",
         workspace_id="ws-rule",
@@ -47,19 +55,23 @@ def attribution_input(
         object_trigger_at=OBJECT_TRIGGER,
         case_trigger_at=CASE_TRIGGER,
         knowledge_evidence=knowledge,
+        case_object_type=case_object_type,
+        case_object_name=case_object_name,
+        case_object_version=case_object_version,
+        target_version=target_version,
     )
 
 
 @pytest.mark.asyncio
 async def test_self_report_with_error_evidence_is_attributed_error() -> None:
-    """A self report carrying an error field is a high-confidence error."""
+    """A self report with full evidence scores in the top completeness band."""
     result = await RuleBasedEngine().attribute(
         attribution_input(metadata={"error": "ENOENT", "file": "index.ts"}),
     )
 
     assert result.conclusion == "attributed"
     assert result.category == "error"
-    assert result.confidence == pytest.approx(0.8)
+    assert result.confidence == pytest.approx(0.9)
     assert "检索索引读取失败" in result.reason
     assert "ENOENT" in result.reason
     assert "deep-research@tag:v2.0.0" in result.reasoning
@@ -75,7 +87,7 @@ async def test_self_report_without_error_evidence_is_attributed_prompt() -> None
 
     assert result.conclusion == "attributed"
     assert result.category == "prompt"
-    assert result.confidence == pytest.approx(0.8)
+    assert result.confidence == pytest.approx(0.9)
     assert "未发现错误证据" in result.reasoning
 
 
@@ -88,7 +100,7 @@ async def test_after_object_discovery_is_attributed_error() -> None:
 
     assert result.conclusion == "attributed"
     assert result.category == "error"
-    assert result.confidence == pytest.approx(0.6)
+    assert result.confidence == pytest.approx(0.9)
     assert "after_object" in result.reasoning
     assert "discovery" in result.reasoning
 
@@ -102,7 +114,7 @@ async def test_unknown_order_is_non_target_without_category() -> None:
 
     assert result.conclusion == "non_target"
     assert result.category is None
-    assert result.confidence == pytest.approx(0.7)
+    assert result.confidence == pytest.approx(0.2)
     assert "非该对象问题" in result.reason
     assert "不进簇" in result.reasoning
 
@@ -116,7 +128,7 @@ async def test_empty_self_report_is_non_target_by_insufficient_evidence() -> Non
 
     assert result.conclusion == "non_target"
     assert result.category is None
-    assert result.confidence == pytest.approx(0.7)
+    assert result.confidence == pytest.approx(0.1)
     assert "证据不足" in result.reasoning
 
 

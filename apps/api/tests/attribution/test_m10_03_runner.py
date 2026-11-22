@@ -325,6 +325,33 @@ async def test_rule_engine_receives_knowledge_evidence(
     assert "/kb/retrieval.md" in records[0].probe_analysis
 
 
+async def test_rule_engine_scores_evidence_completeness_from_persisted_rows(
+    attribution_harness: Harness,
+    attribution_repository: AttributionRepository,
+) -> None:
+    """The runner joins case identity and version proof before scoring confidence."""
+    run = await load_run(attribution_harness.database)
+    await AttributionRunner(attribution_repository).run(
+        run,
+        (potential_case(),),
+        cache_enabled=True,
+    )
+
+    cached = await attribution_repository.get_probe_by_cache_key(
+        attribution_cache_key(
+            "ws-default",
+            CASE_ID,
+            "skill",
+            "deep-research",
+            TARGET_REVISION,
+            "v1",
+            "rule-v1",
+        ),
+    )
+    assert cached is not None
+    assert cached.confidence == pytest.approx(0.9)
+
+
 async def test_excluded_candidates_are_not_attributed(
     attribution_harness: Harness,
     attribution_repository: AttributionRepository,
