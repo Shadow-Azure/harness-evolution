@@ -784,6 +784,75 @@ def cluster_probes(probes: list[ProbeForCluster]) -> list[Cluster]:
 - **复现参数**：算法版本、阈值与簇结果 hash 写入 `clusters_created` 事件 payload；`confidence` / `impact` / `severity` / `rank` 仍按 [06 §5.3](06-database-design.md) 计算并固化。
 - 只替换聚类组合与描述生成，继续写 `probe_clusters` / `probe_cluster_probes`，表、关联和 API 字段不变。
 
+### 5.5.1 AI Agent Provider 出站适配层（`third_party_api/ai_agent`）
+
+自进化的审查、评分与 patch 生成依赖模型能力；所有模型出站调用收口到一个「父类定义接口 + 子类实现细节 + 工厂按配置选择」的适配层，当前唯一真实子类是 Claude Code（复用生产部署的 `claude` CLI），未来换 OpenCode 或直连模型 API 只新增子类。
+
+```python
+class AIAgentProvider(ABC):
+    """出站 AI 代理后端统一接口；父类只定义契约，不提供实现。"""
+
+    provider_id: ClassVar[str]            # claude-code / opencode / model / fake
+
+    @abstractmethod
+    async def analyze(self, request: AnalysisRequest) -> AnalysisResult: ...
+    """无副作用结构化分析；结果必须通过调用方传入的 JSON Schema"""
+
+    @abstractmethod
+    async def edit_workspace(self, request: EditRequest) -> EditResult: ...
+    """产出编辑计划并确定性应用；diff 以 git 为准，越界即回滚"""
+
+    @abstractmethod
+    async def health_check(self) -> ProviderHealth: ...
+```
+
+- **接口按能力而非厂商划分**：`analyze`（结构化分析）与 `edit_workspace`（受控工作区编辑）是两个稳定能力面；聚类审查、簇置信度、严重度都是 `analyze` 的不同任务键（`cluster.review` / `cluster.score` / `severity.score`），接口数量不随环节膨胀。主接口不含 `embed`：向量化是分组层（§5.5.2）的升级能力，以可选能力接口 `SupportsEmbedding` 扩展。
+- **归一化返回**：用量（model、tokens、cost_usd）、会话 id、latency、可重试标志是结果对象的固定字段；错误折叠为 `AgentProviderError(retryable, provider_id, detail)`。
+- **工厂与配置**：注册表 + `build_agent_provider(settings)`；选择键 `AI_AGENT_PROVIDER`（`AliasChoices` 兼收 `HE_AI_AGENT_PROVIDER`，校验器限定注册表内的值，未知值启动即红）。子配置段 `HE_AI_AGENT_*`（CLI 路径、超时、预算、`HE_AI_AGENT_NATIVE_SCHEMA` 可选快路径开关）。装配点在 `main.py`，与 `patch_source_factory` 同款姿势。
+- **fake 先行**：确定性 `FakeAIAgentProvider` 注册 `"fake"`，全部单测与 CI 走 fake；真实 CLI 只在 e2e 冒烟触碰。子类进程管理复用 git workspace 的姿势：`create_subprocess_exec` + `start_new_session=True` + `wait_for`，SIGINT 优雅终止后 `killpg(SIGKILL)`，退出码 143 识别为「已取消」。
+- **凭据零感知**：模型端点与 key 在 `~/.claude` 由部署管道管理（M15），服务进程不读取任何生产凭据。
+
+### 5.5.2 聚类三层：分组 / 审查 / 评分
+
+规模红线：**LLM 的输入输出一律与归因报告总量 N 解耦**（草稿键引用 + 代表采样 + 统计量注入）——N 只影响无 LLM 的分组层。
+
+- **① 分组层（O(N)，无 LLM）**：`lexical-jaccard-v1`（§5.5）是第一实现；产出 K 个草稿簇，**成员列表由代码持有、不进任何 prompt**。向量化升级位：`SupportsEmbedding`（未来 `model` 子类实现）以语义相似合并词面不同语义相同的 case（「超时」vs「卡死」），收缩 K、缩小下游输入，附带产出簇内紧密度作评分层统计信号。向量化只替换分组与相似召回，不替换身份归因（归因靠对象锚点与时序的精确匹配）。降级：embedding 不可用 → 回 lexical。
+- **② 审查层（O(K×s)，`analyze(task="cluster.review")`）**：输入 = 草稿摘要（约 60 tokens/簇）+ 每草稿采样 3–5 条代表 case；任务只允许合并草稿、命名、写摘要。输出 schema 用**草稿键引用**（`{"from": ["D1","D2"], "title": …}`），成员由代码按 `from` 展开——输出量 O(K)，守恒是构造性的。硬闸：**草稿划分完整性**（每个输入草稿在输出 `from` 里恰好出现一次）+ 只合并不拆分；违反 → 整批降级用草稿。
+- **③ 评分层（O(K×s)，两次调用失败隔离）**：输入 = 最终簇摘要 + 代表样本 + 确定性统计量（成员数、签名重合度、时间跨度、可选紧密度）。`cluster.score`（簇置信度直评 0–1，rubric 锚定 + `evidence_refs ⊆ 输入` 引用校验，写 `probe_clusters.confidence`，降级回类目常量）与 `severity.score`（维度 0–10 + CoT grader，`overall` 为决策分、公式分对照进 metrics、CVSS 式向量串可审计，降级回 `cluster_severity()` 公式）分开执行。
+- **归因置信度不上模型**：`bad_case_analysis.confidence` 改为证据完整度规则分（时间序可比 / 错误签名匹配 / 版本直证三信号计票映射区间），零模型调用；逐条模型分留作预算开关，不进默认路径。
+- 落库：算法标识升级 `hybrid-lexical-llm-v1`（embedding 上线后 `hybrid-embed-llm-v1`）随 run 快照可回放。成本形态：每 run 恰好 3 次有界 analyze + patch 阶段 edit 调用，与 N 无关。
+
+### 5.5.3 结构化提交通道（`submission.py`）与 JSON 可靠性防线
+
+`analyze` 的结构化收货不依赖任何 CLI 的内部机制（如 Claude Code 的 `--json-schema`）：provider 层公共组件 `third_party_api/ai_agent/submission.py` 实现「agent 写宽松字面量文件、确定性解析器收货」的通道，所有 CLI 后端共享。
+
+- **机制**：`prepare()` 在任务目录预置 `schema.json` 与指令片段，工具白名单只有 `Write(./result.json5)`；agent 把结论写进 `result.json5`（JSON5 宽松格式：注释、尾逗号、单引号、裸键）——「用 JS 生成 JSON」的真实价值是字面量容错 + 确定性序列化，且不执行任何模型代码。`collect()` 读文件 → JSON5 解析（失败走 json-repair 抢救）→ 规范化 → 任务模型 `model_validate`（语义 validator 在此执行）；失败则 `feedback_prompt()` 生成「哪个字段、违反什么约束」的回喂文案，子类 `--resume` 重试 ≤1 轮。
+- **六层防线**：0 契约设计（Pydantic 单一事实源，跨字段语义规则放 validator 不塞 schema）→ 1 提交通道（自建字面量通道，默认）→ 2 服务端校验 → 3 json-repair 兜底（仅回退路径）→ 4 有限重试与降级（不静默落库半成品）→ 5 可观测（提交文件解析失败率、回喂重试次数入 `ai_agent_call` 事件）。
+- **`--json-schema` 仅为可选快路径**：`HE_AI_AGENT_NATIVE_SCHEMA=true` 且 capability 探测支持时 ClaudeCodeProvider 可改用 CLI 原生通道（`structured_output` 字段 + 内部回喂重试）；默认关闭，统一走自建通道保证行为一致、测试一套。`model` 子类直连 API 时，API 级结构化输出是公开契约，直接使用。
+
+### 5.5.4 Edit 指令式 patch（EditPlan + `edits.py`）
+
+patch 生成采用 SkillOpt 式编辑指令（对齐 [microsoft/SkillOpt](https://github.com/microsoft/SkillOpt) 的 `Edit`/`Patch` 结构）：agent 不直接改仓库文件，而是提交结构化编辑计划，经 §5.5.3 通道收货、由确定性应用器执行、以 `git diff` 收结果——意图态（可审计、可计数）与结果态（git 真值）合一。
+
+```json5
+// <workspace>/.harness-evolution/edits.json5 —— agent 在 edit 阶段唯一可写的文件
+{
+  summary: "fetch 超时 30s→120s 并增加一次重试",
+  edits: [
+    { op: "replace",                       // append | insert_after | replace | delete
+      file: "skills/fetch-github-file/config.json",
+      target: "\"timeoutSeconds\": 30",    // 锚文本：文件内必须存在且唯一
+      content: "\"timeoutSeconds\": 120",
+      rationale: "三条 case 均为 30s 超时，同一根因" }
+  ]
+}
+```
+
+- **执行流**：agent 以只读工具（Read/Grep/Glob）探索 → 写 `edits.json5`（submission 通道收货）→ 语义校验（`file ∈ allowed_paths`；锚**存在且唯一**，多义回喂要求补上下文；`len(edits) ≤ edit_budget`（默认 8，SkillOpt learning-rate 等价物：prompt 约束 + 硬截断））→ `edits.py` 确定性应用（replace 首个匹配 / insert_after 行边界 / append 追加，逐条 status 报告、后续编辑的锚实时复查）→ `git diff` 收真实改动 → `PatchBundle{files, unified_diff, note=intent.summary, intent=EditPlan, report=逐条状态}` → candidate 提交（`Harness-Patch-Hash` trailer）→ push → eval。
+- **迭代闭环**：round 被 reject 后 `--resume` 同一会话，反馈注入 delta/失败原因 + **rejected-edit buffer**（上轮 EditPlan 摘要：已被拒绝的编辑勿重复或换皮重试）；accept → 并入 run 分支。
+- **安全闸**：agent 工具面 = 只读 + 写一个 json5 文件（`dontAsk` 模式，无文件编辑权限）；`.harness-evolution/` 排除在 diff scope 外；越界 `git checkout -- .` 回滚；diff + intent + report 全量落 run events。声明（intent）与实际（diff）的对照本身是审计信号。
+- **patch source 接入**：新增第三种模式 `agent-edit` 注册进 `PATCH_SOURCE_MODES` 与工厂，沿用「run 冻结配置优先、env 兜底」的选择语义；`PatchSource` 增加 `build_bundle()`（默认实现包装旧 `build()` 为单文件 bundle，旧实现零改动）。
+
 ### 5.6 单轮执行：candidate → push → 提交评测（`FullEvolutionEngine.advance_one_round`）
 
 push 是评测的前置条件，不再等 run 结束后统一 push。
