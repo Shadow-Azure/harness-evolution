@@ -626,6 +626,7 @@ Index.vue
 - 进度条：`progress.percent` 直接用；阶段文案 `progress.stageLabel` 直接用（后端算）。
 - `failed` / `interrupted` 的 run 显示红色/橙色状态徽章 + `error.message` 摘要（tooltip），点击进入详情并定位"执行日志"。
 - 空态："当前没有正在执行的自进化"。
+- 滚动归属：工作区壳层固定 `main.workspace-main` 的高度并隐藏溢出，列表根节点 `.run-list-page` 以全宽 `height: 100%; overflow-y: auto` 承担页级滚动；左右内边距取 `max(24px, calc((100% - 1080px) / 2 + 24px))`，滚动条落在窗口右缘、内容列保持 1080px 框架。≤640px 时随壳层回到文档滚动。
 
 ### 8.1 运行暂停与继续
 

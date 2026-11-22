@@ -288,9 +288,17 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
           ? getComputedStyle(firstCard.querySelector(".badge"))
           : null;
         const progress = firstCard?.querySelector("[role='progressbar']");
+        const firstCardRect = firstCard?.getBoundingClientRect();
         return {
           body: page.textContent.slice(0, 1600),
-          width: rect.width,
+          frameWidth: rect.width,
+          frameLeft: rect.left,
+          paddingLeft: Number.parseFloat(getComputedStyle(page).paddingLeft),
+          contentWidth: firstCardRect?.width ?? null,
+          contentLeft: firstCardRect?.left ?? null,
+          overflowY: getComputedStyle(page).overflowY,
+          scrollHeight: page.scrollHeight,
+          clientHeight: page.clientHeight,
           pageScrollWidth: document.documentElement.scrollWidth,
           pageClientWidth: document.documentElement.clientWidth,
           runningIds: running.map((item) => item.getAttribute("data-run-id")),
@@ -338,7 +346,25 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
     );
 
     assert.equal(desktop.heading, "自进化");
-    assert.equal(desktop.width, 1080);
+    assert.equal(desktop.frameLeft, 0);
+    assert.equal(desktop.frameWidth, 1408);
+    assert.equal(desktop.overflowY, "auto");
+    assert.ok(
+      Math.abs(desktop.paddingLeft - 188) <= 1,
+      `list gutter must keep the 1080px frame: ${desktop.paddingLeft}`,
+    );
+    assert.ok(
+      Math.abs(desktop.contentLeft - 188) <= 1,
+      `content column must not shift: ${desktop.contentLeft}`,
+    );
+    assert.ok(
+      desktop.contentWidth >= 1015 && desktop.contentWidth <= 1033,
+      `content column must stay about 1032px: ${desktop.contentWidth}`,
+    );
+    assert.ok(
+      desktop.scrollHeight > desktop.clientHeight,
+      `the list must overflow inside its page container: ${desktop.scrollHeight} <= ${desktop.clientHeight}`,
+    );
     assert.equal(desktop.pageScrollWidth, desktop.pageClientWidth);
     assert.deepEqual(desktop.runningIds, [
       "run-running",
@@ -508,6 +534,375 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
     assert.equal(mobileTooltip.pageScrollWidth, mobileTooltip.pageClientWidth);
     assert.equal(mobileTooltip.open, true);
     await screenshot(page, "02-mobile-390.png");
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+  } finally {
+    await page.session.send("Emulation.clearDeviceMetricsOverride").catch(() => {});
+    await page.close();
+  }
+});
+
+test("m5 evolution list owns page scrolling at constrained viewports", async () => {
+  const page = await createBrowserPage();
+  const violations = browserViolations(page.session);
+  const sendWithin = async (method, params, label, timeout = 8000) =>
+    await Promise.race([
+      page.session.send(method, params),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`timed out sending ${label}`)),
+          timeout,
+        ),
+      ),
+    ]);
+  const evaluateWithin = async (expression, label, timeout = 8000) =>
+    await Promise.race([
+      evaluate(page, expression),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`timed out evaluating ${label}`)),
+          timeout,
+        ),
+      ),
+    ]);
+  const waitForList = async (expression, label, timeout = 10000) => {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      const value = await evaluateWithin(expression, label, 5000);
+      if (value) return value;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error(`timed out waiting for ${label}`);
+  };
+  const geometryExpression = `(() => {
+    const list = document.querySelector("[data-testid='evolution-run-list']");
+    const main = document.querySelector("main.workspace-main");
+    const cards = [...document.querySelectorAll(".run-card")];
+    if (!list || !main || cards.length !== 8) return null;
+    const style = getComputedStyle(list);
+    const rect = list.getBoundingClientRect();
+    const firstRect = cards[0].getBoundingClientRect();
+    const lastRect = cards[cards.length - 1].getBoundingClientRect();
+    const scrollable = [...document.querySelectorAll("main.workspace-main *")]
+      .filter((element) => {
+        const computed = getComputedStyle(element);
+        return (
+          (computed.overflowY === "auto" || computed.overflowY === "scroll") &&
+          element.scrollHeight > element.clientHeight + 1
+        );
+      })
+      .map((element) => element.getAttribute("data-testid") ?? element.className);
+    return {
+      innerWidth,
+      innerHeight,
+      overflowY: style.overflowY,
+      mainOverflowY: getComputedStyle(main).overflowY,
+      rectLeft: rect.left,
+      rectRight: rect.right,
+      paddingLeft: Number.parseFloat(style.paddingLeft),
+      paddingRight: Number.parseFloat(style.paddingRight),
+      scrollHeight: list.scrollHeight,
+      clientHeight: list.clientHeight,
+      scrollTop: list.scrollTop,
+      scrollWidth: list.scrollWidth,
+      clientWidth: list.clientWidth,
+      firstCardLeft: firstRect.left,
+      contentWidth: firstRect.width,
+      lastCardTop: lastRect.top,
+      lastCardBottom: lastRect.bottom,
+      documentScrollHeight: document.scrollingElement.scrollHeight,
+      documentClientHeight: document.scrollingElement.clientHeight,
+      scrollable,
+    };
+  })()`;
+  const openList = async (viewport) => {
+    await sendWithin(
+      "Emulation.setDeviceMetricsOverride",
+      {
+        width: viewport.width,
+        height: viewport.height,
+        deviceScaleFactor: 1,
+        mobile: false,
+      },
+      `${viewport.width}x${viewport.height} metrics`,
+    );
+    await installCookie(page, await currentLoginCookie());
+    await sendWithin(
+      "Page.navigate",
+      { url: `${baseUrl}/evolution?viewport=${viewport.width}x${viewport.height}` },
+      `${viewport.width}x${viewport.height} navigation`,
+    );
+    return await waitForList(
+      geometryExpression,
+      `${viewport.width}x${viewport.height} evolution list geometry`,
+    );
+  };
+  const assertGeometry = (geometry, viewport) => {
+    assert.equal(geometry.overflowY, "auto", JSON.stringify(geometry));
+    assert.equal(geometry.mainOverflowY, "hidden", JSON.stringify(geometry));
+    assert.ok(
+      Math.abs(geometry.rectLeft) <= 1,
+      `the list must span main's column: ${geometry.rectLeft}`,
+    );
+    assert.ok(
+      Math.abs(geometry.rectRight - geometry.innerWidth) <= 1,
+      `the scrollbar must sit at the window edge: ${geometry.rectRight} vs ${geometry.innerWidth}`,
+    );
+    assert.ok(
+      Math.abs(geometry.paddingLeft - viewport.gutter) <= 1,
+      `left gutter ${geometry.paddingLeft} must match ${viewport.gutter}`,
+    );
+    assert.ok(
+      Math.abs(geometry.paddingRight - viewport.gutter) <= 1,
+      `right gutter ${geometry.paddingRight} must match ${viewport.gutter}`,
+    );
+    assert.ok(
+      Math.abs(geometry.firstCardLeft - viewport.gutter) <= 1,
+      `content column left ${geometry.firstCardLeft} must match ${viewport.gutter}`,
+    );
+    assert.ok(
+      Math.abs(
+        geometry.contentWidth - (geometry.clientWidth - 2 * viewport.gutter),
+      ) <= 1,
+      `content column ${geometry.contentWidth} must fill the frame`,
+    );
+    assert.ok(
+      geometry.scrollHeight > geometry.clientHeight,
+      `the list must overflow: ${geometry.scrollHeight} <= ${geometry.clientHeight}`,
+    );
+    assert.equal(
+      geometry.scrollWidth,
+      geometry.clientWidth,
+      "the list must not overflow horizontally",
+    );
+    assert.equal(
+      geometry.documentScrollHeight,
+      geometry.documentClientHeight,
+      "the document must not scroll",
+    );
+    assert.deepEqual(
+      geometry.scrollable,
+      ["evolution-run-list"],
+      `the list must be the only scroll container: ${geometry.scrollable.join(", ")}`,
+    );
+  };
+  const scrollToBottomExpression = `(() => {
+    const list = document.querySelector("[data-testid='evolution-run-list']");
+    list.scrollTop = list.scrollHeight;
+    const cards = [...document.querySelectorAll(".run-card")];
+    const last = cards[cards.length - 1].getBoundingClientRect();
+    return {
+      scrollTop: list.scrollTop,
+      maxScrollTop: list.scrollHeight - list.clientHeight,
+      lastTop: last.top,
+      lastBottom: last.bottom,
+      innerHeight,
+    };
+  })()`;
+  try {
+    const viewports = [
+      { width: 1408, height: 788, gutter: 188 },
+      { width: 1366, height: 768, gutter: 167 },
+      { width: 1920, height: 1080, gutter: 444 },
+    ];
+    for (const viewport of viewports) {
+      await installCookie(page, await currentLoginCookie());
+      const geometry = await openList(viewport);
+      assertGeometry(geometry, viewport);
+      const bottom = await evaluateWithin(
+        scrollToBottomExpression,
+        `${viewport.width}x${viewport.height} programmatic bottom`,
+      );
+      assert.ok(bottom.scrollTop > 0, JSON.stringify(bottom));
+      assert.ok(
+        bottom.lastTop >= 0 && bottom.lastBottom <= bottom.innerHeight,
+        `the last history card must be visible at the bottom: ${JSON.stringify(bottom)}`,
+      );
+    }
+
+    // Real wheel, PageDown, and End input at the production viewport.
+    const mainViewport = viewports[0];
+    const mainGeometry = await openList(mainViewport);
+    assertGeometry(mainGeometry, mainViewport);
+    await sendWithin(
+      "Input.dispatchMouseEvent",
+      {
+        type: "mouseMoved",
+        x: Math.round(mainViewport.width / 2),
+        y: Math.round(mainViewport.height / 2),
+        button: "none",
+      },
+      "mouse move",
+    );
+    for (let index = 0; index < 3; index += 1) {
+      await sendWithin(
+        "Input.dispatchMouseEvent",
+        {
+          type: "mouseWheel",
+          x: Math.round(mainViewport.width / 2),
+          y: Math.round(mainViewport.height / 2),
+          deltaX: 0,
+          deltaY: 480,
+          button: "none",
+        },
+        `wheel ${index + 1}`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+    const wheeled = await waitForList(
+      `(() => {
+        const list = document.querySelector("[data-testid='evolution-run-list']");
+        return list.scrollTop > 0 ? list.scrollTop : null;
+      })()`,
+      "wheel scroll",
+    );
+    assert.ok(wheeled > 0);
+    await evaluateWithin(
+      `(() => {
+        const list = document.querySelector("[data-testid='evolution-run-list']");
+        list.scrollTop = 0;
+        const badge = document.querySelector("[data-run-id='run-failed'] .badge");
+        badge?.focus();
+        list.scrollTop = 0;
+        return true;
+      })()`,
+      "reset scroll and focus an in-list button",
+    );
+    await sendWithin(
+      "Input.dispatchKeyEvent",
+      {
+        type: "rawKeyDown",
+        key: "PageDown",
+        code: "PageDown",
+        windowsVirtualKeyCode: 34,
+        nativeVirtualKeyCode: 34,
+      },
+      "PageDown down",
+    );
+    await sendWithin(
+      "Input.dispatchKeyEvent",
+      {
+        type: "keyUp",
+        key: "PageDown",
+        code: "PageDown",
+        windowsVirtualKeyCode: 34,
+        nativeVirtualKeyCode: 34,
+      },
+      "PageDown up",
+    );
+    const pageDown = await waitForList(
+      `(() => {
+        const list = document.querySelector("[data-testid='evolution-run-list']");
+        return list.scrollTop > 0 ? list.scrollTop : null;
+      })()`,
+      "PageDown scroll",
+    );
+    assert.ok(pageDown > 0);
+    await sendWithin(
+      "Input.dispatchKeyEvent",
+      {
+        type: "rawKeyDown",
+        key: "End",
+        code: "End",
+        windowsVirtualKeyCode: 35,
+        nativeVirtualKeyCode: 35,
+      },
+      "End down",
+    );
+    await sendWithin(
+      "Input.dispatchKeyEvent",
+      {
+        type: "keyUp",
+        key: "End",
+        code: "End",
+        windowsVirtualKeyCode: 35,
+        nativeVirtualKeyCode: 35,
+      },
+      "End up",
+    );
+    const bottom = await waitForList(
+      `(() => {
+        const list = document.querySelector("[data-testid='evolution-run-list']");
+        if (list.scrollHeight - list.scrollTop - list.clientHeight > 2) return null;
+        const cards = [...document.querySelectorAll(".run-card")];
+        const last = cards[cards.length - 1].getBoundingClientRect();
+        return {
+          scrollTop: list.scrollTop,
+          lastTop: last.top,
+          lastBottom: last.bottom,
+          innerHeight,
+        };
+      })()`,
+      "End scroll",
+    );
+    assert.ok(
+      bottom.scrollTop > pageDown,
+      "End must scroll past the PageDown position",
+    );
+    assert.ok(
+      bottom.lastTop >= 0 && bottom.lastBottom <= bottom.innerHeight,
+      `the last history card must be fully visible: ${JSON.stringify(bottom)}`,
+    );
+
+    await sendWithin(
+      "Emulation.setDeviceMetricsOverride",
+      { width: 390, height: 844, deviceScaleFactor: 1, mobile: true },
+      "mobile metrics",
+    );
+    await installCookie(page, await currentLoginCookie());
+    await sendWithin(
+      "Page.navigate",
+      { url: `${baseUrl}/evolution?viewport=mobile` },
+      "mobile navigation",
+    );
+    const mobile = await waitForList(
+      `(() => {
+        const list = document.querySelector("[data-testid='evolution-run-list']");
+        const main = document.querySelector("main.workspace-main");
+        if (!list || !main || document.querySelectorAll(".run-card").length !== 8) {
+          return null;
+        }
+        return {
+          listOverflowY: getComputedStyle(list).overflowY,
+          mainOverflowY: getComputedStyle(main).overflowY,
+          listScrollHeight: list.scrollHeight,
+          listClientHeight: list.clientHeight,
+          documentScrollHeight: document.scrollingElement.scrollHeight,
+          documentClientHeight: document.scrollingElement.clientHeight,
+        };
+      })()`,
+      "mobile evolution list geometry",
+    );
+    assert.equal(mobile.listOverflowY, "visible", JSON.stringify(mobile));
+    assert.equal(mobile.mainOverflowY, "visible", JSON.stringify(mobile));
+    assert.equal(
+      mobile.listScrollHeight,
+      mobile.listClientHeight,
+      "the list root must not nest a second scroll container",
+    );
+    assert.ok(
+      mobile.documentScrollHeight > mobile.documentClientHeight,
+      "the document must scroll on mobile",
+    );
+    const mobileBottom = await evaluateWithin(
+      `(() => {
+        window.scrollTo(0, document.scrollingElement.scrollHeight);
+        const cards = [...document.querySelectorAll(".run-card")];
+        const last = cards[cards.length - 1].getBoundingClientRect();
+        return {
+          scrollY: window.scrollY,
+          lastTop: last.top,
+          lastBottom: last.bottom,
+          innerHeight,
+        };
+      })()`,
+      "mobile document bottom",
+    );
+    assert.ok(mobileBottom.scrollY > 0, JSON.stringify(mobileBottom));
+    assert.ok(
+      mobileBottom.lastTop >= 0 &&
+        mobileBottom.lastBottom <= mobileBottom.innerHeight + 1,
+      `the last history card must be reachable on mobile: ${JSON.stringify(mobileBottom)}`,
+    );
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
   } finally {
     await page.session.send("Emulation.clearDeviceMetricsOverride").catch(() => {});
