@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.db.base import Database
 from app.db.crud.attributions import (
@@ -15,8 +15,12 @@ from app.db.crud.attributions import (
     attribution_cache_key,
 )
 from app.db.crud.evolution import EvolutionRepository
-from app.db.models.domain import probe_reports
-from app.db.models.evolution import EvolutionRunCandidateRecord, EvolutionRunRecord
+from app.db.models.domain import bad_cases, probe_reports
+from app.db.models.evolution import (
+    EvolutionRunCandidateRecord,
+    EvolutionRunRecord,
+    evolution_runs,
+)
 from app.service.evolution.attribution import (
     AttributionInput,
     AttributionResult,
@@ -344,6 +348,46 @@ async def test_rule_engine_scores_evidence_completeness_from_persisted_rows(
             "skill",
             "deep-research",
             TARGET_REVISION,
+            "v1",
+            "rule-v1",
+        ),
+    )
+    assert cached is not None
+    assert cached.confidence == pytest.approx(0.9)
+
+
+async def test_rule_engine_matches_a_bare_body_hash_against_a_digest_revision(
+    attribution_harness: Harness,
+    attribution_repository: AttributionRepository,
+) -> None:
+    """A content-resolved run accepts a case that records the bare body hash."""
+    digest = "b" * 64
+    async with attribution_harness.database.transaction() as session:
+        await session.execute(
+            update(evolution_runs)
+            .where(evolution_runs.c.id == OTHER_RUN_ID)
+            .values(target_revision=f"digest:{digest}"),
+        )
+        await session.execute(
+            update(bad_cases)
+            .where(bad_cases.c.bad_case_id == CASE_ID)
+            .values(object_version=digest),
+        )
+
+    run = await load_run(attribution_harness.database, OTHER_RUN_ID)
+    await AttributionRunner(attribution_repository).run(
+        run,
+        (potential_case(),),
+        cache_enabled=True,
+    )
+
+    cached = await attribution_repository.get_probe_by_cache_key(
+        attribution_cache_key(
+            "ws-default",
+            CASE_ID,
+            "skill",
+            "deep-research",
+            f"digest:{digest}",
             "v1",
             "rule-v1",
         ),

@@ -88,7 +88,6 @@ class AttributionInput:
     object_trigger_at: datetime | None = None
     case_trigger_at: datetime | None = None
     knowledge_evidence: tuple[KnowledgeEvidence, ...] = ()
-    case_object_type: str | None = None
     case_object_name: str | None = None
     case_object_version: str | None = None
 
@@ -96,10 +95,8 @@ class AttributionInput:
         """Return the three deterministic evidence checks for this input."""
         return extract_signals(
             order_state=self.order_state,
-            case_object_type=self.case_object_type,
             case_object_name=self.case_object_name,
             case_object_version=self.case_object_version,
-            probe_type=self.probe_type,
             probe_object=self.probe_object,
             target_revision=self.object_version,
         )
@@ -325,7 +322,7 @@ class AttributionStore(Protocol):
         self,
         case_ids: Sequence[str],
     ) -> dict[str, BadCaseEvidenceRecord]:
-        """Batch-load bad-case titles, descriptions, and metadata."""
+        """Batch-load bad-case identity, titles, descriptions, and metadata."""
 
     async def load_knowledge_evidence(
         self,
@@ -541,7 +538,6 @@ class AttributionRunner:
                 )
                 for item in knowledge.get(candidate.session_id, ())
             ),
-            case_object_type=evidence.object_type,
             case_object_name=evidence.object_name,
             case_object_version=evidence.object_version,
         )

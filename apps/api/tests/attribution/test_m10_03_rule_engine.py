@@ -27,7 +27,6 @@ def attribution_input(
     metadata: dict[str, object] | None = None,
     knowledge: tuple[KnowledgeEvidence, ...] = (),
     object_version: str | None = "tag:v2.0.0",
-    case_object_type: str = "skill",
     case_object_name: str = "deep-research",
     case_object_version: str | None = "v2.0.0",
 ) -> AttributionInput:
@@ -54,7 +53,6 @@ def attribution_input(
         object_trigger_at=OBJECT_TRIGGER,
         case_trigger_at=CASE_TRIGGER,
         knowledge_evidence=knowledge,
-        case_object_type=case_object_type,
         case_object_name=case_object_name,
         case_object_version=case_object_version,
     )

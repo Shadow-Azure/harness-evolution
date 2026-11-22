@@ -168,7 +168,6 @@ class BadCaseEvidenceRecord:
     session_id: str
     bad_case_type: str
     object_name: str
-    object_type: str
     object_version: str | None
     title: str
     description: str
@@ -526,7 +525,6 @@ class AttributionRepository:
                 bad_cases.c.bad_case_session_id,
                 bad_cases.c.bad_case_type,
                 bad_cases.c.object_name,
-                bad_cases.c.object_type,
                 bad_cases.c.object_version,
                 bad_cases.c.title,
                 bad_cases.c.bad_case_description,
@@ -542,7 +540,6 @@ class AttributionRepository:
                     session_id=str(row["bad_case_session_id"]),
                     bad_case_type=str(row["bad_case_type"]),
                     object_name=str(row["object_name"]),
-                    object_type=str(row["object_type"]),
                     object_version=(str(object_version) if object_version is not None else None),
                     title=str(row["title"]),
                     description=str(row["bad_case_description"]),

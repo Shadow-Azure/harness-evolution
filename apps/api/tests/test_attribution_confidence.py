@@ -32,7 +32,6 @@ def attribution_input(
     description: str = "deep-research 读取索引时未校验快照字段",
     metadata: dict[str, object] | None = None,
     object_version: str | None = "tag:v2.0.0",
-    case_object_type: str | None = "skill",
     case_object_name: str | None = "deep-research",
     case_object_version: str | None = "v2.0.0",
 ) -> AttributionInput:
@@ -54,17 +53,16 @@ def attribution_input(
         order_state=order_state,  # type: ignore[arg-type]
         object_trigger_at=OBJECT_TRIGGER,
         case_trigger_at=CASE_TRIGGER,
-        case_object_type=case_object_type,
         case_object_name=case_object_name,
         case_object_version=case_object_version,
     )
 
 
-def test_failure_signature_is_case_folded_and_blank_safe() -> None:
-    """Object identity is compared case-insensitively, never as a partial value."""
-    assert failure_signature(" Skill ", " Deep-Research ") == ("skill", "deep-research")
-    assert failure_signature(None, "deep-research") is None
-    assert failure_signature("skill", "   ") is None
+def test_failure_signature_is_name_only_case_folded_and_blank_safe() -> None:
+    """Identity follows the matcher's name-only rule, with no type dependency."""
+    assert failure_signature(" Deep-Research ") == "deep-research"
+    assert failure_signature(None) is None
+    assert failure_signature("   ") is None
 
 
 def test_version_identity_forms_keep_prefix_free_variants() -> None:
@@ -77,14 +75,25 @@ def test_version_identity_forms_keep_prefix_free_variants() -> None:
     assert version_identity_forms(None) == frozenset()
 
 
+def test_extract_signals_accepts_a_prefixed_case_version_against_a_bare_revision() -> None:
+    """Normalization is symmetric: a prefixed case value may hit a bare revision."""
+    signals = extract_signals(
+        order_state="comparable",
+        case_object_name="deep-research",
+        case_object_version="tag:v2.0.0",
+        probe_object="deep-research",
+        target_revision="v2.0.0",
+    )
+
+    assert signals.version_proof is True
+
+
 def test_extract_signals_accepts_a_bare_body_hash_case_version() -> None:
     """A trace-persisted bare body hash still counts as direct version proof."""
     signals = extract_signals(
         order_state="comparable",
-        case_object_type="skill",
         case_object_name="deep-research",
         case_object_version="a" * 64,
-        probe_type="skill",
         probe_object="deep-research",
         target_revision="digest:" + "a" * 64,
     )
@@ -101,10 +110,8 @@ def test_extract_signals_marks_a_different_object_as_no_signature() -> None:
     """A failure that names another object cannot satisfy the signature check."""
     signals = extract_signals(
         order_state="comparable",
-        case_object_type="agent",
         case_object_name="helper",
         case_object_version=None,
-        probe_type="skill",
         probe_object="deep-research",
         target_revision="tag:v2.0.0",
     )
@@ -150,12 +157,17 @@ def test_band_boundaries_match_the_documented_ranges() -> None:
     assert contradiction < 0.5
 
 
-def test_scores_are_deterministic() -> None:
-    """The same evidence always produces the same number."""
-    signals = EvidenceSignals(True, True, True)
+@pytest.mark.asyncio
+async def test_engine_output_is_deterministic() -> None:
+    """The same persisted evidence produces byte-identical engine results."""
+    engine = RuleBasedEngine()
+    item = attribution_input(metadata={"error": "ENOENT"})
 
-    assert evidence_score(signals) == evidence_score(signals)
-    assert attribution_confidence("attributed", signals) == 0.9
+    first = await engine.attribute(item)
+    second = await engine.attribute(item)
+
+    assert first == second
+    assert first.confidence == pytest.approx(0.9)
 
 
 def test_non_target_confidence_is_the_complement_of_attribution_evidence() -> None:
@@ -170,9 +182,9 @@ def test_non_target_confidence_is_the_complement_of_attribution_evidence() -> No
 
 
 def test_low_confidence_cluster_gate_stays_off() -> None:
-    """The optional clustering gate ships as an off-by-default constant."""
+    """The optional clustering gate ships off, above the one-vote band."""
     assert LOW_CONFIDENCE_CLUSTER_GATE_ENABLED is False
-    assert LOW_CONFIDENCE_CLUSTER_THRESHOLD == 0.5
+    assert LOW_CONFIDENCE_CLUSTER_THRESHOLD == 0.6
 
 
 @pytest.mark.asyncio

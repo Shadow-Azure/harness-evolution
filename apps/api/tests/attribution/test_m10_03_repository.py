@@ -197,7 +197,6 @@ async def test_bad_case_evidence_is_loaded_in_one_batch(
     assert evidence[CASE_ID].description == "deep-research 读取索引时未校验快照字段"
     assert evidence[CASE_ID].metadata == {"error": "ENOENT", "file": "index.ts"}
     assert evidence[CASE_ID].object_name == TARGET_NAME
-    assert evidence[CASE_ID].object_type == "skill"
     assert evidence[CASE_ID].object_version == TARGET_VERSION
     assert evidence[OTHER_CASE_ID].bad_case_type == "discovery"
 

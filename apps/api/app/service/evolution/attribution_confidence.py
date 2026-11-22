@@ -36,8 +36,13 @@ that must also add the query-side filter. This constant documents the switch
 without changing today's cluster membership.
 """
 
-LOW_CONFIDENCE_CLUSTER_THRESHOLD = 0.5
-"""At or above this completeness score an attribution is not low confidence."""
+LOW_CONFIDENCE_CLUSTER_THRESHOLD = 0.6
+"""Below this completeness score an attribution is low confidence.
+
+The threshold sits above the one-vote band (0.5) so enabling the gate later
+filters attributions that rest on a single evidence angle as well as the
+no-evidence and contradictory bands, while two-vote and three-vote cases pass.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,27 +71,24 @@ class EvidenceSignals:
         return self.version_proof and not self.failure_signature_match
 
 
-def failure_signature(
-    object_type: str | None,
-    object_name: str | None,
-) -> tuple[str, str] | None:
-    """Return the normalized object identity a failure is reported against.
+def failure_signature(object_name: str | None) -> str | None:
+    """Return the normalized object name a failure is reported against.
+
+    The potential matcher's same-object rule is name-based, and catalog sync
+    defaults a missing upstream object type to ``skill``; including the type
+    here would turn a legitimate self report into a contradiction. The name is
+    therefore the whole failure signature.
 
     Args:
-        object_type: Object kind declared by the bad case or the run target.
         object_name: Object name declared by the bad case or the run target.
 
     Returns:
-        A case-folded ``(type, name)`` pair, or ``None`` when either side is
-        absent or blank.
+        A case-folded name, or ``None`` when the value is absent or blank.
     """
-    if object_type is None or object_name is None:
+    if object_name is None:
         return None
-    kind = object_type.strip().casefold()
     name = object_name.strip().casefold()
-    if not kind or not name:
-        return None
-    return kind, name
+    return name or None
 
 
 def _identity_forms(value: str | None) -> set[str]:
@@ -122,13 +124,18 @@ def version_identity_forms(revision: str | None) -> frozenset[str]:
     return frozenset(_identity_forms(revision))
 
 
+def _version_proof(case_version: str | None, revision: str | None) -> bool:
+    """Return whether the case version and the resolved revision overlap."""
+    if case_version is None:
+        return False
+    return bool(_identity_forms(case_version) & _identity_forms(revision))
+
+
 def extract_signals(
     *,
     order_state: str,
-    case_object_type: str | None,
     case_object_name: str | None,
     case_object_version: str | None,
-    probe_type: str,
     probe_object: str,
     target_revision: str | None,
 ) -> EvidenceSignals:
@@ -136,18 +143,16 @@ def extract_signals(
 
     Args:
         order_state: Matcher order state; only ``comparable`` counts.
-        case_object_type: Object kind the bad case reports.
         case_object_name: Object name the bad case reports.
         case_object_version: Version or revision the bad case reports.
-        probe_type: Object kind the attribution is written against.
         probe_object: Object name the attribution is written against.
         target_revision: Normalized revision resolved for the run.
 
     Returns:
         The three booleans consumed by :func:`evidence_score`.
     """
-    signature = failure_signature(case_object_type, case_object_name)
-    target_signature = failure_signature(probe_type, probe_object)
+    signature = failure_signature(case_object_name)
+    target_signature = failure_signature(probe_object)
     case_version = (
         case_object_version.strip()
         if isinstance(case_object_version, str) and case_object_version.strip()
@@ -158,9 +163,7 @@ def extract_signals(
         failure_signature_match=(
             signature is not None and target_signature is not None and signature == target_signature
         ),
-        version_proof=(
-            case_version is not None and case_version in version_identity_forms(target_revision)
-        ),
+        version_proof=_version_proof(case_version, target_revision),
     )
 
 

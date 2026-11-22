@@ -819,7 +819,7 @@ class AIAgentProvider(ABC):
 - **① 分组层（O(N)，无 LLM）**：`lexical-jaccard-v1`（§5.5）是第一实现；产出 K 个草稿簇，**成员列表由代码持有、不进任何 prompt**。向量化升级位：`SupportsEmbedding`（未来 `model` 子类实现）以语义相似合并词面不同语义相同的 case（「超时」vs「卡死」），收缩 K、缩小下游输入，附带产出簇内紧密度作评分层统计信号。向量化只替换分组与相似召回，不替换身份归因（归因靠对象锚点与时序的精确匹配）。降级：embedding 不可用 → 回 lexical。
 - **② 审查层（O(K×s)，`analyze(task="cluster.review")`）**：输入 = 草稿摘要（约 60 tokens/簇）+ 每草稿采样 3–5 条代表 case；任务只允许合并草稿、命名、写摘要。输出 schema 用**草稿键引用**（`{"from": ["D1","D2"], "title": …}`），成员由代码按 `from` 展开——输出量 O(K)，守恒是构造性的。硬闸：**草稿划分完整性**（每个输入草稿在输出 `from` 里恰好出现一次）+ 只合并不拆分；违反 → 整批降级用草稿。
 - **③ 评分层（O(K×s)，两次调用失败隔离）**：输入 = 最终簇摘要 + 代表样本 + 确定性统计量（成员数、签名重合度、时间跨度、可选紧密度）。`cluster.score`（簇置信度直评 0–1，rubric 锚定 + `evidence_refs ⊆ 输入` 引用校验，写 `probe_clusters.confidence`，降级回类目常量）与 `severity.score`（维度 0–10 + CoT grader，`overall` 为决策分、公式分对照进 metrics、CVSS 式向量串可审计，降级回 `cluster_severity()` 公式）分开执行。
-- **归因置信度不上模型**：`bad_case_analysis.confidence` 改为证据完整度规则分（时间序可比 / 错误签名匹配 / 版本直证三信号计票映射区间），零模型调用；逐条模型分留作预算开关，不进默认路径。
+- **归因置信度不上模型**：归因行 `probe_reports.confidence`（case 级归因置信度）改为证据完整度规则分（时间序可比 / 错误签名匹配 / 版本直证三信号计票映射区间），零模型调用；逐条模型分留作预算开关，不进默认路径。
 - 落库：算法标识升级 `hybrid-lexical-llm-v1`（embedding 上线后 `hybrid-embed-llm-v1`）随 run 快照可回放。成本形态：每 run 恰好 3 次有界 analyze + patch 阶段 edit 调用，与 N 无关。
 
 ### 5.5.3 结构化提交通道（`submission.py`）与 JSON 可靠性防线
@@ -1299,7 +1299,7 @@ class AttributionRunner:
 - run 创建时固化 `attribution_engine / cache_enabled / potential_policy`；runner 只读 run 快照，不读全局配置或请求方当前值。历史 run 的 `attribution_engine` 默认 `legacy-probe-import`，不会被 V2 runner 误用。
 - `cache_enabled=false` → 跳过读，重算并覆盖同键行（`created_run_id` 更新）。
 - 并发同键 upsert 走方言原子语句（`ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO UPDATE`），不先查后写。
-- V2 首版引擎 `rule-v1`（规则占位）：自身上报 → `attributed`，`category` 按证据判 `error|prompt`，confidence 0.8；`after_object` 且 discovery → `attributed`/`error`，0.6；证据不足或顺序不可比 → `non_target`，0.7。`reason`/`reasoning` 为模板化占位文案；换真实归因只新增 Engine 子类并注册新 `key`，缓存键自动隔离。
+- V2 首版引擎 `rule-v1`（规则引擎）：自身上报 → `attributed`，`category` 按证据判 `error|prompt`；`after_object` 且 discovery → `attributed`/`error`；证据不足或顺序不可比 → `non_target`。confidence 为证据完整度规则分（三票 0.9 / 两票 0.8 / 一票 0.5 / 零票 0.3 / 矛盾 0.2，非目标取补数），只读候选与 bad case 证据、不调用模型；`reason`/`reasoning` 为模板化文案。换真实归因只新增 Engine 子类并注册新 `key`，缓存键自动隔离。
 - **簇级 confidence 与归因 confidence 是两回事**：`probe_reports.confidence` 是引擎对该 bad case 的结论置信度；聚类步写入的 `probe_clusters.confidence` 是簇级占位值（按 `probe_cluster_type`：error 0.82 / prompt 0.74 / model 0.66），`severity = round(min(10, 簇 confidence × impact × reportWeight), 1)`。两者不互相推导，避免把「单条归因的把握」误当成「整个簇的把握」。
 - `non_target` 候选保留在候选表、`probe_reports` 与 `bad_case_analysis`（错误详情可见），不进簇。
 
