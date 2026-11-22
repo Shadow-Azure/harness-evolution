@@ -1171,14 +1171,23 @@ class GitWorkspaceManager:
         )
 
     async def _require_clean(self, workspace_path: Path) -> None:
-        """Require no tracked or untracked file before ref-changing operations."""
+        """Require no tracked or untracked change before ref-changing operations.
+
+        ``.harness-evolution/**`` entries are agent scratch: the agent writes
+        its plan there while the edit is still being composed,
+        ``create_candidate_bundle`` never stages that directory for a non-legacy
+        bundle, and the scratch is not part of the tree the candidate is
+        compared against. Ignoring those entries keeps ref-changing operations
+        usable during the edit phase; every other dirty path still raises.
+        """
         result = await self._git_checked(
             workspace_path,
             ("git", "status", "--porcelain", "--untracked-files=all"),
             stage="workspace",
             failure="workspace status check failed",
         )
-        if result.stdout.strip():
+        dirty = [line for line in result.stdout.splitlines() if not _is_scratch_status_line(line)]
+        if dirty:
             raise GitOperationError("workspace is not clean", stage="workspace")
 
     def _ref_cache_path(self, target_key: str, ref: str) -> Path:
@@ -1825,6 +1834,26 @@ def _is_git_path(file: str) -> bool:
 def _is_harness_evolution_path(file: str) -> bool:
     """Return whether a path has a case-insensitive ``.harness-evolution`` segment."""
     return any(part.casefold() == _HARNESS_EVOLUTION_DIR for part in PurePosixPath(file).parts)
+
+
+def _is_scratch_status_line(line: str) -> bool:
+    """Return whether one porcelain line only touches agent scratch.
+
+    Porcelain v1 renders two status columns, a separator space, and the path;
+    a rename renders ``old -> new``. A rename is ignored only when both sides
+    are scratch, because moving a tracked file out of scratch is a real change.
+    Quoted paths stay dirty on purpose: guessing C-style unquoting could hide a
+    genuine modification, and the scratch plan path is plain ASCII.
+    """
+    if len(line) < 4:
+        return False
+    path = line[3:]
+    if path.startswith('"'):
+        return False
+    if " -> " in path:
+        source, destination = path.rsplit(" -> ", 1)
+        return _is_harness_evolution_path(source) and _is_harness_evolution_path(destination)
+    return _is_harness_evolution_path(path)
 
 
 _GIT_DIR = ".git"

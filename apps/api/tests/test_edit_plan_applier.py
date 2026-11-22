@@ -110,7 +110,7 @@ def test_four_ops_apply_to_real_files(tmp_path: Path) -> None:
     _write(workspace / "old.md", "keep\ndrop\nkeep2\n")
     plan = EditPlan(
         summary="four ops",
-        edits=[
+        edits=(
             EditOp(op="append", file="notes.md", content="b\nc", rationale="append"),
             EditOp(
                 op="insert_after",
@@ -127,7 +127,7 @@ def test_four_ops_apply_to_real_files(tmp_path: Path) -> None:
                 rationale="replace",
             ),
             EditOp(op="delete", file="old.md", target="drop\n", rationale="delete"),
-        ],
+        ),
     )
 
     application = apply_edit_plan(plan, workspace=workspace)
@@ -151,10 +151,10 @@ def test_append_normalizes_the_trailing_newline(tmp_path: Path) -> None:
     _write(workspace / "no-final-newline.md", "no-newline")
     plan = EditPlan(
         summary="append newline handling",
-        edits=[
+        edits=(
             EditOp(op="append", file="empty.md", content="line1\nline2\n\n", rationale="r"),
             EditOp(op="append", file="no-final-newline.md", content="tail", rationale="r"),
-        ],
+        ),
     )
 
     apply_edit_plan(plan, workspace=workspace)
@@ -169,11 +169,11 @@ def test_missing_anchor_is_skipped_and_remaining_edits_run(tmp_path: Path) -> No
     _write(workspace / "a.md", "hello\n")
     plan = EditPlan(
         summary="missing anchor",
-        edits=[
+        edits=(
             EditOp(op="replace", file="a.md", target="absent", content="x", rationale="r"),
             EditOp(op="append", file="missing.md", content="x", rationale="r"),
             EditOp(op="append", file="a.md", content="tail", rationale="r"),
-        ],
+        ),
     )
 
     application = apply_edit_plan(plan, workspace=workspace)
@@ -201,7 +201,7 @@ def test_ambiguous_anchor_is_an_error_and_is_never_guessed(
     _write(workspace / "dup.md", "x\nx\n")
     plan = EditPlan(
         summary="ambiguous anchor",
-        edits=[
+        edits=(
             EditOp(
                 op=op,
                 file="dup.md",
@@ -209,7 +209,7 @@ def test_ambiguous_anchor_is_an_error_and_is_never_guessed(
                 content=None if op == "delete" else "y",
                 rationale="r",
             ),
-        ],
+        ),
     )
 
     application = apply_edit_plan(plan, workspace=workspace)
@@ -227,11 +227,13 @@ def test_scope_violation_is_an_error_and_in_scope_edits_apply(tmp_path: Path) ->
     _write(workspace / "skills" / "deep" / "SKILL.md", "skill\n")
     outside = EditPlan(
         summary="outside",
-        edits=[EditOp(op="replace", file="README.md", target="readme", content="x", rationale="r")],
+        edits=(
+            EditOp(op="replace", file="README.md", target="readme", content="x", rationale="r"),
+        ),
     )
     inside = EditPlan(
         summary="inside",
-        edits=[
+        edits=(
             EditOp(
                 op="replace",
                 file="skills/deep/SKILL.md",
@@ -239,7 +241,7 @@ def test_scope_violation_is_an_error_and_in_scope_edits_apply(tmp_path: Path) ->
                 content="updated",
                 rationale="r",
             ),
-        ],
+        ),
     )
 
     rejected = apply_edit_plan(
@@ -273,26 +275,49 @@ def test_scope_violation_is_an_error_and_in_scope_edits_apply(tmp_path: Path) ->
         (("skills/?.md",), "skills/ab.md", False),
         (("./skills/**",), "skills/a.md", True),
         (("",), "anything/at/all.md", False),
-        ((), "anything/at/all.md", True),
+        ((), "anything/at/all.md", False),
+        (None, "anything/at/all.md", True),
     ],
 )
 def test_allowed_paths_use_posix_globs(
     tmp_path: Path,
-    allowed: tuple[str, ...],
+    allowed: tuple[str, ...] | None,
     file: str,
     applies: bool,
 ) -> None:
-    """Glob scope supports recursive and single-level patterns."""
+    """Glob scope supports recursive globs, allows nothing when empty, and None widens."""
     workspace = tmp_path / "ws"
     _write(workspace / file, "old\n")
     plan = EditPlan(
         summary="glob",
-        edits=[EditOp(op="replace", file=file, target="old", content="new", rationale="r")],
+        edits=(EditOp(op="replace", file=file, target="old", content="new", rationale="r"),),
     )
 
     application = apply_edit_plan(plan, workspace=workspace, allowed_paths=allowed)
 
     assert (application.report[0].status == "applied") is applies
+
+
+def test_allowed_paths_none_means_no_narrowing_and_empty_denies(tmp_path: Path) -> None:
+    """The default is an explicit no-narrowing sentinel, not an empty scope."""
+    workspace = tmp_path / "ws"
+    _write(workspace / "README.md", "readme\n")
+    plan = EditPlan(
+        summary="scope contract",
+        edits=(
+            EditOp(op="replace", file="README.md", target="readme", content="x", rationale="r"),
+        ),
+    )
+
+    defaulted = apply_edit_plan(plan, workspace=workspace)
+    assert defaulted.report[0].status == "applied"
+
+    _write(workspace / "README.md", "readme\n")
+    denied = apply_edit_plan(plan, workspace=workspace, allowed_paths=())
+
+    assert denied.report[0].status == "error"
+    assert "allowed_paths []" in denied.report[0].message
+    assert (workspace / "README.md").read_text(encoding="utf-8") == "readme\n"
 
 
 @pytest.mark.parametrize(
@@ -346,10 +371,28 @@ def test_op_specific_fields_are_enforced(
         EditOp(op=op, file="a.md", target=target, content=content, rationale="r")
 
 
+@pytest.mark.parametrize("target", ["line\nbreak", "line\rbreak"])
+def test_insert_after_rejects_a_multiline_anchor_at_model_construction(target: str) -> None:
+    """The single-line anchor rule fails the plan before any file is touched."""
+    with pytest.raises(ValidationError, match="single-line substring"):
+        EditOp(op="insert_after", file="a.md", target=target, content="x", rationale="r")
+
+    multiline_replace = EditOp(
+        op="replace",
+        file="a.md",
+        target="line\nbreak",
+        content="x",
+        rationale="r",
+    )
+    assert multiline_replace.target == "line\nbreak"
+
+
 def test_summary_rationale_and_content_cap_are_enforced() -> None:
     """The plan summary, edit rationale, and one-edit content cap all validate."""
     with pytest.raises(ValidationError):
-        EditPlan(summary="  ", edits=[EditOp(op="append", file="a.md", content="x", rationale="r")])
+        EditPlan(
+            summary="  ", edits=(EditOp(op="append", file="a.md", content="x", rationale="r"),)
+        )
     with pytest.raises(ValidationError):
         EditOp(op="append", file="a.md", content="x", rationale=" ")
     too_long = "\n".join("x" for _ in range(MAX_CONTENT_LINES + 1))
@@ -370,7 +413,7 @@ def test_later_edit_sees_the_result_of_an_earlier_edit(tmp_path: Path) -> None:
     _write(workspace / "doc.md", "alpha\nbeta\n")
     plan = EditPlan(
         summary="sequential",
-        edits=[
+        edits=(
             EditOp(op="replace", file="doc.md", target="beta", content="gamma", rationale="r"),
             EditOp(op="replace", file="doc.md", target="gamma", content="delta", rationale="r"),
             EditOp(
@@ -380,7 +423,7 @@ def test_later_edit_sees_the_result_of_an_earlier_edit(tmp_path: Path) -> None:
                 content="after delta",
                 rationale="r",
             ),
-        ],
+        ),
     )
 
     application = apply_edit_plan(plan, workspace=workspace)
@@ -396,9 +439,33 @@ def test_model_rejects_a_plan_above_the_edit_budget() -> None:
         for index in range(EDIT_BUDGET + 1)
     ]
     with pytest.raises(ValidationError, match="edit_budget"):
-        EditPlan(summary="too many", edits=edits)
-    accepted = EditPlan(summary="at budget", edits=edits[:EDIT_BUDGET])
+        EditPlan(summary="too many", edits=tuple(edits))
+    accepted = EditPlan(summary="at budget", edits=tuple(edits[:EDIT_BUDGET]))
     assert len(accepted.edits) == EDIT_BUDGET
+
+
+def test_edit_plan_edits_are_a_deeply_immutable_tuple() -> None:
+    """The frozen model holds a tuple, while JSON arrays still validate into it."""
+    edit = EditOp(op="append", file="a.md", content="x", rationale="r")
+    plan = EditPlan(summary="immutable", edits=(edit,))
+
+    assert isinstance(plan.edits, tuple)
+    assert plan.edits == (edit,)
+    assert not hasattr(plan.edits, "append")
+    assert isinstance(hash(plan), int)
+
+    schema = EditPlan.model_json_schema()
+    assert schema["properties"]["edits"]["type"] == "array"
+
+    validated = EditPlan.model_validate(
+        {
+            "summary": "from json",
+            "edits": [{"op": "append", "file": "a.md", "content": "x", "rationale": "r"}],
+        },
+    )
+    assert isinstance(validated.edits, tuple)
+    assert validated.edits == (edit,)
+    assert isinstance(hash(validated), int)
 
 
 def test_apply_time_budget_hard_truncates_a_bypassed_plan(tmp_path: Path) -> None:
@@ -428,10 +495,10 @@ def test_caller_budget_can_tighten_but_never_widen_the_ceiling(tmp_path: Path) -
     _write(workspace / "a.md", "base\n")
     three = EditPlan(
         summary="three",
-        edits=[
+        edits=tuple(
             EditOp(op="append", file="a.md", content=f"n{index}", rationale="r")
             for index in range(3)
-        ],
+        ),
     )
 
     tightened = apply_edit_plan(three, workspace=workspace, edit_budget=1)
@@ -463,7 +530,7 @@ def test_replay_is_byte_identical(tmp_path: Path) -> None:
     def plan() -> EditPlan:
         return EditPlan(
             summary="replay",
-            edits=[
+            edits=(
                 EditOp(op="replace", file="doc.md", target="alpha", content="ALPHA", rationale="r"),
                 EditOp(
                     op="insert_after",
@@ -474,7 +541,7 @@ def test_replay_is_byte_identical(tmp_path: Path) -> None:
                 ),
                 EditOp(op="delete", file="doc.md", target="beta\n", rationale="r"),
                 EditOp(op="append", file="doc.md", content="tail", rationale="r"),
-            ],
+            ),
         )
 
     left_application = apply_edit_plan(plan(), workspace=left)
@@ -504,7 +571,7 @@ def test_directory_target_and_glob_directory_match_are_errors(tmp_path: Path) ->
     (workspace / "skills").mkdir(parents=True)
     plan = EditPlan(
         summary="directory",
-        edits=[EditOp(op="append", file="skills", content="x", rationale="r")],
+        edits=(EditOp(op="append", file="skills", content="x", rationale="r"),),
     )
 
     application = apply_edit_plan(
@@ -526,9 +593,9 @@ def test_symlink_escape_is_an_error(tmp_path: Path) -> None:
     (workspace / "link.md").symlink_to(outside)
     plan = EditPlan(
         summary="symlink",
-        edits=[
+        edits=(
             EditOp(op="replace", file="link.md", target="secret", content="leaked", rationale="r"),
-        ],
+        ),
     )
 
     application = apply_edit_plan(plan, workspace=workspace)
@@ -552,9 +619,9 @@ def test_symlink_into_a_protected_directory_is_an_error(
     (workspace / "link.md").symlink_to(secret)
     plan = EditPlan(
         summary="protected symlink",
-        edits=[
+        edits=(
             EditOp(op="replace", file="link.md", target="secret", content="leaked", rationale="r"),
-        ],
+        ),
     )
 
     application = apply_edit_plan(plan, workspace=workspace)
@@ -572,11 +639,11 @@ def test_symlink_outside_allowed_paths_is_an_error(tmp_path: Path) -> None:
     (workspace / "skills" / "link.md").symlink_to(workspace / "README.md")
     plan = EditPlan(
         summary="scope symlink",
-        edits=[
+        edits=(
             EditOp(
                 op="replace", file="skills/link.md", target="outside", content="x", rationale="r"
-            )
-        ],
+            ),
+        ),
     )
 
     application = apply_edit_plan(plan, workspace=workspace, allowed_paths=("skills/**",))
@@ -593,7 +660,7 @@ def test_invalid_utf8_is_an_error(tmp_path: Path) -> None:
     (workspace / "binary.md").write_bytes(b"\xff\xfe")
     plan = EditPlan(
         summary="binary",
-        edits=[EditOp(op="append", file="binary.md", content="x", rationale="r")],
+        edits=(EditOp(op="append", file="binary.md", content="x", rationale="r"),),
     )
 
     application = apply_edit_plan(plan, workspace=workspace)
@@ -662,9 +729,9 @@ def test_insert_after_missing_anchor_is_skipped(tmp_path: Path) -> None:
     _write(workspace / "doc.md", "line\n")
     plan = EditPlan(
         summary="missing",
-        edits=[
-            EditOp(op="insert_after", file="doc.md", target="absent", content="x", rationale="r")
-        ],
+        edits=(
+            EditOp(op="insert_after", file="doc.md", target="absent", content="x", rationale="r"),
+        ),
     )
 
     application = apply_edit_plan(plan, workspace=workspace)
@@ -679,9 +746,9 @@ def test_insert_after_last_line_without_newline(tmp_path: Path) -> None:
     _write(workspace / "doc.md", "one\ntwo")
     plan = EditPlan(
         summary="last line",
-        edits=[
-            EditOp(op="insert_after", file="doc.md", target="two", content="three", rationale="r")
-        ],
+        edits=(
+            EditOp(op="insert_after", file="doc.md", target="two", content="three", rationale="r"),
+        ),
     )
 
     application = apply_edit_plan(plan, workspace=workspace)
@@ -696,7 +763,7 @@ def test_replace_with_identical_content_is_applied_but_not_changed(tmp_path: Pat
     _write(workspace / "doc.md", "same\n")
     plan = EditPlan(
         summary="no-op",
-        edits=[EditOp(op="replace", file="doc.md", target="same", content="same", rationale="r")],
+        edits=(EditOp(op="replace", file="doc.md", target="same", content="same", rationale="r"),),
     )
 
     application = apply_edit_plan(plan, workspace=workspace)
@@ -709,7 +776,7 @@ def test_workspace_must_be_absolute_and_existing(tmp_path: Path) -> None:
     """A relative or missing workspace fails before any edit is considered."""
     plan = EditPlan(
         summary="workspace",
-        edits=[EditOp(op="append", file="a.md", content="x", rationale="r")],
+        edits=(EditOp(op="append", file="a.md", content="x", rationale="r"),),
     )
     with pytest.raises(EditPlanError, match="absolute"):
         apply_edit_plan(plan, workspace=Path("relative"))
@@ -784,10 +851,10 @@ def test_write_failure_is_recorded_and_later_edits_continue(
     monkeypatch.setattr(os, "replace", flaky_replace)
     plan = EditPlan(
         summary="write failure",
-        edits=[
+        edits=(
             EditOp(op="append", file="a.md", content="tail", rationale="r"),
             EditOp(op="append", file="b.md", content="tail", rationale="r"),
-        ],
+        ),
     )
 
     application = apply_edit_plan(plan, workspace=workspace)
@@ -835,15 +902,15 @@ def test_bundle_note_is_the_intent_summary() -> None:
     """An intent-bearing bundle uses the EditPlan summary as its note."""
     plan = EditPlan(
         summary="timeout 30s to 120s",
-        edits=[
+        edits=(
             EditOp(
                 op="replace",
                 file="config/a.json",
                 target='"timeout": 30',
                 content='"timeout": 120',
                 rationale="r",
-            )
-        ],
+            ),
+        ),
     )
     patch = Patch(file="config/a.json", lines=("{", "}"), overwrite=True)
 

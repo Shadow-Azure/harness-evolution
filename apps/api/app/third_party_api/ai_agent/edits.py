@@ -156,13 +156,20 @@ class EditOp(BaseModel):
 
     @model_validator(mode="after")
     def _validate_op_fields(self) -> Self:
-        """Enforce the op-specific required and forbidden fields."""
+        """Enforce the op-specific required and forbidden fields.
+
+        ``insert_after`` anchors one physical line, so a multi-line target is a
+        model error rather than an applier error: the plan fails before any
+        file is touched and the retry prompt gets a field-level message.
+        """
         if self.op == "append":
             if self.target is not None:
                 raise ValueError("append must not set target")
             _require_non_blank(self.content, field="content", op=self.op)
         elif self.op in _ANCHORED_OPS:
-            _require_non_blank(self.target, field="target", op=self.op)
+            target = _require_non_blank(self.target, field="target", op=self.op)
+            if self.op == "insert_after" and ("\n" in target or "\r" in target):
+                raise ValueError("target must be a single-line substring")
             if self.op == "delete":
                 if self.content is not None:
                     raise ValueError("delete must not set content")
@@ -172,12 +179,17 @@ class EditOp(BaseModel):
 
 
 class EditPlan(BaseModel):
-    """One auditable edit plan: a summary plus an ordered list of edits."""
+    """One auditable edit plan: a summary plus an ordered immutable edit tuple.
+
+    ``edits`` is a tuple so the frozen model is deeply immutable: callers cannot
+    append past the construction-time budget check. JSON arrays still validate
+    and still serialize as arrays.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     summary: str
-    edits: list[EditOp]
+    edits: tuple[EditOp, ...]
 
     @field_validator("summary")
     @classmethod
@@ -336,9 +348,12 @@ def _compile_glob(pattern: str) -> re.Pattern[str]:
 
 
 def _matches_allowed(file: str, allowed_paths: tuple[str, ...]) -> bool:
-    """Return whether one file is inside the caller's allowed glob scope."""
-    if not allowed_paths:
-        return True
+    """Return whether one file is inside the caller's allowed glob scope.
+
+    An empty tuple matches nothing; the applier only calls this for a
+    non-``None`` scope, because ``None`` means the caller explicitly did not
+    narrow the writable set.
+    """
     for raw_pattern in allowed_paths:
         pattern = raw_pattern.strip()
         if not pattern:
@@ -356,14 +371,14 @@ def _load_target(
     workspace: Path,
     edit: EditOp,
     index: int,
-    allowed_paths: tuple[str, ...],
+    allowed_paths: tuple[str, ...] | None,
 ) -> tuple[str, Path]:
     """Validate scope and resolve one existing UTF-8 file inside the workspace."""
     try:
         relative = _safe_relative_path(edit.file)
     except ValueError as exc:
         raise EditPlanError(_constraint_message(index, edit.file, edit.op, str(exc))) from None
-    if not _matches_allowed(edit.file, allowed_paths):
+    if allowed_paths is not None and not _matches_allowed(edit.file, allowed_paths):
         raise EditPlanError(
             _constraint_message(
                 index,
@@ -400,7 +415,9 @@ def _load_target(
                 "path resolves into a protected directory",
             ),
         )
-    if not _matches_allowed(resolved_relative.as_posix(), allowed_paths):
+    if allowed_paths is not None and not _matches_allowed(
+        resolved_relative.as_posix(), allowed_paths
+    ):
         raise EditPlanError(
             _constraint_message(
                 index,
@@ -559,10 +576,14 @@ def apply_edit_plan(
     plan: EditPlan,
     *,
     workspace: Path,
-    allowed_paths: tuple[str, ...] = (),
+    allowed_paths: tuple[str, ...] | None = None,
     edit_budget: int = EDIT_BUDGET,
 ) -> EditApplication:
     """Apply every edit in order and return a deterministic per-edit report.
+
+    ``allowed_paths=None`` means the caller explicitly did not narrow the
+    writable set; an empty tuple denies every file, so a scope that was
+    computed but ended up empty fails closed instead of silently widening.
 
     The applier never widens the module ceiling: ``edit_budget`` may tighten
     the limit below :data:`EDIT_BUDGET` but is clamped to it, so a caller

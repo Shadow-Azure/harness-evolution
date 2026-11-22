@@ -26,6 +26,7 @@ from app.third_party_api.git.workspace import (
     GitProcessResult,
     GitWorkspaceManager,
     Patch,
+    _is_scratch_status_line,
     _run_process,
     retry_push,
 )
@@ -475,6 +476,101 @@ async def test_create_candidate_still_commits_the_legacy_harness_evolution_patch
     )
     assert ".harness-evolution/candidate-r1.md" in committed
     assert ".harness-evolution/candidate-r1.md" in candidate.unified_diff
+
+
+@pytest.mark.parametrize(
+    ("line", "ignored"),
+    [
+        ("?? .harness-evolution/edits.json5", True),
+        (" M .harness-evolution/candidate-r1.md", True),
+        ("R  .harness-evolution/a.md -> .harness-evolution/b.md", True),
+        ("R  .harness-evolution/a.md -> docs/a.md", False),
+        ('?? ".harness-evolution/with space.json5"', False),
+        (" M skills/deep-research/SKILL.md", False),
+        ("?? .git/config", False),
+    ],
+)
+def test_only_scratch_status_lines_are_ignored(line: str, ignored: bool) -> None:
+    """Only porcelain entries confined to the agent scratch are ignored."""
+    assert _is_scratch_status_line(line) is ignored
+
+
+async def test_untracked_harness_evolution_scratch_does_not_block_a_candidate(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+) -> None:
+    """An untracked edits.json5 under the agent scratch is not a dirty workspace."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+    scratch = prepared.path / ".harness-evolution" / "edits.json5"
+    scratch.parent.mkdir(parents=True)
+    scratch.write_text('{"summary": "x", "edits": []}\n', encoding="utf-8")
+    patch = Patch(
+        file="skills/deep-research/scratch-safe.md",
+        lines=("safe",),
+        overwrite=True,
+    )
+    message = build_candidate_message(
+        run,
+        round_seq=1,
+        trace=CandidateTrace("cluster-1", "检索索引读取失败", ("probe-1",), ("case-1",), "分析"),
+        patch_sha256=patch.sha256,
+        created_at=NOW,
+        web_base_url=None,
+    )
+
+    candidate = await manager.create_candidate(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=f"{prepared.branch}/candidate/r1",
+        patch=patch,
+        message=message,
+    )
+
+    committed = set(
+        _git(prepared.path, "ls-tree", "-r", "--name-only", candidate.commit).splitlines()
+    )
+    assert "skills/deep-research/scratch-safe.md" in committed
+    assert ".harness-evolution/edits.json5" not in committed
+
+
+async def test_modified_tracked_file_still_blocks_a_candidate(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+) -> None:
+    """Ignoring the scratch directory does not relax the tracked-file check."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+    tracked = prepared.path / "skills" / "deep-research" / "SKILL.md"
+    tracked.write_text("# Deep Research\nedited\n", encoding="utf-8")
+    patch = Patch(file="skills/deep-research/blocked.md", lines=("blocked",), overwrite=True)
+    message = build_candidate_message(
+        run,
+        round_seq=1,
+        trace=CandidateTrace("cluster-1", "检索索引读取失败", ("probe-1",), ("case-1",), "分析"),
+        patch_sha256=patch.sha256,
+        created_at=NOW,
+        web_base_url=None,
+    )
+
+    with pytest.raises(GitOperationError, match="workspace is not clean"):
+        await manager.create_candidate(
+            prepared,
+            run_branch=prepared.branch,
+            candidate_ref=f"{prepared.branch}/candidate/r1",
+            patch=patch,
+            message=message,
+        )
 
 
 async def test_candidate_accept_amends_ffs_run_branch_and_removes_candidate(
