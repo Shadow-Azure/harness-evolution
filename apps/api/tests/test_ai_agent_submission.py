@@ -641,6 +641,26 @@ def test_explicit_directory_removes_a_stale_result_before_the_next_round(
     assert channel.collect(prep, EditPlan.model_validate).status == "missing"
 
 
+def test_explicit_filename_is_named_in_the_missing_feedback(tmp_path: Path) -> None:
+    """An edit submission must name edits.json5, not the default result.json5."""
+    channel = StructuredSubmission()
+    prep = channel.prepare(
+        "agent.edit",
+        EditPlan,
+        directory=tmp_path,
+        filename=".harness-evolution/edits.json5",
+    )
+
+    outcome = channel.collect(prep, EditPlan.model_validate)
+
+    assert outcome.status == "missing"
+    assert outcome.result_name == ".harness-evolution/edits.json5"
+    assert "edits.json5" in (outcome.parse_error or "")
+    feedback = channel.feedback_prompt(outcome)
+    assert "edits.json5" in feedback
+    assert "result.json5" not in feedback
+
+
 def test_custom_filename_in_a_disposable_directory_keeps_the_written_schema(
     tmp_path: Path,
 ) -> None:

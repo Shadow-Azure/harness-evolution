@@ -84,6 +84,7 @@ class SubmissionPrep:
     result_path: Path
     schema_path: Path | None
     prompt_addendum: str
+    result_relative: str = RESULT_FILENAME
     allowed_tools: tuple[str, ...] = SUBMISSION_TOOLS
 
 
@@ -112,6 +113,7 @@ class SubmissionOutcome:
     validation_error: str | None = None
     parsed_by: Literal["strict", "json5", "repair"] | None = None
     repair_log: tuple[str, ...] = ()
+    result_name: str = RESULT_FILENAME
 
     @property
     def is_ok(self) -> bool:
@@ -233,6 +235,7 @@ class StructuredSubmission:
             result_path=task_directory.joinpath(*result_relative.parts),
             schema_path=schema_path,
             prompt_addendum=addendum,
+            result_relative=result_relative.as_posix(),
             allowed_tools=(f"Write(./{result_relative.as_posix()})",),
         )
 
@@ -255,20 +258,23 @@ class StructuredSubmission:
         except OSError as exc:
             return SubmissionOutcome(
                 status="missing",
+                result_name=prep.result_relative,
                 parse_error=_bounded(
-                    f"{RESULT_FILENAME} 不存在或不可读：{_describe_io(exc, prep.result_path)}"
+                    f"{prep.result_relative} 不存在或不可读：{_describe_io(exc, prep.result_path)}"
                 ),
             )
         except MemoryError:
             return SubmissionOutcome(
                 status="invalid",
-                parse_error=f"{RESULT_FILENAME} 无法读取大小：MemoryError",
+                result_name=prep.result_relative,
+                parse_error=f"{prep.result_relative} 无法读取大小：MemoryError",
             )
         if size > _RESULT_SIZE_LIMIT:
             return SubmissionOutcome(
                 status="invalid",
+                result_name=prep.result_relative,
                 parse_error=(
-                    f"{RESULT_FILENAME} 大小 {size} 字节，超过 {_RESULT_SIZE_LIMIT} 字节"
+                    f"{prep.result_relative} 大小 {size} 字节，超过 {_RESULT_SIZE_LIMIT} 字节"
                     "（1 MiB）上限，已拒绝读取"
                 ),
             )
@@ -278,13 +284,17 @@ class StructuredSubmission:
         except UnicodeDecodeError as exc:
             return SubmissionOutcome(
                 status="invalid",
-                parse_error=_bounded(f"{RESULT_FILENAME} 不是合法的 UTF-8 文本：{_describe(exc)}"),
+                result_name=prep.result_relative,
+                parse_error=_bounded(
+                    f"{prep.result_relative} 不是合法的 UTF-8 文本：{_describe(exc)}"
+                ),
             )
         except OSError as exc:
             return SubmissionOutcome(
                 status="missing",
+                result_name=prep.result_relative,
                 parse_error=_bounded(
-                    f"{RESULT_FILENAME} 不存在或不可读：{_describe_io(exc, prep.result_path)}"
+                    f"{prep.result_relative} 不存在或不可读：{_describe_io(exc, prep.result_path)}"
                 ),
             )
 
@@ -292,6 +302,7 @@ class StructuredSubmission:
         if parsed.payload is None:
             return SubmissionOutcome(
                 status="invalid",
+                result_name=prep.result_relative,
                 parse_error=parsed.parse_error,
                 parsed_by=parsed.parsed_by,
             )
@@ -301,6 +312,7 @@ class StructuredSubmission:
         except Exception as exc:  # any validator failure is terminal data
             return SubmissionOutcome(
                 status="invalid",
+                result_name=prep.result_relative,
                 payload=parsed.payload,
                 validation_error=_bounded(_describe(exc)),
                 parsed_by=parsed.parsed_by,
@@ -308,6 +320,7 @@ class StructuredSubmission:
             )
         return SubmissionOutcome(
             status="ok",
+            result_name=prep.result_relative,
             payload=parsed.payload,
             validated=validated,
             parsed_by=parsed.parsed_by,
@@ -337,16 +350,16 @@ class StructuredSubmission:
         if outcome.status == "ok":
             return ""
         retry = (
-            f"{RESULT_FILENAME} 未通过校验，请修正后重新写入 ./{RESULT_FILENAME}"
+            f"{outcome.result_name} 未通过校验，请修正后重新写入 ./{outcome.result_name}"
             f"（JSON5 宽松格式，形状见 ./{SCHEMA_FILENAME}）。"
         )
         if outcome.status == "missing":
-            detail = outcome.parse_error or f"{RESULT_FILENAME} 不存在或不可读"
+            detail = outcome.parse_error or f"{outcome.result_name} 不存在或不可读"
             return f"{detail}\n{retry}"
         if outcome.validation_error is not None:
-            return f"{RESULT_FILENAME} 中有字段违反约束：\n{outcome.validation_error}\n{retry}"
+            return f"{outcome.result_name} 中有字段违反约束：\n{outcome.validation_error}\n{retry}"
         detail = outcome.parse_error or "无法解析"
-        return f"{RESULT_FILENAME} 解析失败：{detail}\n{retry}"
+        return f"{outcome.result_name} 解析失败：{detail}\n{retry}"
 
     def _new_task_directory(self, task_key: str) -> Path:
         """Mint a directory that no earlier call can share."""
