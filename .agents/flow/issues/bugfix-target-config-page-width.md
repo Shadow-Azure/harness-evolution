@@ -8,7 +8,7 @@ id: bugfix-24
 milestone: bugfix
 depends: []
 priority: P2
-status: ready
+status: done
 scope:
   - apps/web/**
   - tests/e2e/**
