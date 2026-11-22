@@ -35,7 +35,7 @@ With the skeleton (bugfix-15) and the submission channel (bugfix-16) in place, t
 - **edit_workspace path**: read-only tools plus `Write(./.harness-evolution/edits.json5)` (this issue lands EditPlan submission and collection only; the deterministic applier is bugfix-20).
 - **Process management**: `create_subprocess_exec` + `start_new_session=True` + `asyncio.wait_for`; SIGINT first on timeout/cancel, then `killpg(SIGKILL)`; exit code 143 is classified "cancelled", not failure.
 - **Usage collection**: map result `total_cost_usd` / `model_usage` / `session_id` into `AgentUsage`.
-- **Optional fast path**: with `HE_AI_AGENT_NATIVE_SCHEMA=true` and capability detection, switch to `--json-schema` → `structured_output` (check field presence and `is_error`); off by default.
+- No `--json-schema` fast path: the submission channel (self-built literal collection) is the default and only path, avoiding two pathways and an extra config switch.
 
 ## Design basis
 
@@ -67,13 +67,13 @@ With the skeleton (bugfix-15) and the submission channel (bugfix-16) in place, t
 pnpm test:api -- tests/test_ai_agent_claude_code.py
 ```
 
-- The mock matrix is green: normal, timeout, non-zero exit, 143 cancel, resume retry, native fast-path toggle.
+- The mock matrix is green: normal, timeout, non-zero exit, 143 cancel, resume retry.
 
 ## Acceptance criteria
 
 - With `AI_AGENT_PROVIDER=claude-code` the factory yields the real subclass; analyze output passes the caller's schema.
 - Timeout and cancel paths kill the process group with correct classification; usage/session_id fields are complete.
-- The submission channel is the default; the native fast path is off by default with tests when enabled.
+- The submission channel is the default and only path; no native fast-path switch.
 - CI green; unit tests stay offline.
 
 ## Gates and CI

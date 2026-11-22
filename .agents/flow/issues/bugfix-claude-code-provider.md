@@ -35,7 +35,7 @@ github:
 - **edit_workspace 路径**：只读工具 + `Write(./.harness-evolution/edits.json5)`（本轮只把 EditPlan 提交与收货跑通；确定性应用器在 bugfix-20）。
 - **进程管理**：`create_subprocess_exec` + `start_new_session=True` + `asyncio.wait_for`；超时/取消先 SIGINT 后 `killpg(SIGKILL)`；退出码 143 识别为「已取消」而非失败。
 - **用量采集**：result 的 `total_cost_usd` / `model_usage` / `session_id` 映射进 `AgentUsage`。
-- **可选快路径**：`HE_AI_AGENT_NATIVE_SCHEMA=true` 且 capability 探测支持时改走 `--json-schema` → `structured_output`（检查字段存在与 `is_error`）；默认关闭。
+- 不实现 `--json-schema` 快路径：submission 通道（自建字面量收货）是默认且唯一路径，避免两套通路与额外配置开关。
 
 ## 设计依据
 
@@ -67,13 +67,13 @@ github:
 pnpm test:api -- tests/test_ai_agent_claude_code.py
 ```
 
-- mock 矩阵全绿：正常、超时、非零退出、143 取消、resume 回喂重试、native 快路径开关。
+- mock 矩阵全绿：正常、超时、非零退出、143 取消、resume 回喂重试。
 
 ## 验收标准
 
 - `AI_AGENT_PROVIDER=claude-code` 时工厂产出真实子类；analyze 产物过调用方 schema。
 - 超时与取消路径杀进程组且归类正确；usage/session_id 字段完整。
-- 默认走 submission 通道；native 快路径默认关、开启有测试。
+- submission 通道为默认且唯一路径；不引入 native 快路径开关。
 - CI 全绿；单测不触网。
 
 ## 门禁与 CI

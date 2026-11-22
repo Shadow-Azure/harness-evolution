@@ -33,8 +33,7 @@ EditPlan 机械件（bugfix-20）与 Claude Code 子类（bugfix-17）就绪后�
 - 新增 `AgentEditPatchSource`（注册 `agent-edit` 进 `PATCH_SOURCE_MODES` 与工厂，沿用「run 冻结配置优先、env 兜底」选择语义）：goal = 簇 title/description + 代表 case 证据 + 修复要求；`allowed_paths` 限定 sub_dir。
 - `edit_workspace` 接线：agent 工具面 = 只读 + `Write(./.harness-evolution/edits.json5)`；EditPlan 经 submission 通道收货与语义校验，edits.py 应用，PatchBundle 落 candidate。
 - **迭代闭环**：round 被 eval reject 后 `--resume` 同一会话注入反馈（delta、失败原因）+ **rejected-edit buffer**（上轮 EditPlan 摘要：已被拒绝的编辑勿重复或换皮重试）；会话 id 落 round 记录。
-- **预算闸**：`HE_AI_AGENT_RUN_BUDGET_USD` 超限后本轮 run 剩余环节降级（分析类回规则、edit 类回 placeholder 并标注）。
-- 安全闸：越界 `git checkout -- .` 回滚；diff + intent + report 全量落 run events。
+- 安全闸：越界 `git checkout -- .` 回滚；diff + intent + report 全量落 run events。花费防护用既有进程级手段（`--max-turns` 常量 + 超时常量），**不做 run 级预算闸**（后续有真实成本压力再加）。
 
 ## 设计依据
 
@@ -44,15 +43,13 @@ EditPlan 机械件（bugfix-20）与 Claude Code 子类（bugfix-17）就绪后�
 ## 实现内容
 
 - patch source 与 round 循环接线（reject → resume 注入反馈与拒绝缓冲 → 下一轮）。
-- 预算闸：run 级累计 cost（来自 `ai_agent_call` 事件）与阈值比较。
 - e2e：full run（fake provider）端到端产 bundle；真 CLI 冒烟开关。
 
 ## 实施步骤
 
 1. AgentEditPatchSource + edit_workspace 接线（fake 下可测）。
 2. 迭代闭环与拒绝缓冲及测试。
-3. 预算闸与降级标注。
-4. 门禁：`pnpm lint:api`、`pnpm typecheck:api`、`pnpm test:api`、`pnpm test:e2e --pattern evolution`、`pnpm verify:flow`。
+3. 门禁：`pnpm lint:api`、`pnpm typecheck:api`、`pnpm test:api`、`pnpm test:e2e --pattern evolution`、`pnpm verify:flow`。
 
 ## 依赖与交付边界
 
@@ -71,7 +68,7 @@ pnpm test:e2e --pattern evolution
 ## 验收标准
 
 - `HE_PATCH_SOURCE_MODE=agent-edit`（或 run 冻结配置）时 full run 产生真实多文件 diff 并提交 candidate；意图与 diff 一致性可审计（intent + report 落库）。
-- reject 后下一轮携带反馈与拒绝缓冲；轮次上限与预算闸生效且降级有标注。
+- reject 后下一轮携带反馈与拒绝缓冲；轮次上限生效。
 - env 切回 placeholder 即回到今天的行为。
 - CI 全绿。
 
@@ -83,5 +80,6 @@ pnpm test:e2e --pattern evolution
 ## 非目标
 
 - 不做直改模式开关。
+- 不做 run 级预算闸与对应配置（后续有真实成本压力再加）。
 - 不改 eval 网关评分逻辑。
 - 不做向量化分组。

@@ -29,7 +29,7 @@ github:
 ## 目标
 
 - 新增 `apps/api/app/third_party_api/ai_agent/` 包：`contracts.py`（AnalysisRequest/AnalysisResult、EditRequest/EditResult、AgentUsage、ProviderHealth、AgentProviderError）、`base.py`（`AIAgentProvider` ABC）、`factory.py`（注册表 + `build_agent_provider(settings)`）、`fake.py`（确定性 `FakeAIAgentProvider`）。
-- `Settings` 新增 `ai_agent_provider`（`AliasChoices("AI_AGENT_PROVIDER","HE_AI_AGENT_PROVIDER")`，默认 `claude-code`，校验器限定注册表内值）、`HE_AI_AGENT_*` 子配置段占位（CLI 路径、超时、预算、`HE_AI_AGENT_NATIVE_SCHEMA`）。
+- `Settings` 只新增两项：`ai_agent_provider`（`AliasChoices("AI_AGENT_PROVIDER","HE_AI_AGENT_PROVIDER")`，默认 `claude-code`，校验器限定注册表内值）与 `ai_agent_claude_bin`（默认 `~/.local/bin/claude`，M15 部署产物路径，零配置可跑）。**不加其他子配置项**——超时（analyze 300s / edit 1800s）与权限模式（`dontAsk`）用代码常量，避免过度设计。
 - `main.py` 装配：构建 provider 单例挂 `app.state`，lifespan 启动时 `health_check` 记事件。
 - 单测覆盖：工厂选择、未知值启动红、fake 的 analyze/edit_workspace 确定性行为、错误归一化字段。
 

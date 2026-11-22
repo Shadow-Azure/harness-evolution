@@ -29,7 +29,7 @@ After the implementation chain (bugfix-15→21) lands, this issue wraps up: comp
 ## Goals
 
 - **Observability**: `ai_agent_call` events uniformly record task, provider, model, tokens, cost, latency, and outcome (including `degraded` and feedback-retry counts); the submission-file parse-failure rate is derivable from the event stream.
-- **Documents**: add an ai-agent outbound-layer page under `docs/` (bilingual pair, word budget registered); update the "not yet available" list in `docs/architecture.md` to match what actually shipped (real patches landed; real evaluation stays described per the eval gateway's current state); extend `docs/development.md` with the `HE_AI_AGENT_*` configuration notes.
+- **Documents**: add an ai-agent outbound-layer page under `docs/` (bilingual pair, word budget registered); update the "not yet available" list in `docs/architecture.md` to match what actually shipped (real patches landed; real evaluation stays described per the eval gateway's current state); extend `docs/development.md` with configuration notes — only `AI_AGENT_PROVIDER`, `HE_AI_AGENT_CLAUDE_BIN` (with default), and the `agent-edit` enum value of `HE_PATCH_SOURCE_MODE`.
 - **Note**: update `proposed/feature/2026-11-22-evolution-real-ai-design.md` with landed facts and move it to `implemented/` (or partially, at the maintainer's semantic judgment).
 - No AGENTS.md command-list additions (no new script commands).
 

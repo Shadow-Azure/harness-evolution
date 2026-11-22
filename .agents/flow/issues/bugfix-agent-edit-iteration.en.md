@@ -33,8 +33,7 @@ With the EditPlan mechanics (bugfix-20) and the Claude Code subclass (bugfix-17)
 - Add `AgentEditPatchSource` (registering `agent-edit` in `PATCH_SOURCE_MODES` and the factory, keeping the "run-frozen config first, env fallback" selection semantics): the goal carries the cluster title/description plus representative case evidence and fix requirements; `allowed_paths` confines to the sub_dir.
 - `edit_workspace` wiring: the agent tool surface is read-only plus `Write(./.harness-evolution/edits.json5)`; the EditPlan is collected and validated through the submission channel, applied by edits.py, and lands as a PatchBundle candidate.
 - **Iteration loop**: after an eval reject, `--resume` continues the same session with feedback (delta, failure reasons) plus a **rejected-edit buffer** (the previous EditPlan summary: rejected edits must not repeat or reappear in disguise); the session id persists on the turn record.
-- **Budget gate**: once `HE_AI_AGENT_RUN_BUDGET_USD` is exceeded, the run's remaining stages degrade (analysis back to rules, edit back to placeholder, annotated).
-- Safety gates: out-of-scope edits roll back via `git checkout -- .`; diff + intent + report land fully in run events.
+- Safety gates: out-of-scope edits roll back via `git checkout -- .`; diff + intent + report land fully in run events. Cost protection uses the existing process-level means (a `--max-turns` constant plus timeout constants); **no run-level budget gate** (add one later under real cost pressure).
 
 ## Design basis
 
@@ -44,15 +43,13 @@ With the EditPlan mechanics (bugfix-20) and the Claude Code subclass (bugfix-17)
 ## Implementation
 
 - Patch source and turn-loop wiring (reject → resume with feedback and the rejection buffer → next turn).
-- Budget gate: run-level cumulative cost (from `ai_agent_call` events) compared against the threshold.
 - E2E: a full run (fake provider) producing a bundle end to end; a real-CLI smoke switch.
 
 ## Steps
 
 1. AgentEditPatchSource + edit_workspace wiring (testable under fake).
 2. Iteration loop and rejected-edit buffer with tests.
-3. Budget gate and degradation annotations.
-4. Gates: `pnpm lint:api`, `pnpm typecheck:api`, `pnpm test:api`, `pnpm test:e2e --pattern evolution`, `pnpm verify:flow`.
+3. Gates: `pnpm lint:api`, `pnpm typecheck:api`, `pnpm test:api`, `pnpm test:e2e --pattern evolution`, `pnpm verify:flow`.
 
 ## Dependencies and delivery boundary
 
@@ -71,7 +68,7 @@ pnpm test:e2e --pattern evolution
 ## Acceptance criteria
 
 - With `HE_PATCH_SOURCE_MODE=agent-edit` (or the run-frozen config) a full run yields a real multi-file diff committed as a candidate; intent-vs-diff consistency is auditable (intent + report persisted).
-- After a reject the next turn carries feedback and the rejection buffer; turn caps and the budget gate take effect with annotated degradation.
+- After a reject the next turn carries feedback and the rejection buffer; turn caps take effect.
 - Switching env back to placeholder restores today's behavior.
 - CI green.
 
@@ -83,5 +80,6 @@ pnpm test:e2e --pattern evolution
 ## Non-goals
 
 - No direct-edit mode switch.
+- No run-level budget gate or its config (add later under real cost pressure).
 - No eval-gateway scoring changes.
 - No vectorized grouping.

@@ -29,7 +29,7 @@ The real-model self-evolution design has landed (#487): outbound model calls con
 ## Goals
 
 - Add the `apps/api/app/third_party_api/ai_agent/` package: `contracts.py` (AnalysisRequest/AnalysisResult, EditRequest/EditResult, AgentUsage, ProviderHealth, AgentProviderError), `base.py` (the `AIAgentProvider` ABC), `factory.py` (registry + `build_agent_provider(settings)`), `fake.py` (a deterministic `FakeAIAgentProvider`).
-- `Settings` gains `ai_agent_provider` (`AliasChoices("AI_AGENT_PROVIDER","HE_AI_AGENT_PROVIDER")`, default `claude-code`, validator restricted to registry values) plus `HE_AI_AGENT_*` placeholders (CLI path, timeouts, budget, `HE_AI_AGENT_NATIVE_SCHEMA`).
+- `Settings` adds exactly two entries: `ai_agent_provider` (`AliasChoices("AI_AGENT_PROVIDER","HE_AI_AGENT_PROVIDER")`, default `claude-code`, validator restricted to registry values) and `ai_agent_claude_bin` (default `~/.local/bin/claude`, the M15 deployment path — zero-config). **No other sub-config items** — timeouts (analyze 300s / edit 1800s) and the permission mode (`dontAsk`) are code constants, avoiding over-engineering.
 - `main.py` wiring: build the provider singleton onto `app.state`; lifespan runs `health_check` and records an event.
 - Unit tests: factory selection, unknown-value startup failure, deterministic fake analyze/edit_workspace, normalized error fields.
 
