@@ -8,7 +8,7 @@ id: bugfix-14
 milestone: bugfix
 depends: []
 priority: P2
-status: ready
+status: done
 scope:
   - plans/fullstack-design/**
   - .agents/**
