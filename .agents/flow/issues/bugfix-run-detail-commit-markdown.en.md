@@ -77,7 +77,7 @@ Production diverges from the prototype in two ways:
 
 Recommend **A: compact summary by default + expandable Markdown**:
 
-- The default view matches the prototype: show only the 12-character hash, the commit subject, and the cluster summary already in `StepRound` (cluster id/title/category/caseCount/severity); the source bad-case details stay in the table above instead of being duplicated in the commit card.
+- Keep the default view compact: 12-character hash + commit subject + expansion entry; the cluster id/title/category/caseCount/severity already live in the cluster header, and source bad-case details live in the table above, so neither is duplicated in the commit card.
 - Expand the full `finalCommit.message` through "View full commit message" and render it with the existing `renderMarkdown()` so headings, lists, and links are readable and clickable; keep the commit hash and `Harness-Evaluated-Commit`.
 - Update the V2 prototype and the 05/08 design docs to state that `message` is the full Markdown body and that plain-text interpolation is forbidden.
 
@@ -156,7 +156,7 @@ pnpm lint:docs
 ## Acceptance
 
 - The production step-6 accepted round no longer shows literal `## 问题`, `## 分析`, `---`, or other Markdown markers, and newlines are no longer collapsed into one paragraph.
-- The default view matches the V2 prototype: hash + commit subject + cluster summary, with the body collapsed by default and a discoverable "View full commit message" entry; the expanded body renders as Markdown with clickable links.
+- The default view stays compact like the V2 prototype: hash + commit subject, with cluster facts carried by the header; the body is collapsed by default and a discoverable "View full commit message" entry renders the expanded body as Markdown with clickable links.
 - A long commit message neither breaks the card nor creates horizontal scroll; later rounds and the bottom of the page remain reachable.
 - An old run's single-line `finalCommit.message` displays as the subject without an empty body or a redundant toggle; the rejected-round behavior is unchanged.
 - No API/contract/backend changes; component tests cover long Markdown and collapse/expand, and E2E covers the step-6 regression (if the existing fixture cannot seed an accepted round, cover it in component tests and state the E2E limitation in the PR).

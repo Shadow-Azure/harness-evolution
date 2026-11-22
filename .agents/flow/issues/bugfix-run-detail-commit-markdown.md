@@ -77,7 +77,7 @@ V2 原型第 6 步已接纳轮次的对应区块：
 
 推荐 **A：默认紧凑摘要 + 按需展开 Markdown**：
 
-- 默认视图对齐原型：只显示 12 位 hash、commit subject，以及 `StepRound` 已有的聚类摘要（cluster id/title/category/caseCount/severity）；来源 bad case 明细仍由上方表格承载，不在 commit 卡里重复。
+- 默认视图保持紧凑：12 位 hash + commit subject + 展开入口；聚类 id/title/category/caseCount/severity 已由 cluster 卡头展示，来源 bad case 明细已由上方表格承载，都不在 commit 卡里重复。
 - 完整 `finalCommit.message` 通过「查看完整 commit message」展开，用现有 `renderMarkdown()` 渲染，标题、列表、链接可读且可点击；commit hash 与 `Harness-Evaluated-Commit` 保留。
 - 同步更新 V2 原型与 05/08 设计文档，明确 `message` 是完整 Markdown 正文，禁止按纯文本插值。
 
@@ -156,7 +156,7 @@ pnpm lint:docs
 ## 验收标准
 
 - 生产运行详情第 6 步已接纳轮次不再出现 `## 问题`、`## 分析`、`---` 等字面 Markdown 标记；换行不再被折叠成一段。
-- 默认视图与 V2 原型一致：hash + commit subject + 聚类摘要，commit 正文默认收起；提供可发现的「查看完整 commit message」入口，展开后内容按 Markdown 渲染且链接可点击。
+- 默认视图与 V2 原型一样保持紧凑：hash + commit subject，cluster 事实由卡头承载；commit 正文默认收起，提供可发现的「查看完整 commit message」入口，展开后内容按 Markdown 渲染且链接可点击。
 - 长 commit message 不撑破卡片、不产生横向滚动；第 6 步后续轮次与页面底部仍可正常到达。
 - 旧 run 的单行 `finalCommit.message` 正常显示为 subject，不出现空正文或多余切换按钮；「未接纳」轮次行为不变。
 - 不改 API/契约/后端；组件测试覆盖长 Markdown 与折叠展开，E2E 覆盖第 6 步回归（如现有 fixture 不具备已接纳轮次，则在组件测试覆盖并在 PR 说明 E2E 限制）。
