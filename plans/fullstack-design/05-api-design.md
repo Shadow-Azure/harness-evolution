@@ -419,8 +419,10 @@ erDiagram
   "push": { "status": "succeeded", "attempts": 1, "error": null },
   "eval": { "status": "completed", "current": 84.6, "candidate": 87.2, "nextPollAt": null },
   "accepted": true,
-  "finalCommit": { "hash": "cd34…", "message": "evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取" } }
+  "finalCommit": { "hash": "cd34…", "message": "evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取\n\n## 问题\n…" } }
 ```
+
+`finalCommit.message` 是 amend 后的完整 commit message（Markdown）：首行是 `evolve(<target>): <subject>`，其后是 `## 问题`、`## 分析`、`## 改动`、`## 追溯` 等正文段，末尾可带 `---` 与 `Harness-*` trailer。展示层必须把首行当 subject，其余交给 Markdown 渲染；禁止把整段 message 按纯文本插值。旧 run 的单行 message 仍合法，按 subject 展示即可。
 
 `steps/final`：
 

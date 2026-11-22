@@ -14,6 +14,7 @@ scope:
   - apps/web/**
   - plans/ui-prototype-v2/**
   - plans/fullstack-design/**
+  - plans/**
   - tests/e2e/**
   - .agents/**
 adr: []

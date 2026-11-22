@@ -1042,3 +1042,141 @@ test("m10-06 run detail owns the page scroll and keeps the V2 gutter", async () 
     await page.close();
   }
 });
+
+test("m10-06 step 6 renders the accepted commit as collapsible Markdown", async () => {
+  const page = await createBrowserPage();
+  const violations = browserViolations(page.session);
+  try {
+    await installCookie(page, await currentLoginCookie());
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1500,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await openRun(page, "run-v2-completed");
+    await waitForDocument(
+      page.session,
+      `document.querySelectorAll("[data-step-key]").length === 7`,
+      "seven-step run detail",
+    );
+    await evaluate(
+      page,
+      `document.querySelector("[data-step-key='iteration']").click()`,
+    );
+    const collapsed = await waitForDocument(
+      page.session,
+      `(() => {
+        const commit = document.querySelector(".commit");
+        if (!commit) return null;
+        const toggle = commit.querySelector(".commit-toggle");
+        return {
+          hash: commit.querySelector(".hash")?.textContent ?? "",
+          subject: commit.querySelector(".commit-subject")?.textContent ?? "",
+          text: commit.textContent,
+          toggle: toggle?.textContent ?? "",
+          expanded: toggle?.getAttribute("aria-expanded") ?? "",
+          body: Boolean(commit.querySelector(".commit-message")),
+          pageHorizontalScroll:
+            document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      })()`,
+      "collapsed accepted commit",
+    );
+    assert.match(collapsed.hash, /^ef56ab12cd34$/);
+    assert.match(collapsed.subject, /^evolve\(deep-research@v2\.0\.0\): /);
+    assert.doesNotMatch(collapsed.text, /##|---|Harness-Verdict/);
+    assert.equal(collapsed.body, false);
+    assert.equal(collapsed.expanded, "false");
+    assert.match(collapsed.toggle, /查看完整 commit message/);
+    assert.equal(collapsed.pageHorizontalScroll, false);
+    await evaluate(
+      page,
+      `document.querySelector(".commit").scrollIntoView({ block: "center" })`,
+    );
+    await screenshot(page, "07-after-step6-commit-collapsed.png");
+
+    await evaluate(page, `document.querySelector(".commit-toggle").click()`);
+    const expanded = await waitForDocument(
+      page.session,
+      `(() => {
+        const body = document.querySelector(".commit-message");
+        if (!body) return null;
+        const toggle = document.querySelector(".commit-toggle");
+        return {
+          headings: [...body.querySelectorAll("h2")].map((node) =>
+            node.textContent.trim(),
+          ),
+          items: body.querySelectorAll("li").length,
+          links: [...body.querySelectorAll("a")].map((node) =>
+            node.getAttribute("href"),
+          ),
+          bodyText: body.textContent,
+          toggle: toggle?.textContent ?? "",
+          expanded: toggle?.getAttribute("aria-expanded") ?? "",
+          pageHorizontalScroll:
+            document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      })()`,
+      "expanded commit markdown",
+    );
+    assert.deepEqual(expanded.headings, ["问题", "分析", "改动", "追溯"]);
+    assert.ok(expanded.items >= 6, JSON.stringify(expanded));
+    assert.ok(
+      expanded.links.includes("https://example.com/badcases/BC-HC-0007"),
+      JSON.stringify(expanded.links),
+    );
+    assert.doesNotMatch(expanded.bodyText, /##|---/);
+    assert.match(expanded.toggle, /收起完整 commit message/);
+    assert.equal(expanded.expanded, "true");
+    assert.equal(expanded.pageHorizontalScroll, false);
+    await evaluate(
+      page,
+      `document.querySelector(".commit").scrollIntoView({ block: "center" })`,
+    );
+    await screenshot(page, "07-after-step6-commit-expanded.png");
+
+    await evaluate(page, `document.querySelector(".commit-toggle").click()`);
+    await waitForDocument(
+      page.session,
+      `!document.querySelector(".commit-message")`,
+      "collapsed commit markdown again",
+    );
+
+    await installCookie(page, await currentLoginCookie());
+    await openRun(page, "run-v2-legacy");
+    await waitForDocument(
+      page.session,
+      `document.querySelectorAll("[data-step-key]").length === 7`,
+      "legacy seven-step run detail",
+    );
+    await evaluate(
+      page,
+      `document.querySelector("[data-step-key='iteration']").click()`,
+    );
+    const legacy = await waitForDocument(
+      page.session,
+      `(() => {
+        const commit = document.querySelector(".commit");
+        if (!commit) return null;
+        return {
+          text: commit.textContent,
+          toggle: Boolean(commit.querySelector(".commit-toggle")),
+        };
+      })()`,
+      "legacy accepted commit",
+    );
+    assert.match(legacy.text, /evolve\(deep-research\): 历史问题/);
+    assert.equal(legacy.toggle, false);
+    await evaluate(
+      page,
+      `document.querySelector(".commit").scrollIntoView({ block: "center" })`,
+    );
+    await screenshot(page, "08-after-step6-legacy-commit.png");
+
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+  } finally {
+    await page.session.send("Emulation.clearDeviceMetricsOverride").catch(() => {});
+    await page.close();
+  }
+});
