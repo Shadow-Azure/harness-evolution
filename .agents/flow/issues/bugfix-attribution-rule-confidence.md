@@ -8,7 +8,7 @@ id: bugfix-18
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/app/db/crud/attributions.py
   - apps/api/app/db/crud/bad_cases.py
