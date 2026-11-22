@@ -405,6 +405,7 @@ def create_app(
         workspace_manager,
         evolution_events,
         resolver,
+        agent=ai_agent_provider,
     )
     evolution_candidates = EvolutionCandidateService(
         evolution_repository,

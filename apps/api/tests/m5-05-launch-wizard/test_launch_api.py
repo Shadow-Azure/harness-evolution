@@ -465,15 +465,19 @@ async def test_launch_records_creation_and_prepare_start_events(
     )
 
     assert events.status_code == 200
-    assert [item["eventType"] for item in events.json()["items"]] == [
+    event_types = [item["eventType"] for item in events.json()["items"]]
+    assert event_types[:5] == [
         "run_created",
         "prepare_started",
         "sessions_linked",
         "potential_computed",
         "attribution_created",
-        "clusters_created",
-        "workspace_prepared",
     ]
+    # The cluster phase now records one ai_agent_call per bounded analysis and a
+    # degraded event per fallback, so its length depends on the provider, not on
+    # the admission contract this test pins.
+    assert set(event_types[5:-2]) <= {"ai_agent_call", "degraded"}
+    assert event_types[-2:] == ["clusters_created", "workspace_prepared"]
     assert events.json()["hasMore"] is False
 
 

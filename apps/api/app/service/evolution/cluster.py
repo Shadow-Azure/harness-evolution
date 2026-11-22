@@ -12,8 +12,14 @@ from typing import Literal
 
 ClusterType = Literal["model", "prompt", "error"]
 
-CLUSTER_ALGORITHM = "lexical-jaccard-v1"
-"""Stable algorithm identity recorded with each cluster run."""
+LEXICAL_ALGORITHM = "lexical-jaccard-v1"
+"""Stable algorithm identity for the deterministic lexical grouping layer."""
+
+HYBRID_ALGORITHM = "hybrid-lexical-llm-v1"
+"""Algorithm identity for lexical grouping plus LLM review and scoring (07 §5.5.2)."""
+
+CLUSTER_ALGORITHM = LEXICAL_ALGORITHM
+"""Backwards-compatible alias for :data:`LEXICAL_ALGORITHM`."""
 
 SIMILARITY_THRESHOLD = 0.3
 """Jaccard similarity at or above which two probes join the same cluster."""
@@ -118,6 +124,32 @@ def cluster_probes(probes: Sequence[ProbeForCluster]) -> tuple[ClusterDraft, ...
                 ),
             )
     return tuple(clusters)
+
+
+def signature_overlap(texts: Sequence[str]) -> float:
+    """Return the mean pairwise lexical similarity of one draft's member titles.
+
+    The review and scoring prompts receive this deterministic compactness
+    statistic instead of the member list, so their size stays a function of the
+    draft and sample counts rather than of the attribution volume.
+
+    Args:
+        texts: Member summary texts of one draft, in probe order.
+
+    Returns:
+        Mean pairwise Jaccard similarity in ``[0, 1]`` rounded to four decimals;
+        fewer than two texts score zero.
+    """
+    token_sets = [_tokens(text) for text in texts]
+    if len(token_sets) < 2:
+        return 0.0
+    total = 0.0
+    pairs = 0
+    for left in range(len(token_sets)):
+        for right in range(left + 1, len(token_sets)):
+            total += _jaccard(token_sets[left], token_sets[right])
+            pairs += 1
+    return round(total / pairs, 4)
 
 
 def _connected_components(token_sets: Sequence[frozenset[str]]) -> tuple[tuple[int, ...], ...]:
