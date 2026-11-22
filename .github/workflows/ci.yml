@@ -175,7 +175,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
@@ -197,7 +197,8 @@ jobs:
         timeout-minutes: 5
         run: pnpm test:integration
       - name: 真实浏览器 E2E（M1 shell + M3 Session 浏览器）
-        timeout-minutes: 12
+        # The suite's own budget is 15 minutes; the step keeps a small margin.
+        timeout-minutes: 18
         run: pnpm test:e2e
 
   build-lane:

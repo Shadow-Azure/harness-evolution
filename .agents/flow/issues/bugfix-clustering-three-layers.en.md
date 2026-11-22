@@ -18,6 +18,8 @@ scope:
   - apps/api/app/main.py
   - apps/api/tests/**
   - packages/contracts/**
+  - scripts/**
+  - .github/workflows/ci.yml
   - plans/**
   - .agents/**
 adr:
