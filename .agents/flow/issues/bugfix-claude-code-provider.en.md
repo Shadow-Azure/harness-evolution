@@ -10,7 +10,7 @@ depends:
   - bugfix-15
   - bugfix-16
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/app/third_party_api/ai_agent/**
   - apps/api/app/config.py
