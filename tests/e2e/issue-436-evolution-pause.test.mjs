@@ -54,17 +54,24 @@ async function waitForReady(url, child, logs) {
 async function stopOwnedProcess(child) {
   if (process.platform !== "win32" || !child?.pid || child.exitCode !== null) return stop(child);
   // Windows venv and pnpm launchers have child servers that outlive their parent.
-  const killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+  const killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: ["ignore", "ignore", "pipe"] });
+  let errors = "";
+  killer.stderr.on("data", chunk => { errors += chunk; });
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`process cleanup timed out: ${child.pid}`)), 10_000);
     killer.once("error", error => { clearTimeout(timeout); reject(error); });
-    killer.once("exit", code => { clearTimeout(timeout); resolve(code); });
+    killer.once("exit", code => {
+      clearTimeout(timeout);
+      if (code === 0) resolve();
+      else reject(new Error(`process cleanup failed (${child.pid}, exit ${code}): ${errors}`));
+    });
   });
 }
 
 async function cleanup() {
-  await stopOwnedProcess(web);
-  await stopOwnedProcess(api);
+  const stopped = await Promise.allSettled([stopOwnedProcess(web), stopOwnedProcess(api)]);
+  const failures = stopped.filter(result => result.status === "rejected");
+  if (failures.length) throw new AggregateError(failures.map(result => result.reason), "server cleanup failed");
   if (dataDir) await rm(dataDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 200 });
   if (screenshotDir && process.env.HE_KEEP_E2E_ARTIFACTS !== "1") {
     await rm(screenshotDir, { recursive: true, force: true });

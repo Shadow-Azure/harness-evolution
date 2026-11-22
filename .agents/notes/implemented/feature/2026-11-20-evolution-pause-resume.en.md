@@ -10,7 +10,7 @@ Evolution lacks user-controlled recoverable pause. Abnormal interruption leaves 
 
 ## Decision
 
-Persist durable control separate from execution stage: persist intent, save artifacts at safe boundaries and release the worker; resume the same run, commit and external evaluation ID. Submitted evaluation may continue, with results collected without progression. Initial run and job creation share one transaction; claiming and pausing lock the run first. A failure racing with pause keeps blocked evidence and disables automatic retry. Historical runs with unprovable frozen inputs fail explicitly.
+Persist durable control separate from execution stage: persist intent, save artifacts at safe boundaries and release the worker; resume the same run, commit and external evaluation ID. Submitted evaluation may continue, with results collected without progression. Initial run and job creation share one transaction; claiming and pausing lock the run first. A failure racing with pause keeps blocked evidence and disables automatic retry. Historical runs with unprovable frozen inputs fail explicitly. Recovery chooses stages from durable workspace publication and per-cluster turns, retaining completed evaluations and persisted decisions. Local candidate replay restores the selected branch and frozen push target to avoid duplicate side effects.
 
 ## Alternatives considered
 

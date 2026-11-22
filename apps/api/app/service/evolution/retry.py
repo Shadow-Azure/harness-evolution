@@ -456,7 +456,7 @@ class EvolutionRetryService:
     ) -> EvolutionRoundRecord | None:
         """Find an evaluating round whose external poll can no longer progress."""
         for round_ in await self._runs.list_rounds(run_id):
-            if round_.status != "evaluating":
+            if round_.status != "evaluating" or round_.eval_status == "completed":
                 continue
             if round_.eval_status in {"failed", "timeout"}:
                 return round_

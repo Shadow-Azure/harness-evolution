@@ -229,6 +229,8 @@ async def test_replaying_an_unacknowledged_local_commit_keeps_the_candidate_bran
     from app.third_party_api.git.workspace import _run_process
 
     bare, _, initial = remote_repo
+    fork = tmp_path / "fork.git"
+    _git(tmp_path, "clone", "--bare", str(bare), str(fork))
     commits: list[tuple[str, ...]] = []
 
     async def record(argv: tuple[str, ...], cwd: Path | None) -> GitProcessResult:
@@ -239,11 +241,11 @@ async def test_replaying_an_unacknowledged_local_commit_keeps_the_candidate_bran
     manager = GitWorkspaceManager(
         repos_root=tmp_path / "repos",
         workspaces_root=tmp_path / "workspaces",
-        push_enabled=False,
+        push_enabled=True,
         runner=record,
     )
     run = _run(str(bare), initial)
-    prepared = await manager.prepare(run)
+    prepared = replace(await manager.prepare(run), push_url=str(fork))
     patch = Patch("sample.md", ("retry fixture",))
     trace = CandidateTrace("cluster", "candidate", (), (), "evidence")
     message = build_candidate_message(
@@ -258,6 +260,10 @@ async def test_replaying_an_unacknowledged_local_commit_keeps_the_candidate_bran
     )
     assert replay.commit == candidate.commit
     assert len(commits) == 1
+    assert replay.push_url == str(fork)
+    await manager.push_candidate(replay, expected_remote_commit=None)
+    assert _git(fork, "rev-parse", f"refs/tags/{ref}") == candidate.commit
+    assert _git(bare, "tag", "--list", ref) == ""
 
 
 async def test_candidate_accept_amends_ffs_run_branch_and_removes_candidate(

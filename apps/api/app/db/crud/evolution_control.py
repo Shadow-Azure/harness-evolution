@@ -17,6 +17,7 @@ from app.db.models.evolution import (
     EvolutionRunRecord,
     evolution_rounds,
     evolution_runs,
+    probe_clusters,
     record_from_evolution_run,
 )
 from app.db.models.jobs import JobRunRecord, job_runs
@@ -154,8 +155,21 @@ async def _continuation(
     )
     if round_ is None:
         if run.mode == "cluster_only" or (
-            run.attribution_engine != "legacy-probe-import" and not run.workspace_path
+            run.attribution_engine != "legacy-probe-import"
+            and (not run.workspace_path or not run.stats.get("workspacePrepared"))
         ):
+            return "evolution_prepare", payload
+        missing_round = await session.scalar(
+            select(probe_clusters.c.probe_cluster_id)
+            .outerjoin(
+                evolution_rounds,
+                (evolution_rounds.c.run_id == probe_clusters.c.run_id)
+                & (evolution_rounds.c.probe_cluster_id == probe_clusters.c.probe_cluster_id),
+            )
+            .where(probe_clusters.c.run_id == run.id, evolution_rounds.c.id.is_(None))
+            .limit(1)
+        )
+        if missing_round is not None:
             return "evolution_prepare", payload
         return "evolution_finalize", payload
     if round_["eval_status"] in {"failed", "timeout"}:

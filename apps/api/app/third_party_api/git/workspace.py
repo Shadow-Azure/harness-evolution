@@ -321,6 +321,12 @@ class GitWorkspaceManager:
                 == message.strip()
                 and _has_trailer(message, "Harness-Patch-Hash", f"sha256:{patch.sha256}")
             ):
+                await self._git_checked(
+                    prepared.path,
+                    ("git", "switch", local_branch),
+                    stage="workspace",
+                    failure="recovered candidate branch could not be selected",
+                )
                 return CandidateWorkspace(
                     workspace_path=prepared.path,
                     run_branch=run_branch,
@@ -330,6 +336,7 @@ class GitWorkspaceManager:
                     message=message,
                     run_id=run_id,
                     base_commit=prepared.base_commit,
+                    push_url=prepared.push_url,
                 )
             await self._git_checked(
                 prepared.path,

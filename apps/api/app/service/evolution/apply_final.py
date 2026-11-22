@@ -74,6 +74,11 @@ class EvolutionApplyService:
         run = await self._runs.get_run(round_.run_id)
         if run is None:
             raise LookupError("evolution run not found")
+        if run.status == "interrupted":
+            await self._runs.mark_recovered(run.id)
+            refreshed = await self._runs.get_run(run.id)
+            if refreshed is not None:
+                run = refreshed
         if round_.status in {"accepted", "rejected"}:
             return {
                 "runId": run.id,
@@ -82,11 +87,6 @@ class EvolutionApplyService:
                 "applied": False,
                 "reason": "round already decided",
             }
-        if run.status == "interrupted":
-            await self._runs.mark_recovered(run.id)
-            refreshed = await self._runs.get_run(run.id)
-            if refreshed is not None:
-                run = refreshed
         if run.mode != "full" or run.status != "running":
             return {
                 "runId": run.id,
