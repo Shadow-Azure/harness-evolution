@@ -64,6 +64,13 @@ a {
   padding: 20px 24px 64px;
 }
 
+/* The target config page follows the V2 prototype's 1720px content column:
+   its 8-column table no longer fits the 1080px reading frame. The run list and
+   workspace admin pages keep 1080px until they are migrated separately. */
+.workspace-main .evolution-page-frame.target-config-page {
+  width: min(1720px, 100%);
+}
+
 @media (max-width: 640px) {
   .workspace-main .evolution-page-frame {
     width: 100%;
