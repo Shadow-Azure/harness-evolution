@@ -175,7 +175,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
@@ -197,9 +197,15 @@ jobs:
         timeout-minutes: 5
         run: pnpm test:integration
       - name: 真实浏览器 E2E（M1 shell + M3 Session 浏览器）
-        # The suite's own budget is 15 minutes; the step keeps a small margin.
-        timeout-minutes: 18
-        run: pnpm test:e2e
+        # The suite's own budget is 15 minutes. Shared runners occasionally
+        # stall a Chrome DevTools handshake; the harness now bounds each CDP
+        # command, and one retry keeps a transient stall from failing the PR.
+        timeout-minutes: 35
+        run: |
+          pnpm test:e2e || {
+            echo "::warning::real-browser suite failed or stalled; retrying once"
+            pnpm test:e2e
+          }
 
   build-lane:
     runs-on: ubuntu-latest

@@ -14,6 +14,7 @@ Status: implemented
 - CI 的 e2e 步骤上限从 12 分钟提到 18 分钟，job 上限从 15 分钟提到 25 分钟，给 suite 上限留出 3 分钟与 10 分钟的余量。
 - 上限仍是硬闸：真正的挂起在 15 分钟处被杀并返回 124，不把性能回归伪装成通过；只是把「慢 runner」与「用例失败」分开。
 - 套件保持串行与原有性能断言；本决策只调整时间预算，不改测试内容。
+- 2026-11-23 追加：单纯抬预算不能解释「TAP version 13 之后 15 分钟零输出」的挂起。`tests/support/runtime.mjs` 的 CDP WebSocket 握手与每条 CDP 命令现在都有 30 秒上限（`HE_E2E_CDP_TIMEOUT_MS` 可覆盖），`run-e2e.mjs` 加 `--test-timeout=180000` 兜底；CI 的 e2e 步骤失败/超时后重试一次。这样共享 runner 上偶发的 Chrome 握手停滞会变成一条具名失败并在重试中恢复，而不是吃掉整个套件预算。
 
 ## Alternatives considered
 

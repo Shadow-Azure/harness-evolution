@@ -14,6 +14,7 @@ The real-browser E2E suite (79 cases, M1–M8) has a 10-minute internal ceiling 
 - Raise the CI e2e step limit from 12 to 18 minutes and the job limit from 15 to 25 minutes, leaving a 3-minute and a 10-minute margin over the suite budget.
 - The ceiling stays a hard gate: a genuine hang is still killed at 15 minutes and returns 124, so a performance regression cannot masquerade as a pass — it only separates "slow runner" from "failing case".
 - The suite stays serial with its existing performance assertions; this decision changes only the time budget, not the tests.
+- Follow-up on 2026-11-23: raising the budget alone cannot explain a hang that prints "TAP version 13" and then nothing for 15 minutes. The CDP websocket handshake and every CDP command in `tests/support/runtime.mjs` now have a 30-second bound (`HE_E2E_CDP_TIMEOUT_MS` overrides it), `run-e2e.mjs` adds `--test-timeout=180000` as a backstop, and the CI e2e step retries once after a failure or stall. A transient Chrome handshake stall on a shared runner now becomes a named failure that the retry can recover from instead of consuming the whole suite budget.
 
 ## Alternatives considered
 

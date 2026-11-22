@@ -35,7 +35,13 @@ if (requestedPattern) {
   }
 }
 
-const nodeArguments = ["--test", "--test-concurrency=1"];
+const nodeArguments = [
+  "--test",
+  "--test-concurrency=1",
+  // Backstop: a stalled CDP command or a hook that never settles must fail
+  // with the test name instead of consuming the whole suite budget.
+  "--test-timeout=180000",
+];
 if (requestedPattern) {
   nodeArguments.push(`--test-name-pattern=${requestedPattern}`);
 }
