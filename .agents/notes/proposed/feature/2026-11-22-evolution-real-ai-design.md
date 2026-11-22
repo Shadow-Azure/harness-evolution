@@ -28,3 +28,4 @@ Status: proposed
 - 实现按阶段推进（骨架 → 聚类三层 → 可选向量化 → 指令式 patch），每步 env 可回退（fake / placeholder），最坏情况等于今天的行为。
 - 新增纯 Python 依赖 `json5`；`edit_workspace` 语义从「直接编辑」变为「提交计划 + 确定性应用」，round 内无试错循环，由 round 级迭代闭环补偿。
 - 声明（EditPlan）与实际（git diff）的对照成为每 round 的审计信号；两者不一致即质量报警。
+- 2026-11-22 骨架已落地（bugfix-15）：`ai_agent` 四模块、Settings 仅两个配置项、确定性的 `fake` 与 `claude-code` 占位；真实 CLI 子类、提交通道与业务接入仍在后续 issue。
