@@ -33,7 +33,9 @@ from app.service.evolution.cluster import (
 from app.service.evolution.cluster_llm import (
     CLUSTER_KEY_PREFIX,
     CLUSTER_SCORE_TASK,
+    DESCRIPTION_MAX_CHARS,
     REVIEW_TASK,
+    SEVERITY_DIMENSIONS,
     SEVERITY_SCORE_TASK,
     CallRecord,
     ClusterCaseEvidence,
@@ -44,6 +46,7 @@ from app.service.evolution.cluster_llm import (
     ClusterSummary,
     DegradedCall,
     EnhancedClusters,
+    SeverityScoresOutput,
     build_cluster_score_request,
     build_review_request,
     build_severity_request,
@@ -146,18 +149,18 @@ class _RawProvider(AIAgentProvider):
 
     def __init__(
         self,
-        outputs: Mapping[str, Mapping[str, Any]],
+        outputs: Mapping[str, Any],
         *,
         failures: Mapping[str, BaseException] | None = None,
     ) -> None:
         """Bind fixed outputs and optional per-task exceptions."""
         super().__init__(None)
-        self._outputs = {task: dict(output) for task, output in outputs.items()}
+        self._outputs = dict(outputs)
         self._failures = dict(failures or {})
         self.requests: list[AnalysisRequest] = []
 
     async def analyze(self, request: AnalysisRequest) -> AnalysisResult:
-        """Return the bound mapping or raise the bound failure."""
+        """Return the bound output or raise the bound failure."""
         self.requests.append(request)
         failure = self._failures.get(request.task)
         if failure is not None:
@@ -327,7 +330,7 @@ def test_review_prompt_uses_draft_keys_and_bounded_samples() -> None:
         assert f"[D{index}]" in request.prompt
     assert "members=18" in request.prompt
     assert "signatureOverlap=0.42" in request.prompt
-    assert "timeSpanDays=21" in request.prompt
+    assert "reportedSpanDays=21" in request.prompt
     assert "summary: prompt 类问题 · 组0" in request.prompt
     assert request.prompt.count("- case-") == 3 * 5
     assert "case-0001" in request.prompt
@@ -344,6 +347,7 @@ def test_score_prompts_are_bounded_and_decoupled_from_case_volume() -> None:
         assert large_request.prompt.count("Samples (") == 3
         assert large_request.prompt.count("- case-") == 3 * 5
         assert len(large_request.prompt) == len(small_request.prompt)
+        assert "reportedSpanDays=21" in large_request.prompt
         for index in range(1, len(large) + 1):
             assert f"[C{index}]" in large_request.prompt
 
@@ -377,6 +381,18 @@ def test_select_samples_is_deterministic_by_case_id() -> None:
     assert [sample.case_id for sample in first] == ["c-0", "c-2", "c-4", "c-7", "c-9"]
 
 
+def test_select_samples_with_limit_one_uses_the_middle_member() -> None:
+    """A single-sample request over many present members cannot divide by zero."""
+    evidence = {
+        f"c-{index}": ClusterCaseEvidence(case_id=f"c-{index}", title=f"t{index}")
+        for index in range(5)
+    }
+
+    samples = select_samples(list(evidence), evidence, limit=1)
+
+    assert [sample.case_id for sample in samples] == ["c-2"]
+
+
 @pytest.mark.parametrize(
     ("payload", "fragment"),
     [
@@ -389,6 +405,10 @@ def test_select_samples_is_deterministic_by_case_id() -> None:
                 ],
             },
             "merge-only",
+        ),
+        (
+            {"clusters": [{"from": ["D1", "D1"], "title": "同项重复"}]},
+            "item 0 repeats draft key D1",
         ),
         ({"clusters": [{"from": ["D1", "D9"], "title": "未知键"}]}, "unknown draft key"),
     ],
@@ -429,6 +449,40 @@ def test_review_output_rejects_an_empty_partition() -> None:
     """An empty cluster list can never be a partition of the input drafts."""
     with pytest.raises(ValidationError):
         ClusterReviewOutput.model_validate({"clusters": []})
+
+
+def _severity_output(dimensions: Mapping[str, float]) -> dict[str, Any]:
+    """Build one severity batch with an explicit dimensions mapping."""
+    return {
+        "severities": [
+            {
+                "cluster": "C1",
+                "overall": 5.0,
+                "dimensions": dict(dimensions),
+                "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L",
+            },
+        ],
+    }
+
+
+def test_severity_dimensions_accept_only_the_documented_names() -> None:
+    """An invented grading axis is a contract violation; the empty mapping is legal."""
+    documented = SeverityScoresOutput.model_validate(
+        _severity_output({name: 5.0 for name in SEVERITY_DIMENSIONS}),
+    )
+    assert set(documented.severities[0].dimensions) == set(SEVERITY_DIMENSIONS)
+
+    empty = SeverityScoresOutput.model_validate(_severity_output({}))
+    assert empty.severities[0].dimensions == {}
+
+    with pytest.raises(ValidationError, match="made_up"):
+        SeverityScoresOutput.model_validate(_severity_output({"impact": 9.0, "made_up": 3.0}))
+
+
+def test_severity_dimension_values_stay_on_the_zero_to_ten_scale() -> None:
+    """The documented names keep the existing 0-10 value bound."""
+    with pytest.raises(ValidationError):
+        SeverityScoresOutput.model_validate(_severity_output({"impact": 11.0}))
 
 
 async def test_review_merge_names_expands_members_and_scores() -> None:
@@ -492,6 +546,125 @@ async def test_two_final_clusters_still_cost_exactly_three_calls() -> None:
     assert [cluster.severity for cluster in result.clusters] == [8.6, 4.2]
 
 
+def _overlap_evidence(*, include_c2: bool = True) -> dict[str, ClusterCaseEvidence]:
+    """Return three member titles whose pairwise overlap matches the review example."""
+    titles = {
+        "c-1": "alpha beta gamma delta epsilon zeta eta",
+        "c-2": "alpha beta gamma delta epsilon theta iota",
+        "c-3": "kappa lambda",
+    }
+    return {
+        case_id: ClusterCaseEvidence(case_id=case_id, title=title)
+        for case_id, title in titles.items()
+        if include_c2 or case_id != "c-2"
+    }
+
+
+def _overlap_drafts() -> tuple[ClusterDraft, ...]:
+    """Return draft A with two members and draft B with one member."""
+    return (
+        _draft("prompt 类问题 · 组A", ("p-1", "p-2")),
+        _draft("prompt 类问题 · 组B", ("p-3",)),
+    )
+
+
+def _overlap_stats() -> dict[int, ClusterDraftStats]:
+    """Return the draft statistics whose weighted mean would read 0.3704."""
+    return {
+        0: ClusterDraftStats(case_ids=("c-1", "c-2"), signature_overlap=0.5556),
+        1: ClusterDraftStats(case_ids=("c-3",), signature_overlap=0.0),
+    }
+
+
+def _single_cluster_provider() -> _RawProvider:
+    """Return a provider that merges both drafts and scores the one final cluster."""
+    return _RawProvider(
+        {
+            REVIEW_TASK: _REVIEW_MERGED,
+            CLUSTER_SCORE_TASK: {
+                "scores": [{"cluster": "C1", "confidence": 0.9, "evidence_refs": []}],
+            },
+            SEVERITY_SCORE_TASK: _SEVERITY_OK,
+        },
+    )
+
+
+async def test_merged_cluster_recomputes_signature_overlap_from_member_titles() -> None:
+    """The merged statistic is the true pairwise mean (0.1852), not the draft average."""
+    provider = _single_cluster_provider()
+
+    await enhance_clusters(
+        provider,
+        _overlap_drafts(),
+        _overlap_evidence(),
+        stats_by_draft=_overlap_stats(),
+    )
+
+    score_prompt = provider.requests[1].prompt
+    assert "signatureOverlap=0.19" in score_prompt
+    assert "signatureOverlap=0.37" not in score_prompt
+
+
+async def test_merged_signature_overlap_falls_back_when_evidence_is_missing() -> None:
+    """Missing evidence keeps the documented weighted-average fallback."""
+    provider = _single_cluster_provider()
+
+    await enhance_clusters(
+        provider,
+        _overlap_drafts(),
+        _overlap_evidence(include_c2=False),
+        stats_by_draft=_overlap_stats(),
+    )
+
+    assert "signatureOverlap=0.37" in provider.requests[1].prompt
+
+
+async def test_compose_description_strips_a_repeated_type_prefix() -> None:
+    """A model title that copies the category prefix does not duplicate it."""
+    provider = _fake_with(
+        {
+            REVIEW_TASK: {
+                "clusters": [
+                    {
+                        "from": ["D1", "D2"],
+                        "title": "prompt 类问题 · 检索索引问题",
+                        "description": "同一失败点",
+                    },
+                ],
+            },
+            CLUSTER_SCORE_TASK: _CLUSTER_SCORE_MERGED,
+            SEVERITY_SCORE_TASK: _SEVERITY_OK,
+        },
+    )
+
+    result, _, degraded = await _enhance(provider)
+
+    assert degraded == []
+    description = result.clusters[0].description
+    assert description == "prompt 类问题 · 检索索引问题 · 同一失败点"
+    assert description.count("prompt 类问题") == 1
+
+
+async def test_compose_description_is_bounded_by_one_constant() -> None:
+    """The composed title and summary cannot exceed the single description bound."""
+    provider = _fake_with(
+        {
+            REVIEW_TASK: {
+                "clusters": [
+                    {"from": ["D1", "D2"], "title": "t" * 200, "description": "s" * 400},
+                ],
+            },
+            CLUSTER_SCORE_TASK: _CLUSTER_SCORE_MERGED,
+            SEVERITY_SCORE_TASK: _SEVERITY_OK,
+        },
+    )
+
+    result, _, _ = await _enhance(provider)
+
+    assert len(result.clusters[0].description) == DESCRIPTION_MAX_CHARS
+    assert result.clusters[0].description.endswith("…")
+
+
 async def test_review_provider_failure_degrades_the_whole_batch() -> None:
     """A raising review call falls back to the drafts and still batch scores them."""
     provider = _RawProvider(
@@ -522,6 +695,37 @@ async def test_review_provider_failure_degrades_the_whole_batch() -> None:
     assert result.calls == tuple(calls)
 
 
+@pytest.mark.parametrize("output", [[], "not-an-object", None])
+async def test_non_mapping_provider_output_degrades_every_layer(output: object) -> None:
+    """A non-mapping provider output is a contract violation, not an escaping failure."""
+    provider = _RawProvider(
+        {
+            REVIEW_TASK: output,
+            CLUSTER_SCORE_TASK: output,
+            SEVERITY_SCORE_TASK: output,
+        },
+    )
+
+    result, calls, degraded = await _enhance(provider)
+
+    assert [cluster.description for cluster in result.clusters] == [
+        "prompt 类问题 · 检索索引读取失败",
+        "prompt 类问题 · 工具调用超时",
+    ]
+    assert [cluster.confidence for cluster in result.clusters] == [
+        TYPE_CONFIDENCE["prompt"],
+        TYPE_CONFIDENCE["prompt"],
+    ]
+    assert [call.outcome for call in calls] == ["degraded", "degraded", "degraded"]
+    assert [item.task for item in degraded] == [
+        REVIEW_TASK,
+        CLUSTER_SCORE_TASK,
+        SEVERITY_SCORE_TASK,
+    ]
+    expected = f"provider returned {type(output).__name__}, not an object"
+    assert [item.reason for item in degraded] == [expected, expected, expected]
+
+
 @pytest.mark.parametrize(
     ("review_output", "fragment"),
     [
@@ -534,6 +738,10 @@ async def test_review_provider_failure_degrades_the_whole_batch() -> None:
                 ],
             },
             "merge-only",
+        ),
+        (
+            {"clusters": [{"from": ["D1", "D1"], "title": "同项重复"}]},
+            "repeats draft key D1",
         ),
         ({"clusters": [{"from": ["D1", "D9"], "title": "未知键"}]}, "unknown draft key"),
     ],
@@ -758,10 +966,11 @@ async def test_empty_drafts_short_circuit_without_a_call() -> None:
 
 @dataclass(frozen=True, slots=True)
 class _RecordedEvent:
-    """One prepare event captured for payload assertions."""
+    """One prepare event captured for payload and level assertions."""
 
     event_type: str
     stage: str
+    level: str
     payload: Mapping[str, Any] | None
 
 
@@ -788,9 +997,14 @@ class RecordingEvents:
         error: BaseException | None = None,
     ) -> object:
         """Keep the event fields the clustering contract needs."""
-        del run_id, level, message, step_index, cluster_id, round_id, job_id, error
+        del run_id, message, step_index, cluster_id, round_id, job_id, error
         self.records.append(
-            _RecordedEvent(event_type=str(event_type), stage=str(stage), payload=payload),
+            _RecordedEvent(
+                event_type=str(event_type),
+                stage=str(stage),
+                level=level,
+                payload=payload,
+            ),
         )
         return object()
 
@@ -975,6 +1189,7 @@ async def test_prepare_hybrid_persists_llm_values_and_records_calls(
     created = next(event for event in events.records if event.event_type == "clusters_created")
     assert created.payload is not None
     assert created.payload["algorithm"] == HYBRID_ALGORITHM
+    assert "degraded" not in created.payload
     comparison = created.payload["severityFormula"]
     assert isinstance(comparison, list)
     assert len(comparison) == 1
@@ -999,6 +1214,7 @@ async def test_prepare_hybrid_persists_llm_values_and_records_calls(
     assert payload["sessionId"] == "fake-session"
     assert {"inputTokens", "outputTokens", "costUsd", "latencyMs"} <= set(payload)
     assert [event for event in events.records if event.event_type == "degraded"] == []
+    assert all(event.level == "info" for event in events.records)
 
 
 async def test_prepare_without_agent_keeps_the_lexical_path(harness: Harness) -> None:
@@ -1020,6 +1236,7 @@ async def test_prepare_without_agent_keeps_the_lexical_path(harness: Harness) ->
     assert created.payload is not None
     assert created.payload["algorithm"] == LEXICAL_ALGORITHM
     assert "severityFormula" not in created.payload
+    assert "degraded" not in created.payload
     assert [event for event in events.records if event.event_type == "ai_agent_call"] == []
     assert [event for event in events.records if event.event_type == "degraded"] == []
 
@@ -1056,6 +1273,11 @@ async def test_prepare_degrades_gracefully_when_every_call_fails(
     assert [cluster.rank for cluster in clusters] == [1, 2]
     created = next(event for event in events.records if event.event_type == "clusters_created")
     assert created.payload is not None
+    assert created.payload["degraded"] == [
+        REVIEW_TASK,
+        CLUSTER_SCORE_TASK,
+        SEVERITY_SCORE_TASK,
+    ]
     comparison = created.payload["severityFormula"]
     assert [row["severityFormula"] for row in comparison] == [
         cluster.severity for cluster in clusters
@@ -1065,6 +1287,8 @@ async def test_prepare_degrades_gracefully_when_every_call_fails(
     degraded = [event for event in events.records if event.event_type == "degraded"]
     assert len(calls) == 3
     assert all(event.payload["outcome"] == "error" for event in calls if event.payload)
+    assert all(event.level == "info" for event in calls)
+    assert [event.level for event in degraded] == ["warn", "warn", "warn"]
     assert [event.payload["task"] for event in degraded if event.payload] == [
         REVIEW_TASK,
         CLUSTER_SCORE_TASK,

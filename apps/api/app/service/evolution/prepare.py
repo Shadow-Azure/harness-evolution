@@ -52,6 +52,7 @@ from app.service.evolution.cluster_llm import (
 from app.service.evolution.control import checkpoint
 from app.service.evolution.engine.contracts import ConfigError, RunBlocked
 from app.service.evolution.events import (
+    EvolutionRunEventLevel,
     EvolutionRunEventService,
     EvolutionRunEventStage,
     EvolutionRunEventType,
@@ -137,6 +138,7 @@ class _ClusterBuild:
     fingerprint: str
     algorithm: str
     severity_comparison: tuple[dict[str, Any], ...] = ()
+    degraded: tuple[str, ...] = ()
 
 
 class EvolutionPrepareService:
@@ -363,6 +365,8 @@ class EvolutionPrepareService:
             }
             if built.severity_comparison:
                 payload["severityFormula"] = [dict(item) for item in built.severity_comparison]
+            if built.degraded:
+                payload["degraded"] = list(built.degraded)
             await self._record(
                 run.id,
                 "clusters_created",
@@ -536,6 +540,7 @@ class EvolutionPrepareService:
             severity_comparison=tuple(
                 _severity_comparison(cluster) for cluster in enhanced.clusters
             ),
+            degraded=tuple(item.task for item in enhanced.degraded),
         )
 
     async def _enhance_clusters(
@@ -609,6 +614,7 @@ class EvolutionPrepareService:
                 step_index=4,
                 message=f"聚类降级：{item.task}",  # noqa: RUF001
                 payload={"task": item.task, "reason": item.reason},
+                level="warn",
             )
 
         return await enhance_clusters(
@@ -831,6 +837,7 @@ class EvolutionPrepareService:
         job_id: str | None = None,
         step_index: int | None = None,
         payload: Mapping[str, Any] | None = None,
+        level: EvolutionRunEventLevel = "info",
     ) -> None:
         """Record one best-effort phase event without masking domain work."""
         if self._events is None:
@@ -839,7 +846,7 @@ class EvolutionPrepareService:
             await self._events.record(
                 run_id,
                 event_type,
-                level="info",
+                level=level,
                 stage=stage,
                 message=message,
                 step_index=step_index,

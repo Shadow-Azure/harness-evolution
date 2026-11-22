@@ -23,9 +23,9 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from app.service.evolution.cluster import (
     HYBRID_ALGORITHM,
@@ -34,6 +34,7 @@ from app.service.evolution.cluster import (
     ClusterDraft,
     ClusterType,
     cluster_severity,
+    signature_overlap,
 )
 from app.third_party_api.ai_agent.base import AIAgentProvider
 from app.third_party_api.ai_agent.contracts import (
@@ -80,6 +81,9 @@ SAMPLE_TEXT_MAX_CHARS = 240
 
 MAX_REASON_CHARS = 300
 """Character bound for one recorded degradation reason."""
+
+DESCRIPTION_MAX_CHARS = 300
+"""Character bound for one persisted cluster description."""
 
 DRAFT_KEY_PREFIX = "D"
 """Prefix of the draft references the review output must use (``D1``..``Dk``)."""
@@ -221,14 +225,31 @@ class SeverityScoreItem(BaseModel):
     dimensions: dict[str, SeverityDimension] = Field(default_factory=dict)
     vector: str = Field(pattern=SEVERITY_VECTOR_PATTERN)
 
+    @field_validator("dimensions")
+    @classmethod
+    def _documented_dimensions(cls, value: dict[str, float]) -> dict[str, float]:
+        """Reject dimension names outside the five documented ones.
+
+        An unknown name means the model invented a grading axis; accepting it
+        would persist a value the prompt never defined. The mapping may still be
+        empty because a model may keep the whole grading in ``overall``.
+        """
+        unknown = sorted(set(value) - set(SEVERITY_DIMENSIONS))
+        if unknown:
+            raise ValueError(
+                "dimensions may only use the documented severity names; unknown: "
+                + ", ".join(unknown),
+            )
+        return value
+
 
 class SeverityScoresOutput(BaseModel):
     """The batch severity output: one decision score, dimensions, and vector per cluster.
 
     ``dimensions`` defaults to an empty mapping because the model may keep the
-    grading in ``overall`` alone; when dimensions are present every documented
-    name keeps its meaning and every value stays on the 0-10 scale. ``vector``
-    is a CVSS-3.1-style audit string checked by a permissive regex.
+    grading in ``overall`` alone; when dimensions are present only the five
+    documented names are legal and every value stays on the 0-10 scale.
+    ``vector`` is a CVSS-3.1-style audit string checked by a permissive regex.
     """
 
     severities: list[SeverityScoreItem] = Field(min_length=1)
@@ -376,8 +397,11 @@ def build_review_request(
 
     Each draft becomes one block keyed ``D1``..``Dk`` in draft order. A block
     carries the deterministic statistics (type, member count, signature
-    overlap, time span), one bounded summary, and 3-5 representative case
-    samples selected by sorted case id. The full member list never appears.
+    overlap, reported time span), one bounded summary, and 3-5 representative
+    case samples selected by sorted case id. The full member list never appears.
+    ``reportedSpanDays`` is the span between the earliest and latest
+    ``bad_cases.created_at`` values, i.e. when the cases were reported rather
+    than when the incidents happened.
 
     Args:
         drafts: Lexical drafts in ``model``, ``prompt``, ``error`` order.
@@ -444,7 +468,7 @@ def build_review_request(
         lines.append(
             f"[{key}] type={draft.type} members={stats.member_count} "
             f"signatureOverlap={stats.signature_overlap:.2f} "
-            f"timeSpanDays={_render_span(stats.time_span_days)}",
+            f"reportedSpanDays={_render_span(stats.time_span_days)}",
         )
         lines.append(f"  summary: {_bounded(draft.description, DRAFT_SUMMARY_MAX_CHARS)}")
         lines.append(f"  samples ({len(samples)} of {stats.member_count}):")
@@ -600,14 +624,21 @@ def validate_review_partition(
         if not item.title.strip():
             raise ClusterContractError(f"cluster.review item {position} has an empty title")
         item_types: set[ClusterType] = set()
+        item_keys: set[str] = set()
         for key in item.from_keys:
             index = _draft_index(key, len(drafts))
+            if key in item_keys:
+                raise ClusterContractError(
+                    f"cluster.review item {position} repeats draft key {key}; "
+                    "each key may appear once",
+                )
             if key in seen:
                 raise ClusterContractError(
                     "cluster.review is merge-only: every draft key must appear exactly once, "
                     f"so splitting a draft is impossible; {key} appears in items {seen[key]} and "
                     f"{position}",
                 )
+            item_keys.add(key)
             seen[key] = position
             item_types.add(drafts[index].type)
         if len(item_types) > 1:
@@ -900,6 +931,25 @@ def _build_plans(
     return tuple(plans)
 
 
+def _output_mapping(result: AnalysisResult) -> Mapping[str, Any]:
+    """Return the provider output only when it is a mapping.
+
+    ``AnalysisResult.output`` is a type annotation, not a runtime invariant, and
+    the provider is a third-party boundary. A list, string, or ``None`` there
+    means the model answered with the wrong top-level shape, so it is treated as
+    a contract violation and degrades like any other rejected output.
+
+    Raises:
+        ClusterContractError: When the provider returned a non-mapping output.
+    """
+    output = result.output
+    if not isinstance(output, Mapping):
+        raise ClusterContractError(
+            f"provider returned {type(output).__name__}, not an object",
+        )
+    return output
+
+
 async def _review(
     agent: AIAgentProvider,
     drafts: Sequence[ClusterDraft],
@@ -923,9 +973,9 @@ async def _review(
         return _fallback_groups(drafts)
     elapsed = _elapsed_ms(started)
     try:
-        output = ClusterReviewOutput.model_validate(dict(result.output))
+        output = ClusterReviewOutput.model_validate(dict(_output_mapping(result)))
         items = validate_review_partition(output, drafts)
-    except (ValidationError, ClusterContractError) as exc:
+    except (ValidationError, TypeError, ValueError, ClusterContractError) as exc:
         await note_call(_result_record(REVIEW_TASK, result, "degraded", elapsed))
         await note_degraded(DegradedCall(REVIEW_TASK, _contract_reason(exc)))
         return _fallback_groups(drafts)
@@ -955,9 +1005,9 @@ async def _score_confidences(
         return fallback
     elapsed = _elapsed_ms(started)
     try:
-        output = ClusterScoresOutput.model_validate(dict(result.output))
+        output = ClusterScoresOutput.model_validate(dict(_output_mapping(result)))
         scores = validate_cluster_scores(output, plans)
-    except (ValidationError, ClusterContractError) as exc:
+    except (ValidationError, TypeError, ValueError, ClusterContractError) as exc:
         await note_call(_result_record(CLUSTER_SCORE_TASK, result, "degraded", elapsed))
         await note_degraded(DegradedCall(CLUSTER_SCORE_TASK, _contract_reason(exc)))
         return fallback
@@ -992,9 +1042,9 @@ async def _score_severities(
         return fallback
     elapsed = _elapsed_ms(started)
     try:
-        output = SeverityScoresOutput.model_validate(dict(result.output))
+        output = SeverityScoresOutput.model_validate(dict(_output_mapping(result)))
         severities = validate_severity_scores(output, plans)
-    except (ValidationError, ClusterContractError) as exc:
+    except (ValidationError, TypeError, ValueError, ClusterContractError) as exc:
         await note_call(_result_record(SEVERITY_SCORE_TASK, result, "degraded", elapsed))
         await note_degraded(DegradedCall(SEVERITY_SCORE_TASK, _contract_reason(exc)))
         return fallback
@@ -1049,7 +1099,15 @@ def _merged_stats(
     stats_by_draft: Mapping[int, ClusterDraftStats],
     evidence: Mapping[str, ClusterCaseEvidence],
 ) -> ClusterDraftStats:
-    """Combine the per-draft statistics of one final cluster deterministically."""
+    """Combine the per-draft statistics of one final cluster deterministically.
+
+    ``signature_overlap`` keeps its documented meaning — the mean pairwise
+    lexical similarity of the cluster's member titles — so it is recomputed from
+    the merged members' titles whenever every member has loaded evidence. The
+    per-draft weighted average is only a fallback for missing evidence: averaging
+    draft values would inflate a merged cluster (for example 0.3704 instead of
+    the true 0.1852 over three members).
+    """
     case_ids = tuple(
         sorted(
             {
@@ -1073,6 +1131,11 @@ def _merged_stats(
         weight += max(stats.member_count, 1)
         if stats.time_span_days is not None:
             draft_spans.append(stats.time_span_days)
+    titles = [evidence[case_id].title for case_id in case_ids if case_id in evidence]
+    if case_ids and len(titles) == len(case_ids):
+        overlap = signature_overlap(titles)
+    else:
+        overlap = round(weighted / weight, 4) if weight else 0.0
     reported: list[datetime] = []
     for case_id in case_ids:
         sample = evidence.get(case_id)
@@ -1085,7 +1148,7 @@ def _merged_stats(
         span = max(draft_spans)
     return ClusterDraftStats(
         case_ids=case_ids,
-        signature_overlap=round(weighted / weight, 4) if weight else 0.0,
+        signature_overlap=overlap,
         time_span_days=span,
     )
 
@@ -1117,23 +1180,37 @@ def _compose_description(cluster_type: ClusterType, title: str, summary: str) ->
     """Fold the review title and optional summary into the single stored column.
 
     06 §5.3 has no title column (zero migration), so the persisted description
-    keeps the lexical category prefix and appends the optional LLM summary.
+    keeps the lexical category prefix and appends the optional LLM summary. A
+    model title that already starts with the same ``{type} 类问题 · `` prefix
+    (the sample summaries carry it, so the model may copy it) is stripped first
+    so the prefix cannot duplicate. The composed string is bounded once by
+    :data:`DESCRIPTION_MAX_CHARS`.
     """
-    headline = _bounded(title, 120) or f"{cluster_type} 类问题"
+    prefix = f"{cluster_type} 类问题"
+    headline = _bounded(title, 120)
+    repeated_prefix = f"{prefix} · "
+    if headline.startswith(repeated_prefix):
+        headline = headline[len(repeated_prefix) :].strip()
+    headline = headline or prefix
     detail = _bounded(summary, 200)
     text = f"{headline} · {detail}" if detail else headline
-    return f"{cluster_type} 类问题 · {text}"
+    return _bounded(f"{prefix} · {text}", DESCRIPTION_MAX_CHARS)
 
 
 def _render_cluster_header(cluster: ClusterSummary, stats: ClusterDraftStats) -> str:
-    """Render the deterministic cluster header shared by both scoring prompts."""
+    """Render the deterministic cluster header shared by both scoring prompts.
+
+    ``reportedSpanDays`` is the span between the earliest and latest
+    ``bad_cases.created_at`` values, i.e. the reported time rather than the
+    incident time.
+    """
     title = _bounded(cluster.title, SAMPLE_TITLE_MAX_CHARS) or cluster.type
     detail = _bounded(cluster.description, DRAFT_SUMMARY_MAX_CHARS)
     summary = f" | description: {detail}" if detail else ""
     return (
         f"Cluster: type={cluster.type} | title: {title}{summary} | "
         f"members={stats.member_count} | signatureOverlap={stats.signature_overlap:.2f} | "
-        f"timeSpanDays={_render_span(stats.time_span_days)}"
+        f"reportedSpanDays={_render_span(stats.time_span_days)}"
     )
 
 
@@ -1154,6 +1231,10 @@ def _evenly_spaced_indexes(total: int, count: int) -> tuple[int, ...]:
     """Return ``count`` strictly increasing indexes spread over ``total`` items."""
     if count >= total:
         return tuple(range(total))
+    if count == 1:
+        # One sample from many items sits in the middle; ``count - 1`` would be
+        # zero here and the interpolation below would divide by zero.
+        return (total // 2,)
     selected: list[int] = []
     for position in range(count):
         index = round(position * (total - 1) / (count - 1))
@@ -1209,15 +1290,17 @@ def _provider_reason(exc: BaseException) -> str:
     return _bounded(f"{type(exc).__name__} raised during analysis", MAX_REASON_CHARS)
 
 
-def _contract_reason(exc: ValidationError | ClusterContractError) -> str:
+def _contract_reason(exc: TypeError | ValueError) -> str:
     """Render one bounded contract violation without echoing raw output."""
     if isinstance(exc, ClusterContractError):
         return exc.reason
-    parts = [
-        ".".join(str(part) for part in error["loc"]) or "<root>"
-        for error in exc.errors(include_url=False, include_input=False)
-    ]
-    return _bounded(f"output failed schema: {', '.join(parts)}", MAX_REASON_CHARS)
+    if isinstance(exc, ValidationError):
+        parts = [
+            ".".join(str(part) for part in error["loc"]) or "<root>"
+            for error in exc.errors(include_url=False, include_input=False)
+        ]
+        return _bounded(f"output failed schema: {', '.join(parts)}", MAX_REASON_CHARS)
+    return _bounded(f"output has the wrong shape: {type(exc).__name__}", MAX_REASON_CHARS)
 
 
 async def _notify_call(callback: RecordCall | None, call: CallRecord) -> None:
@@ -1251,6 +1334,7 @@ def _bounded(text: str, limit: int) -> str:
 __all__ = [
     "CLUSTER_KEY_PREFIX",
     "CLUSTER_SCORE_TASK",
+    "DESCRIPTION_MAX_CHARS",
     "DRAFT_KEY_PREFIX",
     "DRAFT_SUMMARY_MAX_CHARS",
     "DRAFT_SUMMARY_TOKENS",

@@ -473,10 +473,9 @@ async def test_launch_records_creation_and_prepare_start_events(
         "potential_computed",
         "attribution_created",
     ]
-    # The cluster phase now records one ai_agent_call per bounded analysis and a
-    # degraded event per fallback, so its length depends on the provider, not on
-    # the admission contract this test pins.
-    assert set(event_types[5:-2]) <= {"ai_agent_call", "degraded"}
+    # The default placeholder provider fails every bounded analysis, so the
+    # cluster phase is exactly one call plus one fallback per task, in order.
+    assert event_types[5:-2] == ["ai_agent_call", "degraded"] * 3
     assert event_types[-2:] == ["clusters_created", "workspace_prepared"]
     assert events.json()["hasMore"] is False
 
