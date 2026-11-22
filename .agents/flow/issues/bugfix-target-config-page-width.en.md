@@ -4,7 +4,7 @@ English | [中文](bugfix-target-config-page-width.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-15
+id: bugfix-24
 milestone: bugfix
 depends: []
 priority: P2
@@ -32,7 +32,7 @@ At a 1408×788 CSS viewport, the production 「Evolution → Target config」 pa
 
 ## Design authority
 
-- [08 §9.5 Target config page](../../../plans/fullstack-design/08-frontend-implementation.md#L728-L765): the page follows V2 with 8 columns (object type, object name, repository, subdirectory, baseline, test projects, state, actions), wider than the prototype's 6 columns.
+- [08 §9.5 Target config page](../../../plans/fullstack-design/08-frontend-implementation.md): the page follows V2 with 8 columns (object type, object name, repository, subdirectory, baseline, test projects, state, actions), wider than the prototype's 6 columns.
 - [V2 prototype `.evo-app .wrap`](../../../plans/ui-prototype-v2/harness-evolution.html#L606): `width: min(100%, calc(1720px / var(--ui-zoom, 1)))`, `max-width: none`, `padding: 20px 24px 64px`; the content panel is 1360px at 1408px.
 - [V2 prototype target panel](../../../plans/ui-prototype-v2/harness-evolution.html#L5684): the table fills the `.wrap` width and needs no horizontal scrolling.
 

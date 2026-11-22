@@ -4,7 +4,7 @@
 
 ```yaml flow
 kind: issue
-id: bugfix-15
+id: bugfix-24
 milestone: bugfix
 depends: []
 priority: P2
@@ -32,7 +32,7 @@ github:
 
 ## 设计依据
 
-- [08 §9.5 进化对象配置页](../../../plans/fullstack-design/08-frontend-implementation.md#L728-L765)：页面按 V2 设计有 8 列（对象类型、对象名称、仓库、子目录、基线、测试工程、状态、操作），比原型的 6 列更宽。
+- [08 §9.5 进化对象配置页](../../../plans/fullstack-design/08-frontend-implementation.md)：页面按 V2 设计有 8 列（对象类型、对象名称、仓库、子目录、基线、测试工程、状态、操作），比原型的 6 列更宽。
 - [V2 原型 `.evo-app .wrap`](../../../plans/ui-prototype-v2/harness-evolution.html#L606)：`width: min(100%, calc(1720px / var(--ui-zoom, 1)))`、`max-width: none`、`padding: 20px 24px 64px`；1408 视口下内容面板宽 1360px。
 - [V2 原型对象配置面板](../../../plans/ui-prototype-v2/harness-evolution.html#L5684)：表格在 `.wrap` 内按可用宽度铺开，不出现横向滚动。
 
