@@ -17,6 +17,7 @@ scope:
   - apps/api/app/db/crud/attributions.py
   - apps/api/app/main.py
   - apps/api/tests/**
+  - tests/**
   - packages/contracts/**
   - scripts/**
   - .github/workflows/ci.yml

@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-clustering-three-layers.md
-bugfix-clustering-three-layers.md: 9c3a268c4b47a42614a8f9a40a853e81f9090714
-bugfix-clustering-three-layers.en.md: 9f023b927ccb1405fe4b8566612209db84d0eede
+bugfix-clustering-three-layers.md: a1f2c33531ce349195e9003cc922396e68411c16
+bugfix-clustering-three-layers.en.md: c52e29300d8e59648689f5020ed05524cf87fd44
