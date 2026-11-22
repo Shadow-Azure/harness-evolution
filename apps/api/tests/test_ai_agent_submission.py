@@ -18,6 +18,7 @@ from app.third_party_api.ai_agent import (
     RESULT_FILENAME,
     SCHEMA_FILENAME,
     SUBMISSION_TOOLS,
+    EditPlan,
     StructuredSubmission,
     SubmissionOutcome,
     SubmissionPrep,
@@ -331,6 +332,8 @@ def test_missing_state_when_no_result_file_exists(tmp_path: Path) -> None:
     assert "result.json5" in feedback
     assert "不存在" in feedback
     assert "./result.json5" in feedback
+    # A minted task directory does write schema.json, so feedback can name it.
+    assert f"./{SCHEMA_FILENAME}" in feedback
 
 
 def test_feedback_prompt_leaks_no_absolute_path_and_no_duplicated_prefix(tmp_path: Path) -> None:
@@ -433,7 +436,9 @@ def test_prepare_mints_unique_one_shot_directories(tmp_path: Path) -> None:
     assert escaped.directory.parent == tmp_path
     assert first.result_path == first.directory / "result.json5"
     assert first.schema_path == first.directory / "schema.json"
+    assert first.schema_path is not None
     assert first.schema_path.exists()
+    assert second.schema_path is not None
     assert second.schema_path.exists()
     assert not first.result_path.exists()
 
@@ -453,6 +458,8 @@ def test_prompt_addendum_points_at_result_and_schema(tmp_path: Path) -> None:
     assert "./result.json5" in prep.prompt_addendum
     assert "schema.json" in prep.prompt_addendum
     assert "JSON5" in prep.prompt_addendum
+    assert prep.owned is True
+    assert prep.schema_reference == f"./{SCHEMA_FILENAME}"
 
 
 def test_default_root_is_a_disposable_temp_directory() -> None:
@@ -490,6 +497,72 @@ def test_discard_forgets_a_tracked_temp_directory() -> None:
 
     assert not prep.directory.exists()
     assert prep.directory not in channel._temp_directories
+
+
+def test_discard_is_a_no_op_for_an_explicit_caller_directory(tmp_path: Path) -> None:
+    """A symmetric ``finally: discard(prep)`` around edit must never delete the workspace."""
+    channel = StructuredSubmission()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    sentinel = workspace / "keep.txt"
+    sentinel.write_text("keep me\n", encoding="utf-8")
+    prep = channel.prepare(
+        "agent.edit",
+        EditPlan,
+        directory=workspace,
+        filename=".harness-evolution/edits.json5",
+    )
+
+    assert prep.owned is False
+    channel.discard(prep)
+    channel.discard(prep)
+
+    assert workspace.is_dir()
+    assert sentinel.read_text(encoding="utf-8") == "keep me\n"
+
+
+def test_prepare_rejects_a_symlinked_target_that_escapes_the_directory(
+    tmp_path: Path,
+) -> None:
+    """A workspace symlink cannot make prepare unlink a file outside the workspace."""
+    channel = StructuredSubmission()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    external = outside / "edits.json5"
+    external.write_text('{"summary": "outside", "edits": []}', encoding="utf-8")
+    (workspace / ".harness-evolution").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="stay inside the submission directory"):
+        channel.prepare(
+            "agent.edit",
+            EditPlan,
+            directory=workspace,
+            filename=".harness-evolution/edits.json5",
+        )
+
+    assert external.read_text(encoding="utf-8") == '{"summary": "outside", "edits": []}'
+
+
+def test_collect_refuses_to_read_through_an_escaping_symlink(tmp_path: Path) -> None:
+    """The collector validates containment before reading, so outside text is never read."""
+    channel = StructuredSubmission()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    prep = channel.prepare("cluster.score", ScoreOutput, directory=workspace)
+    outside = tmp_path / "outside.json5"
+    outside.write_text('{"confidence": 0.5, "summary": "outside"}', encoding="utf-8")
+    prep.result_path.symlink_to(outside)
+
+    outcome = channel.collect(prep, ScoreOutput.model_validate)
+
+    assert outcome.status == "invalid"
+    assert outcome.payload is None
+    assert outcome.validated is None
+    assert outcome.parse_error is not None
+    assert "之外" in outcome.parse_error
+    assert outside.read_text(encoding="utf-8") == '{"confidence": 0.5, "summary": "outside"}'
 
 
 def test_prepare_rejects_blank_key_and_non_pydantic_schema(tmp_path: Path) -> None:
@@ -554,3 +627,204 @@ def test_outcomes_are_frozen_value_objects() -> None:
     with pytest.raises(AttributeError):
         outcome.status = "ok"  # type: ignore[misc]
     assert outcome.is_ok is False
+
+
+def test_explicit_directory_and_filename_override_the_disposable_default(
+    tmp_path: Path,
+) -> None:
+    """The edit phase submits into the workspace, not into a one-shot temp dir."""
+    channel = StructuredSubmission()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    prep = channel.prepare(
+        "agent.edit",
+        EditPlan,
+        directory=workspace,
+        filename=".harness-evolution/edits.json5",
+    )
+
+    assert prep.directory == workspace
+    assert prep.owned is False
+    assert prep.schema_reference is None
+    assert prep.result_path == workspace / ".harness-evolution" / "edits.json5"
+    assert prep.schema_path is None
+    assert prep.allowed_tools == ("Write(./.harness-evolution/edits.json5)",)
+    assert "agent.edit" in prep.prompt_addendum
+    assert "./.harness-evolution/edits.json5" in prep.prompt_addendum
+    assert "JSON5" in prep.prompt_addendum
+    assert "./schema.json" not in prep.prompt_addendum
+
+
+def test_explicit_directory_inlines_the_schema_instead_of_writing_a_file(
+    tmp_path: Path,
+) -> None:
+    """No schema file is left in a caller-owned workspace; the prompt carries it."""
+    channel = StructuredSubmission()
+
+    prep = channel.prepare(
+        "agent.edit",
+        EditPlan,
+        directory=tmp_path,
+        filename=".harness-evolution/edits.json5",
+    )
+
+    assert not (tmp_path / SCHEMA_FILENAME).exists()
+    assert prep.schema_path is None
+    assert "JSON Schema" in prep.prompt_addendum
+    assert '"properties"' in prep.prompt_addendum
+    assert '"summary"' in prep.prompt_addendum
+    assert '"edits"' in prep.prompt_addendum
+
+
+def test_explicit_directory_with_the_default_filename_still_inlines_the_schema(
+    tmp_path: Path,
+) -> None:
+    """An explicit directory always keeps the caller tree free of a schema file."""
+    channel = StructuredSubmission()
+
+    prep = channel.prepare("cluster.score", ScoreOutput, directory=tmp_path)
+
+    assert prep.result_path == tmp_path / "result.json5"
+    assert prep.schema_path is None
+    assert not (tmp_path / SCHEMA_FILENAME).exists()
+    assert prep.allowed_tools == SUBMISSION_TOOLS
+    assert '"confidence"' in prep.prompt_addendum
+
+
+def test_explicit_directory_removes_a_stale_result_before_the_next_round(
+    tmp_path: Path,
+) -> None:
+    """A workspace keeps old rounds; a failed write must not collect the stale plan."""
+    channel = StructuredSubmission()
+    stale = tmp_path / ".harness-evolution" / "edits.json5"
+    stale.parent.mkdir()
+    stale.write_text('{"summary": "old round", "edits": []}', encoding="utf-8")
+
+    prep = channel.prepare(
+        "agent.edit",
+        EditPlan,
+        directory=tmp_path,
+        filename=".harness-evolution/edits.json5",
+    )
+
+    assert prep.result_path == stale
+    assert not stale.exists()
+    assert channel.collect(prep, EditPlan.model_validate).status == "missing"
+
+
+def test_explicit_filename_is_named_in_the_missing_feedback(tmp_path: Path) -> None:
+    """An edit submission must name edits.json5, not the default result.json5."""
+    channel = StructuredSubmission()
+    prep = channel.prepare(
+        "agent.edit",
+        EditPlan,
+        directory=tmp_path,
+        filename=".harness-evolution/edits.json5",
+    )
+
+    outcome = channel.collect(prep, EditPlan.model_validate)
+
+    assert outcome.status == "missing"
+    assert outcome.result_name == ".harness-evolution/edits.json5"
+    assert "edits.json5" in (outcome.parse_error or "")
+    feedback = channel.feedback_prompt(outcome)
+    assert "edits.json5" in feedback
+    assert "result.json5" not in feedback
+    # The explicit directory has no schema file; feedback must point at the
+    # inlined schema in the prompt instead of a nonexistent ./schema.json.
+    assert "./schema.json" not in feedback
+    assert "上方 prompt" in feedback
+    assert "内联" in feedback
+
+
+def test_custom_filename_in_a_disposable_directory_keeps_the_written_schema(
+    tmp_path: Path,
+) -> None:
+    """A custom name in a channel-owned task dir keeps the schema file contract."""
+    channel = StructuredSubmission(root=tmp_path)
+
+    prep = channel.prepare("cluster.score", ScoreOutput, filename="nested/answer.json5")
+
+    assert prep.directory.parent == tmp_path
+    assert prep.result_path == prep.directory / "nested" / "answer.json5"
+    assert prep.schema_path == prep.directory / SCHEMA_FILENAME
+    assert prep.schema_path is not None
+    assert prep.schema_path.exists()
+    assert prep.allowed_tools == ("Write(./nested/answer.json5)",)
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "",
+        "   ",
+        " leading.json5",
+        "trailing.json5 ",
+        "/abs/result.json5",
+        "../escape.json5",
+        "a/../b.json5",
+        "./result.json5",
+        "a//b.json5",
+        "a/./b.json5",
+        "a/",
+        "a\\b.json5",
+        "a\x00b.json5",
+        "./",
+        ".",
+        "..",
+        "C:/result.json5",
+        ".git/config",
+        ".git",
+        "nested/.GIT/config",
+    ],
+    ids=[
+        "empty",
+        "blank",
+        "leading-space",
+        "trailing-space",
+        "absolute",
+        "parent",
+        "inner-parent",
+        "dot-prefix",
+        "double-slash",
+        "dot-segment",
+        "trailing-slash",
+        "backslash",
+        "nul",
+        "dot-slash",
+        "dot",
+        "dotdot",
+        "drive-prefix",
+        "git-file",
+        "git-dir",
+        "case-folded-git",
+    ],
+)
+def test_unsafe_filename_matrix_is_rejected(tmp_path: Path, filename: str) -> None:
+    """Every traversal, platform, and Git-internal spelling fails before writing."""
+    channel = StructuredSubmission()
+
+    with pytest.raises(ValueError):
+        channel.prepare(
+            "agent.edit",
+            EditPlan,
+            directory=tmp_path,
+            filename=filename,
+        )
+
+
+def test_explicit_directory_must_be_absolute_and_exist(tmp_path: Path) -> None:
+    """An explicit directory is validated before any file is written."""
+    channel = StructuredSubmission()
+
+    with pytest.raises(ValueError, match="absolute"):
+        channel.prepare("agent.edit", EditPlan, directory=Path("relative"))
+    with pytest.raises(ValueError, match="existing"):
+        channel.prepare(
+            "agent.edit",
+            EditPlan,
+            directory=tmp_path / "missing",
+            filename=".harness-evolution/edits.json5",
+        )
+    assert not (tmp_path / "missing").exists()

@@ -320,27 +320,16 @@ def test_contracts_reject_blank_and_negative_values(tmp_path: Path) -> None:
     assert request.task == "cluster.review"
 
 
-async def test_default_backend_health_is_unhealthy_and_fails_loudly(tmp_path: Path) -> None:
-    """The zero-config claude-code placeholder starts but never fakes capability."""
+def test_default_backend_is_the_real_claude_code_provider() -> None:
+    """The zero-config selection assembles the real subclass, not a placeholder."""
+    from app.third_party_api.ai_agent.claude_code import ClaudeCodeProvider
+
     provider = build_agent_provider(settings())
 
+    assert isinstance(provider, ClaudeCodeProvider)
     assert provider.provider_id == "claude-code"
-    health = await provider.health_check()
-    assert health.provider_id == "claude-code"
-    assert health.healthy is False
-    assert health.detail is not None
-    assert "bugfix-17" in health.detail
-
-    with pytest.raises(NotImplementedError, match="bugfix-17"):
-        await provider.analyze(
-            AnalysisRequest(
-                task="cluster.score",
-                prompt="score",
-                output_model=ClusterScoreOutput,
-            ),
-        )
-    with pytest.raises(NotImplementedError, match="bugfix-17"):
-        await provider.edit_workspace(EditRequest(workspace=tmp_path, prompt="edit"))
+    assert provider.settings is not None
+    assert provider.settings.ai_agent_claude_bin == "~/.local/bin/claude"
 
 
 def test_create_app_exposes_the_configured_provider(tmp_path: Path) -> None:

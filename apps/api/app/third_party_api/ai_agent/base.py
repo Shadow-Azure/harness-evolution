@@ -1,8 +1,8 @@
 """Parent contract for outbound AI Agent providers.
 
-Subclasses own one backend each (``fake`` now, ``claude-code`` in a later
-issue). They answer the same three capability questions, so business services
-never import a vendor module or branch on a backend name.
+Subclasses own one backend each (``fake`` and the real ``claude-code`` CLI).
+They answer the same three capability questions, so business services never
+import a vendor module or branch on a backend name.
 """
 
 from __future__ import annotations

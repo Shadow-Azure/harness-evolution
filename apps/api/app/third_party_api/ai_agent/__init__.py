@@ -1,6 +1,12 @@
 """Outbound AI Agent seam: contracts, factory, deterministic fake, and submission."""
 
 from app.third_party_api.ai_agent.base import AIAgentProvider
+from app.third_party_api.ai_agent.claude_code import (
+    AsyncioClaudeCliRunner,
+    ClaudeCliResult,
+    ClaudeCliRunner,
+    ClaudeCodeProvider,
+)
 from app.third_party_api.ai_agent.contracts import (
     AgentProviderError,
     AgentUsage,
@@ -46,6 +52,10 @@ __all__ = [
     "AgentUsage",
     "AnalysisRequest",
     "AnalysisResult",
+    "AsyncioClaudeCliRunner",
+    "ClaudeCliResult",
+    "ClaudeCliRunner",
+    "ClaudeCodeProvider",
     "EditApplication",
     "EditOp",
     "EditPlan",
