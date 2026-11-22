@@ -44,6 +44,16 @@ _DEFAULT_ANALYSIS_OUTPUTS: Mapping[str, Mapping[str, Any]] = MappingProxyType(
 _MAX_DETAIL_CHARS = 2_000
 
 
+def _validation_detail(exc: ValidationError) -> str:
+    """Render field locations and messages without echoing the raw output."""
+    parts = []
+    for error in exc.errors(include_url=False, include_input=False):
+        location = ".".join(str(part) for part in error["loc"]) or "<root>"
+        parts.append(f"{location}: {error['msg']}")
+    detail = "; ".join(parts) or str(exc)
+    return detail[:_MAX_DETAIL_CHARS]
+
+
 class FakeAIAgentProvider(AIAgentProvider):
     """Deterministic provider that needs no external service or credentials."""
 
@@ -81,7 +91,7 @@ class FakeAIAgentProvider(AIAgentProvider):
                 "fake analysis output failed the caller schema",
                 retryable=False,
                 provider_id=self.provider_id,
-                detail=str(exc)[:_MAX_DETAIL_CHARS],
+                detail=_validation_detail(exc),
             ) from exc
         return AnalysisResult(
             output=validated.model_dump(mode="json"),

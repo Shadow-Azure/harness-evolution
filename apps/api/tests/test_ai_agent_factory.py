@@ -10,7 +10,7 @@ import pytest
 from pydantic import BaseModel, Field, ValidationError
 
 from app.config import DatabaseDialect, Settings
-from app.main import create_app
+from app.main import _record_ai_agent_health, create_app
 from app.third_party_api.ai_agent import (
     AgentProviderError,
     AgentUsage,
@@ -63,9 +63,20 @@ class TitleOnlyOutput(BaseModel):
     title: str
 
 
+@pytest.fixture(autouse=True)
+def isolated_ai_agent_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep ambient deployment variables from changing provider selection."""
+    for name in (
+        "AI_AGENT_PROVIDER",
+        "HE_AI_AGENT_PROVIDER",
+        "HE_AI_AGENT_CLAUDE_BIN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 def settings(**overrides: Any) -> Settings:
     """Build minimal settings without reading a repository .env file."""
-    return Settings(**overrides)
+    return Settings(_env_file=None, **overrides)  # type: ignore[call-arg]
 
 
 def test_timeouts_and_permission_mode_are_code_constants() -> None:
@@ -238,6 +249,7 @@ async def test_fake_analyze_normalizes_schema_failures() -> None:
     assert error.provider_id == "fake"
     assert error.detail is not None
     assert "title" in error.detail
+    assert "input_value" not in error.detail
 
 
 async def test_fake_edit_workspace_returns_a_fixed_result(tmp_path: Path) -> None:
@@ -405,3 +417,31 @@ def test_register_provider_adds_one_backend_without_business_changes() -> None:
         factory.register_provider("other-id", StubProvider)
     with pytest.raises(ValueError, match="must not be empty"):
         factory.register_provider("   ", StubProvider)
+
+
+async def test_health_probe_failure_is_logged_without_failing_startup(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A provider probe exception becomes a warning event, not a startup crash."""
+
+    class BrokenProvider(AIAgentProvider):
+        provider_id = "broken"
+
+        async def analyze(self, request: AnalysisRequest) -> AnalysisResult:
+            raise NotImplementedError
+
+        async def edit_workspace(self, request: EditRequest) -> EditResult:
+            raise NotImplementedError
+
+        async def health_check(self) -> ProviderHealth:
+            raise RuntimeError("probe exploded")
+
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        await _record_ai_agent_health(BrokenProvider())
+
+    record = next(
+        entry for entry in caplog.records if getattr(entry, "event", None) == "ai_agent_health"
+    )
+    assert getattr(record, "provider_id", None) == "broken"
+    assert getattr(record, "healthy", None) is False
+    assert getattr(record, "error_type", None) == "RuntimeError"
