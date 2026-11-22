@@ -9,7 +9,7 @@ milestone: bugfix
 depends:
   - bugfix-15
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/app/third_party_api/ai_agent/**
   - apps/api/pyproject.toml
