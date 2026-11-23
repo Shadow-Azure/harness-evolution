@@ -666,7 +666,7 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 
 - 对象选择：`useTargetConfigs(wid)` 过滤 `enabled`；未配置的对象不出现；空间无对象时给「去配置进化对象」入口。knowledge 目标只通过 API 配置，向导对象选择器仍是 skill/agent；knowledge 的文件匹配由 resolver/matcher 支持，知识库 UI 选择器另开切片。
 - 版本：输入优先的可编辑组合框；下拉建议为该 target 的 `defaultRef` 与 tag 列表，用户可直接输入 tag、分支名或 commit SHA。默认值取 `defaultRef`，缺省时取第一个 tag；提交时不再要求值必须出现在建议列表中。格式校验通过后，服务端必须用 git 判断该 ref 在仓库中是否存在：缓存 mirror 上执行 `git rev-parse --verify <ref>^{commit}`（远端 ref 缺失时按需刷新），tag、分支和 commit 都必须解析到 commit；不存在返回 `TARGET_CONTENT_UNRESOLVED`（reason `ref_not_found`），仓库不可达/超时也走同一错误（reason `repo_unreachable` / `content_timeout`），都回到第 1 步。存在后再读取该 ref 下 `SKILL.md`（skill）或 `AGENT.md`（agent）并算出 body hash，作为 `targetRevision`；knowledge 目标由文档 revision/内容算 body hash，但向导暂不提供 knowledge 选择器。Step 1 可在条件摘要里展示 `ref → digest` 只读结果。内容读取/归一化失败显示 `TARGET_CONTENT_UNRESOLVED` 并回到第 1 步，不得回退到 tag 猜测。
-- 时间段：`from/to` 必填，校验 `from <= to`（后端再判 ≤366 天）。
+- 时间段：`from/to` 必填，校验 `from <= to`（后端再判 ≤366 天）。日期输入框同一行提供「近 7 天 / 近 30 天 / 近半年」胶囊预设：点选后以今天（含当天）倒推并填入具体日期（近 7 天 `today - 6`、近 30 天 `today - 29`、近半年 `today - 6 个月`，月末收敛），只填值不锁定，仍可手动微调；当前值命中预设时胶囊用浅蓝底和蓝色文字高亮，手动改日期后取消高亮，不使用与主按钮抢眼的实心蓝。预设不新增请求字段，也不改变 `from/to` 校验与潜在匹配口径。
 - **潜在策略**：默认策略单选 + 「自定义」三开关（`includeSelfReport` / `includeAfterObject` / `sameObjectOnly`）；custom 至少勾一条，否则本地拦截（后端 `422 POLICY_INVALID` 兜底）。
 - 从错误详情进入（`focusCaseId`）：第 1 步显示只读提示「以 bad case <id> 启动」，自动带出它的对象/版本线索；不改变潜在判定口径。
 - 「下一步」：字段级校验（对象/版本/时间段缺失、版本 ref 格式非法都标红 `aria-invalid`）→ 服务端 git 存在性校验（tag/分支/commit 必须解析到 commit）→ `POST …/evolution/preview/sessions` → Step 2；ref 不存在或内容解析失败回到第 1 步，`409 NO_ASSOCIATED_SESSIONS` 同样进 Step 2 渲染「没有对象出现过的 Session」空态并禁用前进。
