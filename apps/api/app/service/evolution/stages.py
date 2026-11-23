@@ -229,9 +229,19 @@ class StepCluster(IdentityModel):
 
 
 class StepClustersPayload(IdentityModel):
-    """Clusters ordered by severity descending."""
+    """Clusters ordered by severity descending plus the AI-mode audit facts.
+
+    ``degraded`` lists the task keys a ``degrade`` policy replaced with
+    deterministic fallbacks, so a degraded result is never presented as model
+    participation. ``failure`` carries the sanitized run error when a strict
+    policy failed the run at this step.
+    """
 
     clusters: list[StepCluster]
+    algorithm: str | None = None
+    failure_policy: Literal["strict", "degrade"] | None = None
+    degraded: list[str] = Field(default_factory=list)
+    failure: str | None = None
 
 
 class StepCandidate(IdentityModel):
@@ -336,6 +346,7 @@ class StepFinalPayload(IdentityModel):
     init_score: float | None
     metrics: list[dict[str, Any]]
     changes: list[StepFinalChange]
+    degraded: bool = False
 
 
 class EvolutionStepShell(IdentityModel):
@@ -496,6 +507,7 @@ class EvolutionStageService:
                 key,
                 run.mode,
                 attribution_engine=run.attribution_engine,
+                error_stage=run.error_stage,
             )
         except StepNotReady as exc:
             raise AppError(
@@ -577,6 +589,7 @@ class EvolutionStageService:
             len(facts.clusters),
             run.status,
             attribution_engine=run.attribution_engine,
+            error_stage=run.error_stage,
         )[index]
         return {
             "index": index,
@@ -689,10 +702,29 @@ class EvolutionStageService:
                 cluster.seq,
             ),
         )
+        stats = facts.run.stats
+        algorithm = stats.get("clusterAlgorithm")
+        policy = stats.get("clusterFailurePolicy")
+        degraded_raw = stats.get("clusterDegraded")
+        failure = (
+            facts.run.error_message
+            if facts.run.status == "failed" and facts.run.error_stage == "cluster"
+            else None
+        )
         return EvolutionStepClusters(
             **self._shell(facts, "clusters", detail=f"{len(clusters)} 簇"),
             payload=StepClustersPayload(
                 clusters=[_cluster_item(facts, cluster) for cluster in clusters],
+                algorithm=algorithm if isinstance(algorithm, str) else None,
+                failure_policy=(
+                    cast(Literal["strict", "degrade"], policy)
+                    if policy in ("strict", "degrade")
+                    else None
+                ),
+                degraded=(
+                    [str(item) for item in degraded_raw] if isinstance(degraded_raw, list) else []
+                ),
+                failure=failure,
             ),
         )
 
@@ -745,8 +777,15 @@ class EvolutionStageService:
                 init_score=final.init_score if final is not None else None,
                 metrics=final.metrics if final is not None else [],
                 changes=changes,
+                degraded=_has_degraded_clusters(facts.run.stats),
             ),
         )
+
+
+def _has_degraded_clusters(stats: Mapping[str, Any]) -> bool:
+    """Return whether the cluster step recorded any deterministic fallback."""
+    value = stats.get("clusterDegraded")
+    return isinstance(value, list) and any(isinstance(item, str) for item in value)
 
 
 def _int_stat(stats: Mapping[str, Any], key: str) -> int:

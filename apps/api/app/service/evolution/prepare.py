@@ -6,7 +6,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 from urllib.parse import urlsplit
 
 from pydantic import TypeAdapter
@@ -156,12 +156,14 @@ class EvolutionPrepareService:
         events: PrepareEventRecorder | EvolutionRunEventService | None = None,
         resolver: TargetVersionResolver | None = None,
         agent: AIAgentProvider | None = None,
+        failure_policy: Literal["strict", "degrade"] = "degrade",
     ) -> None:
         """Bind persistence, the shared matcher, the runner, git workspaces, and the agent.
 
         ``agent`` is optional: without a provider the prepare workflow keeps the
         legacy lexical clustering path byte for byte, which is what existing
-        callers and tests rely on.
+        callers and tests rely on. ``failure_policy`` applies only to the bound
+        agent path: ``strict`` fails the run on the first failed cluster task.
         """
         self._runs = runs
         self._candidates = candidates
@@ -172,6 +174,7 @@ class EvolutionPrepareService:
         self._events = events
         self._resolver = resolver
         self._agent = agent
+        self._failure_policy = failure_policy
 
     async def handle(self, job: JobRunRecord) -> Mapping[str, Any]:
         """Prepare one run idempotently and return its durable summary."""
@@ -348,6 +351,14 @@ class EvolutionPrepareService:
 
         await checkpoint(self._runs, run.id)
         if run.progress_unit < 5:
+            # Persist the policy before the first model call so a strict failure
+            # is still explainable from the run snapshot and the step payload.
+            if run.stats.get("clusterFailurePolicy") != self._failure_policy:
+                await self._runs.write_stats(
+                    run.id,
+                    {**dict(run.stats), "clusterFailurePolicy": self._failure_policy},
+                )
+                run = await self._runs.get_run(run.id) or run
             built = await self._build_clusters(run)
             stats = dict(run.stats)
             stats.update(
@@ -355,6 +366,8 @@ class EvolutionPrepareService:
                     "clusters": len(built.clusters),
                     "byCategory": await self._category_counts(run),
                     "clusterAlgorithm": built.algorithm,
+                    "clusterFailurePolicy": self._failure_policy,
+                    "clusterDegraded": list(built.degraded),
                 },
             )
             await self._runs.write_stats(run.id, stats)
@@ -626,6 +639,7 @@ class EvolutionPrepareService:
             stats_by_draft=stats_by_draft,
             record_call=record_call,
             record_degraded=record_degraded,
+            failure_policy=self._failure_policy,
         )
 
     async def _prepare_workspace(

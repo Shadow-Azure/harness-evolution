@@ -48,11 +48,13 @@
 
 ### AI Agent 配置
 
-模型审查与 patch 生成经三个 Secrets 注入：`AI_AGENT_PROVIDER`、`HE_AI_AGENT_CLAUDE_BIN`、`HE_PATCH_SOURCE_MODE`；存在且非空写入 `.env`，缺失或空显式 `--unset`，服务回退 Settings 默认值（默认值与合法值见[模板](../deploy/env.production.example)）。三键值含换行/回车时注入前直接失败（跳过不是删除）；其余键解码失败仍告警跳过并保留旧值。API 以 `harness` 运行且无 home：`HE_AI_AGENT_CLAUDE_BIN` 须为 `harness` 可执行的绝对路径，且 CLI 的 `~/.claude/settings.json` 与凭据（`apiKeyHelper`/`api-key`）须对 `harness` 可读，只填路径不够；稳定路径与共享 settings 归 bugfix-17/M15。`agent-edit` 需 #488（bugfix-21）先扩展枚举，当前写入会启动失败。
+模型审查与 patch 生成经 Secrets 注入 `AI_AGENT_PROVIDER`、`HE_AI_AGENT_FAILURE_POLICY`、`HE_PATCH_SOURCE_MODE`：非空写入 `.env`，缺失或空显式 `--unset`。`HE_AI_AGENT_FAILURE_POLICY` 留空按 provider 推导（`fake` → `degrade`，其余 → `strict`）；`strict` 下聚类 AI 失败让 run 在聚类阶段显式失败。值含换行/回车时注入前失败，其余解码失败告警跳过并保留旧值（默认值与合法值见[模板](../deploy/env.production.example)）。
+
+API 以 `harness` 运行且无 home：Deploy 安装 Claude Code 时注入稳定 `current` 路径、共享 settings、`CLAUDE_CONFIG_DIR` 与 0600 `.env` 中的 `ANTHROPIC_API_KEY`（见下节），CLI/settings 不再放在 `deploy` home。`HE_AI_AGENT_CLAUDE_BIN` Secret 仅在安装步骤跳过时作手工覆盖；`agent-edit` 需已配置 provider。
 
 ## Claude Code
 
-发布流水线在切换 `current` 之前为 `deploy` 用户安装 Claude Code，并用 GitHub Secrets 写入模型配置；安装包在 runner 侧获取，服务器只解包，不访问 `claude.ai`，不需要 root 或 Node.js。三个 Secret、MiniMax 配置、验证与回滚见 [Claude Code 运维](claude-code.md)。
+发布流水线在切换 `current` 前安装 Claude Code，并写服务级共享配置：版本目录 + 稳定 `current` 软链、0644 无密钥共享 `settings.json`、0600 `.env` 中的 `ANTHROPIC_API_KEY`。安装包在 runner 侧获取，服务器只解包，不访问 `claude.ai`，不需要 root 或 Node.js；切换前预检服务用户可执行/可读。Secret、MiniMax、验证与回滚见 [Claude Code 运维](claude-code.md)。
 
 ## 发布与回滚
 

@@ -256,6 +256,18 @@ jobs:
           printf '%s\n' "${ENTRIES[@]}" | $SSH_CMD "$SSH_USER@$SSH_HOST" \
             "python3 /opt/harness/shared/config/install-claude-code.py --version '${{ steps.claude_code_resolve.outputs.target }}' $DEB_ARG"
 
+      - name: 预检 Claude Code 共享资产（服务用户可执行/可读）
+        if: steps.claude_code_resolve.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          SSH_CMD="ssh -i ~/deploy_key -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
+          BIN=/opt/harness/shared/claude-code/current/usr/bin/claude
+          SETTINGS=/opt/harness/shared/claude-code/config/settings.json
+          $SSH_CMD "$SSH_USER@$SSH_HOST" \
+            "test -x '$BIN' && test -r '$SETTINGS' && [ \"\$(stat -c '%a' '$SETTINGS')\" = 644 ]" \
+            || { echo "::error::Claude Code 共享资产不可被服务用户执行/读取，发布中止"; exit 1; }
+          echo "Claude Code 共享资产预检通过：$BIN，$SETTINGS"
+
       - name: 注入部署配置（数据目录 + 可选评测 + Git 代理 + Git 推送凭据）
         env:
           SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
@@ -267,7 +279,10 @@ jobs:
           HE_GIT_PUSH_TOKEN: ${{ secrets.HE_GIT_PUSH_TOKEN }}
           AI_AGENT_PROVIDER: ${{ secrets.AI_AGENT_PROVIDER }}
           HE_AI_AGENT_CLAUDE_BIN: ${{ secrets.HE_AI_AGENT_CLAUDE_BIN }}
+          HE_AI_AGENT_FAILURE_POLICY: ${{ secrets.HE_AI_AGENT_FAILURE_POLICY }}
           HE_PATCH_SOURCE_MODE: ${{ secrets.HE_PATCH_SOURCE_MODE }}
+          CLAUDE_CODE_API_KEY: ${{ secrets.CLAUDE_CODE_API_KEY }}
+          CLAUDE_CODE_INSTALLED: ${{ steps.claude_code_resolve.outputs.enabled }}
           GIT_PROXY_URL: ${{ steps.git_proxy.outputs.proxy_url }}
         run: |
           set -euo pipefail
@@ -327,17 +342,34 @@ jobs:
           }
           reject_ai_newline AI_AGENT_PROVIDER "${AI_AGENT_PROVIDER:-}"
           reject_ai_newline HE_AI_AGENT_CLAUDE_BIN "${HE_AI_AGENT_CLAUDE_BIN:-}"
+          reject_ai_newline HE_AI_AGENT_FAILURE_POLICY "${HE_AI_AGENT_FAILURE_POLICY:-}"
           reject_ai_newline HE_PATCH_SOURCE_MODE "${HE_PATCH_SOURCE_MODE:-}"
+          reject_ai_newline CLAUDE_CODE_API_KEY "${CLAUDE_CODE_API_KEY:-}"
           # END AI_AGENT_NEWLINE_GUARD
           if [ -n "${AI_AGENT_PROVIDER:-}" ]; then
             ENTRIES+=("AI_AGENT_PROVIDER $(printf '%s' "$AI_AGENT_PROVIDER" | base64 | tr -d '\n')")
           else
             UNSET_ARGS="$UNSET_ARGS --unset AI_AGENT_PROVIDER"
           fi
-          if [ -n "${HE_AI_AGENT_CLAUDE_BIN:-}" ]; then
-            ENTRIES+=("HE_AI_AGENT_CLAUDE_BIN $(printf '%s' "$HE_AI_AGENT_CLAUDE_BIN" | base64 | tr -d '\n')")
+          # 安装流水线负责稳定路径与共享 settings；Secret 只作为手工排障覆盖。
+          # 始终使用 current 软链，避免 CLI 升级后版本化路径失效。
+          if [ "${CLAUDE_CODE_INSTALLED:-false}" = "true" ]; then
+            ENTRIES+=("HE_AI_AGENT_CLAUDE_BIN $(printf '%s' '/opt/harness/shared/claude-code/current/usr/bin/claude' | base64 | tr -d '\n')")
+            ENTRIES+=("HE_AI_AGENT_CLAUDE_SETTINGS $(printf '%s' '/opt/harness/shared/claude-code/config/settings.json' | base64 | tr -d '\n')")
+            ENTRIES+=("CLAUDE_CONFIG_DIR $(printf '%s' '/opt/harness/shared/claude-code/config' | base64 | tr -d '\n')")
+            ENTRIES+=("ANTHROPIC_API_KEY $(printf '%s' "${CLAUDE_CODE_API_KEY:-}" | base64 | tr -d '\n')")
           else
-            UNSET_ARGS="$UNSET_ARGS --unset HE_AI_AGENT_CLAUDE_BIN"
+            if [ -n "${HE_AI_AGENT_CLAUDE_BIN:-}" ]; then
+              ENTRIES+=("HE_AI_AGENT_CLAUDE_BIN $(printf '%s' "$HE_AI_AGENT_CLAUDE_BIN" | base64 | tr -d '\n')")
+            else
+              UNSET_ARGS="$UNSET_ARGS --unset HE_AI_AGENT_CLAUDE_BIN"
+            fi
+            UNSET_ARGS="$UNSET_ARGS --unset HE_AI_AGENT_CLAUDE_SETTINGS --unset CLAUDE_CONFIG_DIR --unset ANTHROPIC_API_KEY"
+          fi
+          if [ -n "${HE_AI_AGENT_FAILURE_POLICY:-}" ]; then
+            ENTRIES+=("HE_AI_AGENT_FAILURE_POLICY $(printf '%s' "$HE_AI_AGENT_FAILURE_POLICY" | base64 | tr -d '\n')")
+          else
+            UNSET_ARGS="$UNSET_ARGS --unset HE_AI_AGENT_FAILURE_POLICY"
           fi
           if [ -n "${HE_PATCH_SOURCE_MODE:-}" ]; then
             ENTRIES+=("HE_PATCH_SOURCE_MODE $(printf '%s' "$HE_PATCH_SOURCE_MODE" | base64 | tr -d '\n')")
@@ -363,9 +395,10 @@ jobs:
           [ -n "${HE_GIT_PUSH_TOKEN:-}" ] && TOKEN_STATE="已配置"
           AI_AGENT_COUNT=0
           [ -n "${AI_AGENT_PROVIDER:-}" ] && AI_AGENT_COUNT=$((AI_AGENT_COUNT + 1))
-          [ -n "${HE_AI_AGENT_CLAUDE_BIN:-}" ] && AI_AGENT_COUNT=$((AI_AGENT_COUNT + 1))
+          { [ "${CLAUDE_CODE_INSTALLED:-false}" = "true" ] || [ -n "${HE_AI_AGENT_CLAUDE_BIN:-}" ]; } && AI_AGENT_COUNT=$((AI_AGENT_COUNT + 1))
+          [ -n "${HE_AI_AGENT_FAILURE_POLICY:-}" ] && AI_AGENT_COUNT=$((AI_AGENT_COUNT + 1))
           [ -n "${HE_PATCH_SOURCE_MODE:-}" ] && AI_AGENT_COUNT=$((AI_AGENT_COUNT + 1))
-          echo "已注入 ${#ENTRIES[@]} 个配置变量（数据目录：$DATA_DIR，Git 代理：${GIT_PROXY_URL:-直连}，Git 推送：$GIT_PUSH_PROVIDER，token $TOKEN_STATE，AI Agent Secret：$AI_AGENT_COUNT/3 已写入、其余已移除）"
+          echo "已注入 ${#ENTRIES[@]} 个配置变量（数据目录：$DATA_DIR，Git 代理：${GIT_PROXY_URL:-直连}，Git 推送：$GIT_PUSH_PROVIDER，token $TOKEN_STATE，AI Agent 配置：$AI_AGENT_COUNT/4 已写入、其余已移除；Claude Code 共享资产：${CLAUDE_CODE_INSTALLED:-false}）"
 
       - name: 执行发布（迁移 + 切换 + 重启 + 探活）
         env:

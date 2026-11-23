@@ -204,12 +204,17 @@ def validate_transition(
         )
 
 
+_FAILURE_STEP_INDEX = {"cluster": 4}
+"""Failed-stage keys that stay readable so the page can show the real cause."""
+
+
 def step_states(
     progress_unit: int,
     cluster_count: int,
     run_status: str,
     *,
     attribution_engine: str = "rule-v1",
+    error_stage: str | None = None,
 ) -> list[StepState]:
     """Derive all seven public step states from one persisted cursor."""
     validate_cursor(progress_unit, cluster_count)
@@ -222,6 +227,7 @@ def step_states(
     )
 
     active_assigned = False
+    failed_index = _FAILURE_STEP_INDEX.get(error_stage or "") if run_status == "failed" else None
     states: list[StepState] = []
     for index, (key, title, threshold) in enumerate(
         zip(STEP_KEYS, STEP_TITLES, _thresholds(cluster_count), strict=True),
@@ -231,6 +237,10 @@ def step_states(
         elif run_status in _WORKING_STATUSES and not active_assigned:
             status = "active"
             active_assigned = True
+        elif failed_index == index:
+            # A failed run keeps its failing step readable instead of hiding
+            # the error behind a pending 404 on the step endpoint.
+            status = "active"
         else:
             status = "pending"
         states.append(
@@ -253,6 +263,7 @@ def ensure_step_readable(
     mode: str = "full",
     *,
     attribution_engine: str = "rule-v1",
+    error_stage: str | None = None,
 ) -> None:
     """Raise unless the requested step is readable for this run.
 
@@ -277,6 +288,7 @@ def ensure_step_readable(
         cluster_count,
         run_status,
         attribution_engine=attribution_engine,
+        error_stage=error_stage,
     )[STEP_KEYS.index(key)]
     if state.status == "pending":
         raise StepNotReady(key, progress_unit)

@@ -176,6 +176,7 @@ const finalStep = {
   clickable: true,
   payload: {
     verdict: true,
+    degraded: false,
     bestVersion: "v2.0.1-best",
     bestScore: 88.9,
     initScore: 84.3,
@@ -207,6 +208,7 @@ const run = {
   createdBy: "Ada",
   createdAt: "2026-10-19T18:42:00+08:00",
   status: "running" as const,
+  degraded: false,
   error: null,
   stats: {
     sessions: 2,
@@ -403,6 +405,43 @@ describe("evolution step content", () => {
     expect(wrapper.text()).not.toContain("bc-1");
   });
 
+  it("shows the algorithm, fallback tasks and strict failure reason", () => {
+    const degraded = mount(StepClusters, {
+      props: {
+        wid: "ws-test",
+        step: {
+          ...clustersStep,
+          payload: {
+            ...clustersStep.payload,
+            algorithm: "hybrid-lexical-llm-v1",
+            failurePolicy: "degrade" as const,
+            degraded: ["cluster.review"],
+          },
+        },
+      },
+    });
+    const failed = mount(StepClusters, {
+      props: {
+        wid: "ws-test",
+        step: {
+          ...clustersStep,
+          payload: {
+            ...clustersStep.payload,
+            failurePolicy: "strict" as const,
+            failure: "cluster.review failed: AgentProviderError: could not start",
+          },
+        },
+      },
+    });
+
+    expect(degraded.text()).toContain("hybrid-lexical-llm-v1");
+    expect(degraded.text()).toContain("AI 聚类使用了确定性回退");
+    expect(degraded.text()).toContain("cluster.review");
+    expect(failed.text()).toContain("真实 AI 聚类失败");
+    expect(failed.text()).toContain("could not start");
+    expect(failed.text()).not.toContain("当前运行还没有生成问题簇");
+  });
+
   it("highlights an addressed cluster and reports a missing target", async () => {
     const highlighted = mount(StepClusters, {
       props: { wid: "ws-test", step: clustersStep, focusCluster: "C1" },
@@ -440,6 +479,25 @@ describe("evolution step content", () => {
     });
 
     expect(wrapper.text()).toContain("无来源 bad case");
+  });
+
+  it("marks a degraded final step as not model-backed", () => {
+    const wrapper = mount(StepFinal, {
+      props: {
+        step: {
+          ...finalStep,
+          payload: {
+            ...finalStep.payload,
+            degraded: true,
+          },
+        },
+        targetVersion: "v2.0.0",
+      },
+    });
+
+    expect(wrapper.text()).toContain("聚类降级 · 结果不代表真实模型参与");
+    expect(wrapper.text()).toContain("终评分数不能作为真实模型参与的证据");
+    expect(wrapper.text()).not.toContain("✓ 自进化有效");
   });
 
   it("renders the final verdict against the original target version", () => {

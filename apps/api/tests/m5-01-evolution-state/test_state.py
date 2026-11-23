@@ -133,6 +133,17 @@ def test_terminal_runs_have_no_active_step(run_status: str) -> None:
     assert all(step.status != "active" for step in states)
 
 
+def test_failed_cluster_step_stays_readable() -> None:
+    """A strict cluster failure keeps its step fetchable instead of 404ing."""
+    states = step_states(4, 0, "failed", error_stage="cluster")
+
+    assert states[4].status == "active"
+    assert states[4].clickable is True
+    ensure_step_readable(4, 0, "failed", "clusters", error_stage="cluster")
+    with pytest.raises(StepNotReady):
+        ensure_step_readable(4, 0, "failed", "clusters")
+
+
 def test_unknown_step_key_is_not_readable() -> None:
     """Only the closed seven-step vocabulary is addressable."""
     with pytest.raises(StepNotReady):

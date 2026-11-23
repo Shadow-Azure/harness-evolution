@@ -406,6 +406,7 @@ def create_app(
         evolution_events,
         resolver,
         agent=ai_agent_provider,
+        failure_policy=resolved_settings.effective_ai_agent_failure_policy,
     )
     evolution_candidates = EvolutionCandidateService(
         evolution_repository,

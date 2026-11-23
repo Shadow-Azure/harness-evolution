@@ -230,6 +230,7 @@ const statusLabel = computed(() => {
       return "已阻塞";
     case "completed":
       if (!run.value.final) return "已完成 · 终评未知";
+      if (run.value.degraded) return "已完成 · 聚类降级";
       return run.value.final.verdict ? "✓ 已完成 · 自进化有效" : "已完成 · 无收益";
     case "failed":
       return "失败";
@@ -245,6 +246,7 @@ const statusClass = computed(() => {
   const status = run.value?.status;
   if (status === "completed") {
     if (!run.value?.final) return "pending";
+    if (run.value.degraded) return "pending";
     return run.value.final.verdict ? "accepted" : "rejected";
   }
   if (status === "blocked" || status === "interrupted") return "blocked";

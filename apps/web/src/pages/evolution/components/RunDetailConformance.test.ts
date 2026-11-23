@@ -36,6 +36,7 @@ const run = {
   createdBy: "Ada",
   createdAt: "2026-10-19T18:42:00+08:00",
   status: "running" as const,
+  degraded: false,
   error: null,
   stats: {
     sessions: 2,
@@ -658,6 +659,7 @@ describe("run detail conformance", () => {
         bestVersion: "v2.0.1",
         bestScore: 88.9,
         initScore: 84.3,
+        degraded: false,
         metrics: [],
         changes: [],
       },

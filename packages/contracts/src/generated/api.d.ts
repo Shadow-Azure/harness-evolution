@@ -2437,6 +2437,11 @@ export interface components {
             createdAt: string;
             /** Createdby */
             createdBy: string | null;
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
             error: components["schemas"]["EvolutionRunError"] | null;
             final: components["schemas"]["EvolutionRunFinal"] | null;
             /**
@@ -2529,6 +2534,11 @@ export interface components {
             createdAt: string;
             /** Createdby */
             createdBy: string | null;
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
             error: components["schemas"]["EvolutionRunError"] | null;
             /**
              * Evalstatus
@@ -4221,11 +4231,24 @@ export interface components {
         };
         /**
          * StepClustersPayload
-         * @description Clusters ordered by severity descending.
+         * @description Clusters ordered by severity descending plus the AI-mode audit facts.
+         *
+         *     ``degraded`` lists the task keys a ``degrade`` policy replaced with
+         *     deterministic fallbacks, so a degraded result is never presented as model
+         *     participation. ``failure`` carries the sanitized run error when a strict
+         *     policy failed the run at this step.
          */
         StepClustersPayload: {
+            /** Algorithm */
+            algorithm?: string | null;
             /** Clusters */
             clusters: components["schemas"]["StepCluster"][];
+            /** Degraded */
+            degraded?: string[];
+            /** Failure */
+            failure?: string | null;
+            /** Failurepolicy */
+            failurePolicy?: ("strict" | "degrade") | null;
         };
         /**
          * StepFinalChange
@@ -4270,6 +4293,11 @@ export interface components {
             bestVersion: string | null;
             /** Changes */
             changes: components["schemas"]["StepFinalChange"][];
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
             /** Initscore */
             initScore: number | null;
             /** Metrics */

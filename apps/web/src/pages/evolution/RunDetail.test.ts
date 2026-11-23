@@ -85,6 +85,7 @@ function run(overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard {
     createdBy: "Ada",
     createdAt: "2026-10-19T18:42:00+08:00",
     status: "preparing",
+    degraded: false,
     error: null,
     stats: {
       sessions: 128,

@@ -47,6 +47,12 @@ const maxSeverity = computed(() => {
   return values.length === 0 ? null : Math.max(...values);
 });
 
+const degradedLabel = computed(() => (props.step.payload.degraded ?? []).join("、"));
+
+const failurePolicyLabel = computed(() =>
+  props.step.payload.failurePolicy === "strict" ? "严格（失败即中止）" : "允许降级",
+);
+
 function toggle(clusterId: string): void {
   const next = new Set(expanded.value);
   if (next.has(clusterId)) next.delete(clusterId);
@@ -98,6 +104,29 @@ watch(
       </span>
       <span class="st accent"><b>{{ maxSeverity === null ? "—" : maxSeverity.toFixed(1) }}</b><span>最高严重度</span></span>
     </div>
+    <p
+      v-if="step.payload.algorithm || step.payload.failurePolicy"
+      class="ai-audit"
+    >
+      <span v-if="step.payload.algorithm">聚类算法 <code>{{ step.payload.algorithm }}</code></span>
+      <span v-if="step.payload.failurePolicy">失败策略 <code>{{ failurePolicyLabel }}</code></span>
+    </p>
+    <p
+      v-if="(step.payload.degraded?.length ?? 0) > 0"
+      class="ai-warning"
+      role="status"
+    >
+      <b>AI 聚类使用了确定性回退。</b>
+      <span>回退任务：{{ degradedLabel }}。该步骤的置信度与严重度不代表真实模型参与。</span>
+    </p>
+    <p
+      v-if="step.payload.failure"
+      class="ai-failure"
+      role="alert"
+    >
+      <b>真实 AI 聚类失败，运行已显式中止。</b>
+      <span>{{ step.payload.failure }}</span>
+    </p>
     <p
       v-if="missingNotice"
       class="missing-focus"
@@ -166,7 +195,7 @@ watch(
       </div>
     </div>
     <p
-      v-if="clusters.length === 0"
+      v-if="clusters.length === 0 && !step.payload.failure"
       class="waiting"
     >
       当前运行还没有生成问题簇。
@@ -360,5 +389,42 @@ watch(
   margin: 0 0 10px;
   color: var(--orange);
   font-size: 11.5px;
+}
+
+.ai-audit {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: -4px 0 10px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.ai-audit code {
+  font-family: var(--mono);
+}
+
+.ai-warning,
+.ai-failure {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.ai-warning {
+  border: 1px solid color-mix(in srgb, var(--orange) 45%, var(--border));
+  background: color-mix(in srgb, var(--orange) 9%, transparent);
+  color: var(--orange);
+}
+
+.ai-failure {
+  border: 1px solid color-mix(in srgb, var(--red) 45%, var(--border));
+  background: color-mix(in srgb, var(--red) 9%, transparent);
+  color: var(--red);
 }
 </style>

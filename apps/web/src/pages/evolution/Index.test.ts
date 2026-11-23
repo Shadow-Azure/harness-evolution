@@ -45,6 +45,7 @@ const run = (
   createdBy: "Administrator",
   createdAt,
   status,
+  degraded: false,
   error: null,
   stats: {
     sessions: 4,

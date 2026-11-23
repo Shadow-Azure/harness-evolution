@@ -38,6 +38,7 @@ from app.service.evolution.cluster_llm import (
     SEVERITY_DIMENSIONS,
     SEVERITY_SCORE_TASK,
     CallRecord,
+    ClusterAIFailure,
     ClusterCaseEvidence,
     ClusterContractError,
     ClusterDraftStats,
@@ -249,13 +250,16 @@ def _fake_with(
 
 async def _enhance(
     provider: AIAgentProvider,
+    *,
+    failure_policy: str = "degrade",
+    calls: list[CallRecord] | None = None,
 ) -> tuple[EnhancedClusters, list[CallRecord], list[DegradedCall]]:
     """Run the orchestrator while capturing the observability callbacks."""
-    calls: list[CallRecord] = []
+    captured = calls if calls is not None else []
     degraded: list[DegradedCall] = []
 
     async def record_call(call: CallRecord) -> None:
-        calls.append(call)
+        captured.append(call)
 
     async def record_degraded(item: DegradedCall) -> None:
         degraded.append(item)
@@ -267,8 +271,9 @@ async def _enhance(
         stats_by_draft=_stats(),
         record_call=record_call,
         record_degraded=record_degraded,
+        failure_policy=failure_policy,  # type: ignore[arg-type]
     )
-    return result, calls, degraded
+    return result, captured, degraded
 
 
 def _scale_fixture(
@@ -715,6 +720,102 @@ async def test_review_provider_failure_degrades_the_whole_batch() -> None:
     assert result.calls == tuple(calls)
 
 
+async def test_strict_review_failure_raises_and_records_the_error_call() -> None:
+    """Strict mode stops at the first failed task instead of returning fallbacks.
+
+    The call record is emitted before the raise so the run timeline still shows
+    which task failed, its provider, and its zero-token spawn failure.
+    """
+    provider = _RawProvider(
+        {
+            CLUSTER_SCORE_TASK: _CLUSTER_SCORE_TWO,
+            SEVERITY_SCORE_TASK: _SEVERITY_TWO,
+        },
+        failures={
+            REVIEW_TASK: AgentProviderError(
+                "claude-code analysis call could not start",
+                retryable=False,
+                provider_id="raw",
+            ),
+        },
+    )
+    calls: list[CallRecord] = []
+
+    with pytest.raises(ClusterAIFailure) as raised:
+        await _enhance(provider, failure_policy="strict", calls=calls)
+
+    assert raised.value.task == REVIEW_TASK
+    assert raised.value.stage == "cluster"
+    assert "AgentProviderError" in raised.value.reason
+    assert str(raised.value) == f"{REVIEW_TASK} failed: {raised.value.reason}"
+    assert [call.outcome for call in calls] == ["error"]
+    assert calls[0].task == REVIEW_TASK
+    assert calls[0].provider_id == "raw"
+
+
+async def test_strict_contract_violation_records_error_and_raises() -> None:
+    """A wrong-shaped output is an error call under strict, never a silent fallback."""
+    provider = _RawProvider(
+        {
+            REVIEW_TASK: "not-an-object",
+            CLUSTER_SCORE_TASK: _CLUSTER_SCORE_TWO,
+            SEVERITY_SCORE_TASK: _SEVERITY_TWO,
+        },
+    )
+    calls: list[CallRecord] = []
+
+    with pytest.raises(ClusterAIFailure) as raised:
+        await _enhance(provider, failure_policy="strict", calls=calls)
+
+    assert raised.value.task == REVIEW_TASK
+    assert "not an object" in raised.value.reason
+    assert [call.outcome for call in calls] == ["error"]
+
+
+@pytest.mark.parametrize(
+    ("task", "outputs", "failures"),
+    [
+        (
+            CLUSTER_SCORE_TASK,
+            {REVIEW_TASK: _REVIEW_MERGED, SEVERITY_SCORE_TASK: _SEVERITY_OK},
+            {
+                CLUSTER_SCORE_TASK: AgentProviderError(
+                    "score backend unavailable",
+                    retryable=True,
+                    provider_id="raw",
+                ),
+            },
+        ),
+        (
+            SEVERITY_SCORE_TASK,
+            {REVIEW_TASK: _REVIEW_MERGED, CLUSTER_SCORE_TASK: _CLUSTER_SCORE_MERGED},
+            {
+                SEVERITY_SCORE_TASK: AgentProviderError(
+                    "severity backend unavailable",
+                    retryable=True,
+                    provider_id="raw",
+                ),
+            },
+        ),
+    ],
+)
+async def test_strict_scoring_failure_raises_with_the_task_key(
+    task: str,
+    outputs: Mapping[str, Any],
+    failures: Mapping[str, BaseException],
+) -> None:
+    """Both scoring batches fail the run explicitly under strict."""
+    provider = _RawProvider(outputs, failures=failures)
+    calls: list[CallRecord] = []
+
+    with pytest.raises(ClusterAIFailure) as raised:
+        await _enhance(provider, failure_policy="strict", calls=calls)
+
+    assert raised.value.task == task
+    assert [call.outcome for call in calls][-1] == "error"
+    assert task in raised.value.reason or raised.value.task == task
+
+
 @pytest.mark.parametrize("output", [[], "not-an-object", None])
 async def test_non_mapping_provider_output_degrades_every_layer(output: object) -> None:
     """A non-mapping provider output is a contract violation, not an escaping failure."""
@@ -1149,6 +1250,8 @@ def _service(
     harness: Harness,
     events: RecordingEvents,
     agent: AIAgentProvider | None = None,
+    *,
+    failure_policy: str = "degrade",
 ) -> EvolutionPrepareService:
     """Compose the prepare service with an optional agent over the test database."""
     attributions = AttributionRepository(harness.database)
@@ -1161,6 +1264,7 @@ def _service(
         UnusedWorkspacePreparer(),
         events,
         agent=agent,
+        failure_policy=failure_policy,  # type: ignore[arg-type]
     )
 
 
@@ -1325,6 +1429,12 @@ async def test_prepare_degrades_gracefully_when_every_call_fails(
     assert run.progress_unit == 5
     assert run.status == "completed"
     assert (run.stats or {}).get("clusterAlgorithm") == HYBRID_ALGORITHM
+    assert (run.stats or {}).get("clusterFailurePolicy") == "degrade"
+    assert (run.stats or {}).get("clusterDegraded") == [
+        REVIEW_TASK,
+        CLUSTER_SCORE_TASK,
+        SEVERITY_SCORE_TASK,
+    ]
     clusters = await runs.list_clusters(RUN_ID)
     assert len(clusters) == 2
     assert all(
@@ -1362,3 +1472,36 @@ async def test_prepare_degrades_gracefully_when_every_call_fails(
         CLUSTER_SCORE_TASK,
         SEVERITY_SCORE_TASK,
     ]
+
+
+async def test_prepare_strict_fails_before_persisting_any_cluster(harness: Harness) -> None:
+    """A strict real-provider failure propagates and leaves no fallback clusters."""
+    await _seed_titled_cases(harness)
+    await _create_cluster_only_run(harness)
+    events = RecordingEvents()
+    service = _service(
+        harness,
+        events,
+        _FailingProvider(),
+        failure_policy="strict",
+    )
+
+    with pytest.raises(ClusterAIFailure) as raised:
+        await service.handle(_job())
+
+    assert raised.value.task == REVIEW_TASK
+    assert raised.value.stage == "cluster"
+    assert "NotImplementedError" in raised.value.reason
+
+    runs = EvolutionRepository(harness.database)
+    run = await runs.get_run(RUN_ID)
+    assert run is not None
+    assert run.progress_unit == 4
+    assert (run.stats or {}).get("clusterFailurePolicy") == "strict"
+    assert await runs.list_clusters(RUN_ID) == ()
+    assert [event for event in events.records if event.event_type == "clusters_created"] == []
+    calls = [event for event in events.records if event.event_type == "ai_agent_call"]
+    assert [event.payload["task"] for event in calls if event.payload] == [REVIEW_TASK]
+    assert [event.level for event in calls] == ["info"]
+    assert all(event.payload["outcome"] == "error" for event in calls if event.payload)
+    assert [event for event in events.records if event.event_type == "degraded"] == []
