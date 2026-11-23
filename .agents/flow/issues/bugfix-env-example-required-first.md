@@ -17,6 +17,7 @@ scope:
   - docs/deployment.i18n.yaml
   - deploy/**
   - plans/deploy-aliyun-playbook.md
+  - plans/2026-11-23-pr530-review.md
   - .agents/**
 adr:
   - ../../notes/implemented/process/2026-11-23-env-example-single-template.md
