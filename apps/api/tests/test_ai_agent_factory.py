@@ -172,7 +172,12 @@ def test_failure_policy_reads_the_he_environment_key(
 
 def test_blank_failure_policy_uses_the_provider_default() -> None:
     """The env template's empty value must not fail startup."""
-    assert settings(ai_agent_provider="claude-code", ai_agent_failure_policy="").effective_ai_agent_failure_policy == "strict"
+    assert (
+        settings(
+            ai_agent_provider="claude-code", ai_agent_failure_policy=""
+        ).effective_ai_agent_failure_policy
+        == "strict"
+    )
 
 
 def test_unknown_failure_policy_fails_startup() -> None:
