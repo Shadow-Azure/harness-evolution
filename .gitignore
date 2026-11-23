@@ -1,6 +1,7 @@
 .DS_Store
 .env
 .env.*
+!.env.example
 runs/
 *.log
 __pycache__/
