@@ -296,7 +296,7 @@ async def target_http(
         db_dialect=DatabaseDialect.SQLITE,
         data_dir=tmp_path,
         attribution_package_dir=tmp_path / "attribute",
-        attribution_agent=getattr(request, "param", None),
+        ai_agent_provider=getattr(request, "param", "fake"),
         jwt_secret=SecretStr("target-http-signing-secret-with-sufficient-length"),
         admin_username="admin",
         admin_password=SecretStr(TARGET_ADMIN_TEMP_PASSWORD),
@@ -400,7 +400,7 @@ async def test_target_routes_round_trip_with_camel_case_and_member_reads(
 
 @pytest.mark.parametrize(
     ("target_http", "runtime_enabled"),
-    [(None, False), ("claude", True)],
+    [("fake", False), ("claude-code", True)],
     indirect=["target_http"],
     ids=["rules", "agent"],
 )

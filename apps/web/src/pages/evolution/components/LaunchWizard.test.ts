@@ -729,7 +729,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
     await reachStep4(wrapper);
     expect(wrapper.get("[data-testid='wizard-cache']").attributes("disabled")).toBeDefined();
     expect(wrapper.find("select[aria-label='本次重算使用的归因 Skill']").exists()).toBe(false);
-    expect(wrapper.text()).toContain("HE_ATTRIBUTION_AGENT");
+    expect(wrapper.text()).toContain("当前 AI Agent Provider 不支持执行归因 Skill");
     expect(wrapper.get("[data-testid='wizard-cluster']").attributes("disabled")).toBeUndefined();
   });
 

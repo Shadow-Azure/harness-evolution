@@ -39,10 +39,14 @@ class AgentBackend(AIAgentProvider):
 
     provider_id = "legacy-skill"
 
-    def skill_model_identity(self, model: str) -> dict[str, str]:
+    def skill_model_identity(self, model: str | None) -> dict[str, str]:
+        if model is None:
+            raise ValueError("legacy Skill plugin requires a pinned model")
         return self.model_identity(model)
 
     async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict[str, Any]) -> int:
+        if request.model is None:
+            raise ValueError("legacy Skill plugin requires a pinned model")
         try:
             return await self.execute(
                 request.directory, request.prompt, request.model, request.timeout_seconds

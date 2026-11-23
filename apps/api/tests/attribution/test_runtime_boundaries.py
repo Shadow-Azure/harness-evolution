@@ -67,7 +67,9 @@ async def test_failed_cli_envelopes_never_publish_success(
     binary.chmod(0o700)
     monkeypatch.setattr(claude_skill, "_sandbox", lambda *_: [])
     settings = Settings(
-        ai_agent_claude_bin=str(binary), ai_agent_claude_settings=str(tmp_path / "none")
+        ai_agent_provider="claude-code",
+        ai_agent_claude_bin=str(binary),
+        ai_agent_claude_settings=str(tmp_path / "none"),
     )
     work = tmp_path / "attempt"
     work.mkdir()
@@ -143,11 +145,11 @@ def test_historical_claude_snapshot_keeps_its_provider_after_deployment_switch()
 
     from app.third_party_api.ai_agent import AgentProviderError, ClaudeCodeProvider
 
-    settings = Settings(ai_agent_provider="fake", attribution_agent="provider")
+    settings = Settings(ai_agent_provider="fake")
     shared = build_agent_provider(settings)
     runtime = LocalAttribution(settings, Mock(), Mock(), Mock(), Mock(), shared)
     with pytest.raises(AgentProviderError, match="does not support Skill"):
-        runtime.configured_skill_provider()
+        shared.require_skill_support()
     assert isinstance(runtime._skill_provider("claude"), ClaudeCodeProvider)
     assert isinstance(runtime._skill_provider("claude-code"), ClaudeCodeProvider)
 

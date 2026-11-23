@@ -420,7 +420,6 @@ before(async () => {
       env: {
         ...env,
         HE_DOCS_ENABLED: "false",
-        HE_ATTRIBUTION_AGENT: "provider",
         AI_AGENT_PROVIDER: "script-test",
         HE_HOST: "127.0.0.1",
         HE_PORT: String(apiPort),

@@ -18,7 +18,7 @@ Record visible agent interactions per attempt and link the original Badcase thro
 
 The report records the actual attribution target in `probe_type`. New reports use `agent` for agents and accept the legacy input `agents`. The platform validates frozen writer output before normalizing the target type and preserves the original reporter type in `from_bad_cases`.
 
-Attribution and clustering share the Agent factory and Claude process runner so an internal Agent needs one registration. A separate `run_skill` capability lets the caller verify file outputs against the frozen inputs and platform writer. Sessions, sanitized diagnostics and usage belong to each call so concurrent Badcases can share a provider instance. Both attribution and the evolution wizard read the Git definition and commit through the same cache-locked reader.
+Attribution and clustering share the agent factory and Claude subprocess management. The shared instance’s Skill capability enables both the binding consumer and wizard recomputation so persisted bindings have a consumer. New snapshots pin the shared model selection and retries reuse the snapshot. A separate `run_skill` capability lets the caller verify file outputs against the frozen inputs and platform writer. Sessions, sanitized diagnostics and usage belong to each call so concurrent Badcases can share a provider instance. Both attribution and the evolution wizard read the Git definition and commit through the same cache-locked reader.
 
 ## Alternatives considered
 

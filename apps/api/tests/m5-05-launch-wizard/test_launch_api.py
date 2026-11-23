@@ -390,12 +390,12 @@ async def launch_api(
     from app.third_party_api.ai_agent import factory
     from tests.attribution.test_local_runtime import ScriptAgent
 
-    if getattr(request, "param", None) == "provider":
+    provider = getattr(request, "param", "fake")
+    if provider == ScriptAgent.provider_id:
         monkeypatch.setitem(factory._REGISTRY, ScriptAgent.provider_id, ScriptAgent)
-        monkeypatch.setenv("AI_AGENT_PROVIDER", ScriptAgent.provider_id)
     revision = (
         f"digest:{definition_file_hash(FakeDefinitionSource.body)}"
-        if getattr(request, "param", None)
+        if provider != "fake"
         else "tag:v2.0.0"
     )
     app = create_app(
@@ -403,7 +403,7 @@ async def launch_api(
             db_dialect=DatabaseDialect.SQLITE,
             data_dir=tmp_path,
             attribution_package_dir=tmp_path / "attribute",
-            attribution_agent=getattr(request, "param", None),
+            ai_agent_provider=provider,
             jwt_secret=SecretStr("launch-wizard-api-signing-secret-sufficient"),
             admin_username="admin",
             admin_password=SecretStr(ADMIN_TEMP_PASSWORD),
@@ -481,11 +481,24 @@ async def test_launch_endpoints_require_authentication(
 
 async def test_launch_records_creation_and_prepare_start_events(
     launch_api: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Run admission and its queued prepare job leave durable replay history."""
+    from app.third_party_api.ai_agent import AgentProviderError
+
+    app = _app_of(launch_api)
+    provider = app.state.ai_agent
+    monkeypatch.setattr(
+        provider,
+        "analyze",
+        AsyncMock(
+            side_effect=AgentProviderError(
+                "fixture provider unavailable", provider_id=provider.provider_id, retryable=False
+            )
+        ),
+    )
     accepted = await launch_api.post("/api/evolution/runs", json=_query_body())
     assert accepted.status_code == 202
-    app = _app_of(launch_api)
     await app.state.jobs.wait(accepted.json()["jobId"])
 
     events = await launch_api.get(
@@ -501,7 +514,7 @@ async def test_launch_records_creation_and_prepare_start_events(
         "potential_computed",
         "attribution_created",
     ]
-    # With explicit degrade, the placeholder provider falls back once per task.
+    # With explicit degrade, a provider failure falls back once per task.
     assert event_types[5:-2] == ["ai_agent_call", "degraded"] * 3
     assert event_types[-2:] == ["clusters_created", "workspace_prepared"]
     assert events.json()["hasMore"] is False
@@ -1079,9 +1092,76 @@ async def test_launch_rejects_unregistered_engine_before_writes(
     assert runs.json()["history"] == []
 
 
+async def test_startup_claims_existing_binding_with_shared_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.db.crud.evolution_targets import EvolutionTargetRepository
+    from app.third_party_api.ai_agent import factory
+    from tests.attribution.test_local_runtime import ScriptAgent, Source
+
+    monkeypatch.delenv("HE_ATTRIBUTION_AGENT", raising=False)
+    monkeypatch.delenv("HE_ATTRIBUTION_MODEL", raising=False)
+
+    def settings() -> Settings:
+        return Settings(
+            db_dialect=DatabaseDialect.SQLITE,
+            data_dir=tmp_path,
+            attribution_package_dir=tmp_path / "attribute",
+        )
+
+    target = evolution_targets.c
+    state = select(
+        target.attribution_generation,
+        target.attribution_owner,
+        target.attribution_due,
+        target.attribution_failures,
+    ).where(target.id == "target-enabled")
+    first = create_app(settings())
+    async with first.router.lifespan_context(first):
+        assert first.state.local_attribution is None
+        await _seed_hits(first)
+        await EvolutionTargetRepository(first.state.database).bind_package(
+            "ws-default", "target-enabled", "default-attribute-badcases"
+        )
+        async with first.state.database.session() as session:
+            generation, owner, due, failures = (await session.execute(state)).one()
+            assert generation and owner is None and due is not None and failures == 0
+
+    monkeypatch.setitem(factory._REGISTRY, ScriptAgent.provider_id, ScriptAgent)
+    monkeypatch.setattr(ScriptAgent, "default_skill_model", lambda self: "shared-fixture-model")
+    monkeypatch.setenv("AI_AGENT_PROVIDER", ScriptAgent.provider_id)
+    restarted = create_app(settings(), target_version_resolver=FakeTargetVersionResolver())
+    restarted.state.local_attribution.source = Source()
+    async with restarted.router.lifespan_context(restarted):
+        assert restarted.state.local_attribution.agent is restarted.state.ai_agent
+        async with asyncio.timeout(15):
+            while True:
+                async with restarted.state.database.session() as session:
+                    actual, owner, due, failures = (await session.execute(state)).one()
+                    assert (actual, failures) == (generation, 0)
+                    if due is None:
+                        assert owner is None
+                        skills = (
+                            await session.scalars(
+                                select(probe_reports.c.attribution_skill_name).where(
+                                    probe_reports.c.binding_generation == generation
+                                )
+                            )
+                        ).all()
+                        assert skills and set(skills) == {"attribute-badcases"}
+                        break
+                await asyncio.sleep(0.05)
+        output = restarted.state.local_attribution.root("ws-default") / "attribute_output"
+        logs = [
+            json.loads(p.read_bytes()) for p in output.glob(f"{generation}/*/attribute_log.json")
+        ]
+        assert len(logs) == len(skills)
+        assert all(log["model"] == {"model": "shared-fixture-model"} for log in logs)
+
+
 @pytest.mark.parametrize(
     "launch_api",
-    ["claude" if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1" else "provider"],
+    ["claude-code" if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1" else "script-test"],
     indirect=True,
 )
 @pytest.mark.parametrize(

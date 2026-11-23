@@ -371,7 +371,7 @@ def create_app(
         runner=cast(Any, proxy_runner.run),
     )
     resolver = target_version_resolver or TargetContentResolver(git_content)
-    attribution_enabled = bool(resolved_settings.attribution_agent)
+    attribution_enabled = ai_agent_provider.supports_skills
     evolution_targets = EvolutionTargetService(
         target_repository,
         resolved_git_remote,
@@ -418,8 +418,6 @@ def create_app(
         git_content,
         ai_agent_provider,
     )
-    if attribution_enabled:
-        local_attribution.configured_skill_provider()
     attribution_runner = AttributionRunner(
         attribution_repository,
         context_provider=AttributionContextProvider(potential_repository),
@@ -458,9 +456,7 @@ def create_app(
         evolution_events,
         resolver,
         reports=attribution_repository,
-        attribution_skills=local_attribution
-        if resolved_settings.attribution_agent
-        else attribution_skills,
+        attribution_skills=local_attribution if attribution_enabled else attribution_skills,
     )
     probe_query = ProbeQueryService(probe_query_repository, target_repository)
     default_workspace_manager = GitWorkspaceManager(
@@ -632,8 +628,17 @@ def create_app(
             evolution_eval_poller.start()
             phase = "blocked-sweeper"
             evolution_blocked_sweeper.start()
-            if resolved_settings.attribution_agent:
+            phase = "binding-attribution"
+            if attribution_enabled:
                 binding_worker.start()
+            logger.info(
+                "binding attribution worker",
+                extra={
+                    "event": "attribution_binding_worker",
+                    "provider_id": ai_agent_provider.provider_id,
+                    "started": attribution_enabled,
+                },
+            )
         except Exception as exc:
             logger.error(
                 "database initialization failed",
@@ -721,7 +726,7 @@ def create_app(
     app.state.attribution_read = attribution_read
     app.state.evolution_repository = evolution_repository
     app.state.evolution_targets = evolution_targets
-    app.state.local_attribution = local_attribution if resolved_settings.attribution_agent else None
+    app.state.local_attribution = local_attribution if attribution_enabled else None
     app.state.attribution_skills = attribution_skills
     app.state.attribution_skill_packages = attribution_skill_packages
     app.state.attribution_jobs = attribution_jobs

@@ -50,7 +50,7 @@
 
 模型审查与 patch 生成经 Secrets 注入 `AI_AGENT_PROVIDER`、`HE_AI_AGENT_FAILURE_POLICY`、`HE_PATCH_SOURCE_MODE`：非空写入 `.env`，缺失或空显式 `--unset`。`HE_AI_AGENT_FAILURE_POLICY` 留空按 provider 推导（`fake` → `degrade`，其余 → `strict`）；`strict` 下聚类 AI 失败让 run 在聚类阶段显式失败。值含换行/回车时注入前失败，其余解码失败告警跳过并保留旧值（默认值与合法值见[模板](../.env.example)）。
 
-API 以 `harness` 运行且无 home：Deploy 安装 Claude Code 时注入稳定 `current` 路径、共享 settings、`CLAUDE_CONFIG_DIR` 与 0600 `.env` 中的 `ANTHROPIC_API_KEY`（见下节），CLI/settings 不再放在 `deploy` home。`HE_AI_AGENT_CLAUDE_BIN` Secret 仅在安装步骤跳过时作手工覆盖；`agent-edit` 需已配置 provider。
+API 使用无 home 的 `harness` 账号。Deploy 注入 Claude CLI、共享 settings、`CLAUDE_CONFIG_DIR` 和 `ANTHROPIC_API_KEY`。跳过安装时用 `HE_AI_AGENT_CLAUDE_BIN` 指定路径。`agent-edit` 需配置 Provider。支持 Skill 的 Provider 启动即领取待处理绑定，绑定归因与向导重算共用其模型。
 
 ## Claude Code
 

@@ -54,18 +54,27 @@ class AIAgentProvider(ABC):
     async def edit_workspace(self, request: EditRequest) -> EditResult:
         """Return the structured EditPlan the caller applies deterministically."""
 
+    @property
+    def supports_skills(self) -> bool:
+        """Whether the deployed provider implements the optional Skill entry point."""
+        return type(self).run_skill is not AIAgentProvider.run_skill
+
     def require_skill_support(self) -> None:
         """Fail at assembly if an enabled deployment cannot execute a Skill."""
-        if type(self).run_skill is AIAgentProvider.run_skill:
+        if not self.supports_skills:
             raise AgentProviderError(
                 "provider does not support Skill execution",
                 provider_id=self.provider_id,
                 retryable=False,
             )
 
-    def skill_model_identity(self, model: str) -> dict[str, str]:
+    def default_skill_model(self) -> str | None:
+        """Return the shared model selector, or defer selection to the provider itself."""
+        return None
+
+    def skill_model_identity(self, model: str | None) -> dict[str, str]:
         """Public settings that pin an executable Skill to its model for replay."""
-        return {"model": model}
+        return {"model": model} if model is not None else {"selection": "provider-default"}
 
     async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict[str, Any]) -> int:
         """Return token use; put sanitized attempt details in diagnostics even on failure."""

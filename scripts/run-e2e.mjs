@@ -48,6 +48,8 @@ if (requestedPattern) {
 nodeArguments.push(...selectedFiles);
 
 const result = spawnSync(process.execPath, nodeArguments, {
+  // Individual Skill scenarios select their registered test provider explicitly.
+  env: { ...process.env, AI_AGENT_PROVIDER: "fake" },
   stdio: "inherit",
   // The real-browser suite now covers 79 cases (M1-M8). A healthy run takes
   // ~8 minutes locally, but shared CI runners measured 8-13 minutes and two

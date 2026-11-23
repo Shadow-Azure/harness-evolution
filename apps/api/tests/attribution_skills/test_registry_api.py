@@ -64,9 +64,9 @@ async def skill_api(
     tmp_path: Path, request: pytest.FixtureRequest
 ) -> AsyncIterator[SkillApiEnvironment]:
     """Provide a migrated SQLite app with one configured target."""
-    agent = getattr(request, "param", "")
+    provider = getattr(request, "param", "fake")
     settings = Settings(
-        attribution_agent=agent,
+        ai_agent_provider=provider,
         attribution_package_dir=tmp_path / "attribute",
         db_dialect=DatabaseDialect.SQLITE,
         data_dir=tmp_path,
@@ -92,7 +92,7 @@ async def skill_api(
                     "default_ref": "main",
                     "validation_project_id": "validation",
                     "test_project_id": "test",
-                    "enabled": not agent,
+                    "enabled": provider == "fake",
                     "created_by": None,
                 },
             )
@@ -437,7 +437,7 @@ async def test_migration_installs_registry_and_run_snapshot_columns(
     } <= run_columns
 
 
-@pytest.mark.parametrize("skill_api", ["claude"], indirect=True)
+@pytest.mark.parametrize("skill_api", ["claude-code"], indirect=True)
 async def test_package_mode_keeps_one_explicit_target_binding(
     skill_api: SkillApiEnvironment,
 ) -> None:

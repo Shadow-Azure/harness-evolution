@@ -91,7 +91,6 @@ async def test_local_skill_report_to_sqlite(
     monkeypatch.setitem(factory._REGISTRY, ScriptAgent.provider_id, ScriptAgent)
     settings = Settings(
         attribution_package_dir=tmp_path / "attribute",
-        attribution_agent="provider",
         ai_agent_provider="claude-code" if use_claude else ScriptAgent.provider_id,
         attribution_timeout_seconds=150,
     )
@@ -212,6 +211,7 @@ async def test_local_skill_report_to_sqlite(
     assert not (artifact.parent / audit["attempt"]).exists()
     assert audit["agent"] == settings.ai_agent_provider
     if not use_claude:
+        assert audit["model"] == {"selection": "provider-default"}
         assert len(list(artifact.parent.glob("logs/*/attribute_log.json"))) == 2
         assert failure["attempt"] != audit["attempt"]
     assert persisted["report_payload"]["sourceReport"] == json.loads(artifact.read_bytes())
@@ -299,8 +299,8 @@ async def test_historical_inline_binding_can_freeze_and_recover_its_exact_revisi
     from app.service.evolution.attribution_skills import AttributionSkillCreate
 
     db = attribution_harness.database
-    settings = Settings(attribution_package_dir=tmp_path, attribution_agent=ScriptAgent.provider_id)
     monkeypatch.setitem(factory._REGISTRY, ScriptAgent.provider_id, ScriptAgent)
+    settings = Settings(attribution_package_dir=tmp_path, ai_agent_provider=ScriptAgent.provider_id)
     repo = AttributionSkillRepository(db)
     registry = AttributionSkillService(repo)
     packages = AttributionSkillPackageService(

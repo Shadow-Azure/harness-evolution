@@ -51,9 +51,11 @@
 6. 回滚演练：Actions 重跑上一 release 的 Deploy（或在服务器手工软链退回 + `sudo systemctl restart harness-api`）。
 7. Claude Code：`ssh deploy@<IP> '~/.local/bin/claude --version'`；`claude doctor` 应无 settings 错误；把占位 API key 换成 MiniMax 真实 key 后，`claude -p "只回复 OK"` 应返回结果。
 
-### 开启 Skill 归因
+### 验证 Skill 归因
 
-设置 `HE_ATTRIBUTION_AGENT=provider` 开启绑定归因，后台任务与向导重算都通过 `AI_AGENT_PROVIDER` 指定的实例执行 Skill。已有 `HE_ATTRIBUTION_AGENT=claude` 显式选择 `claude-code`，旧快照继续按原 Provider 与模型身份回放。留空关闭本地归因。内网 Agent 实现 `AIAgentProvider.run_skill` 并在公共工厂注册一次即可；使用不支持 Skill 的 Provider 启用归因会在 API 启动时明确报错。旧版已安装的 `module:Class` Agent 插件继续可用。`HE_ATTRIBUTION_MODEL` 指定模型，默认 `haiku`；`HE_ATTRIBUTION_LLM` 仍支持自定义 `ModelBackend`。Claude 在每个 Badcase 的隔离目录使用独立会话。上传包、快照、输入和报告持久化在 `HE_DATA_DIR/attribute`，可用 `HE_ATTRIBUTION_PACKAGE_DIR` 改目录。
+API 启动时从 `AI_AGENT_PROVIDER` 获取公共实例。它实现 `run_skill` 时，后台自动领取已到期的对象绑定，向导也可使用所选 Skill 重算。`fake` 部署可复用已有报告。Claude 从公共 settings 的 `model` 或 `ANTHROPIC_MODEL` 取得模型，未指定时使用 CLI 默认值。已冻结的批次按快照中的 Provider 与模型执行。上传包、快照、输入和报告存入 `HE_DATA_DIR/attribute`，可用 `HE_ATTRIBUTION_PACKAGE_DIR` 指定持久卷。
+
+API 启动日志的 `event=attribution_binding_worker` 会记录 Provider 和消费者是否已启动。发布后可检查当前空间 `GET /api/workspaces/{wid}/attribution-skill-packages` 的 `runtimeEnabled`。已有待处理绑定会自动领取。批次处理完毕会释放租约，可按 `probe_reports.binding_generation` 对照本代报告。
 
 Worker 依赖 Python 3，Linux 使用 bubblewrap 和可用的用户命名空间，macOS 使用 Seatbelt。新建 Linux 主机由 `deploy/bootstrap-server.sh` 安装 bubblewrap。已有主机开启归因前可用 `sudo -u harness bwrap --unshare-all --share-net --ro-bind / / -- /bin/true` 检查；修改服务环境后重启 API 生效。
 

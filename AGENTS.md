@@ -29,7 +29,7 @@ pnpm typecheck:api       # mypy
 pnpm test:api[:serial]   # API 测试
 pnpm test:db[:mysql]     # 数据库测试
 pnpm test:all
-pnpm test:e2e            # 串行浏览器 E2E；--pattern 只跑匹配文件
+pnpm test:e2e            # 串行浏览器 E2E，默认 fake Provider，--pattern 筛选用例
 pnpm performance:report  # 合成性能报告；加 --local 测本地最大 Session
 pnpm fixtures:check
 pnpm fixtures:seed       # 演示 fixture
