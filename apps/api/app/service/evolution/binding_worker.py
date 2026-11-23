@@ -86,11 +86,21 @@ class BindingWorker:
     async def analyze(self, claim: BindingClaim) -> bool:
         workspace = claim.workspace
         target = await self.runtime.targets.get(claim.target, workspace_ids=(workspace,))
-        if target is None or not target.enabled or not target.attribution_package_id:
+        if (
+            target is None
+            or not target.enabled
+            or not target.attribution_package_id
+            or target.attribution_generation != claim.generation
+        ):
             return False
-        snapshot = dict(claim.snapshot or {})
+        snapshot = dict(target.attribution_snapshot or {})
         definition = snapshot.get("definition")
         if "skill" not in snapshot:
+            skill = await self.runtime.resolve_bound_skill(target)
+            snapshot.update(
+                skill=skill.skill_key, skillRevision=skill.revision, hash=skill.content_hash
+            )
+        if "revision" not in snapshot:
             if definition:
                 version, revision = target.default_ref, definition["revision"]
             else:
@@ -101,14 +111,7 @@ class BindingWorker:
                     version=target.default_ref,
                 )
                 version, revision = resolved.target_version, resolved.target_revision
-            skill = await self.runtime.resolve_package(workspace, target.attribution_package_id)
-            snapshot.update(
-                version=version,
-                revision=revision,
-                skill=skill.skill_key,
-                skillRevision=skill.revision,
-                hash=skill.content_hash,
-            )
+            snapshot.update(version=version, revision=revision)
             if not await self.queue.update_claim(claim, attribution_snapshot=snapshot):
                 return False
         condition = MatchCondition(

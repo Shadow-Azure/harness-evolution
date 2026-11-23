@@ -1,13 +1,16 @@
 """Bounded target attribution retries, independent trace polling and lease fencing."""
 
+import asyncio
 from datetime import timedelta
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from app.db.crud.binding_batches import BindingQueue
+from app.db.crud.binding_batches import BindingClaim, BindingQueue
 from app.db.crud.evolution_targets import EvolutionTargetRepository
+from app.errors import AppError
 from app.service.evolution.binding_worker import BindingWorker
+from app.service.evolution.local_attribution import FrozenSkill, LocalAttribution
 from app.service.evolution.targets import EvolutionTargetService
 from app.utils.time import now_shanghai
 from tests.attribution.support import CASE_ID, OTHER_CASE_ID, Harness, potential_case
@@ -94,30 +97,86 @@ async def test_expired_and_superseded_claims_cannot_overwrite_new_attempt(
     stale = await queue.claim(60)
     assert stale is not None
     await repo.update(target.id, {**TARGET, "default_ref": "v2"})
+    runtime = Mock(targets=repo, resolve_bound_skill=AsyncMock())
+    matcher = AsyncMock()
+    worker = BindingWorker(
+        queue, AsyncMock(), runtime, AsyncMock(), matcher, AsyncMock(), AsyncMock()
+    )
+    assert not await worker.analyze(stale)
+    runtime.resolve_bound_skill.assert_not_awaited()
+    matcher.associated_sessions.assert_not_awaited()
     await queue.fail(stale, "analysis_failed")
     fresh = await queue.claim(60)
     assert fresh is not None and fresh.generation != stale.generation and fresh.failures == 0
 
 
-async def test_recovered_worker_preserves_snapshot_and_skips_reports_from_same_generation(
-    attribution_harness: Harness, monkeypatch: pytest.MonkeyPatch
+async def test_concurrent_skill_pins_keep_one_snapshot_per_generation(
+    attribution_harness: Harness,
 ) -> None:
     repo = EvolutionTargetRepository(attribution_harness.database)
-    await repo.insert(TARGET)
+    definition = {"key": "a" * 64, "commit": "b" * 40, "path": "SKILL.md", "revision": "v1"}
+    target = await repo.insert({**TARGET, "definition": definition})
+    hashes = ["c" * 64, "d" * 64]
+    first, other = await asyncio.gather(
+        *(
+            repo.pin_binding_skill(
+                target, skill_key="attribute-badcases", revision=1, content_hash=h
+            )
+            for h in hashes
+        )
+    )
+    assert first == other
+    assert first["hash"] in hashes
+    assert first["definition"] == definition
+    stored = await repo.get(target.id)
+    assert stored is not None and stored.attribution_snapshot == first
+
+    # A new generation can bind the same package. A stale caller still must not write to it.
+    replacement = await repo.update(target.id, {**TARGET, "default_ref": "v2"})
+    assert replacement.attribution_generation != target.attribution_generation
+    with pytest.raises(AppError):
+        await repo.pin_binding_skill(
+            target, skill_key="attribute-badcases", revision=1, content_hash=first["hash"]
+        )
+    new_hash = "e" * 64
+    new = await repo.pin_binding_skill(
+        replacement, skill_key="attribute-badcases", revision=1, content_hash=new_hash
+    )
+    assert new["hash"] == new_hash
+
+
+@pytest.mark.parametrize("pinned_before_worker", [False, True])
+async def test_recovered_worker_preserves_snapshot_and_skips_reports_from_same_generation(
+    attribution_harness: Harness, monkeypatch: pytest.MonkeyPatch, pinned_before_worker: bool
+) -> None:
+    repo = EvolutionTargetRepository(attribution_harness.database)
+    target = await repo.insert(TARGET)
     queue = BindingQueue(attribution_harness.database)
     clock = now_shanghai()
     monkeypatch.setattr("app.db.crud.binding_batches.now_shanghai", lambda: clock)
-    runtime = Mock(
-        targets=repo,
-        resolve_package=AsyncMock(
-            return_value=Mock(
-                skill_key="example",
-                revision=1,
-                content_hash="fixed",
-            )
-        ),
+
+    runtime = LocalAttribution(
+        Mock(attribution_timeout_seconds=60), Mock(), Mock(), attribution_harness.database, Mock()
     )
-    runtime.settings.attribution_timeout_seconds = 60
+    latest = FrozenSkill("attribute-badcases", 1, "f" * 64)
+    freeze = AsyncMock(return_value=latest)
+    monkeypatch.setattr(runtime, "resolve_package", freeze)
+    if pinned_before_worker:
+        original_claim = queue.claim
+        launch_pending = True
+
+        async def claim_during_launch(duration: int) -> BindingClaim | None:
+            nonlocal launch_pending
+            claim = await original_claim(duration)
+            if claim and launch_pending:
+                launch_pending = False
+                # The worker already leased the target when the wizard wins the first pin.
+                freeze.return_value = FrozenSkill("attribute-badcases", 1, "a" * 64)
+                await runtime.resolve_for_run(target, target.attribution_package_id)
+                freeze.return_value = latest
+            return claim
+
+        monkeypatch.setattr(queue, "claim", claim_during_launch)
     resolver = AsyncMock()
     resolver.resolve.return_value = Mock(target_version="v1", target_revision="fixed")
     matcher = AsyncMock()
@@ -136,8 +195,12 @@ async def test_recovered_worker_preserves_snapshot_and_skips_reports_from_same_g
     assert await worker.tick()
     first, second = runner.run.await_args_list
     assert first.args[0].id == second.args[0].id
+    expected_hash = ("a" if pinned_before_worker else "f") * 64
+    assert first.args[0].attribution_skill_content_hash == expected_hash
+    assert second.args[0].attribution_skill_content_hash == expected_hash
+    assert first.args[0].target_revision == second.args[0].target_revision == "fixed"
     assert reports.latest_reports.await_args.kwargs["generation"] == first.args[0].id
     assert [case.bad_case_id for case in first.args[1]] == [CASE_ID, OTHER_CASE_ID]
     assert [case.bad_case_id for case in second.args[1]] == [OTHER_CASE_ID]
-    runtime.resolve_package.assert_awaited_once()
+    freeze.assert_awaited_once_with(target.workspace_id, target.attribution_package_id)
     assert not await worker.tick()

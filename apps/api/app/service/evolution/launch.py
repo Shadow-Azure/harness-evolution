@@ -7,6 +7,7 @@ from typing import Any, Literal, Protocol, cast
 
 from app.db.crud.attributions import AttributionRepository
 from app.db.crud.evolution import EvolutionRepository
+from app.db.crud.evolution_targets import EvolutionTargetRecord
 from app.db.crud.potential import ObjectType, window_day_boundaries
 from app.errors import AppError, ErrorCode
 from app.service.evolution.attribution import DEFAULT_ATTRIBUTION_ENGINE
@@ -32,50 +33,6 @@ from app.service.evolution.target_content import (
 from app.service.jobs import JobRunner, sanitize_job_payload
 
 
-class LaunchTargetRecord(Protocol):
-    """Read-only enabled-target facts consumed from configuration storage."""
-
-    @property
-    def id(self) -> str:
-        """Return the configured target id."""
-
-    @property
-    def object_type(self) -> str:
-        """Return the configured object type."""
-
-    @property
-    def object_name(self) -> str:
-        """Return the configured object name."""
-
-    @property
-    def default_ref(self) -> str:
-        """Return the configured default reference."""
-
-    @property
-    def repo_url(self) -> str:
-        """Return the configured git remote."""
-
-    @property
-    def sub_dir(self) -> str:
-        """Return the configured repository sub directory."""
-
-    @property
-    def validation_project_id(self) -> str:
-        """Return the configured validation-set test project id."""
-
-    @property
-    def test_project_id(self) -> str:
-        """Return the configured test-set test project id."""
-
-    @property
-    def enabled(self) -> bool:
-        """Return whether the target accepts launches."""
-
-    @property
-    def workspace_id(self) -> str:
-        """Return the workspace that owns this configuration."""
-
-
 class LaunchTargetStore(Protocol):
     """Persistence operations consumed by the launch service."""
 
@@ -85,7 +42,7 @@ class LaunchTargetStore(Protocol):
         object_name: str,
         *,
         workspace_ids: Sequence[str] | None = None,
-    ) -> LaunchTargetRecord:
+    ) -> EvolutionTargetRecord:
         """Return the one enabled pair inside the optional workspace scope."""
         ...
 
@@ -102,7 +59,9 @@ class LaunchAttributionSkill(Protocol):
 class LaunchAttributionSkillResolver(Protocol):
     """Resolve the effective Skill for a configured target."""
 
-    async def resolve(self, workspace_id: str, target_id: str) -> LaunchAttributionSkill:
+    async def resolve_for_run(
+        self, target: EvolutionTargetRecord, package_id: str | None
+    ) -> LaunchAttributionSkill:
         """Return target, workspace, or platform fallback resolution."""
         ...
 
@@ -176,19 +135,16 @@ class EvolutionLaunchService:
             workspace_ids=workspace_ids,
         )
         effective_skill = None
-        if body.attribution_package_id:
-            resolve_package = getattr(self._attribution_skills, "resolve_package", None)
-            if body.cache_enabled or resolve_package is None:
-                raise AppError(
-                    status_code=422,
-                    code=ErrorCode.VALIDATION_INVALID,
-                    message="select a Skill only for recomputation using a configured agent",
-                )
-            effective_skill = await resolve_package(
-                config.workspace_id, body.attribution_package_id
+        if body.attribution_package_id and (body.cache_enabled or self._attribution_skills is None):
+            raise AppError(
+                status_code=422,
+                code=ErrorCode.VALIDATION_INVALID,
+                message="select a Skill only for recomputation using a configured agent",
             )
-        elif self._attribution_skills and not (self._reports and body.cache_enabled):
-            effective_skill = await self._attribution_skills.resolve(config.workspace_id, config.id)
+        if self._attribution_skills and not (self._reports and body.cache_enabled):
+            effective_skill = await self._attribution_skills.resolve_for_run(
+                config, body.attribution_package_id
+            )
         query = normalized_query(
             body,
             default_version=config.default_ref,
@@ -298,7 +254,7 @@ class EvolutionLaunchService:
         self,
         body: ProbeQueryRequest,
         query: Any,
-        config: LaunchTargetRecord,
+        config: EvolutionTargetRecord,
         *,
         resolved: ResolvedTargetVersion,
         policy: ResolvedPolicy,
@@ -360,7 +316,7 @@ class EvolutionLaunchService:
         self,
         body: ProbeQueryRequest,
         version: str,
-        config: LaunchTargetRecord,
+        config: EvolutionTargetRecord,
     ) -> ResolvedTargetVersion:
         """Resolve the launch version, refusing to guess when content is absent."""
         return await self._resolver.resolve(

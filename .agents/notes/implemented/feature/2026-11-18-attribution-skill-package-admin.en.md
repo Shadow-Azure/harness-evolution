@@ -10,7 +10,7 @@ Workspace owners need to share a multi-file Skill across targets and inspect exa
 
 ## Decision
 
-Keep uploaded archives in workspace-scoped storage. A target write records one package and durable batch intent together. The worker freezes the resolved object revision and package for the batch. An evolution launch may reuse existing reports or choose a package for a single run. Historical reports retain Skill provenance.
+Keep uploaded archives in workspace-scoped storage. A target write records one package and durable batch intent together. The worker freezes the object revision. The first Skill content hash recorded for a binding generation fixes the prompt and output writer for both the worker and concurrent wizard launches. A user can choose a different workspace package for a single recomputation. Historical reports retain Skill provenance.
 
 The target overview combines observed-version candidates with completed V2 reports by analysis version and Badcase, including reports whose trace has no version. The sync panel counts trace roots and Badcases in the selected workspace, using each case’s latest completed conclusion. Catalog acquisition and normalization counters cover the platform.
 

@@ -22,7 +22,6 @@ class BindingClaim:
     generation: str
     cutoff: datetime
     owner: str
-    snapshot: dict[str, Any] | None
     failures: int
 
 
@@ -43,7 +42,6 @@ class BindingQueue:
                         t.workspace_id,
                         t.attribution_generation,
                         t.attribution_cutoff,
-                        t.attribution_snapshot,
                         t.attribution_failures,
                         t.attribution_owner,
                     )
@@ -80,7 +78,6 @@ class BindingQueue:
                 row.attribution_generation,
                 as_shanghai(row.attribution_cutoff),
                 owner,
-                row.attribution_snapshot,
                 row.attribution_failures,
             )
 

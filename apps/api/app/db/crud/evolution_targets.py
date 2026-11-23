@@ -42,7 +42,12 @@ class EvolutionTargetRecord:
     attribution_failures: int = 0
     attribution_error: str | None = None
     attribution_will_retry: bool = False
-    definition: dict[str, str] | None = None
+    attribution_generation: str | None = None
+    attribution_snapshot: dict[str, Any] | None = None
+
+    @property
+    def definition(self) -> dict[str, str] | None:
+        return (self.attribution_snapshot or {}).get("definition")
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,7 +92,8 @@ def _record(row: RowMapping) -> EvolutionTargetRecord:
         attribution_failures=row["attribution_failures"],
         attribution_error=row["attribution_error"],
         attribution_will_retry=row["attribution_due"] is not None,
-        definition=(row["attribution_snapshot"] or {}).get("definition"),
+        attribution_generation=row["attribution_generation"],
+        attribution_snapshot=row["attribution_snapshot"],
         workspace_id=(str(workspace_id) if workspace_id is not None else DEFAULT_WORKSPACE_ID),
     )
 
@@ -201,6 +207,40 @@ class EvolutionTargetRepository:
             attribution_due=now if enabled else None,
             attribution_cutoff=now,
         )
+
+    async def pin_binding_skill(
+        self, target: EvolutionTargetRecord, *, skill_key: str, revision: int, content_hash: str
+    ) -> dict[str, Any]:
+        """Both entrypoints adopt the first Skill frozen for this binding generation."""
+        t = evolution_targets.c
+        binding = (
+            t.id == target.id,
+            t.workspace_id == target.workspace_id,
+            t.attribution_package_id == target.attribution_package_id,
+            t.attribution_generation == target.attribution_generation,
+        )
+        proposed = {
+            **(target.attribution_snapshot or {}),
+            "skill": skill_key,
+            "skillRevision": revision,
+            "hash": content_hash,
+        }
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_targets)
+                .where(*binding, t.attribution_snapshot["skill"].as_string().is_(None))
+                .values(attribution_snapshot=proposed)
+            )
+            snapshot = (
+                await session.execute(select(t.attribution_snapshot).where(*binding))
+            ).scalar_one_or_none()
+            if snapshot is None:
+                raise AppError(
+                    status_code=409,
+                    code=ErrorCode.ATTRIBUTION_SKILL_INVALID,
+                    message="target binding changed while freezing its attribution Skill",
+                )
+            return dict(snapshot)
 
     async def bind_package(self, workspace: str, target: str, package: str) -> None:
         async with self._database.transaction() as session:

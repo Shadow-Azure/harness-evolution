@@ -1,5 +1,6 @@
 """Launch wizard API contract: probe preview, run creation, cluster previews."""
 
+import hashlib
 import json
 import os
 from collections.abc import AsyncIterator
@@ -953,13 +954,23 @@ async def test_launch_rejects_unregistered_engine_before_writes(
     ["claude" if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1" else "test-local"],
     indirect=True,
 )
+@pytest.mark.parametrize(
+    "selection",
+    ["other"]
+    if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1"
+    else ["bound", "implicit", "other"],
+)
 async def test_local_attribution_from_wizard_to_cluster(
-    launch_api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    launch_api: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    selection: str,
 ) -> None:
     """Start through HTTP and wait for the real job, report transaction and clustering."""
     import io
     import zipfile
 
+    from app.service.evolution.attribution_skill_packages import AttributionSkillPackageService
     from app.third_party_api.attribution.backend import AgentFactory
     from tests.attribution.test_local_runtime import ScriptAgent, Source
 
@@ -1001,14 +1012,15 @@ async def test_local_attribution_from_wizard_to_cluster(
         for k, v in target.items()
         if k not in {"id", "attributionSkillName", "attributionFailure", "definition"}
     }
-    body["attributionPackageId"] = uploaded.json()["id"]
+    # Exercise the deployed default as well as an immutable uploaded package.
+    bound_id = "default-attribute-badcases" if selection == "bound" else uploaded.json()["id"]
+    bound_name = "attribute-badcases" if selection == "bound" else "acceptance-skill"
+    body["attributionPackageId"] = bound_id
     created = await launch_api.post(f"{workspace}/evolution/targets", json=body)
     assert created.status_code == 201, created.text
     target_id = created.json()["id"]
-    assert created.json()["attributionSkillName"] == "acceptance-skill"
-    protected = await launch_api.delete(
-        f"{workspace}/attribution-skill-packages/{uploaded.json()['id']}"
-    )
+    assert created.json()["attributionSkillName"] == bound_name
+    protected = await launch_api.delete(f"{workspace}/attribution-skill-packages/{bound_id}")
     assert protected.status_code == 409
     async with asyncio.timeout(600 if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") else 15):
         while True:
@@ -1040,7 +1052,7 @@ async def test_local_attribution_from_wizard_to_cluster(
         m["batchId"] == binding_batch.name and m["trigger"] == "target_binding"
         for m in binding_inputs
     )
-    assert all(m["skill"]["name"] == "acceptance-skill" for m in binding_inputs)
+    assert all(m["skill"]["name"] == bound_name for m in binding_inputs)
     preview_body = {
         key: value
         for key, value in _query_body(cacheEnabled=True).items()
@@ -1049,7 +1061,7 @@ async def test_local_attribution_from_wizard_to_cluster(
     cached = await launch_api.post(f"{workspace}/evolution/preview/attribution", json=preview_body)
     assert cached.status_code == 200, cached.text
     counts = cached.json()["summary"]
-    assert counts["bySkill"] == {"acceptance-skill": counts["potential"]}
+    assert counts["bySkill"] == {bound_name: counts["potential"]}
     assert counts["potential"] > 0 and counts["missing"] == counts["fresh"] == 0
     cache_run = await launch_api.post(
         f"{workspace}/evolution/cluster-previews",
@@ -1059,9 +1071,21 @@ async def test_local_attribution_from_wizard_to_cluster(
     assert (await app.state.jobs.wait(cache_run.json()["jobId"])).status == "completed"
     assert set(batches.iterdir()) == {binding_batch}
     assert not (root / "attribute_output" / cache_run.json()["runId"]).exists()
-    accepted = await launch_api.post(
-        "/api/evolution/runs", json=_query_body(attributionPackageId="default-attribute-badcases")
+    # A deployment can replace the shared writer between binding and launch.
+    # Only a newly selected package should pick up these changed bytes.
+    old_writer = app.state.local_attribution.packages.writer_path.read_bytes()
+    new_writer = tmp_path / "make_probe_report.py"
+    new_writer.write_bytes(old_writer + b"\n# Updated platform writer\n")
+    monkeypatch.setattr(
+        AttributionSkillPackageService, "writer_path", property(lambda _: new_writer)
     )
+    body = _query_body()
+    if selection == "bound":
+        body["attributionPackageId"] = bound_id
+    elif selection == "other":
+        body["attributionPackageId"] = "default-attribute-badcases"
+    expected_skill = "attribute-badcases" if selection == "other" else bound_name
+    accepted = await launch_api.post("/api/evolution/runs", json=body)
     assert accepted.status_code == 202
     job = await app.state.jobs.wait(accepted.json()["jobId"])
     assert job.status == "completed", job.error
@@ -1078,11 +1102,23 @@ async def test_local_attribution_from_wizard_to_cluster(
             .all()
         )
     assert reports
-    assert (
-        await launch_api.get(f"{workspace}/evolution/targets/{target_id}/attribution-skill")
-    ).json()["id"] == uploaded.json()["id"]
+    binding = await launch_api.get(f"{workspace}/evolution/targets/{target_id}/attribution-skill")
+    assert binding.status_code == 200
+    assert binding.json()["id"] == bound_id
+    assert binding.json()["contentHash"] == binding_inputs[0]["skill"]["snapshotHash"]
+    resources = await launch_api.get(f"{workspace}/attribution-skill-packages")
+    resource = next(item for item in resources.json()["items"] if item["id"] == bound_id)
+    if selection == "bound":
+        download = await launch_api.get(
+            f"{workspace}/attribution-skill-packages/{bound_id}/download"
+        )
+        assert download.status_code == 200
+        resource_bytes = download.content
+    else:
+        resource_bytes = archive.getvalue()
+    assert resource["contentHash"] == hashlib.sha256(resource_bytes).hexdigest()
     for report in reports:
-        assert report["attribution_skill_name"] == "attribute-badcases"
+        assert report["attribution_skill_name"] == expected_skill
         assert report["attribution_engine"] == "local-agent-skill-v1"
         case_id = report["execution_manifest"]["badCaseId"]
         inputs = batches / accepted.json()["runId"] / case_id
@@ -1095,7 +1131,14 @@ async def test_local_attribution_from_wizard_to_cluster(
         )
         original = next(m for m in binding_inputs if m["badcaseId"] == case_id)
         assert manifest["evidenceHash"] == original["evidenceHash"]
-        assert manifest["skill"]["snapshotHash"] != original["skill"]["snapshotHash"]
+        skill_hash = manifest["skill"]["snapshotHash"]
+        writer = root / "attribute_skill/snapshots" / skill_hash / "skill/make_probe_report.py"
+        if selection == "other":
+            assert skill_hash != original["skill"]["snapshotHash"]
+            assert writer.read_bytes() == new_writer.read_bytes()
+        else:
+            assert manifest["skill"] == original["skill"]
+            assert writer.read_bytes() == old_writer
         canonical = report["report_payload"]["sourceReport"]
         assert canonical["attribute_type"] in {
             "prompt",
@@ -1114,4 +1157,4 @@ async def test_local_attribution_from_wizard_to_cluster(
     refreshed = await launch_api.post(
         f"{workspace}/evolution/preview/attribution", json=preview_body
     )
-    assert refreshed.json()["summary"]["bySkill"] == {"attribute-badcases": counts["potential"]}
+    assert refreshed.json()["summary"]["bySkill"] == {expected_skill: counts["potential"]}

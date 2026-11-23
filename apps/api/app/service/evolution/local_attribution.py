@@ -22,7 +22,7 @@ from typing import Any, Literal, cast
 from app.config import Settings
 from app.db.base import Database
 from app.db.crud.acquisition_replay import list_root_payloads
-from app.db.crud.evolution_targets import EvolutionTargetRepository
+from app.db.crud.evolution_targets import EvolutionTargetRecord, EvolutionTargetRepository
 from app.db.crud.read_scope import WorkspaceReadScope
 from app.db.crud.sessions import SessionRepository, SessionTreeSnapshot
 from app.errors import AppError, ErrorCode
@@ -148,17 +148,26 @@ class LocalAttribution:
             raise AppError(
                 status_code=404, code=ErrorCode.TARGET_NOT_CONFIGURED, message="target not found"
             )
+        return await self._effective_record(workspace, record)
+
+    async def _effective_record(
+        self, workspace: str, record: EvolutionTargetRecord | None
+    ) -> EffectiveAttributionSkill:
         if record and not record.attribution_package_id:
-            legacy = await self.registry.resolve(workspace, target)
+            legacy = await self.registry.resolve(workspace, record.id)
             if legacy.source == "target" and isinstance(legacy.content.get("instructions"), str):
                 return legacy.model_copy(update={"executor_type": "local_agent"})
         package = await self.package(
             workspace,
             (record.attribution_package_id if record else None) or "default-attribute-badcases",
         )
-        return EffectiveAttributionSkill(
+        effective = EffectiveAttributionSkill(
             **package.model_dump(), source="target" if record else "platform"
         )
+        snapshot = record.attribution_snapshot if record else None
+        if snapshot and "skill" in snapshot:
+            return effective.model_copy(update={"content_hash": snapshot["hash"]})
+        return effective
 
     async def package(self, workspace: str, package_id: str) -> AttributionSkillRevision:
         record = await self.packages.metadata(workspace, package_id)
@@ -171,7 +180,42 @@ class LocalAttribution:
         return await self.effective(workspace, target)
 
     async def resolve(self, workspace_id: str, target_id: str) -> FrozenSkill:
-        return await self.freeze(workspace_id, await self.effective(workspace_id, target_id))
+        if target_id:
+            target = await self.targets.get(target_id, workspace_ids=(workspace_id,))
+            if target is None:
+                raise AppError(
+                    status_code=404,
+                    code=ErrorCode.TARGET_NOT_CONFIGURED,
+                    message="target not found",
+                )
+            return await self.resolve_for_run(target, None)
+        return await self.freeze(workspace_id, await self._effective_record(workspace_id, None))
+
+    async def resolve_for_run(
+        self, target: EvolutionTargetRecord, package_id: str | None
+    ) -> FrozenSkill:
+        if package_id and package_id != target.attribution_package_id:
+            return await self.resolve_package(target.workspace_id, package_id)
+        if target.attribution_package_id:
+            return await self.resolve_bound_skill(target)
+        return await self.freeze(
+            target.workspace_id, await self._effective_record(target.workspace_id, target)
+        )
+
+    async def resolve_bound_skill(self, target: EvolutionTargetRecord) -> FrozenSkill:
+        """Reuse or atomically pin the executable package for this target generation."""
+        snapshot = target.attribution_snapshot or {}
+        if "skill" not in snapshot:
+            if not target.attribution_package_id:
+                raise ValueError("target has no bound attribution package")
+            frozen = await self.resolve_package(target.workspace_id, target.attribution_package_id)
+            snapshot = await self.targets.pin_binding_skill(
+                target,
+                skill_key=frozen.skill_key,
+                revision=frozen.revision,
+                content_hash=frozen.content_hash,
+            )
+        return FrozenSkill(snapshot["skill"], snapshot["skillRevision"], snapshot["hash"])
 
     async def resolve_package(self, workspace_id: str, package_id: str) -> FrozenSkill:
         return await self.freeze(workspace_id, await self.package(workspace_id, package_id))

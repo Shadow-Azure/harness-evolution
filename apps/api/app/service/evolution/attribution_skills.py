@@ -19,6 +19,7 @@ from app.db.crud.attribution_skills import (
     AttributionSkillRecord,
     AttributionSkillRepository,
 )
+from app.db.crud.evolution_targets import EvolutionTargetRecord
 from app.errors import AppError, ErrorCode
 from app.service.evolution.attribution import AttributionSkillSnapshot
 from app.service.evolution.attribution_eval import (
@@ -450,6 +451,17 @@ class AttributionSkillService:
     async def unbind(self, workspace_id: str, *, target_id: str | None) -> None:
         """Remove one binding; future resolution falls back automatically."""
         await self._repository.unbind(workspace_id=workspace_id, target_id=target_id)
+
+    async def resolve_for_run(
+        self, target: EvolutionTargetRecord, package_id: str | None
+    ) -> EffectiveAttributionSkill:
+        if package_id:
+            raise AppError(
+                status_code=422,
+                code=ErrorCode.VALIDATION_INVALID,
+                message="select a Skill only for recomputation using a configured agent",
+            )
+        return await self.resolve(target.workspace_id, target.id)
 
     async def resolve(self, workspace_id: str, target_id: str) -> EffectiveAttributionSkill:
         """Resolve target override, workspace default, then platform default."""
