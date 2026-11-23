@@ -61,6 +61,7 @@ from app.third_party_api.ai_agent.contracts import (
 )
 from app.third_party_api.ai_agent.edits import EditPlan
 from app.third_party_api.ai_agent.submission import (
+    SCHEMA_FILENAME,
     StructuredSubmission,
     SubmissionOutcome,
     SubmissionPrep,
@@ -81,6 +82,21 @@ EDIT_PLAN_FILENAME: Final = ".harness-evolution/edits.json5"
 
 READ_ONLY_TOOLS: Final = ("Read", "Grep", "Glob")
 """Tools the edit phase may use to explore before it submits one plan (07 §5.5.4)."""
+
+ANALYZE_TOOLS: Final = ("Read", "Write")
+"""The exact built-in tool set one analyze call may use.
+
+``--bare`` narrows the CLI tool set to ``Bash``/``Edit``/``Read`` and therefore
+removes ``Write`` entirely, so analyze cannot use ``--bare``. Naming the set
+explicitly keeps the surface at the two tools the submission contract needs:
+read the schema and write the result literal.
+"""
+
+SUBMISSION_TOOL: Final = "Write"
+"""Tool that performs the single write the analyze submission channel accepts."""
+
+_MAX_TOOLS_DETAIL_CHARS: Final = 240
+"""Upper bound for the tool list and denial summary kept on a failure detail."""
 
 EDIT_MAX_TURNS: Final = 40
 """Turn cap for one edit call; the process timeout is the other spend guard."""
@@ -109,6 +125,10 @@ class _ParsedCliResult:
     capabilities: tuple[str, ...]
     session_id: str | None
     usage: AgentUsage
+    tools: tuple[str, ...] = ()
+    permission_denials: tuple[Mapping[str, Any], ...] = ()
+    stop_reason: str | None = None
+    num_turns: int | None = None
 
     @property
     def is_error(self) -> bool:
@@ -189,30 +209,66 @@ class ClaudeCodeProvider(AIAgentProvider):
         """Run the analysis and one feedback retry against one prepared directory."""
         prompt = _compose_prompt(request.prompt, prep.prompt_addendum)
         settings_file = self._settings_file()
-        argv = self._analyze_argv(prompt, prep, settings_file=settings_file)
+        # The task directory is resolved once and used for both ``cwd`` and the
+        # permission rules. The CLI compares the requested path with the path
+        # the symlinks resolve to; on hosts where the temp root is a symlink
+        # (for example ``/tmp`` -> ``/private/tmp`` on macOS) an unresolved
+        # ``cwd`` makes the allow rule fail even when the rule names the same
+        # physical directory.
+        directory = _resolved_directory(prep.directory)
+        argv = self._analyze_argv(
+            prompt,
+            prep,
+            directory=directory,
+            settings_file=settings_file,
+        )
         _, parsed = await self._call(
             "analysis",
             argv,
-            cwd=prep.directory,
+            cwd=directory,
             timeout_seconds=ANALYZE_TIMEOUT_SECONDS,
         )
+        self._ensure_submission_tool(parsed, attempts=1, outcomes=(), started=started)
 
         outcomes: list[SubmissionOutcome] = [
             self._submission.collect(prep, request.output_model.model_validate),
         ]
         if not outcomes[-1].is_ok:
+            # A denied write is terminal: repeating the same prompt would only
+            # burn the second 300s budget against the same permission surface.
+            # Only a missing file can mean the write never happened; a parsed
+            # but invalid literal still deserves the designed feedback retry.
+            denial = _submission_denial_detail(parsed) if outcomes[-1].status == "missing" else None
+            if denial is not None:
+                raise AgentProviderError(
+                    "claude-code analysis submission write was denied",
+                    retryable=False,
+                    provider_id=self.provider_id,
+                    detail=_bounded_detail(
+                        f"{denial}; submission {outcomes[-1].status}; "
+                        f"{_cli_result_diagnostics(parsed)}",
+                    ),
+                    trace=_call_trace(outcomes),
+                    usage=parsed.usage,
+                    latency_ms=_elapsed_ms(started, self._clock),
+                )
             # Analyze is stateless, so the retry cannot continue the first CLI
             # session; it repeats the original prompt plus the concrete
             # validation feedback as a fresh call. The budget stays exactly one,
             # and a session id is not needed because nothing is resumed.
             feedback = self._submission.feedback_prompt(outcomes[-1])
             retry_prompt = _compose_prompt(prompt, feedback)
-            retry_argv = self._analyze_argv(retry_prompt, prep, settings_file=settings_file)
+            retry_argv = self._analyze_argv(
+                retry_prompt,
+                prep,
+                directory=directory,
+                settings_file=settings_file,
+            )
             try:
                 _, parsed = await self._call(
                     "analysis",
                     retry_argv,
-                    cwd=prep.directory,
+                    cwd=directory,
                     timeout_seconds=ANALYZE_TIMEOUT_SECONDS,
                 )
             except AgentProviderError as exc:
@@ -220,6 +276,12 @@ class ClaudeCodeProvider(AIAgentProvider):
                 # keep the first attempt's parse provenance and count both calls.
                 exc.trace = replace(_call_trace(outcomes), attempts=len(outcomes) + 1)
                 raise
+            self._ensure_submission_tool(
+                parsed,
+                attempts=2,
+                outcomes=tuple(outcomes),
+                started=started,
+            )
             outcomes.append(
                 self._submission.collect(prep, request.output_model.model_validate),
             )
@@ -228,11 +290,15 @@ class ClaudeCodeProvider(AIAgentProvider):
         trace = _call_trace(outcomes)
         validated = outcome.validated
         if not outcome.is_ok or validated is None:
+            detail = _submission_detail(outcome)
+            diagnostics = _cli_result_diagnostics(parsed)
+            if diagnostics:
+                detail = _bounded_detail(f"{detail}; {diagnostics}")
             raise AgentProviderError(
                 "claude-code analysis submission failed validation",
                 retryable=False,
                 provider_id=self.provider_id,
-                detail=_submission_detail(outcome),
+                detail=detail,
                 trace=trace,
                 usage=parsed.usage,
                 latency_ms=_elapsed_ms(started, self._clock),
@@ -245,6 +311,35 @@ class ClaudeCodeProvider(AIAgentProvider):
             latency_ms=_elapsed_ms(started, self._clock),
             retryable=False,
             trace=trace,
+        )
+
+    def _ensure_submission_tool(
+        self,
+        parsed: _ParsedCliResult,
+        *,
+        attempts: int,
+        outcomes: Sequence[SubmissionOutcome],
+        started: float,
+    ) -> None:
+        """Fail immediately when the CLI tool set cannot perform the submission.
+
+        The allow rule is not a tool provider: naming ``Write`` in
+        ``--allowed-tools`` cannot bring it back after ``--bare`` removed it. A
+        ``system/init`` document makes that mismatch visible before the retry.
+        """
+        if not parsed.tools or SUBMISSION_TOOL in parsed.tools:
+            return
+        raise AgentProviderError(
+            "claude-code analysis tool set does not include Write",
+            retryable=False,
+            provider_id=self.provider_id,
+            detail=_bounded_detail(
+                f"submission tool {SUBMISSION_TOOL} is missing; "
+                f"tools={_tool_list_detail(parsed.tools)}",
+            ),
+            trace=AgentCallTrace(attempts=attempts, submission_rounds=len(outcomes)),
+            usage=parsed.usage,
+            latency_ms=_elapsed_ms(started, self._clock),
         )
 
     async def edit_workspace(self, request: EditRequest) -> EditResult:
@@ -369,7 +464,7 @@ class ClaudeCodeProvider(AIAgentProvider):
             ) from None
 
         if _is_cancelled(result):
-            raise self._cancelled_error(phase)
+            raise self._cancelled_error(phase, result)
         parsed = _parse_cli_stdout(result.stdout, fallback_model=self.provider_id)
         if parsed.capabilities:
             self._capabilities = parsed.capabilities
@@ -386,7 +481,7 @@ class ClaudeCodeProvider(AIAgentProvider):
                 retryable=False,
                 provider_id=self.provider_id,
                 detail=_bounded_detail(
-                    f"stdout_bytes={len(result.stdout.encode('utf-8'))}",
+                    f"stdout_bytes={len(result.stdout.encode('utf-8'))}; {_diagnostics(result)}",
                 ),
             )
         if parsed.is_error:
@@ -398,13 +493,36 @@ class ClaudeCodeProvider(AIAgentProvider):
             )
         return result, parsed
 
-    def _cancelled_error(self, phase: str) -> AgentProviderError:
-        """Build the normalized cancellation error for one phase."""
+    def _cancelled_error(
+        self,
+        phase: str,
+        result: ClaudeCliResult | None = None,
+    ) -> AgentProviderError:
+        """Build the normalized cancellation error for one phase.
+
+        A timeout or supervisor cancellation still returns the tail the
+        transport captured. Report the bounded stderr and the structured CLI
+        evidence (tool set and permission denials) instead of the bare
+        ``cancelled`` string, so the 300s failure is diagnosable.
+        """
+        detail = "cancelled"
+        if result is not None:
+            parsed = _parse_cli_stdout(result.stdout, fallback_model=self.provider_id)
+            diagnostics = _cli_result_diagnostics(parsed)
+            stderr = sanitize_detail(result.stderr, limit=600)
+            parts = ["cancelled"]
+            if diagnostics:
+                parts.append(diagnostics)
+            if stderr is not None and stderr.strip():
+                parts.append(f"stderr={stderr.strip()}")
+            if result.stderr_truncated:
+                parts.append("stderr_truncated=true")
+            detail = _bounded_detail("; ".join(parts))
         return AgentProviderError(
             f"claude-code {phase} call was cancelled",
             retryable=False,
             provider_id=self.provider_id,
-            detail="cancelled",
+            detail=detail,
         )
 
     def _analyze_argv(
@@ -412,20 +530,41 @@ class ClaudeCodeProvider(AIAgentProvider):
         prompt: str,
         prep: SubmissionPrep,
         *,
+        directory: Path,
         settings_file: Path,
     ) -> tuple[str, ...]:
-        """Build one analyze argv; analyze is stateless and never resumes a session."""
+        """Build one analyze argv; analyze is stateless and never resumes a session.
+
+        ``--bare`` is deliberately absent: it removes ``Write`` from the tool
+        set, so the submission file could never be produced. The hardened flags
+        keep its context minimization (no CLAUDE.md/hooks/plugins, no MCP, no
+        command-running tools) while ``--tools`` limits the built-in set to the
+        two tools the submission needs. Writes are permission-checked against
+        ``Edit`` rules, not ``Write`` rules, so the one write target is granted
+        through an absolute ``Edit(//...)`` rule.
+        """
+        rules = ",".join(
+            (
+                f"Read({_permission_rule_path(directory / SCHEMA_FILENAME)})",
+                f"Edit({_permission_rule_path(prep.result_path)})",
+            ),
+        )
         argv = [
             self._binary(),
-            "--bare",
+            "--safe-mode",
+            "--restricted",
+            "--strict-mcp-config",
             "-p",
             prompt,
             "--output-format",
-            "json",
+            "stream-json",
+            "--verbose",
             "--permission-mode",
             PERMISSION_MODE,
+            "--tools",
+            ",".join(ANALYZE_TOOLS),
             "--allowed-tools",
-            prep.allowed_tools[0],
+            rules,
             "--no-session-persistence",
         ]
         if settings_file.is_file():
@@ -568,16 +707,19 @@ def _parse_cli_stdout(stdout: str, *, fallback_model: str) -> _ParsedCliResult:
 
     A single ``--output-format json`` object is accepted directly; an NDJSON
     stream keeps the last document whose ``type`` is ``result`` and records the
-    first ``system/init`` capability list it sees. No version string is
-    consulted anywhere in this function.
+    first ``system/init`` capability and tool lists it sees. The result also
+    carries the CLI's own ``permission_denials``/``stop_reason``/``num_turns``
+    evidence. No version string is consulted anywhere in this function.
     """
     capabilities: tuple[str, ...] = ()
+    tools: tuple[str, ...] = ()
     result: Mapping[str, Any] | None = None
     document = stdout.strip()
     single = _single_json_object(document)
     if single is not None:
         document_type = single.get("type")
         capabilities = _capabilities_from(single)
+        tools = _tools_from(single)
         if document_type in (None, "result"):
             result = single
         elif document_type != "system":
@@ -592,6 +734,9 @@ def _parse_cli_stdout(stdout: str, *, fallback_model: str) -> _ParsedCliResult:
                 line_capabilities = _capabilities_from(item)
                 if line_capabilities:
                     capabilities = line_capabilities
+                line_tools = _tools_from(item)
+                if line_tools:
+                    tools = line_tools
                 continue
             if item_type == "result":
                 result = item
@@ -600,6 +745,10 @@ def _parse_cli_stdout(stdout: str, *, fallback_model: str) -> _ParsedCliResult:
         capabilities=capabilities,
         session_id=_session_id_from(result),
         usage=_usage_from(result, fallback_model=fallback_model),
+        tools=tools,
+        permission_denials=_permission_denials_from(result),
+        stop_reason=_non_blank_text(result, "stop_reason"),
+        num_turns=_optional_count(result, "num_turns"),
     )
 
 
@@ -629,6 +778,55 @@ def _capabilities_from(payload: Mapping[str, Any]) -> tuple[str, ...]:
     if not isinstance(raw, list):
         return ()
     return tuple(value.strip() for value in raw if isinstance(value, str) and value.strip())
+
+
+def _tools_from(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    """Extract ``system/init.tools`` from an init document only.
+
+    The tool list is CLI-owned: it says which tools actually exist, unlike the
+    allow list, which can only further restrict them.
+    """
+    if payload.get("type") != "system" or payload.get("subtype") != "init":
+        return ()
+    raw = payload.get("tools")
+    if not isinstance(raw, list):
+        return ()
+    return tuple(value.strip() for value in raw if isinstance(value, str) and value.strip())
+
+
+def _permission_denials_from(
+    payload: Mapping[str, Any] | None,
+) -> tuple[Mapping[str, Any], ...]:
+    """Return the result's structured permission denials, keeping non-mapping items out."""
+    if payload is None:
+        return ()
+    raw = payload.get("permission_denials")
+    if not isinstance(raw, list):
+        return ()
+    return tuple(denial for item in raw if (denial := _as_mapping(item)) is not None)
+
+
+def _non_blank_text(payload: Mapping[str, Any] | None, *keys: str) -> str | None:
+    """Return the first non-blank string value, or ``None``."""
+    if payload is None:
+        return None
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _optional_count(payload: Mapping[str, Any] | None, key: str) -> int | None:
+    """Return a non-negative integer counter, or ``None`` when it is absent."""
+    if payload is None:
+        return None
+    value = payload.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if not math.isfinite(value) or value < 0:
+        return None
+    return int(value)
 
 
 def _session_id_from(payload: Mapping[str, Any] | None) -> str | None:
@@ -742,6 +940,75 @@ def _as_float(value: object) -> float:
     return candidate
 
 
+_DENIED_WRITE_TOOLS: Final = frozenset({"Bash", "Edit", "NotebookEdit", "Write"})
+"""Tools whose denial means the model tried a path outside the submission rule."""
+
+
+def _resolved_directory(directory: Path) -> Path:
+    """Resolve a task directory once so ``cwd`` and permission rules agree."""
+    return directory.resolve()
+
+
+def _permission_rule_path(path: Path) -> str:
+    """Render one absolute Claude permission path (the ``//`` anchor).
+
+    A single leading slash anchors at the settings source; only ``//`` means
+    the filesystem root. The service runs on POSIX, where ``as_posix`` produces
+    the forward-slash form the CLI matches.
+    """
+    return f"//{path.resolve().as_posix().lstrip('/')}"
+
+
+def _tool_list_detail(tools: Sequence[str]) -> str:
+    """Render a bounded tool list for one failure detail."""
+    text = ",".join(tools)
+    return text[:_MAX_TOOLS_DETAIL_CHARS] or "none"
+
+
+def _denial_target(denial: Mapping[str, Any]) -> str | None:
+    """Return the bounded file path or command one denial names."""
+    tool_input = _as_mapping(denial.get("tool_input"))
+    if tool_input is None:
+        return None
+    for key in ("file_path", "path", "command"):
+        value = tool_input.get(key)
+        if isinstance(value, str) and value.strip():
+            return sanitize_message(value.strip(), limit=200)
+    return None
+
+
+def _render_denial(denial: Mapping[str, Any]) -> str:
+    """Render one permission denial as ``Tool(target)`` without model prose."""
+    tool = _non_blank_text(denial, "tool_name") or "unknown"
+    target = _denial_target(denial)
+    return f"{tool}({target})" if target else tool
+
+
+def _submission_denial_detail(parsed: _ParsedCliResult) -> str | None:
+    """Name the first denied write that made the submission impossible."""
+    for denial in parsed.permission_denials:
+        tool = _non_blank_text(denial, "tool_name")
+        if tool in _DENIED_WRITE_TOOLS:
+            return f"permission denied: {_render_denial(denial)}"
+    return None
+
+
+def _cli_result_diagnostics(parsed: _ParsedCliResult) -> str:
+    """Summarize the CLI's structured evidence without echoing model prose."""
+    parts: list[str] = []
+    if parsed.tools:
+        parts.append(f"tools={_tool_list_detail(parsed.tools)}")
+    stop_reason = parsed.stop_reason
+    if stop_reason is not None:
+        parts.append(f"stop_reason={sanitize_message(stop_reason, limit=80)}")
+    if parsed.num_turns is not None:
+        parts.append(f"num_turns={parsed.num_turns}")
+    if parsed.permission_denials:
+        rendered = "; ".join(_render_denial(denial) for denial in parsed.permission_denials[:3])
+        parts.append(f"permission_denials={rendered[:_MAX_TOOLS_DETAIL_CHARS]}")
+    return "; ".join(parts)
+
+
 def _diagnostics(result: ClaudeCliResult) -> str:
     """Render a bounded, redacted stderr diagnostic without echoing stdout."""
     parts = [f"exit_code={result.returncode}"]
@@ -823,8 +1090,10 @@ def _version_line(stdout: str) -> str:
 
 
 __all__ = [
+    "ANALYZE_TOOLS",
     "EDIT_PLAN_FILENAME",
     "READ_ONLY_TOOLS",
+    "SUBMISSION_TOOL",
     "AsyncioClaudeCliRunner",
     "ClaudeCliResult",
     "ClaudeCliRunner",
