@@ -9,10 +9,10 @@ import html
 import logging
 import re
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
-from typing import NoReturn
+from typing import NoReturn, cast
 from urllib.parse import urlsplit
 
 from app.db.crud.evolution import EvolutionRepository
@@ -29,10 +29,13 @@ from app.service.evolution.events import (
 from app.service.evolution.git_failures import classify_git_failure
 from app.service.evolution.patch_source import (
     PLACEHOLDER_PATCH_NOTE,
+    PatchBundle,
     PatchSource,
     default_patch_source_factory,
 )
 from app.service.evolution.state import StageConflict
+from app.third_party_api.ai_agent.contracts import AgentProviderError
+from app.third_party_api.ai_agent.edits import EditPlan, EditStatus, EditStatusKind
 from app.third_party_api.git.workspace import (
     CandidateWorkspace,
     GitOperationError,
@@ -223,46 +226,44 @@ class EvolutionCandidateService:
             started_at=round_.started_at or self._now(),
         )
         saved = current.patch
-        if saved is not None and "file" in saved and "lines" in saved:
-            patch = Patch(
-                file=saved["file"],
-                lines=tuple(saved["lines"]),
-                overwrite=saved.get("overwrite", False),
-            )
-            change_note = saved.get("note", "")
-        else:
+        bundle = _stored_bundle(saved)
+        if bundle is None:
             patch_source = self._patch_source_factory(run)
             try:
-                patch = await patch_source.build(run, current.seq, trace)
-                change_note = await patch_source.change_note(run, current.seq, trace)
+                bundle = await patch_source.build_bundle(run, current.seq, trace)
+            except AgentProviderError as exc:
+                await self._handle_provider_failure(run, current.id, exc, job_id=job_id)
             except ConfigError as exc:
                 await self._fail_patch_generation(run, current.id, exc, job_id=job_id)
-            saved = {
-                "file": patch.file,
-                "lines": list(patch.lines),
-                "note": change_note,
-                "overwrite": patch.overwrite,
-            }
+            saved = _stored_patch(bundle)
             await self._runs.save_round_patch(current.id, saved)
+        if bundle is None:
+            raise ConfigError("patch generation produced no candidate bundle")
+        if saved is None:
+            raise ConfigError("patch generation produced no stored patch payload")
         await checkpoint(self._runs, run.id)
         candidate_ref = f"{prepared.branch}/candidate/r{current.seq}"
+        files = tuple(patch.file for patch in bundle.files)
         message = build_candidate_message(
             run,
             round_seq=current.seq,
-            trace=_with_patch_file(trace, patch.file, change_note),
-            patch_sha256=patch.sha256,
+            trace=_with_patch_file(trace, ", ".join(files), bundle.note),
+            patch_sha256=bundle.sha256,
             created_at=current.started_at or self._now(),
             web_base_url=self._web_base_url,
         )
         try:
-            candidate = await self._workspaces.create_candidate(
+            candidate = await self._workspaces.create_candidate_bundle(
                 prepared,
                 run_branch=prepared.branch,
                 candidate_ref=candidate_ref,
-                patch=patch,
+                bundle=bundle,
                 message=message,
                 expected_run_id=run.id,
                 reset_workspace=resume,
+                # The legacy placeholder commits its document under
+                # .harness-evolution/; an audited agent plan must never stage it.
+                allow_protected_paths=bundle.intent is None,
             )
         except GitOperationError as exc:
             await self._handle_git_failure(
@@ -284,7 +285,7 @@ class EvolutionCandidateService:
             message=f"候选提交已创建：第 {current.seq} 轮",
             round_id=current.id,
             job_id=job_id,
-            payload={"files": [patch.file], "patchHash": f"sha256:{patch.sha256}"},
+            payload=_audit_payload(bundle, files=files, unified_diff=candidate.unified_diff),
         )
 
         await checkpoint(self._runs, run.id)
@@ -712,6 +713,52 @@ class EvolutionCandidateService:
                 extra={"run_id": run_id, "event_type": event_type},
             )
 
+    async def _handle_provider_failure(
+        self,
+        run: EvolutionRunRecord,
+        round_id: str,
+        error: AgentProviderError,
+        *,
+        job_id: str | None,
+    ) -> NoReturn:
+        """Fail terminally or pause for retry when the agent backend fails."""
+        if not error.retryable:
+            await self._fail_patch_generation(
+                run,
+                round_id,
+                ConfigError(sanitize_message(str(error), limit=2_000)),
+                job_id=job_id,
+            )
+        message = sanitize_message(str(error), limit=2_000)
+        await self._runs.mark_blocked(
+            run.id,
+            stage="patch",
+            message=message,
+            error_stage="patch",
+            next_retry_at=None,
+            retry_attempts=0,
+        )
+        await self._record(
+            run.id,
+            "run_blocked",
+            stage="candidate",
+            message="AI 编辑失败，patch 生成暂停",
+            round_id=round_id,
+            job_id=job_id,
+            level="warn",
+            payload={"provider": error.provider_id, "retryable": True},
+            error=error,
+        )
+        raise RunBlocked(
+            message,
+            stage="patch",
+            error_stage="patch",
+            next_retry_at=None,
+            retry_attempts=0,
+            retryable=True,
+            detail=error.detail,
+        ) from None
+
     async def _handle_git_failure(
         self,
         run_id: str,
@@ -942,11 +989,11 @@ def _with_patch_file(
 
 
 def _patch_file(round_: EvolutionRoundRecord) -> str:
-    """Read the applied file from one stored patch."""
-    if not isinstance(round_.patch, Mapping):
+    """Read the applied file (or comma-joined files) from one stored patch."""
+    bundle = _stored_bundle(round_.patch)
+    if bundle is None:
         return ".harness-evolution.md"
-    value = round_.patch.get("file")
-    return value if isinstance(value, str) and value else ".harness-evolution.md"
+    return ", ".join(patch.file for patch in bundle.files)
 
 
 def _patch_note(round_: EvolutionRoundRecord) -> str:
@@ -958,15 +1005,143 @@ def _patch_note(round_: EvolutionRoundRecord) -> str:
 
 
 def _patch_hash(round_: EvolutionRoundRecord) -> str:
-    """Recompute the stored patch digest for accepted-message reproduction."""
-    file = _patch_file(round_)
-    raw_lines = round_.patch.get("lines") if isinstance(round_.patch, Mapping) else None
-    lines = (
-        tuple(line for line in raw_lines if isinstance(line, str))
-        if isinstance(raw_lines, (list, tuple))
-        else ()
+    """Recompute the stored bundle digest for accepted-message reproduction."""
+    bundle = _stored_bundle(round_.patch)
+    if bundle is None:
+        return Patch(file=_patch_file(round_), lines=()).sha256
+    return bundle.sha256
+
+
+def _stored_bundle(raw: object) -> PatchBundle | None:
+    """Rebuild a persisted bundle, including the legacy single-file shape."""
+    if not isinstance(raw, Mapping):
+        return None
+    note = raw.get("note")
+    if not isinstance(note, str) or not note.strip():
+        note = PLACEHOLDER_PATCH_NOTE
+    intent = _stored_intent(raw.get("intent"))
+    report = _stored_report(raw.get("report"))
+    files: list[Patch] = []
+    raw_files = raw.get("files")
+    if isinstance(raw_files, list):
+        for item in raw_files:
+            patch = _stored_patch_file(item)
+            if patch is not None:
+                files.append(patch)
+    if not files:
+        legacy = _stored_patch_file(raw)
+        if legacy is not None:
+            files.append(legacy)
+    if not files:
+        return None
+    try:
+        return PatchBundle(
+            files=tuple(files),
+            note=note,
+            intent=intent,
+            report=report,
+        )
+    except ValueError:
+        return None
+
+
+def _stored_patch_file(raw: object) -> Patch | None:
+    """Rebuild one Patch from a stored mapping, rejecting malformed entries."""
+    if not isinstance(raw, Mapping):
+        return None
+    file = raw.get("file")
+    lines = raw.get("lines")
+    if not isinstance(file, str) or not file:
+        return None
+    if not isinstance(lines, (list, tuple)):
+        return None
+    overwrite = raw.get("overwrite", False)
+    return Patch(
+        file=file,
+        lines=tuple(line for line in lines if isinstance(line, str)),
+        overwrite=bool(overwrite),
     )
-    return Patch(file=file, lines=lines).sha256
+
+
+def _stored_intent(raw: object) -> EditPlan | None:
+    """Rebuild the persisted EditPlan when it is present and valid."""
+    if not isinstance(raw, Mapping):
+        return None
+    try:
+        return EditPlan.model_validate(dict(raw))
+    except ValueError:
+        return None
+
+
+def _stored_report(raw: object) -> tuple[EditStatus, ...]:
+    """Rebuild the persisted per-edit report when it is present and valid."""
+    if not isinstance(raw, list):
+        return ()
+    statuses: list[EditStatus] = []
+    for item in raw:
+        if not isinstance(item, Mapping):
+            continue
+        try:
+            statuses.append(
+                EditStatus(
+                    index=int(item["index"]),
+                    op=str(item["op"]),
+                    file=str(item["file"]),
+                    status=cast("EditStatusKind", str(item["status"])),
+                    message=str(item.get("message", "")),
+                ),
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    return tuple(statuses)
+
+
+def _stored_patch(bundle: PatchBundle) -> dict[str, object]:
+    """Serialize one bundle into the durable round patch payload."""
+    files = [
+        {"file": patch.file, "lines": list(patch.lines), "overwrite": patch.overwrite}
+        for patch in bundle.files
+    ]
+    saved: dict[str, object] = {
+        "files": files,
+        "note": bundle.note,
+        "intent": bundle.intent.model_dump(mode="json") if bundle.intent is not None else None,
+        "report": [asdict(status) for status in bundle.report],
+    }
+    if len(bundle.files) == 1:
+        # Keep the legacy single-file keys so old readers and existing runs
+        # resolve the same file, lines, and note without a migration.
+        saved.update(files[0])
+    return saved
+
+
+_MAX_EVENT_DIFF_CHARS = 20_000
+
+
+def _audit_payload(
+    bundle: PatchBundle,
+    *,
+    files: tuple[str, ...],
+    unified_diff: str,
+) -> dict[str, object]:
+    """Build the candidate_committed payload, including agent intent and diff."""
+    payload: dict[str, object] = {
+        "files": list(files),
+        "patchHash": f"sha256:{bundle.sha256}",
+    }
+    if bundle.intent is None:
+        return payload
+    diff = unified_diff
+    if len(diff) > _MAX_EVENT_DIFF_CHARS:
+        diff = diff[:_MAX_EVENT_DIFF_CHARS].rstrip() + "\n…（diff 已截断）"
+    payload.update(
+        {
+            "intent": bundle.intent.model_dump(mode="json"),
+            "report": [asdict(status) for status in bundle.report],
+            "unifiedDiff": diff,
+        },
+    )
+    return payload
 
 
 async def _default_sleep(seconds: float) -> None:

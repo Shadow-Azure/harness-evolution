@@ -18,6 +18,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.third_party_api.ai_agent.edits import EditPlan
+
 
 def _require_non_empty(value: str, name: str) -> None:
     """Reject a blank identifier before it reaches logs or a provider."""
@@ -125,6 +127,8 @@ class EditResult:
 
     ``changed_files`` holds workspace-relative paths and ``unified_diff`` is the
     git diff the provider observed; git remains the single source of truth.
+    ``plan`` is the structured EditPlan the backend returned, kept for the
+    deterministic applier and for the auditable candidate intent.
     """
 
     summary: str
@@ -135,12 +139,15 @@ class EditResult:
     session_id: str | None = None
     latency_ms: int = 0
     retryable: bool = False
+    plan: EditPlan | None = None
 
     def __post_init__(self) -> None:
-        """Reject blank identifiers and negative latency."""
+        """Reject blank identifiers, negative latency, and a drifting summary."""
         _require_non_empty(self.summary, "EditResult.summary")
         _require_non_empty(self.provider_id, "EditResult.provider_id")
         _require_non_negative(self.latency_ms, "EditResult.latency_ms")
+        if self.plan is not None and self.summary != self.plan.summary:
+            raise ValueError("EditResult.summary must equal plan.summary")
 
 
 @dataclass(frozen=True, slots=True)

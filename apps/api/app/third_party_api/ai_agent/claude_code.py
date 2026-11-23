@@ -78,6 +78,9 @@ EDIT_PLAN_FILENAME: Final = ".harness-evolution/edits.json5"
 READ_ONLY_TOOLS: Final = ("Read", "Grep", "Glob")
 """Tools the edit phase may use to explore before it submits one plan (07 §5.5.4)."""
 
+EDIT_MAX_TURNS: Final = 40
+"""Turn cap for one edit call; the process timeout is the other spend guard."""
+
 HEALTH_TIMEOUT_SECONDS: Final = 10.0
 """Upper bound for the ``--version`` health probe."""
 
@@ -353,7 +356,12 @@ class ClaudeCodeProvider(AIAgentProvider):
         )
 
     async def edit_workspace(self, request: EditRequest) -> EditResult:
-        """Collect one EditPlan for the workspace without applying it."""
+        """Collect one EditPlan for the workspace.
+
+        The plan is not applied here: the agent-edit patch source applies it
+        deterministically against a scratch mirror and turns the result into a
+        PatchBundle.
+        """
         started = self._clock()
         prep = self._submission.prepare(
             "agent.edit",
@@ -387,6 +395,7 @@ class ClaudeCodeProvider(AIAgentProvider):
             session_id=parsed.session_id,
             latency_ms=_elapsed_ms(started, self._clock),
             retryable=False,
+            plan=validated,
         )
 
     async def health_check(self) -> ProviderHealth:
@@ -533,7 +542,11 @@ class ClaudeCodeProvider(AIAgentProvider):
         *,
         settings_file: Path,
     ) -> tuple[str, ...]:
-        """Build one edit argv; exploration is read-only and the session is kept."""
+        """Build one edit argv; exploration is read-only and the session is kept.
+
+        ``--max-turns`` bounds one call's spend; the timeout constant bounds its
+        wall clock.
+        """
         argv = [
             self._binary(),
             "--bare",
@@ -543,6 +556,8 @@ class ClaudeCodeProvider(AIAgentProvider):
             "json",
             "--permission-mode",
             PERMISSION_MODE,
+            "--max-turns",
+            str(EDIT_MAX_TURNS),
             "--allowed-tools",
             ",".join((*READ_ONLY_TOOLS, *prep.allowed_tools)),
         ]

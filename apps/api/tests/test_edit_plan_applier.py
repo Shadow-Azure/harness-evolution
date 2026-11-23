@@ -16,6 +16,7 @@ from app.service.evolution.git_candidate import CandidateTrace
 from app.service.evolution.patch_source import (
     DEFAULT_PATCH_SOURCE_MODE,
     PATCH_SOURCE_MODES,
+    AgentEditPatchSource,
     MinimalConfigPatchSource,
     PatchBundle,
     PatchSource,
@@ -33,6 +34,7 @@ from app.third_party_api.ai_agent.edits import (
     EditStatusKind,
     apply_edit_plan,
 )
+from app.third_party_api.ai_agent.fake import FakeAIAgentProvider
 from app.third_party_api.git.workspace import Patch
 
 NOW = datetime(2026, 11, 23, 0, 45, tzinfo=UTC)
@@ -961,13 +963,19 @@ async def test_minimal_config_bundle_preserves_legacy_build_and_note(tmp_path: P
     assert legacy_patch.overwrite is True
 
 
-def test_agent_edit_mode_is_registered_but_reserved() -> None:
-    """agent-edit is a known mode that fails loudly until bugfix-21 implements it."""
+def test_agent_edit_mode_requires_and_selects_the_agent_provider() -> None:
+    """agent-edit is a real mode that needs a provider and selects its source."""
     assert PATCH_SOURCE_MODES == ("placeholder", "minimal-config", "agent-edit")
     assert DEFAULT_PATCH_SOURCE_MODE == "placeholder"
-    with pytest.raises(ConfigError, match="bugfix-21"):
+    with pytest.raises(ConfigError, match="AI agent provider"):
         default_patch_source_factory(_run(eval_config={"patchMode": "agent-edit"}))
-    with pytest.raises(ConfigError, match="bugfix-21"):
+    with pytest.raises(ConfigError, match="AI agent provider"):
         default_patch_source_factory(_run(), fallback_mode="agent-edit")
+    source = default_patch_source_factory(
+        _run(eval_config={"patchMode": "agent-edit"}),
+        provider=FakeAIAgentProvider(),
+    )
+    assert isinstance(source, AgentEditPatchSource)
+    assert isinstance(source, PatchSource)
     with pytest.raises(ConfigError, match="unknown patch source mode"):
         default_patch_source_factory(_run(eval_config={"patchMode": "llm"}))

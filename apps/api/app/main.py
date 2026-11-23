@@ -415,6 +415,7 @@ def create_app(
         patch_source_factory=lambda run: default_patch_source_factory(
             run,
             fallback_mode=resolved_settings.patch_source_mode,
+            provider=ai_agent_provider,
         ),
     )
     eval_gateway_factory = build_eval_gateway_factory(resolved_settings)

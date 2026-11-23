@@ -34,6 +34,7 @@ from app.third_party_api.ai_agent.base import (
     PERMISSION_MODE,
 )
 from app.third_party_api.ai_agent.claude_code import (
+    EDIT_MAX_TURNS,
     EDIT_PLAN_FILENAME,
     HEALTH_TIMEOUT_SECONDS,
     READ_ONLY_TOOLS,
@@ -750,6 +751,9 @@ async def test_edit_workspace_collects_the_plan_without_applying_it(
     assert result.usage.input_tokens == 20
     assert result.usage.cost_usd == pytest.approx(0.04)
     assert result.latency_ms >= 0
+    assert result.plan is not None
+    assert result.plan.summary == "raise the fetch timeout"
+    assert result.plan.edits[0].file == "skill.json"
     assert sentinel.read_text(encoding="utf-8") == '{"timeoutSeconds": 30}\n'
     assert (workspace / EDIT_PLAN_FILENAME).exists()
 
@@ -760,6 +764,7 @@ async def test_edit_workspace_collects_the_plan_without_applying_it(
     expected_tools = ",".join((*READ_ONLY_TOOLS, f"Write(./{EDIT_PLAN_FILENAME})"))
     assert argv[argv.index("--allowed-tools") + 1] == expected_tools
     assert "make the skill tolerate slow hosts" in argv[argv.index("-p") + 1]
+    assert argv[argv.index("--max-turns") + 1] == str(EDIT_MAX_TURNS)
     assert argv[argv.index("--settings") + 1] == str(settings_file)
     assert "--no-session-persistence" not in argv
     assert "--resume" not in argv
