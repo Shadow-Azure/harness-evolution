@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/bugfix-ai-agent-provider-skeleton.md
+bugfix-ai-agent-provider-skeleton.md: ccf3837f74e0d3dc5359d9f5fdd3070443afd9c8
+bugfix-ai-agent-provider-skeleton.en.md: b6300ee3701756e7246d0aeec8576e94a1dc680b

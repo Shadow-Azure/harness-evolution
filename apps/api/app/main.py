@@ -119,6 +119,8 @@ from app.service.problems.service import ProblemService
 from app.service.sessions.service import SessionService
 from app.service.workspaces.ingest import BadCaseIngestService
 from app.service.workspaces.service import WorkspaceService
+from app.third_party_api.ai_agent.base import AIAgentProvider
+from app.third_party_api.ai_agent.factory import build_agent_provider
 from app.third_party_api.bad_case_query.http import HttpBadCaseCatalogSource
 from app.third_party_api.bad_case_query.models import BadCaseCatalogSource
 from app.third_party_api.git.content import SubprocessGitContent
@@ -133,6 +135,35 @@ from app.third_party_api.trajectory.http import HttpTrajectorySource
 from app.third_party_api.trajectory.source import TrajectorySource
 
 logger = logging.getLogger(__name__)
+
+
+async def _record_ai_agent_health(provider: AIAgentProvider) -> None:
+    """Probe the configured provider and record one structured startup event."""
+    try:
+        health = await provider.health_check()
+    except Exception as exc:
+        logger.warning(
+            "ai agent provider health check failed",
+            extra={
+                "event": "ai_agent_health",
+                "provider_id": provider.provider_id,
+                "healthy": False,
+                "error_type": type(exc).__name__,
+            },
+        )
+        return
+    level = logging.INFO if health.healthy else logging.WARNING
+    logger.log(
+        level,
+        "ai agent provider health",
+        extra={
+            "event": "ai_agent_health",
+            "provider_id": health.provider_id,
+            "healthy": health.healthy,
+            "detail": health.detail,
+            "latency_ms": health.latency_ms,
+        },
+    )
 
 
 def create_default_app() -> FastAPI:
@@ -161,6 +192,7 @@ def create_app(
     resolve_attribution_engine(resolved_settings.attribution_engine)
     proxy_controller = GitProxyController.from_settings(resolved_settings)
     git_push_provider = GitPushProviderFactory.create(resolved_settings)
+    ai_agent_provider = build_agent_provider(resolved_settings)
     proxy_runner = ProxyAwareGitRunner(
         proxy_controller,
         extra_environment=git_push_provider.auth_environment,
@@ -373,6 +405,7 @@ def create_app(
         workspace_manager,
         evolution_events,
         resolver,
+        agent=ai_agent_provider,
     )
     evolution_candidates = EvolutionCandidateService(
         evolution_repository,
@@ -382,6 +415,7 @@ def create_app(
         patch_source_factory=lambda run: default_patch_source_factory(
             run,
             fallback_mode=resolved_settings.patch_source_mode,
+            provider=ai_agent_provider,
         ),
     )
     eval_gateway_factory = build_eval_gateway_factory(resolved_settings)
@@ -486,6 +520,7 @@ def create_app(
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
         """Start storage and migrations without turning outages into crashes."""
         phase = "startup"
+        await _record_ai_agent_health(ai_agent_provider)
         proxy_controller.start()
         try:
             await resolved_database.start()
@@ -578,6 +613,7 @@ def create_app(
     app.state.settings = resolved_settings
     app.state.database = resolved_database
     app.state.data_directory = data_directory
+    app.state.ai_agent = ai_agent_provider
     app.state.identity = identity
     app.state.event_bus = event_bus
     app.state.jobs = jobs

@@ -465,15 +465,18 @@ async def test_launch_records_creation_and_prepare_start_events(
     )
 
     assert events.status_code == 200
-    assert [item["eventType"] for item in events.json()["items"]] == [
+    event_types = [item["eventType"] for item in events.json()["items"]]
+    assert event_types[:5] == [
         "run_created",
         "prepare_started",
         "sessions_linked",
         "potential_computed",
         "attribution_created",
-        "clusters_created",
-        "workspace_prepared",
     ]
+    # The default placeholder provider fails every bounded analysis, so the
+    # cluster phase is exactly one call plus one fallback per task, in order.
+    assert event_types[5:-2] == ["ai_agent_call", "degraded"] * 3
+    assert event_types[-2:] == ["clusters_created", "workspace_prepared"]
     assert events.json()["hasMore"] is False
 
 

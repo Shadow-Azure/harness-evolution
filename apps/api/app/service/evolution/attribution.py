@@ -1,8 +1,10 @@
 """Object-revision attribution: pure rule engine, cache, and runner.
 
 The engine is a pure function of the bad case, its trigger coordinates, and the
-knowledge evidence gathered in the same Session. ``AttributionRunner`` owns the
-cache reads, dialect upserts, reuse accounting, and run-candidate pointers.
+knowledge evidence gathered in the same Session; its case-level confidence is a
+deterministic evidence-completeness score, never a model call. ``AttributionRunner``
+owns the cache reads, dialect upserts, reuse accounting, and run-candidate
+pointers.
 """
 
 from __future__ import annotations
@@ -21,6 +23,11 @@ from app.db.crud.attributions import (
     attribution_cache_key,
 )
 from app.db.models.evolution import EvolutionRunRecord
+from app.service.evolution.attribution_confidence import (
+    EvidenceSignals,
+    attribution_confidence,
+    extract_signals,
+)
 from app.service.evolution.engine.contracts import ConfigError, RunBlocked
 from app.service.evolution.potential import (
     POLICY_VERSION,
@@ -81,6 +88,18 @@ class AttributionInput:
     object_trigger_at: datetime | None = None
     case_trigger_at: datetime | None = None
     knowledge_evidence: tuple[KnowledgeEvidence, ...] = ()
+    case_object_name: str | None = None
+    case_object_version: str | None = None
+
+    def evidence_signals(self) -> EvidenceSignals:
+        """Return the three deterministic evidence checks for this input."""
+        return extract_signals(
+            order_state=self.order_state,
+            case_object_name=self.case_object_name,
+            case_object_version=self.case_object_version,
+            probe_object=self.probe_object,
+            target_revision=self.object_version,
+        )
 
     @property
     def cache_key(self) -> str:
@@ -127,10 +146,11 @@ class RuleBasedEngine:
 
     async def attribute(self, item: AttributionInput) -> AttributionResult:
         """Classify one case using the policy hit reason and persisted evidence."""
+        signals = item.evidence_signals()
         self_match = item.hit_reason in {"self_report", "both"}
         if self_match:
             if not (item.title.strip() or item.description.strip()):
-                return self._non_target(item, "证据不足")
+                return self._non_target(item, "证据不足", signals)
             error = _error_evidence(item.metadata)
             category: AttributionCategory = "error" if error is not None else "prompt"
             evidence = (
@@ -141,7 +161,7 @@ class RuleBasedEngine:
             return self._attributed(
                 item,
                 category=category,
-                confidence=0.8,
+                signals=signals,
                 reason=f"对象自身上报：{_headline(item)}；{evidence}",  # noqa: RUF001
                 lead="对象自身上报",
             )
@@ -153,13 +173,14 @@ class RuleBasedEngine:
             return self._attributed(
                 item,
                 category="error",
-                confidence=0.6,
+                signals=signals,
                 reason=f"对象进入点之后发现：{_headline(item)}；按 error 归类",  # noqa: RUF001
                 lead="bad case 触发点严格晚于对象进入点",
             )
         return self._non_target(
             item,
             "顺序不可比或证据不足",
+            signals,
         )
 
     def _attributed(
@@ -167,7 +188,7 @@ class RuleBasedEngine:
         item: AttributionInput,
         *,
         category: AttributionCategory,
-        confidence: float,
+        signals: EvidenceSignals,
         reason: str,
         lead: str,
     ) -> AttributionResult:
@@ -190,12 +211,17 @@ class RuleBasedEngine:
         return AttributionResult(
             conclusion="attributed",
             category=category,
-            confidence=confidence,
+            confidence=attribution_confidence("attributed", signals),
             reason=reason,
             reasoning="\n".join(lines),
         )
 
-    def _non_target(self, item: AttributionInput, why: str) -> AttributionResult:
+    def _non_target(
+        self,
+        item: AttributionInput,
+        why: str,
+        signals: EvidenceSignals,
+    ) -> AttributionResult:
         """Build one visible non-target conclusion that never enters a cluster."""
         lines = [
             f"1. 命中原因：{item.hit_reason}；orderState={item.order_state}。",  # noqa: RUF001
@@ -206,7 +232,7 @@ class RuleBasedEngine:
         return AttributionResult(
             conclusion="non_target",
             category=None,
-            confidence=0.7,
+            confidence=attribution_confidence("non_target", signals),
             reason=f"非该对象问题：{_headline(item)}；{why}",  # noqa: RUF001
             reasoning="\n".join(lines),
         )
@@ -296,7 +322,7 @@ class AttributionStore(Protocol):
         self,
         case_ids: Sequence[str],
     ) -> dict[str, BadCaseEvidenceRecord]:
-        """Batch-load bad-case titles, descriptions, and metadata."""
+        """Batch-load bad-case identity, titles, descriptions, and metadata."""
 
     async def load_knowledge_evidence(
         self,
@@ -512,6 +538,8 @@ class AttributionRunner:
                 )
                 for item in knowledge.get(candidate.session_id, ())
             ),
+            case_object_name=evidence.object_name,
+            case_object_version=evidence.object_version,
         )
 
     def _blocked(

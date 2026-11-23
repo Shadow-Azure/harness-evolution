@@ -6,6 +6,14 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+/**
+ * Upper bound for one Chrome DevTools Protocol handshake or command. A shared
+ * runner can accept the websocket and then stall; without this bound the whole
+ * suite waits on a promise that never settles and the step is killed by its
+ * outer timeout with no failing test name.
+ */
+const CDP_TIMEOUT_MS = Number(process.env.HE_E2E_CDP_TIMEOUT_MS ?? 30_000);
+
 const chromeCandidates = [
   process.env.CHROME_BIN,
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -172,7 +180,7 @@ class CdpSession {
     }
   }
 
-  async open(timeoutMs = 20_000) {
+  async open(timeoutMs = CDP_TIMEOUT_MS) {
     if (this.socket.readyState === WebSocket.OPEN) return this;
     if (this.socket.readyState >= WebSocket.CLOSING) throw new Error("CDP websocket closed");
     await new Promise((resolve, reject) => {
@@ -187,7 +195,7 @@ class CdpSession {
       const opened = () => finish();
       const failed = () => finish(new Error("CDP websocket failed"));
       const closed = () => finish(new Error("CDP websocket closed before opening"));
-      const timer = setTimeout(() => finish(new Error("CDP websocket opening timed out")), timeoutMs);
+      const timer = setTimeout(() => finish(new Error(`CDP websocket opening timed out after ${timeoutMs}ms`)), timeoutMs);
       this.socket.addEventListener("open", opened);
       this.socket.addEventListener("error", failed);
       this.socket.addEventListener("close", closed);
@@ -201,7 +209,7 @@ class CdpSession {
     this.listeners.set(method, listeners);
   }
 
-  async send(method, params = {}, timeoutMs = 20_000) {
+  async send(method, params = {}, timeoutMs = CDP_TIMEOUT_MS) {
     if (this.socket.readyState !== WebSocket.OPEN) throw new Error(`CDP websocket closed: ${method}`);
     const id = this.nextId++;
     const payload = JSON.stringify({ id, method, params });
