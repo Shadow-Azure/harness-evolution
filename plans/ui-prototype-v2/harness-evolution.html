@@ -956,6 +956,10 @@
 .evo-app .wz-version-option .wz-version-kind { margin-left: auto; color: var(--text-faint); font-size: 10.5px; }
 .evo-app .wz-version-option.is-current { background: color-mix(in srgb, var(--blue) 10%, transparent); }
 .evo-app .wz-inline-label { padding-top: 8px; color: var(--text-faint); font-size: 12px; }
+.evo-app .wz-range-presets { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 7px; }
+.evo-app .wz-range-presets .wz-inline-label { padding-top: 0; }
+.evo-app .wz-range-presets .seg button { padding: 5px 12px; font-size: 11.5px; }
+.evo-app .wz-range-hint { color: var(--text-faint); font-size: 11px; }
 .evo-app .wz-demo { display: flex; align-items: center; gap: 9px; margin-top: 14px; padding: 9px 11px; border: 1px dashed color-mix(in srgb, var(--blue) 36%, transparent); border-radius: 8px; color: var(--text-dim); font-size: 11.5px; background: color-mix(in srgb, var(--blue) 4%, transparent); }
 .evo-app .wz-demo b { color: var(--text); font-weight: 600; }
 .evo-app .wz-empty { display: grid; place-items: center; min-height: 218px; padding: 24px 18px; border: 1px dashed color-mix(in srgb, var(--border) 72%, var(--text-faint)); border-radius: 10px; text-align: center; background: color-mix(in srgb, var(--bg-panel) 58%, transparent); }
@@ -5764,6 +5768,40 @@ function evWizardOpen(caseId) {
 }
 function evWzTargets() { return (EV_TARGETS[evCurrentWs()] || []).filter(t => t.enabled && t.kind === EV_STATE.wz.kind); }
 function evWzTarget() { return evWzTargets().find(t => t.objectName === EV_STATE.wz.name) || evWzTargets()[0]; }
+const EV_WZ_RANGE_PRESETS = [
+  { id: '7', label: '近 7 天' },
+  { id: '30', label: '近 30 天' },
+  { id: '6m', label: '近半年' },
+];
+function evWzDateAddMonths(dateStr, months) {
+  const d = new Date(dateStr + 'T12:00:00+08:00');
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, lastDay));
+  return d.toISOString().slice(0, 10);
+}
+function evWzPresetRange(preset) {
+  if (preset === '6m') return { from: evWzDateAddMonths(V2_TODAY, -6), to: V2_TODAY };
+  const days = Number(preset);
+  if (!Number.isInteger(days) || days < 1) return null;
+  return { from: v2DateAdd(V2_TODAY, -(days - 1)), to: V2_TODAY };
+}
+function evWzActiveRangePreset(from, to) {
+  if (!from || !to) return '';
+  const hit = EV_WZ_RANGE_PRESETS.find(p => { const range = evWzPresetRange(p.id); return range && range.from === from && range.to === to; });
+  return hit ? hit.id : '';
+}
+function evWzSyncRangePresetButtons() {
+  const wz = EV_STATE.wz; if (!wz) return;
+  const active = evWzActiveRangePreset(wz.from, wz.to);
+  document.querySelectorAll('[data-action="ev-wz-range"]').forEach(btn => {
+    const on = btn.dataset.preset === active;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
 function evWzVersionOptions() {
   const t = evWzTarget();
   if (!t) return [];
@@ -5927,6 +5965,7 @@ function evRenderWizard() {
   const step3 = wz.step >= 3;
   const step4 = wz.step >= 4;
   const err = wz.errors || {};
+  const activeRangePreset = evWzActiveRangePreset(wz.from, wz.to);
   const contentFailed = Boolean(busy && busy.failed && busy.fromStep === 1);
   const fieldErr = k => err[k] ? `<div class="field-error">${evEsc(err[k])}</div>` : '';
   const cond = `<div class="wz-condstrip">
@@ -5972,8 +6011,15 @@ function evRenderWizard() {
         <div class="wz-note">版本可输入 tag、分支名或 commit id；下拉仅为建议。启动前用 git 校验 ref 是否存在（原型用示例 ref 模拟）。只列出当前空间已启用的进化对象；点击 <button class="cfg-link" data-action="ev-wz-targets">配置页</button> 调整。</div>
       </div>
       <div class="f-row"><div class="f-label">bad case 时间段 <span class="req">*</span></div>
+        <div class="wz-range-presets">
+          <span class="wz-inline-label">快捷</span>
+          <div class="seg" role="group" aria-label="快捷时间段">
+            ${EV_WZ_RANGE_PRESETS.map(p => `<button type="button" class="${activeRangePreset === p.id ? 'active' : ''}" data-action="ev-wz-range" data-preset="${p.id}" aria-pressed="${activeRangePreset === p.id ? 'true' : 'false'}">${p.label}</button>`).join('')}
+          </div>
+          <span class="wz-range-hint">点选后填入具体日期，可继续微调</span>
+        </div>
         <div class="f-inline wz-controls"><div class="wz-field"><input class="inp" id="ev-wz-from" type="date" value="${wz.from}">${fieldErr('from')}</div><span class="wz-inline-label">~</span><div class="wz-field"><input class="inp" id="ev-wz-to" type="date" value="${wz.to}">${fieldErr('to')}</div></div>
-        <div class="wz-note">按 bad case 的 created_at 过滤；Session 的启动时间只用于展示。</div>
+        <div class="wz-note">按 bad case 的 created_at 过滤；Session 的启动时间只用于展示。快捷时间段以今天（含当天）倒推，点选后仍可手动微调；原型演示日为 ${V2_TODAY}。</div>
       </div>
       <div class="f-row"><div class="f-label">潜在 bad case 策略</div>
         <div class="policy ${wz.policy === 'default' ? 'selected' : ''}">
@@ -6132,6 +6178,24 @@ document.addEventListener('click', e => {
   else if (a === 'ev-wz-kind') { evWzClearBusy(); evSyncWz(); const wz = EV_STATE.wz; wz.kind = el.dataset.v; const t = evWzTargets()[0]; wz.name = t?.objectName || ''; wz.version = t?.defaultRef || t?.tags?.[0] || ''; delete wz.errors.version; wz.versionOpen = false; wz.assocPage = 1; wz.casePage = 1; evRenderWizard(); }
   else if (a === 'ev-wz-version-toggle') { evWzClearBusy(); evSyncWz(); EV_STATE.wz.versionOpen = !EV_STATE.wz.versionOpen; evRenderWizard(); }
   else if (a === 'ev-wz-version-pick') { evWzClearBusy(); evSyncWz(); EV_STATE.wz.version = el.dataset.v; EV_STATE.wz.versionOpen = false; delete EV_STATE.wz.errors.version; evRenderWizard(); }
+  else if (a === 'ev-wz-range') {
+    evWzClearBusy(); evSyncWz();
+    const range = evWzPresetRange(el.dataset.preset);
+    if (!range) return;
+    const wz = EV_STATE.wz;
+    wz.from = range.from; wz.to = range.to;
+    wz.assocPage = 1; wz.casePage = 1;
+    delete wz.errors.from; delete wz.errors.to;
+    ['from', 'to'].forEach(key => {
+      const input = document.getElementById(`ev-wz-${key}`);
+      if (!input) return;
+      input.value = wz[key];
+      input.classList.remove('input-error');
+      const errorEl = input.parentElement.querySelector('.field-error');
+      if (errorEl) errorEl.remove();
+    });
+    evWzSyncRangePresetButtons();
+  }
   else if (a === 'ev-wz-policy') { evWzClearBusy(); evSyncWz(); EV_STATE.wz.policy = el.dataset.v; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
   else if (a === 'ev-wz-rule') { evWzClearBusy(); evSyncWz(); EV_STATE.wz[el.dataset.rule] = !!el.checked; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
   else if (a === 'ev-wz-cache') { evWzClearBusy(); evSyncWz(); EV_STATE.wz.cache = !!el.checked; evRenderWizard(); }
@@ -6176,7 +6240,7 @@ document.addEventListener('change', e => {
   if (!EV_STATE.wz) return;
   if (e.target.id === 'ev-wz-name') { evWzClearBusy(); evSyncWz(); const t = evWzTarget(); EV_STATE.wz.version = t?.defaultRef || t?.tags?.[0] || ''; delete EV_STATE.wz.errors.version; EV_STATE.wz.versionOpen = false; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
   else if (e.target.id === 'ev-wz-version') { if (EV_STATE.wz.busy) { evWzClearBusy(); evRenderWizard(); } evSyncWz(); }
-  else if (e.target.id === 'ev-wz-from' || e.target.id === 'ev-wz-to') { evWzClearBusy(); evSyncWz(); }
+  else if (e.target.id === 'ev-wz-from' || e.target.id === 'ev-wz-to') { evWzClearBusy(); evSyncWz(); evWzSyncRangePresetButtons(); }
 });
 document.addEventListener('input', e => {
   if (EV_STATE.targetDialog && e.target.dataset.evTargetField) evSyncTargetForm();
