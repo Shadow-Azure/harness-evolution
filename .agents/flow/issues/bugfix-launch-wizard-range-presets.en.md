@@ -4,7 +4,7 @@ English | [中文](bugfix-launch-wizard-range-presets.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-30
+id: bugfix-40
 milestone: bugfix
 depends:
   - m10-05
