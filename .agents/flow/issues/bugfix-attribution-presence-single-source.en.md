@@ -8,7 +8,7 @@ id: bugfix-43
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - .agents/flow/issues/bugfix-attribution-presence-single-source*
   - .agents/flow/issues/bugfix-ignore-image-files*
