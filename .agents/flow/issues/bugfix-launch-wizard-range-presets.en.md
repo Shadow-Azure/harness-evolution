@@ -4,7 +4,7 @@ English | [中文](bugfix-launch-wizard-range-presets.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-29
+id: bugfix-30
 milestone: bugfix
 depends:
   - m10-05
@@ -80,15 +80,15 @@ After the prototype change (same scenario, 1500×900 viewport, light theme, `u=a
 
 **Last 30 days selected; dates become 2026-10-12 ~ 2026-11-10**
 
-![Prototype after: clicking Last 30 days fills 2026-10-12 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-30d.png)
+![Prototype after: clicking Last 30 days fills 2026-10-12 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-30d-v2.png)
 
 **Last 7 days selected; dates become 2026-11-04 ~ 2026-11-10**
 
-![Prototype after: clicking Last 7 days fills 2026-11-04 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-7d.png)
+![Prototype after: clicking Last 7 days fills 2026-11-04 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-7d-v2.png)
 
 **Last half year selected; dates become 2026-05-10 ~ 2026-11-10**
 
-![Prototype after: clicking Last half year fills 2026-05-10 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-6m.png)
+![Prototype after: clicking Last half year fills 2026-05-10 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-6m-v2.png)
 
 ### Design docs and decision record
 

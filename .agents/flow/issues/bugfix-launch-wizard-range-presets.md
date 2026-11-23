@@ -4,7 +4,7 @@
 
 ```yaml flow
 kind: issue
-id: bugfix-29
+id: bugfix-30
 milestone: bugfix
 depends:
   - m10-05
@@ -80,15 +80,15 @@ github:
 
 **近 30 天已选中，日期自动填为 2026-10-12 ~ 2026-11-10**
 
-![原型修改后：点击近 30 天后自动填入 2026-10-12 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-30d.png)
+![原型修改后：点击近 30 天后自动填入 2026-10-12 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-30d-v2.png)
 
 **近 7 天已选中，日期自动填为 2026-11-04 ~ 2026-11-10**
 
-![原型修改后：点击近 7 天后自动填入 2026-11-04 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-7d.png)
+![原型修改后：点击近 7 天后自动填入 2026-11-04 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-7d-v2.png)
 
 **近半年已选中，日期自动填为 2026-05-10 ~ 2026-11-10**
 
-![原型修改后：点击近半年后自动填入 2026-05-10 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-6m.png)
+![原型修改后：点击近半年后自动填入 2026-05-10 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-6m-v2.png)
 
 ### 设计文档与决策记录
 
