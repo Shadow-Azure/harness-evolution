@@ -9,7 +9,7 @@ milestone: bugfix
 depends:
   - bugfix-26
 priority: P2
-status: in-progress
+status: done
 scope:
   - .agents/**
   - plans/**
