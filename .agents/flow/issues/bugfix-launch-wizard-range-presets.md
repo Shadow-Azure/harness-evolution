@@ -124,6 +124,7 @@ github:
 ## 关联 PR
 
 - 原型与设计文档 PR：[#536](https://github.com/Shadow-Azure/harness-evolution/pull/536)
+- 生产实现 PR：[#540](https://github.com/Shadow-Azure/harness-evolution/pull/540)
 
 ## 依赖与交付边界
 

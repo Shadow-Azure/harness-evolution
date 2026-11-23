@@ -124,6 +124,7 @@ After the prototype and design docs merged in PR #536, the requester pointed out
 ## Related PR
 
 - Prototype and design-doc PR: [#536](https://github.com/Shadow-Azure/harness-evolution/pull/536)
+- Production implementation PR: [#540](https://github.com/Shadow-Azure/harness-evolution/pull/540)
 
 ## Dependencies and boundary
 
