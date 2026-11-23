@@ -103,6 +103,10 @@ After the prototype change (same scenario, 1500×900 viewport, light theme, `u=a
 5. Run the syntax check, `pnpm verify:flow`, and `pnpm lint:docs`; confirm the PR title contains `(#<issue>)`.
 6. Open the prototype PR with before/after evidence and verification notes; a person merges it.
 
+## Related PR
+
+- Prototype and design-doc PR: [#536](https://github.com/Shadow-Azure/harness-evolution/pull/536)
+
 ## Dependencies and boundary
 
 - Depends on m10-05 (four-step launch wizard, done); this issue only improves the step-1 range input and does not change the four-step state machine.

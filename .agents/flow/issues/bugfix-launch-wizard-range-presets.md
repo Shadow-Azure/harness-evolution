@@ -103,6 +103,10 @@ github:
 5. 运行语法检查、`pnpm verify:flow`、`pnpm lint:docs`，并检查 PR 标题带 `(#<issue>)`。
 6. 创建原型 PR，PR 描述附修改前后截图和验证记录，由人合并。
 
+## 关联 PR
+
+- 原型与设计文档 PR：[#536](https://github.com/Shadow-Azure/harness-evolution/pull/536)
+
 ## 依赖与交付边界
 
 - 依赖：m10-05（四步启动向导，已 done）；本 issue 只补第 1 步的时间段输入体验，不改四步状态机。
