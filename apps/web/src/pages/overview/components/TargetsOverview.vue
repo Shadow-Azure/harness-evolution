@@ -21,6 +21,7 @@ import { ApiError } from "../../../api/http";
 import { queryKeys } from "../../../api/queryKeys";
 import { useAttributionSkillPackages } from "../../../composables/useAttributionSkillPackages";
 import TargetFormDialog from "../../evolution/targets/components/TargetFormDialog.vue";
+import AttributionRuntimeNotice from "../../evolution/targets/components/AttributionRuntimeNotice.vue";
 import {
   targetServerError,
   type TargetServerError,
@@ -286,6 +287,7 @@ const operationError = ref("");
 const submitting = ref(false);
 const editingTargetId = computed(() => editingTarget.value?.id ?? null);
 const skillLibrary = useAttributionSkillPackages(workspaceId);
+const runtimeUnavailable = computed(() => skillLibrary.packages.data.value?.runtimeEnabled === false);
 const versionsQuery = useEvolutionTargetVersions(workspaceId, editingTargetId);
 const versions = computed(() => versionsQuery.data.value?.versions ?? []);
 const versionsLoading = computed(
@@ -500,6 +502,7 @@ watch(
       {{ operationError }}
     </p>
 
+    <AttributionRuntimeNotice v-if="runtimeUnavailable" />
     <div class="target-grid">
       <section
         class="chart-card"
@@ -536,6 +539,7 @@ watch(
       </section>
 
       <TargetSideList
+        :runtime-unavailable="runtimeUnavailable"
         :can-manage="canManage"
         :code="targetsCode"
         :error="targetsQuery.error.value"

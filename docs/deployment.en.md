@@ -2,7 +2,7 @@
 
 English | [中文](deployment.md)
 
-Production is a single-instance Alibaba Cloud SaaS: nginx serves the built frontend and reverse-proxies `/api` to a local uvicorn (127.0.0.1:8787), with MySQL 8 on the same host. Releases run through GitHub Actions: after main's CI is green (`ci-ok`), `Deploy` builds the frontend, pushes the release, migrates, switches the `current` symlink, and restarts, rolling back when the probe fails. The design authority is [plans/fullstack-design/01-architecture.md §6](../plans/fullstack-design/01-architecture.md).
+Alibaba Cloud hosts nginx, uvicorn (127.0.0.1:8787) and MySQL 8 on one instance. Nginx serves the built frontend and proxies `/api`. The design authority is [plans/fullstack-design/01-architecture.md §6](../plans/fullstack-design/01-architecture.md).
 
 ## Cloud resources
 
@@ -50,7 +50,11 @@ The data directory and evaluation config share one channel into the server `.env
 
 Model review and patch generation take Secrets `AI_AGENT_PROVIDER`, `HE_AI_AGENT_FAILURE_POLICY`, and `HE_PATCH_SOURCE_MODE`: a present, non-empty value is written to `.env`, a missing or empty one is explicitly `--unset`, and the service falls back to the Settings defaults (defaults and allowed values are in the [template](../.env.example)). A newline or carriage return in a value fails the deploy before injection (a skipped value is not a deletion); other keys still warn, skip, and keep their old value on decode failures. When `HE_AI_AGENT_FAILURE_POLICY` is empty it derives from the provider: `degrade` for `fake` and `strict` for every other provider (including the default `claude-code`); under `strict`, a cluster AI failure fails the run explicitly at the cluster stage without fallback values.
 
-The API runs as `harness` with no home: the deploy installs Claude Code with a stable `current` path and shared settings (see below), and writes `CLAUDE_CODE_API_KEY` as `ANTHROPIC_API_KEY` into the 0600 `.env`; the CLI and settings no longer live in `deploy`'s home. The `HE_AI_AGENT_CLAUDE_BIN` Secret is only a manual override when the install step is skipped; `HE_AI_AGENT_CLAUDE_SETTINGS` and `CLAUDE_CONFIG_DIR` are injected automatically. `agent-edit` is available with a configured provider.
+`agent-edit` needs a configured provider. The home-less `harness` account reads shared settings via `CLAUDE_CONFIG_DIR`. Set `HE_AI_AGENT_CLAUDE_BIN` to use an existing CLI.
+
+### Attribution runtime
+
+Binding attribution and wizard recomputation share the provider and model. Install bubblewrap for Linux Claude with `sudo apt-get install bubblewrap`. Deployment checks before migration and the API checks again on startup. Read the reason with `journalctl -u harness-api -g attribution.preflight`. Restart after recovery to resume the original binding. See the [service-account probe and report verification](../plans/deploy-aliyun-playbook.md#验证-skill-归因).
 
 ## Claude Code
 
@@ -59,7 +63,7 @@ Before switching `current`, the deploy pipeline installs Claude Code and writes 
 ## Release and rollback
 
 - Trigger: push to main → CI green → `Deploy`; `workflow_dispatch` also available.
-- Behavior: [deploy/release.sh](../deploy/release.sh) validates the data directory → installs dependencies → `alembic upgrade head` → switches the `current` symlink → restarts harness-api → probes `/api/health` (up to 60 seconds).
+- Behavior: [deploy/release.sh](../deploy/release.sh) validates the data directory → installs dependencies → checks the attribution runtime → `alembic upgrade head` → switches the `current` symlink → restarts harness-api → probes `/api/health` (up to 60 seconds).
 - Rollback: on a failed probe it restores `.env` first, then returns the symlink to the previous release and restarts; the server keeps the latest 5 releases and 5 `.env` backups.
 - Restart drain: the systemd unit uses `KillMode=mixed` + `TimeoutStopSec=45` so the main process receives SIGTERM first; the application waits for in-flight jobs up to `HE_JOB_DRAIN_TIMEOUT_SECONDS` (25 seconds by default), then releases the lease and marks the job `interrupted` for automatic recovery on the next start.
 - Migrations are idempotent: repeated releases have zero side effects on applied migrations.

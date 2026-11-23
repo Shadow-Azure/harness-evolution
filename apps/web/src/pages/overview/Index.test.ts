@@ -239,6 +239,8 @@ function requestPaths(log: string[], wid: string): URL[] {
 
 function mockOverviewApi(overrides: Record<string, unknown> = {}) {
   server.use(
+    http.get("/api/workspaces/:wid/attribution-skill-packages", () =>
+      HttpResponse.json({ runtimeEnabled: true, items: [] })),
     http.get("/api/workspaces/:wid/overview/summary", ({ request }) => {
       requests.summary.push(request.url);
       return HttpResponse.json(overrides.summary ?? summary);
@@ -794,6 +796,19 @@ describe("workspace overview page", () => {
     expect(url.searchParams.get("objects")).toBe("deep-research");
     expect(url.searchParams.get("badCaseType")).toBe("self");
     expect(url.searchParams.get("page")).toBe("2");
+  });
+
+  it.each([false, true])("displays the shared runtime state on the overview, runtimeEnabled=%s", async (runtimeEnabled) => {
+    mockOverviewApi({ targets: {
+      ...targetOverview,
+      items: [{ ...targetItems[0], attributionSkillName: "attribute-badcases" }, targetItems[1]],
+    } });
+    server.use(http.get("/api/workspaces/:wid/attribution-skill-packages", () =>
+      HttpResponse.json({ runtimeEnabled, items: [] })));
+    const { wrapper } = await mountPage(`${ws}/overview?tab=targets`);
+    expect(wrapper.text().includes("归因运行时不可用")).toBe(!runtimeEnabled);
+    expect(wrapper.get("[data-testid='ov-target-side-item-target-1']").text().includes("归因未运行")).toBe(!runtimeEnabled);
+    expect(wrapper.get("[data-testid='ov-target-side-item-target-2']").text()).not.toContain("归因未运行");
   });
 
   it("opens the evolution-target view from a deep link", async () => {

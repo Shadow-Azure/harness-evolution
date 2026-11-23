@@ -51,11 +51,36 @@
 6. 回滚演练：Actions 重跑上一 release 的 Deploy（或在服务器手工软链退回 + `sudo systemctl restart harness-api`）。
 7. Claude Code：`ssh deploy@<IP> '~/.local/bin/claude --version'`；`claude doctor` 应无 settings 错误；把占位 API key 换成 MiniMax 真实 key 后，`claude -p "只回复 OK"` 应返回结果。
 
-### 开启 Skill 归因
+### 验证 Skill 归因
 
-设置 `HE_ATTRIBUTION_AGENT=provider` 开启绑定归因，后台任务与向导重算都通过 `AI_AGENT_PROVIDER` 指定的实例执行 Skill。已有 `HE_ATTRIBUTION_AGENT=claude` 显式选择 `claude-code`，旧快照继续按原 Provider 与模型身份回放。留空关闭本地归因。内网 Agent 实现 `AIAgentProvider.run_skill` 并在公共工厂注册一次即可；使用不支持 Skill 的 Provider 启用归因会在 API 启动时明确报错。旧版已安装的 `module:Class` Agent 插件继续可用。`HE_ATTRIBUTION_MODEL` 指定模型，默认 `haiku`；`HE_ATTRIBUTION_LLM` 仍支持自定义 `ModelBackend`。Claude 在每个 Badcase 的隔离目录使用独立会话。上传包、快照、输入和报告持久化在 `HE_DATA_DIR/attribute`，可用 `HE_ATTRIBUTION_PACKAGE_DIR` 改目录。
+对象绑定与向导重算共用 `AI_AGENT_PROVIDER`、CLI、服务 settings 和密钥。默认 `claude-code`，显式 `fake` 可用缓存。Claude 使用 `ANTHROPIC_MODEL`、共享 settings 和 CLI 默认模型，已冻结的批次保留原快照。上传包与产物位于 `HE_DATA_DIR/attribute`，可用 `HE_ATTRIBUTION_PACKAGE_DIR` 指定持久卷。
 
-Worker 依赖 Python 3，Linux 使用 bubblewrap 和可用的用户命名空间，macOS 使用 Seatbelt。新建 Linux 主机由 `deploy/bootstrap-server.sh` 安装 bubblewrap。已有主机开启归因前可用 `sudo -u harness bwrap --unshare-all --share-net --ro-bind / / -- /bin/true` 检查；修改服务环境后重启 API 生效。
+Ubuntu 首次 bootstrap 会安装 bubblewrap。旧主机由管理员安装并用 API 服务账号运行最小命名空间探针。退出码 0 表示该账号可以启动沙箱。
+
+```sh
+sudo apt-get install bubblewrap
+sudo -u harness bwrap --unshare-all --share-net --die-with-parent --ro-bind / / -- /bin/true
+```
+
+发布时部署账号用候选 API 检查公共 Provider，失败时恢复备份的 `.env`，迁移和 release 切换均未执行。修复主机后重跑 Deploy。若该版本已在运行，执行 `sudo systemctl restart harness-api`。API 以服务账号再次检查，查看启动记录：
+
+```sh
+journalctl -u harness-api -b -g 'attribution.preflight|attribution_binding_worker'
+```
+
+`ATTRIBUTION_BWRAP_MISSING` 表示服务 PATH 找不到 bwrap，`ATTRIBUTION_BWRAP_UNUSABLE` 表示命名空间探针未能成功，检查服务账号权限和主机命名空间策略。`ATTRIBUTION_PROVIDER_UNSUPPORTED` 表示公共 Provider 缺少 Skill 能力。预检失败时两处对象页提示“归因未运行”，已排队绑定保留到下次就绪启动。
+
+恢复后应看到 `ready=True`、`started=True`。以空间成员身份读取 `GET /api/workspaces/{wid}/attribution-skill-packages`，应有 `runtimeEnabled=true`。后台自动领取已到期的绑定。核对原 generation，避免重新绑定生成另一批次：
+
+```sql
+SELECT attribution_generation, attribution_due, attribution_owner, attribution_failures
+FROM evolution_targets WHERE workspace_id = '<workspace>' AND id = '<target>';
+SELECT attribution_skill_name, COUNT(*) AS reports
+FROM probe_reports WHERE workspace_id = '<workspace>' AND binding_generation = '<generation>'
+GROUP BY attribution_skill_name;
+```
+
+批次成功后 owner 和 due 均可为空。按同一代次核对对象总览报告及 `attribute/<workspace>/attribute_output/<generation>/<case>/probe_report.json`。历史生产事件 #544 的验收口径为原 generation 下 22 条 discovery 对应 22 份 `attribute-badcases` 报告。
 
 ## 6. 常见问题
 

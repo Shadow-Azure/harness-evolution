@@ -16,6 +16,7 @@ import { useWorkspaceId } from "../../../composables/useWorkspaceId";
 import { workspacePath } from "../../../router/workspace";
 import { useAuthStore } from "../../../stores/auth";
 import TargetTable from "./components/TargetTable.vue";
+import AttributionRuntimeNotice from "./components/AttributionRuntimeNotice.vue";
 import { useAttributionSkillPackages } from "../../../composables/useAttributionSkillPackages";
 import TargetFormDialog from "./components/TargetFormDialog.vue";
 import { targetServerError, type TargetServerError } from "./targetErrors";
@@ -43,6 +44,7 @@ const operationError = ref("");
 const submitting = ref(false);
 const editingTargetId = computed(() => editingTarget.value?.id ?? null);
 const skillLibrary = useAttributionSkillPackages(workspaceId);
+const runtimeUnavailable = computed(() => skillLibrary.packages.data.value?.runtimeEnabled === false);
 const versionsQuery = useEvolutionTargetVersions(workspaceId, editingTargetId);
 const versions = computed(() => versionsQuery.data.value?.versions ?? []);
 const versionsLoading = computed(
@@ -166,7 +168,9 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
       {{ operationError }}
     </p>
 
+    <AttributionRuntimeNotice v-if="runtimeUnavailable" />
     <TargetTable
+      :runtime-unavailable="runtimeUnavailable"
       :can-write="canWrite"
       :error="error"
       :loading="isPending"

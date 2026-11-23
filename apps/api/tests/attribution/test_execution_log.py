@@ -73,8 +73,23 @@ print(json.dumps({'result':'visible reply','subtype':'success',
     assert read_transcript(work, details["sessionId"])["status"] == "unavailable"
 
 
+@pytest.mark.parametrize(
+    ("settings_model", "env_model", "snapshot_model", "expected"),
+    [
+        ("service-model", None, None, "service-model"),
+        ("service-model", "env-model", None, "env-model"),
+        ("service-model", None, "haiku", "haiku"),
+        (None, None, None, None),
+    ],
+    ids=["deploy-settings", "provider-environment", "historical-snapshot", "cli-default"],
+)
 async def test_attribution_uses_shared_service_binary_and_settings(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    settings_model: str | None,
+    env_model: str | None,
+    snapshot_model: str | None,
+    expected: str | None,
 ) -> None:
     from app.config import Settings
 
@@ -82,13 +97,14 @@ async def test_attribution_uses_shared_service_binary_and_settings(
     binary.parent.mkdir(parents=True)
     binary.write_text(
         """#!/usr/bin/env python3
-import json, os
+import json, os, sys
 assert os.environ["ANTHROPIC_BASE_URL"] == "https://gateway.example"
 assert os.environ["ANTHROPIC_API_KEY"] == "fixture-key"
 assert os.environ["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == "deployed-model"
 assert os.environ["CLAUDE_CONFIG_DIR"].startswith(os.getcwd() + "/")
 assert "UNRELATED_SETTING" not in os.environ
-print(json.dumps({"subtype": "success", "usage": {"input_tokens": 9}}))
+model = sys.argv[sys.argv.index("--model") + 1] if "--model" in sys.argv else None
+print(json.dumps({"subtype": "success", "result": model, "usage": {"input_tokens": 9}}))
 """
     )
     binary.chmod(0o700)
@@ -96,30 +112,47 @@ print(json.dumps({"subtype": "success", "usage": {"input_tokens": 9}}))
     settings_file.write_text(
         json.dumps(
             {
+                "model": settings_model,
                 "env": {
                     "ANTHROPIC_BASE_URL": "https://gateway.example",
                     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deployed-model",
                     "UNRELATED_SETTING": "not-for-agent",
-                }
+                },
             }
         )
     )
-    for key in ("ANTHROPIC_BASE_URL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"):
+    for key in ("ANTHROPIC_BASE_URL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_MODEL"):
         monkeypatch.delenv(key, raising=False)
+    if env_model:
+        monkeypatch.setenv("ANTHROPIC_MODEL", env_model)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "fixture-key")
     monkeypatch.setattr(claude_skill, "_sandbox", lambda *_: [])
     backend = build_agent_provider(
-        Settings(ai_agent_claude_bin=str(binary), ai_agent_claude_settings=str(settings_file)),
+        Settings(
+            ai_agent_provider="claude-code",
+            ai_agent_claude_bin=str(binary),
+            ai_agent_claude_settings=str(settings_file),
+        ),
     )
     work = tmp_path / "attempt"
     work.mkdir()
+    assert backend.supports_skills
+    assert backend.default_skill_model() == (env_model or settings_model)
+    model = snapshot_model or backend.default_skill_model()
+    identity = backend.skill_model_identity(model)
     assert backend.skill_model_identity("haiku")["model"] == "deployed-model"
+    details: dict[str, Any] = {}
     assert (
         await backend.run_skill(
-            SkillRunRequest(work, "fixture prompt", "haiku", 10), diagnostics={}
+            SkillRunRequest(work, "fixture prompt", model, 10), diagnostics=details
         )
         == 9
     )
+    assert details["result"]["result"] == expected
+    if model is None:
+        assert identity["selection"] == "provider-default"
+        monkeypatch.setenv("ANTHROPIC_MODEL", "changed-after-snapshot")
+        assert backend.skill_model_identity(None) != identity
 
 
 async def test_shared_provider_keeps_concurrent_skill_sessions_separate(

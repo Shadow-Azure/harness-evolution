@@ -227,7 +227,7 @@ async function runTool(action, value) {
     env: {
       ...process.env,
       HE_DATA_DIR: dataDir,
-      HE_ATTRIBUTION_AGENT: "",
+      AI_AGENT_PROVIDER: "fake",
       HE_ATTRIBUTION_PACKAGE_DIR: path.join(dataDir, "attribute"),
       HE_DB_DIALECT: "sqlite",
       HE_JWT_SECRET: secret,
@@ -251,7 +251,7 @@ before(async () => {
     HE_ADMIN_PASSWORD: initialPassword,
     HE_ADMIN_USERNAME: "admin",
     HE_DATA_DIR: dataDir,
-    HE_ATTRIBUTION_AGENT: "",
+    AI_AGENT_PROVIDER: "fake",
     HE_ATTRIBUTION_PACKAGE_DIR: path.join(dataDir, "attribute"),
     HE_DB_DIALECT: "sqlite",
     HE_JWT_SECRET: secret,
@@ -376,6 +376,11 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
       url: `${baseUrl}${workspaceBase}/evolution/targets`,
     });
     await waitForTargetConfigPage(page, "target config page", violations);
+    await waitForDocument(
+      page.session,
+      `document.querySelector(".runtime-notice[role=status]")?.textContent.includes("归因运行时不可用")`,
+      "cache-only provider status on the target page",
+    );
     const desktopLayout = await evaluate(
       page,
       `(() => {
@@ -826,6 +831,9 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
     assert.equal(updated.items.find(item => item.id === created.id).attributionPackageId, uploaded.id);
     const detail = await apiJson(`${packagesPath}/${uploaded.id}`, admin.accessToken);
     assert.ok(detail.targets.includes("m5-e2e-target"));
+    assert.equal(await evaluate(page, `[...document.querySelectorAll(".target-table tbody tr")]
+      .find(row => row.textContent.includes("m5-e2e-target"))
+      ?.querySelector(".runtime-badge")?.textContent.trim()`), "归因未运行");
 
 
     await evaluate(

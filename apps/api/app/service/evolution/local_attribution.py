@@ -115,7 +115,7 @@ class LocalAttribution:
         self.agent = agent
 
     def _skill_provider(self, selector: str) -> AIAgentProvider:
-        # Old manifests pin "claude"; only the deployment selector follows the shared instance.
+        # Replay existing snapshots with the provider recorded when they were frozen.
         if selector in {"claude", "app.third_party_api.attribution.claude_backend:ClaudeBackend"}:
             selector = "claude-code"
         if selector == self.agent.provider_id:
@@ -123,14 +123,6 @@ class LocalAttribution:
         if ":" in selector:
             return legacy_skill_provider(selector)
         return build_agent_provider(self.settings, provider_id=selector)
-
-    def configured_skill_provider(self) -> AIAgentProvider:
-        selector = self.settings.attribution_agent
-        if not selector:
-            raise ValueError("attribution agent is not configured")
-        provider = self.agent if selector == "provider" else self._skill_provider(selector)
-        provider.require_skill_support()
-        return provider
 
     def root(self, workspace: str) -> Path:
         return self.settings.attribution_package_dir.resolve() / _component(workspace)
@@ -258,15 +250,14 @@ class LocalAttribution:
             }
         files["make_probe_report.py"] = self.packages.writer_path.read_bytes()
         files["SKILL.md"] += INSTRUCTIONS.encode()
-        provider = self.configured_skill_provider()
-        model = ModelFactory.create(self.settings.attribution_llm).resolve(
-            self.settings.attribution_model
-        )
-        selector = self.settings.attribution_agent or ""
+        self.agent.require_skill_support()
+        model = self.agent.default_skill_model()
+        if model is not None:
+            model = ModelFactory.create(self.settings.attribution_llm).resolve(model)
         manifest = {
             "name": name,
-            "agent": selector if ":" in selector else provider.provider_id,
-            "modelIdentity": provider.skill_model_identity(model),
+            "agent": self.agent.provider_id,
+            "modelIdentity": self.agent.skill_model_identity(model),
             "model": model,
             "llm": self.settings.attribution_llm,
             "contract": _digest(INSTRUCTIONS.encode()),

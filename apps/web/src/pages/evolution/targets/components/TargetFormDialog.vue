@@ -25,7 +25,7 @@ const props = withDefaults(
   }>(),
   {
     packages: () => [],
-    runtimeEnabled: false,
+    runtimeEnabled: undefined,
     packagesLoading: false,
     versions: () => [],
     versionsLoading: false,
@@ -336,10 +336,10 @@ watch(
             </option>
           </select>
           <p
-            v-if="form.attributionPackageId"
+            v-if="form.attributionPackageId && runtimeEnabled !== undefined"
             class="field-help"
           >
-            {{ runtimeEnabled ? "保存绑定后，后台将分析当前与该对象关联的 Badcase。" : "此部署尚未启用归因 Agent。Skill 绑定会保存，启用后开始后台归因。" }}
+            {{ runtimeEnabled ? "保存绑定后，后台将分析当前与该对象关联的 Badcase。" : "归因运行时不可用。绑定会保存，运行时恢复并重启后开始后台归因。" }}
           </p>
         </ElFormItem>
         <details v-if="target?.definition">

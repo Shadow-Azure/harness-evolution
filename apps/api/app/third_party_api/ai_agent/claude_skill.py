@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -33,12 +34,21 @@ _PROVIDER_ENV = (
 
 
 def _provider_environment(settings: Path) -> dict[str, str]:
-    configured = json.loads(settings.read_text()).get("env", {}) if settings.is_file() else {}
-    return {
+    payload = json.loads(settings.read_text()) if settings.is_file() else {}
+    configured = payload.get("env", {})
+    env = {
         key: value
         for key in _PROVIDER_ENV
         if isinstance(value := os.environ.get(key, configured.get(key)), str) and value
     }
+    # Deploy writes the service model at the top level of the shared settings.
+    if isinstance(model := payload.get("model"), str) and model.strip():
+        env.setdefault("ANTHROPIC_MODEL", model.strip())
+    return env
+
+
+def default_model(settings: Path) -> str | None:
+    return _provider_environment(settings).get("ANTHROPIC_MODEL")
 
 
 def _environment(directory: Path, provider_env: dict[str, str]) -> dict[str, str]:
@@ -59,6 +69,38 @@ def _environment(directory: Path, provider_env: dict[str, str]) -> dict[str, str
     }
     env.update(provider_env)
     return env
+
+
+def sandbox_preflight_error() -> str | None:
+    """Check Linux namespace access under the calling account without invoking Claude."""
+    if not sys.platform.startswith("linux"):
+        return None
+    binary = shutil.which("bwrap")
+    if binary is None:
+        return "ATTRIBUTION_BWRAP_MISSING"
+    try:
+        result = subprocess.run(  # noqa: S603 - fixed sandbox probe runs the system true binary.
+            [
+                binary,
+                "--unshare-all",
+                "--share-net",
+                "--die-with-parent",
+                "--ro-bind",
+                "/",
+                "/",
+                "--",
+                "/bin/true",
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env={"PATH": os.defpath},
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "ATTRIBUTION_BWRAP_UNUSABLE"
+    return None if result.returncode == 0 else "ATTRIBUTION_BWRAP_UNUSABLE"
 
 
 def _sandbox(directory: Path, executable: str) -> list[str]:
@@ -122,14 +164,22 @@ def _sandbox(directory: Path, executable: str) -> list[str]:
     ]
 
 
-def model_identity(model: str, settings: Path) -> dict[str, str]:
+def model_identity(model: str | None, settings: Path) -> dict[str, str]:
     env = _provider_environment(settings)
-    resolved = env.get(f"ANTHROPIC_DEFAULT_{model.upper()}_MODEL", model)
     endpoint = env.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+    endpoint_hash = hashlib.sha256(endpoint.encode()).hexdigest()
+    selector = model or env.get("ANTHROPIC_MODEL")
+    if selector is None:
+        # The CLI selects its native default. Changes to model aliases still affect replay.
+        return {
+            "selection": "provider-default",
+            "endpointHash": endpoint_hash,
+            **{k: v for k, v in env.items() if k.startswith("ANTHROPIC_DEFAULT_")},
+        }
     return {
-        "selector": model,
-        "model": resolved,
-        "endpointHash": hashlib.sha256(endpoint.encode()).hexdigest(),
+        "selector": selector,
+        "model": env.get(f"ANTHROPIC_DEFAULT_{selector.upper()}_MODEL", selector),
+        "endpointHash": endpoint_hash,
     }
 
 
@@ -187,8 +237,7 @@ async def run(
             "--permission-mode",
             "bypassPermissions",
             "--allow-dangerously-skip-permissions",
-            "--model",
-            request.model,
+            *(("--model", request.model) if request.model is not None else ()),
             request.prompt,
         ]
         cli = None

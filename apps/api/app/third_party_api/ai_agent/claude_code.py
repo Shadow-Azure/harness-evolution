@@ -173,7 +173,13 @@ class ClaudeCodeProvider(AIAgentProvider):
         """
         return self._capabilities
 
-    def skill_model_identity(self, model: str) -> dict[str, str]:
+    def default_skill_model(self) -> str | None:
+        return claude_skill.default_model(self._settings_file())
+
+    def skill_preflight_error(self) -> str | None:
+        return claude_skill.sandbox_preflight_error()
+
+    def skill_model_identity(self, model: str | None) -> dict[str, str]:
         return claude_skill.model_identity(model, self._settings_file())
 
     async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict[str, Any]) -> int:

@@ -11,10 +11,16 @@ priority: P2
 status: ready
 scope:
   - apps/api/app/main.py
+  - apps/api/app/service/evolution/attribution_skills.py
   - apps/api/app/service/evolution/local_attribution.py
+  - apps/api/app/third_party_api/ai_agent/**
   - apps/api/tests/**
   - apps/web/src/pages/evolution/targets/**
+  - apps/web/src/pages/evolution/components/LaunchWizard*
   - apps/web/src/pages/overview/components/TargetsOverview.vue
+  - apps/web/src/pages/overview/components/TargetSideList.vue
+  - apps/web/src/pages/overview/Index.test.ts
+  - tests/e2e/m5-target-config.test.mjs
   - deploy/**
   - .github/workflows/deploy.yml
   - docs/deployment.md
@@ -52,91 +58,55 @@ github:
 - 第二阻塞：服务器缺 bubblewrap；即使只补开关，第一批也会失败并消耗重试。
 - 放大因素：UI 只在编辑弹窗提示，绑定后没有持续状态；用户看到“已绑定”会误以为已开始。
 - 非根因：绑定写入、generation/due 生成、对象匹配与 22 条 Badcase 数据都正常；不是绑定 API 或数据面缺陷。
-- 修复方向：复用现有 AI Agent 配置补上归因开关（`HE_ATTRIBUTION_AGENT=provider`），加运行时/发布前置校验和可见状态；生产安装 bubblewrap 后，现有 generation 自动处理。
+- 修复方向采用 #542 的公共 Provider 方案。绑定消费者、重算和发布检查直接使用同一工厂选择，Linux Claude 在领取前验证 bubblewrap 能实际启动隔离进程。
 
 ## 目标
 
-- 复用现有 AI Agent 配置：不新增第二套 provider/model/API key，Deploy 在 `AI_AGENT_PROVIDER` 非空时注入 `HE_ATTRIBUTION_AGENT=provider`，复用同一 CLI、共享 settings 和 `ANTHROPIC_API_KEY`。
-- 运行时不可用时可见：目标配置页与对象总览在 `runtimeEnabled=false` 时持续显示原因，已绑定行显示“归因未运行”。
-- 前置缺失时快速失败：启动日志给出稳定错误码并跳过 worker，不 claim、不消耗排队绑定；发布前置检查在切换 `current` 前失败。
-- 生产恢复：安装 bubblewrap 后，现有 generation `01M83TWE...` 自动处理约 22 条 Badcase；文档给出启用与验证步骤。
+空间中的 Skill 绑定应能在依赖恢复后自动执行。目标配置与对象总览持续显示暂停状态。运维能从启动和发布日志区分 Provider 能力不足、缺少 bubblewrap 与权限受限。
 
 ## 设计依据
 
-- [归因 Agent 执行器 Note](https://github.com/Shadow-Azure/harness-evolution/blob/main/.agents/notes/implemented/architecture/2026-11-17-attribution-agent-executor.md)：本地 Skill 执行使用逐次文件系统沙箱（Linux bubblewrap），`HE_ATTRIBUTION_AGENT` 是显式开关。
-- [07 §5.5.1 AI Agent Provider 出站适配层](../../../plans/fullstack-design/07-backend-implementation.md)：Provider 能力面与 Skill 支持边界。
-- [07 §5.13 归因生成与缓存](../../../plans/fullstack-design/07-backend-implementation.md)：绑定批次、generation、report 写入与重试语义。
-- [05 §4.1 基础端点：健康检查与鉴权](../../../plans/fullstack-design/05-api-design.md)：健康检查是发布探活入口，错误应可诊断。
-- [docs/deployment.md](https://github.com/Shadow-Azure/harness-evolution/blob/main/docs/deployment.md) 与 [`HE_ATTRIBUTION_AGENT` 示例](https://github.com/Shadow-Azure/harness-evolution/blob/main/.env.example)：部署注入、配置开关与 bubblewrap 前置说明。
-- `.github/workflows/deploy.yml`：现有 AI Agent 注入（`AI_AGENT_PROVIDER`、`HE_AI_AGENT_CLAUDE_BIN`、`HE_AI_AGENT_CLAUDE_SETTINGS`、`CLAUDE_CONFIG_DIR`、`ANTHROPIC_API_KEY`）与缺失即 unset 的模式；归因开关可复用同一通道。
-- `apps/api/app/main.py`、`apps/api/app/config.py`、`apps/api/app/service/evolution/local_attribution.py`、`apps/api/app/third_party_api/ai_agent/claude_skill.py`：worker 门控、`provider` 选择器与 bwrap 检查的现状。
+- [07 §5.5.1 AI Agent Provider 出站适配层](../../../plans/fullstack-design/07-backend-implementation.md) 定义公共 Provider、模型设置及 Skill 执行能力。
+- [07 §5.13 归因生成与缓存](../../../plans/fullstack-design/07-backend-implementation.md) 定义绑定代次、租约及报告写入。[对象绑定归因](../../../plans/fullstack-design/02-features.md#对象绑定归因) 定义后台与向导的用户行为。
 
 ## 实现内容
 
-根因修复方案分三层：复用现有 AI Agent 配置补上开关、运行时/发布前置校验、可见状态与文档。
-
-- **复用现有 AI Agent 配置（推荐）**：`HE_ATTRIBUTION_AGENT=provider` 已支持复用共享 `AIAgentProvider`；Deploy 在 `AI_AGENT_PROVIDER` 非空时注入 `HE_ATTRIBUTION_AGENT=provider`，为空时 `--unset`，不新增 Secret、模型或 API key。若团队希望显式覆盖，可加同名 Variable/Secret；默认不在 `Settings` 里硬编码开启。这样生产已有 `AI_AGENT_PROVIDER=claude-code` 的部署会自动获得归因开关，同时保留显式关闭能力。
-- **启动前置检查**：在 `main.py` 计算 `attribution_ready = attribution_enabled and preflight_ok`；`preflight_ok` 在 Linux 上检查 `shutil.which("bwrap")`，并复用 `local_attribution.configured_skill_provider()` 的 Skill 支持检查。把 `attribution_ready` 用于 `runtime_enabled`、`default_package_id`、`local_agent` 预览与 `binding_worker.start()`；失败时记录稳定事件（如 `attribution.preflight`，含 `error_code`，不含凭据/正文），不启动 worker、不 claim，保留排队绑定。
-- **发布前置检查**：在 `deploy/release.sh` 读取 `.env` 后、迁移/切换 `current` 前，若 `HE_ATTRIBUTION_AGENT` 非空且 `command -v bwrap` 失败，则以明确信息退出，旧 release 继续服务。检查放在可测试的 helper 或可复用的 shell 函数中，避免只在 CI 外手工验证。
-- **前端可见状态**：在 `apps/web/src/pages/evolution/targets/Index.vue` 增加页面级提示，`runtimeEnabled === false` 时说明“归因运行时不可用：未启用归因 Agent 或缺少 bubblewrap；已保存的绑定不会运行，修复后重启会自动开始”；在 `TargetTable.vue` 对 `attributionSkillName` 非空的目标显示“归因未运行”徽标。`apps/web/src/pages/overview/components/TargetsOverview.vue` 复用同一提示/徽标，并同步更新 `TargetFormDialog` 的旧提示文案。沿用现有 `/attribution-skill-packages` 的 `runtimeEnabled`，不新增 API 字段或契约。
-- **文档**：`docs/deployment.md` / `.en.md` 增加“启用归因”小节：复用现有 AI Agent 配置（`HE_ATTRIBUTION_AGENT=provider`，不新增模型/密钥）、bubblewrap 前置、步骤（安装 bubblewrap、部署或改 `.env`、重启、观察日志）与验证（目标 owner/due、`attribute_output/<generation>`、页面报告）。`.env.example` 的 `HE_ATTRIBUTION_AGENT` 说明补上复用方式与 bubblewrap 前置链接。
-- **测试**：API 单测覆盖“启用+缺 bwrap 时 `attribution_ready=false`、worker 不启动且不 claim”“启用+前置齐全时 worker 启动”“关闭时不做前置检查”；Deploy 测试覆盖 `AI_AGENT_PROVIDER` 非空时注入 `HE_ATTRIBUTION_AGENT=provider`、为空时 unset；Web 单测覆盖禁用时的提示/徽标；发布脚本检查补最小可执行测试（若无 shell 测试夹具，则提取 helper 做单测，不把未测试的 shell 条件写成已验证）。
+- API 与发布程序通过公共工厂读取 `AI_AGENT_PROVIDER`，默认 `claude-code`。模型、CLI 和凭据沿用该 Provider 的配置。兼容历史部署时忽略旧归因开关。
+- API 记录 `attribution.preflight`。缺少 bubblewrap 记录 `ATTRIBUTION_BWRAP_MISSING`，无法启动命名空间记录 `ATTRIBUTION_BWRAP_UNUSABLE`，缺少 Skill 能力记录 `ATTRIBUTION_PROVIDER_UNSUPPORTED`。预检结果控制 `runtimeEnabled`、`canRecompute` 和绑定消费者。暂停时可保存绑定、查看历史和复用报告。
+- 发布脚本在迁移与切换 `current` 前用候选 API 检查同一 Provider。Linux Claude 沙箱异常中止发布并恢复备份环境。显式选 `fake` 的部署可发布并读缓存。API 进程以服务账号再次检查。
+- 对象配置和总览在能力为 false 时持续提示，已绑定对象带“归因未运行”标记。编辑弹窗和向导提示与后台一致。
 
 ## 实施步骤
 
-1. Deploy 接线：在现有 AI Agent 注入步骤加入 `HE_ATTRIBUTION_AGENT=provider`（`AI_AGENT_PROVIDER` 非空时），为空时 unset；确认未新增 provider/model/key 配置。
-2. 启动前置检查与 `attribution_ready` 接线 + API 单测。
-3. 发布前置检查（helper/测试）并确认失败发生在切换 `current` 之前。
-4. 前端提示/徽标 + 单测。
-5. 更新部署文档双语、`.env.example` 说明与 Agent Note。
-6. 生产机安装 bubblewrap、部署/重启，观察现有 generation 被领取并完成约 22 条；运行门禁与生产验收。
+1. 实现公共能力预检，接入 API、绑定消费者、向导和发布流程。
+2. 更新两个前端入口、部署说明与配置模板，覆盖暂停、恢复和正常显示。
+3. 在隔离环境验证原批次恢复及发布失败时的旧版本。生产部署后由运维核对原代次与报告。
 
 ## 依赖与交付边界
 
-- 依赖：无；本地归因 Agent、绑定 worker、现有 AI Agent 注入与 22 条待处理 Badcase 已存在。
-- 交付边界：只加部署开关复用、前置校验、可见状态与文档；代码改动限制在 scope 内。生产启用是验收步骤，不由 API 自动开启，也不在应用进程内安装系统包。
-- 非目标：不改变绑定/generation/due 语义，不改归因引擎、重试次数或报告格式；不新增第二套 AI Agent provider/model/API key；不新增 API 字段/契约；不修改 AI Agent provider/sandbox 实现；不写生产凭据或 Session 内容。
+复用现有绑定、快照、公共 AI Agent 配置与包列表契约。系统管理员负责安装 bubblewrap 和提供服务账号可用的命名空间。生产验收独立于合成数据验证。
 
 ## 独立验证
 
 ```sh
-pnpm test:api -- tests/test_attribution_preflight.py
-pnpm test:gates
-pnpm lint:api
-pnpm typecheck:api
-pnpm test
-pnpm lint:web
-pnpm typecheck:web
-pnpm verify:docs
-pnpm verify:flow
+pnpm test:api -- --serial tests/test_attribution_preflight.py tests/m5-05-launch-wizard/test_launch_api.py::test_startup_claims_existing_binding_with_shared_provider
+pnpm test:web
+pnpm test:e2e --pattern 'm5 target configuration'
 bash -n deploy/release.sh
 ```
 
-- 单测证明：启用但缺 bwrap 时 `attribution_ready=false`、worker 不启动、目标行保持 `owner=NULL/failures=0`；前置齐全时 worker 启动；关闭时无前置错误。
-- 前端单测证明：`runtimeEnabled=false` 时目标页出现提示、已绑定目标行出现徽标；`runtimeEnabled=true` 时不出现。
-- Deploy 测试证明：`AI_AGENT_PROVIDER=claude-code` 时 `.env` 出现 `HE_ATTRIBUTION_AGENT=provider`，且没有新增第二套模型/密钥；`AI_AGENT_PROVIDER` 为空时该键被 unset。
-- 发布检查在临时 `.env` 上以缺少 bwrap 的 PATH 运行时以非零退出，且未切换 `current`；文档/流程门禁全绿，`bash -n` 通过。
-- 生产验证：部署/重启后 `attribution_owner` 在 2 秒内非空；`attribute_output/01M83TWE...` 出现；目标页显示约 22 条报告/分析；无需重新绑定。
+在同一临时 SQLite 创建 22 个合成 Session，各上报一条 discovery，绑定默认包。模拟 Linux 缺少 bwrap 后 owner 为空、due 保留、失败为零。恢复具备 Skill 能力的测试 Provider 并重启，核对原代次的 22 份报告、绑定 Skill 与逐条日志。临时 release 脚本覆盖缺工具、工具不可用、工具可用与仅缓存部署。
 
 ## 验收标准
 
-- Deploy 复用现有 AI Agent 配置：`AI_AGENT_PROVIDER` 非空时 `.env` 自动有 `HE_ATTRIBUTION_AGENT=provider`，且没有新增 Secret、provider、model 或 API key；`AI_AGENT_PROVIDER` 为空时归因关闭。
-- 运行时关闭或缺少 bubblewrap 时，目标配置页与对象总览持续显示“归因运行时不可用，绑定不会运行”，已绑定行有可见徽标；不再只有编辑弹窗提示。
-- 启用但缺 bubblewrap 时，启动日志给出稳定错误并跳过 worker，排队绑定不被 claim、失败次数不增加；发布前置检查在切换 `current` 前失败，旧 release 继续服务。
-- 运行时与前置齐全时，现有 generation `01M83TWE...` 被自动领取并完成约 22 条 Badcase；目标页出现报告；无需重新绑定。
-- 相关单测、前端测试、Deploy 测试、文档/流程门禁与 `bash -n` 通过；CI 全绿。
+- 前置异常时没有 claim 或失败重试，两个页面均展示暂停状态。已有绑定保留，历史报告可复用。
+- 缺失或不可执行的沙箱让发布在迁移前失败，当前 release 继续服务。
+- 生产恢复后原 generation `01M83TWE7ZSTC6Z5MNF0P0KQDM` 自动处理原有 22 条 Badcase，按代次和 Skill 对照入库报告、目标页与落盘结果。
 
 ## 门禁与 CI
 
-- `pnpm test:api`、`pnpm test:gates`、`pnpm lint:api`、`pnpm typecheck:api`、`pnpm test`、`pnpm lint:web`、`pnpm typecheck:web`、`pnpm verify:docs`、`pnpm verify:flow`。
-- 若改动 `deploy/release.sh`，至少执行 `bash -n` 与聚焦前置检查测试；若改动 `.github/workflows/deploy.yml`，补 Deploy 注入测试并确认 `AI_AGENT_PROVIDER` 缺失/空值时不会残留旧开关。
-- 提交与 PR 标题含本 issue 编号；不在仓库写入生产凭据、Session 内容或私有数据。
+执行 API/Web 测试、lint 与 typecheck、浏览器集成、`pnpm verify:docs`、`pnpm verify:flow`、`pnpm test:gates` 和发布脚本预检测试。
 
 ## 非目标
 
-- 不新增第二套 AI Agent provider/模型/API key 配置；复用 `AI_AGENT_PROVIDER` 与共享 CLI/settings/key。
-- 不在 `Settings` 中把 `attribution_agent` 默认值硬编码为 `provider`；是否启用由 Deploy 注入或显式覆盖决定。
-- 不在 API/部署脚本中自动安装系统包；缺 bubblewrap 时只失败并给出安装指引。
-- 不改变绑定保存、generation、due、重试或删除排队绑定的语义，不改归因引擎、报告格式、模型或 Skill 内容。
-- 不新增 API/契约字段，不改健康检查响应结构；不修改 AI Agent provider/sandbox 的既有实现。
-- 不写生产凭据、Session 内容或私有数据。
+绑定租约、重试次数、报告格式与既有 Skill 沙箱策略遵循现有协议。主机软件安装和生产数据核对由运维完成。

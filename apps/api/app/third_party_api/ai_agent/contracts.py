@@ -39,7 +39,7 @@ class SkillRunRequest:
 
     directory: Path
     prompt: str
-    model: str
+    model: str | None
     timeout_seconds: int
 
 

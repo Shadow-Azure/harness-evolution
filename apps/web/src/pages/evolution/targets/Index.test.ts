@@ -107,6 +107,20 @@ afterEach(() => {
 afterAll(() => server.close());
 
 describe("target configuration page", () => {
+  it.each([false, true])("shows the unavailable notice and only marks bound rows, runtimeEnabled=%s", async (runtimeEnabled) => {
+    server.use(
+      http.get(`/api/workspaces/${workspaceId}/attribution-skill-packages`, () =>
+        HttpResponse.json({ items: skillPackages, runtimeEnabled })),
+      http.get(base, () => HttpResponse.json({ items: [
+        { ...target, attributionSkillName: "attribute-badcases" }, { ...target, id: "unbound" },
+      ] })),
+    );
+    const wrapper = await mountPage("member");
+    expect(wrapper.text().includes("归因运行时不可用")).toBe(!runtimeEnabled);
+    expect(wrapper.get("tbody tr:nth-child(1)").text().includes("归因未运行")).toBe(!runtimeEnabled);
+    expect(wrapper.get("tbody tr:nth-child(2)").text()).not.toContain("归因未运行");
+  });
+
   it("renders the real target list for admins with configuration actions", async () => {
     server.use(
       http.get(base, () =>

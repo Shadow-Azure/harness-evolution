@@ -2124,7 +2124,7 @@ const reasonEntries = computed(() => {
                 v-if="attributionPreview && !canRecompute"
                 class="f-note"
               >
-                当前部署仅支持复用已有报告。管理员配置 HE_ATTRIBUTION_AGENT 后可选择 Skill 重新归因。
+                归因运行时不可用，可以复用已有报告。
               </p>
 
               <div

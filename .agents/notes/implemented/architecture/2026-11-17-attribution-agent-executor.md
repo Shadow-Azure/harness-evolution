@@ -18,6 +18,6 @@ Status: implemented
 
 ## Consequences
 
-本地执行固定完整包的文件快照，停用或删除包后，排队中的运行仍可重放。输入同时携带选定对象、上报对象及原版本、空间可见 Session 树和脱敏轨迹。模型通过随包脚本提交分析，API 使用原始 case 和平台脚本重新生成并核对报告后入库。缺少原始轨迹时输入标明可用证据；脚本分类 `unknown` 映射到 V2 的证据不足。CLI 在逐次建立的文件系统沙箱中运行（macOS Seatbelt 或 Linux bubblewrap）。`HE_ATTRIBUTION_LLM` 选择模型提供方，`HE_ATTRIBUTION_TIMEOUT_SECONDS` 限制单 case 时长。
+本地执行固定完整包的文件快照，停用或删除包后，排队中的运行仍可重放。输入同时携带选定对象、上报对象及原版本、空间可见 Session 树和脱敏轨迹。模型通过随包脚本提交分析，API 使用原始 case 和平台脚本重新生成并核对报告后入库。缺少原始轨迹时输入标明可用证据；脚本分类 `unknown` 映射到 V2 的证据不足。CLI 在逐次建立的文件系统沙箱中运行（macOS Seatbelt 或 Linux bubblewrap）。`HE_ATTRIBUTION_LLM` 解析公共 Provider 选定的模型名，`HE_ATTRIBUTION_TIMEOUT_SECONDS` 限制单 case 时长。
 
 Badcase、Session 树、轨迹与上传的 Skill 都可能包含不可信指令。启用 Claude 后，逐 case 子进程可以读取本次输入和模型服务凭据，并可通过网络访问模型端点。Seatbelt 与 bubblewrap 限制文件访问；出站目的地由部署网络控制。对来源不受控的数据启用真实执行前，部署方应限制出站到获准模型端点，并为该服务签发可轮换、权限受限的独立凭据。

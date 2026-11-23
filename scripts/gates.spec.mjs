@@ -356,6 +356,7 @@ test("E2E runner rejects an unmatched test-name pattern before starting services
   assert.match(runner, /timeout:/);
   assert.match(runner, /killSignal: "SIGTERM"/);
   assert.match(runner, /--test-concurrency=1/);
+  assert.match(runner, /env: \{ \.\.\.process\.env, AI_AGENT_PROVIDER: "fake" \}/);
   assert.match(runner, /selectedFiles = files\.filter/);
   assert.match(runner, /nodeArguments\.push\(\.\.\.selectedFiles\)/);
   assert.match(

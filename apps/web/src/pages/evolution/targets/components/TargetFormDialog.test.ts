@@ -105,7 +105,7 @@ describe("TargetFormDialog", () => {
     await wrapper.get("form").trigger("submit");
     expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({ attributionPackageId: null });
     await select.setValue("default-attribute-badcases");
-    expect(wrapper.text()).toContain("启用后开始后台归因");
+    expect(wrapper.text()).toContain("运行时恢复并重启后开始后台归因");
     await wrapper.get("form").trigger("submit");
     expect(wrapper.emitted("submit")?.[1]?.[0]).toMatchObject({ attributionPackageId: "default-attribute-badcases" });
     wrapper.unmount();
