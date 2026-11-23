@@ -538,13 +538,12 @@
       </article>
     </div>
 
-    <div class="callout warn">
-      <h3>我的建议（供拍板，不是替你决定）</h3>
+    <div class="callout good">
+      <h3>最终决定（2026-11-23）</h3>
       <p>
-        如果 #488 的验收必须包含“自动下一轮”，选 A，并把 scope 明确写成
-        <code>apps/api/app/db/crud/**</code>、<code>apps/api/app/service/evolution/**</code>、
-        <code>apps/web/**</code>、测试与流程文件；如果更看重尽快合入已验证的补丁能力，选 B，
-        另开一个“round 重试调度器”issue，验收单独定义。
+        维护者选择：<b>不做自动重试，失败了就拒绝，不要过度设计</b>。因此不扩 scope，也不新增“轮重试调度器”；
+        #488 的标题与验收已改写为“单次 agent-edit + 失败即拒绝”，PR #518 删除了 resume / 拒绝缓冲 / 二次编辑调用，
+        保留已验证的多文件候选与审计能力。下面两个选项作为决策背景保留。
       </p>
     </div>
   </section>
@@ -556,8 +555,8 @@
       <li><span class="mark ok-mark">✅</span><span>真实本地 git 远端的端到端测试通过；全量 API 测试、lint、typecheck、flow 与文档门禁通过；CI 全绿。</span></li>
       <li><span class="mark ok-mark">✅</span><span>设计文档 §5.5.1/§5.5.4 已同步“临时镜像应用、无需回滚、diff 截断”的现状。</span></li>
       <li><span class="mark ok-mark">✅</span><span>检视记录：<code>plans/2026-11-23-pr518-review.md</code>。</span></li>
-      <li><span class="mark wait-mark">⏳</span><span>唯一缺口：评测 reject 后自动创建下一轮的调度器；PR 仍是 draft，等 scope 决策。</span></li>
-      <li><span class="mark wait-mark">⏳</span><span>本 PR 无前端改动，因此没有 UI 冒烟截图可对比原型；集成验证以真实 git 的 API 端到端与 CI e2e 为准。</span></li>
+      <li><span class="mark ok-mark">✅</span><span>按维护者决定删除了自动重试、resume 与拒绝缓冲；#488 与设计文档已同步改写成“失败即拒绝”。</span></li>
+      <li><span class="mark ok-mark">✅</span><span>本 PR 无前端改动，因此没有 UI 冒烟截图可对比原型；集成验证以真实 git 的 API 端到端与 CI e2e 为准。</span></li>
     </ul>
 
     <div class="callout info">
