@@ -6,14 +6,15 @@ Status: implemented
 
 ## Problem
 
-启动向导第 1 步要求用户手动选择 bad case 的起止日期。近 7 天、近 30 天、近半年这类常用窗口每次都要打开两次日期选择器，既慢又容易把起止日选反；原型也没有给生产实现留下一份可对照的交互基线。
+启动向导第 1 步要求用户手动选择 bad case 的起止日期。近 7 天、近 30 天、近半年这类常用窗口每次都要打开两次日期选择器，既慢又容易把起止日选反；原型也没有给生产实现留下一份可对照的交互基线。原型与设计文档先在 [#536](https://github.com/Shadow-Azure/harness-evolution/pull/536) 落地，生产 `LaunchWizard.vue` 仍只有两个日期输入，需要按同一口径补上快捷预设。
 
 ## Decision
 
 - 在 V2 原型第 1 步把「近 7 天 / 近 30 天 / 近半年」做成与日期输入同一行的胶囊按钮。点击只把具体 `from/to` 写入输入框，不提交相对范围，也不锁定后续编辑。
 - 结束日固定为今天（含当天）：近 7 天从今天往前 6 天，近 30 天从今天往前 29 天，近半年从今天往前 6 个自然月；目标月没有对应日时收敛到月末。原型用 `V2_TODAY` 作为演示今天，生产用浏览器当前日期。
 - 当前 `from/to` 命中预设时用浅蓝底、蓝色文字和描边高亮对应胶囊；手动改日期后取消高亮，不增加额外的「自定义」状态。仍走原有必填与 `from <= to` 校验。
-- 交互写入 [design-v2 §7.4.1](../../../../plans/ui-prototype-v2/design-v2.md) 与 [08 §9 Step 1](../../../../plans/fullstack-design/08-frontend-implementation.md)，作为生产 `LaunchWizard.vue` 的实现依据；本次只改原型与设计文档。
+- 交互写入 [design-v2 §7.4.1](../../../../plans/ui-prototype-v2/design-v2.md) 与 [08 §9 Step 1](../../../../plans/fullstack-design/08-frontend-implementation.md)，作为生产 `LaunchWizard.vue` 的实现依据；原型与设计文档已合入，生产组件按同一口径落地。
+- 生产把日期计算抽到 `launchWizardRangePresets.ts`：本地日历日加减、近半年月末收敛、`activePresetId` 反查命中项。计算以本地日历日为准，不用 `toISOString()` 切 UTC 日期；组件只负责点击填值与胶囊高亮，不新增请求字段。
 
 ## Alternatives considered
 
@@ -25,7 +26,7 @@ Status: implemented
 
 ## Consequences
 
-- 原型可以一次点击完成常用窗口选择，点选后立即看到具体日期，便于截图验收；生产实现需要在 `LaunchWizard.vue` 同步同样的计算与高亮逻辑。
+- 原型可以一次点击完成常用窗口选择，点选后立即看到具体日期，便于截图验收；生产 `LaunchWizard.vue` 已同步同一计算与高亮逻辑。
 - 快捷预设只发生在客户端，API、契约、缓存键与潜在匹配口径不变；生产落地不需要后端改动。
 - 原型以固定演示日计算，跨日期后截图中的具体日期会变化；这是演示数据的边界，不代表生产默认值。
-- 本次不实现生产页面，生产行为仍由后续 issue 落地。
+- 生产的「今天」取浏览器本地日历日；`launchWizardRangePresets.ts` 的单测覆盖 7/30 天、跨月跨年、近半年月末收敛与命中反查，跨栈 e2e 覆盖填值、`aria-pressed` 与手动改日期后取消高亮。

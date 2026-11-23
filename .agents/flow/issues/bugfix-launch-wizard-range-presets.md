@@ -11,6 +11,8 @@ depends:
 priority: P2
 status: in-progress
 scope:
+  - apps/web/**
+  - tests/e2e/**
   - plans/ui-prototype-v2/**
   - plans/fullstack-design/**
   - plans/**
@@ -41,7 +43,7 @@ github:
 ### 影响
 
 - 不影响后端、API、契约或运行快照；这是第 1 步的输入体验问题。
-- 生产 `LaunchWizard.vue` 仍只有两个日期输入；本 issue 先交付可对照的原型与设计契约，生产实现另开切片。
+- 生产 `LaunchWizard.vue` 仍只有两个日期输入；本 issue 先交付可对照的原型与设计契约，随后按提出人要求补齐生产实现。
 
 ## 目标
 
@@ -49,6 +51,7 @@ github:
 - 点选后把具体 `from/to` 写入日期输入框：结束日为今天（含当天），近 7 天从今天往前 6 天，近 30 天往前 29 天，近半年往前 6 个自然月。
 - 当前日期命中某个预设时用浅蓝底和蓝色文字高亮对应胶囊；手动把日期改成其他值后取消高亮，不增加额外的「自定义」状态。
 - 保持原有必填、`from <= to` 校验和请求字段不变；把交互写进 V2 设计文档和 08 前端设计文档，作为生产实现的依据。
+- 在生产 `LaunchWizard.vue` 落地同一交互：点击填入浏览器本地「今天」倒推的具体日期，命中高亮，手动改日期取消高亮，校验与请求字段不变。
 
 ## 设计依据
 
@@ -96,6 +99,15 @@ github:
 - `plans/fullstack-design/08-frontend-implementation.md` 的 §9 Step 1「时间段」补充同样的交互口径，作为生产 `LaunchWizard.vue` 的实现依据。
 - 新增 Agent Note `2026-11-23-launch-wizard-range-presets`，记录为什么不在服务端传相对区间、为什么不加「自定义」按钮、为什么不用固定 180 天。
 
+### 生产落地（2026-11-23 追加）
+
+原型与设计文档在 PR #536 合入后，提出人指出生产 `LaunchWizard.vue` 尚未接入，要求完成实际修改。本 issue 因此继续覆盖生产实现：
+
+- `apps/web/src/pages/evolution/components/LaunchWizard.vue` 第 1 步的日期输入同一行加入三个胶囊，沿用原型的浅色选中态；点击只写入 `windowFrom`/`windowTo`，不新增请求字段。
+- 日期计算抽到 `launchWizardRangePresets.ts`，以本地日历日计算近 7 天 / 近 30 天 / 近半年，近半年按目标月最后一天收敛；`activePresetId` 反查当前区间命中的预设。
+- 生产以浏览器本地「今天」计算；当前值命中预设时设置 `aria-pressed=true`，手动改日期后取消高亮；原有必填与 `from <= to` 校验不变。
+- 单测覆盖 7/30 天、跨月跨年、近半年月末收敛与命中反查；跨栈 e2e 覆盖填值、`aria-pressed` 与手动修改取消高亮。
+
 ## 实施步骤
 
 1. 在原型第 1 步加入胶囊快捷项、日期辅助函数、命中高亮和点击处理。
@@ -104,16 +116,21 @@ github:
 4. 用同一浏览器场景抓取修改前/后截图，上传到证据 Release，不把截图提交进仓库。
 5. 运行语法检查、`pnpm verify:flow`、`pnpm lint:docs`，并检查 PR 标题带 `(#<issue>)`。
 6. 创建原型 PR，PR 描述附修改前后截图和验证记录，由人合并。
+7. 在生产 `LaunchWizard.vue` 加入胶囊、日期辅助模块与命中高亮，保持请求字段和校验不变。
+8. 补 `launchWizardRangePresets` 单测与 `LaunchWizard` 交互单测，扩展 `m10-05-launch-wizard` e2e。
+9. 抓取生产页面同场景 Before / After 截图，上传到 Release 证据，不提交进仓库。
+10. 运行 web 类型检查、lint、单测、e2e 与流程/文档门禁。
 
 ## 关联 PR
 
 - 原型与设计文档 PR：[#536](https://github.com/Shadow-Azure/harness-evolution/pull/536)
+- 生产实现 PR：[#540](https://github.com/Shadow-Azure/harness-evolution/pull/540)
 
 ## 依赖与交付边界
 
 - 依赖：m10-05（四步启动向导，已 done）；本 issue 只补第 1 步的时间段输入体验，不改四步状态机。
-- 交付边界：`plans/ui-prototype-v2/**`、`plans/fullstack-design/**`、`.agents/**` 与 PR 自检记录。
-- 不修改 `apps/web` 的生产 `LaunchWizard.vue`、`apps/api`、`packages/contracts` 或数据库；生产落地另开 issue。
+- 交付边界：`plans/ui-prototype-v2/**`、`plans/fullstack-design/**`、`apps/web/**`、`tests/e2e/**`、`.agents/**` 与 PR 自检记录。
+- 本 issue 追加生产落地：修改 `apps/web` 的 `LaunchWizard.vue` 与测试；不改 `apps/api`、`packages/contracts`、数据库、Session 关联、潜在匹配策略或缓存键。
 - 截图作为 Release 证据，不进入仓库；不暴露生产运行 ID、Session 内容或凭据。
 
 ## 独立验证
@@ -130,12 +147,17 @@ node --check .tmp-proto-main.js
 rm .tmp-proto-main.js
 pnpm verify:flow
 pnpm lint:docs
+pnpm --filter @harness/web exec vitest run src/pages/evolution/components/LaunchWizard.test.ts src/pages/evolution/components/launchWizardRangePresets.test.ts
+pnpm --filter @harness/web typecheck
+pnpm --filter @harness/web lint
+node --test tests/e2e/m10-05-launch-wizard.test.mjs
 ```
 
 - 浏览器打开 `plans/ui-prototype-v2/harness-evolution.html?u=admin&page=evo&demo=wizard1`（Chrome，1500×900，浅色主题）。
 - 初始日期为 `2026-10-01 ~ 2026-11-09`，三个胶囊都不高亮；点击「近 30 天」后输入框变为 `2026-10-12 ~ 2026-11-10`，只有「近 30 天」高亮；点击「近 7 天」和「近半年」分别得到 `2026-11-04 ~ 2026-11-10` 与 `2026-05-10 ~ 2026-11-10`。
 - 手动把结束日改成 `2026-11-09` 后，三个胶囊都不再高亮；点击「下一步：关联 Session」仍按原有必填与 `from <= to` 校验执行。
 - 截图见上方证据；同一场景下的修改前图片为基线 `main@d33b2c45`，修改后图片为本 issue 分支。
+- 生产页面（e2e 启动的真实 `apps/web`，1440×1100，浅色主题）：打开启动向导，点击「近半年」后日期变为浏览器本地今天往前 6 个自然月、胶囊 `aria-pressed=true`；手动改结束日后取消高亮；无横向滚动。
 
 ## 验收标准
 
@@ -143,21 +165,22 @@ pnpm lint:docs
 - 点选后两个日期输入立即变成具体日期，结束日为今天（含当天）；近 7 天、近 30 天、近半年的示例值分别与上表一致，近半年按自然月收敛。
 - 当前值命中预设时胶囊高亮并设置 `aria-pressed=true`；手动修改日期后取消高亮；不出现额外的「自定义」按钮。
 - 原有必填、`from <= to` 校验、下一步预览和请求字段不变；页面无横向滚动，弹窗高度和按钮位置正常。
+- 生产 `LaunchWizard.vue` 同步落地同一交互：默认不选中；点选后写入浏览器本地「今天」倒推的具体日期，近半年按自然月收敛；手动改日期后取消高亮；请求字段和校验不变。
+- PR 描述包含生产页面同场景、同视口、同主题的 Before / After 截图；截图作为 Release 证据，不提交进仓库。
 - `design-v2.md` 与 `08-frontend-implementation.md` 已写明同一口径，Agent Note 中英成对且配对记录已重录。
 - issue 中同时包含修改前截图、修改后截图和修改方案；PR 描述包含同场景、同视口、同主题的 Before / After 证据。
-- 最终验收由提出人确认：在提出人确认原型交互符合预期之前，本 issue 不关闭。
+- 最终验收由提出人确认：在提出人确认交互符合预期之前，本 issue 不关闭。
 
 ## 门禁与 CI
 
 - `pnpm verify:flow`：流程树、依赖、正文章节与状态机。
 - `pnpm verify:flow --diff origin/main`：PR 标题带 `(#<issue>)`、issue 资格与 diff scope 覆盖。
 - `pnpm lint:docs`：Agent Note 配对、段落换行与文档门禁。
-- PR 只改原型与设计文档，不触发 `apps/web` / `apps/api` 的测试；CI 静态 lane 仍需全绿。
+- PR 同时改 `apps/web` 与 e2e：需跑 web 单测、类型检查、lint 与 `m10-05-launch-wizard` e2e；CI 静态 lane 全绿。
 - 本 PR 由人合并；不启用 auto-merge。
 
 ## 非目标
 
-- 不改生产 `apps/web` 的 `LaunchWizard.vue`，也不要求生产页面在本 PR 同步落地。
 - 不改后端、API、契约、数据库、Session 关联、潜在匹配策略或缓存键。
 - 不重排第 1 步其他字段，不调整版本组合框、策略单选、向导步骤条或后续步骤。
 - 不引入新的日期库、不改变浏览器原生日期控件的可用性，也不做时区/本地化改造。

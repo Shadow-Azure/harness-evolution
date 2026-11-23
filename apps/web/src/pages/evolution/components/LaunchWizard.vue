@@ -29,6 +29,13 @@ import { formatApiError } from "../../../app/apiError";
 import { useEvolutionTargetVersions } from "../../../composables/useEvolutionTargets";
 import { workspacePath } from "../../../router/workspace";
 import { useAuthStore } from "../../../stores/auth";
+import {
+  activePresetId,
+  localIsoDate,
+  presetRange,
+  RANGE_PRESETS,
+  type RangePresetId,
+} from "./launchWizardRangePresets";
 
 const props = defineProps<{
   wid: string;
@@ -160,6 +167,19 @@ const fieldErrors = reactive({
   to: false,
   policy: false,
 });
+
+const activeRangePreset = computed(() =>
+  activePresetId(windowFrom.value, windowTo.value, localIsoDate(new Date())),
+);
+
+/** Fill both date inputs from a relative preset; the range stays editable. */
+function applyRangePreset(id: RangePresetId): void {
+  const range = presetRange(id, localIsoDate(new Date()));
+  windowFrom.value = range.from;
+  windowTo.value = range.to;
+  fieldErrors.from = false;
+  fieldErrors.to = false;
+}
 
 const WIZARD_TITLE_ID = "launch-wizard-title";
 const closeButton = ref<HTMLButtonElement | null>(null);
@@ -1572,51 +1592,76 @@ const reasonEntries = computed(() => {
                 <div class="f-label">
                   bad case 时间段 <span class="req">*</span>
                 </div>
-                <div class="f-inline wz-controls">
-                  <div class="wz-field">
-                    <input
-                      v-model="windowFrom"
-                      class="inp"
-                      :class="{ 'input-error': fieldErrors.from }"
-                      type="date"
-                      data-testid="wizard-from"
-                      :aria-invalid="fieldErrors.from ? 'true' : undefined"
-                      aria-describedby="wizard-from-error"
+                <div class="wz-range-row">
+                  <div
+                    class="wz-range-presets"
+                    role="group"
+                    aria-label="快捷时间段"
+                  >
+                    <button
+                      v-for="preset in RANGE_PRESETS"
+                      :key="preset.id"
+                      type="button"
+                      class="wz-range-chip"
+                      :class="{ active: activeRangePreset === preset.id }"
+                      :data-testid="`wizard-range-${preset.id}`"
+                      :aria-pressed="activeRangePreset === preset.id ? 'true' : 'false'"
+                      :title="`填入${preset.label}的具体日期`"
+                      @click="applyRangePreset(preset.id)"
                     >
-                    <p
-                      v-if="fieldErrors.from"
-                      id="wizard-from-error"
-                      data-testid="wizard-from-error"
-                      class="field-error"
-                      role="alert"
-                    >
-                      {{ windowFrom ? "起始时间不能晚于结束时间" : "请选择开始时间" }}
-                    </p>
+                      {{ preset.label }}
+                    </button>
                   </div>
-                  <span class="wz-inline-label">~</span>
-                  <div class="wz-field">
-                    <input
-                      v-model="windowTo"
-                      class="inp"
-                      :class="{ 'input-error': fieldErrors.to }"
-                      type="date"
-                      data-testid="wizard-to"
-                      :aria-invalid="fieldErrors.to ? 'true' : undefined"
-                      aria-describedby="wizard-to-error"
-                    >
-                    <p
-                      v-if="fieldErrors.to"
-                      id="wizard-to-error"
-                      data-testid="wizard-to-error"
-                      class="field-error"
-                      role="alert"
-                    >
-                      {{ windowTo ? "起始时间不能晚于结束时间" : "请选择结束时间" }}
-                    </p>
+                  <span
+                    class="wz-range-divider"
+                    aria-hidden="true"
+                  />
+                  <div class="f-inline wz-controls">
+                    <div class="wz-field">
+                      <input
+                        v-model="windowFrom"
+                        class="inp"
+                        :class="{ 'input-error': fieldErrors.from }"
+                        type="date"
+                        data-testid="wizard-from"
+                        :aria-invalid="fieldErrors.from ? 'true' : undefined"
+                        aria-describedby="wizard-from-error"
+                      >
+                      <p
+                        v-if="fieldErrors.from"
+                        id="wizard-from-error"
+                        data-testid="wizard-from-error"
+                        class="field-error"
+                        role="alert"
+                      >
+                        {{ windowFrom ? "起始时间不能晚于结束时间" : "请选择开始时间" }}
+                      </p>
+                    </div>
+                    <span class="wz-inline-label">~</span>
+                    <div class="wz-field">
+                      <input
+                        v-model="windowTo"
+                        class="inp"
+                        :class="{ 'input-error': fieldErrors.to }"
+                        type="date"
+                        data-testid="wizard-to"
+                        :aria-invalid="fieldErrors.to ? 'true' : undefined"
+                        aria-describedby="wizard-to-error"
+                      >
+                      <p
+                        v-if="fieldErrors.to"
+                        id="wizard-to-error"
+                        data-testid="wizard-to-error"
+                        class="field-error"
+                        role="alert"
+                      >
+                        {{ windowTo ? "起始时间不能晚于结束时间" : "请选择结束时间" }}
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <p class="f-note">
-                  按 bad case 的 created_at 过滤；Session 的启动时间只用于展示。
+                  按 bad case 的 created_at 过滤；快捷项只填入日期，仍可手动微调。
                 </p>
               </div>
 
@@ -2741,6 +2786,66 @@ const reasonEntries = computed(() => {
 
 .wz-controls {
   align-items: flex-start;
+}
+
+.wz-range-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.wz-range-presets {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-top: 1px;
+}
+
+.wz-range-chip {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.wz-range-chip:hover {
+  border-color: color-mix(in srgb, var(--blue) 28%, var(--border));
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+.wz-range-chip.active {
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--border));
+  background: color-mix(in srgb, var(--blue) 8%, var(--bg-card));
+  color: var(--blue);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 10%, transparent);
+}
+
+.wz-range-chip:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--blue) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.wz-range-divider {
+  align-self: center;
+  width: 1px;
+  height: 22px;
+  margin: 0 2px;
+  background: var(--border);
 }
 
 .wz-field {

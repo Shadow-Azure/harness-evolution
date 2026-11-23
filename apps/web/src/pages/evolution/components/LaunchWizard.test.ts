@@ -346,6 +346,50 @@ describe("launch wizard", { timeout: 30000 }, () => {
     ).toBe("true");
   });
 
+  it("fills the bad-case window from the three relative presets", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 10, 10, 12, 0, 0));
+    try {
+      useHandlers();
+      const { wrapper } = await mountWizard();
+      const from = () =>
+        (wrapper.get("[data-testid='wizard-from']").element as HTMLInputElement)
+          .value;
+      const to = () =>
+        (wrapper.get("[data-testid='wizard-to']").element as HTMLInputElement)
+          .value;
+      const pressed = (id: string) =>
+        wrapper
+          .get(`[data-testid='wizard-range-${id}']`)
+          .attributes("aria-pressed");
+
+      await wrapper.get("[data-testid='wizard-range-7']").trigger("click");
+      expect(from()).toBe("2026-11-04");
+      expect(to()).toBe("2026-11-10");
+      expect(pressed("7")).toBe("true");
+      expect(pressed("30")).toBe("false");
+
+      await wrapper.get("[data-testid='wizard-range-30']").trigger("click");
+      expect(from()).toBe("2026-10-12");
+      expect(to()).toBe("2026-11-10");
+      expect(pressed("30")).toBe("true");
+
+      await wrapper.get("[data-testid='wizard-range-6m']").trigger("click");
+      expect(from()).toBe("2026-05-10");
+      expect(to()).toBe("2026-11-10");
+      expect(pressed("6m")).toBe("true");
+
+      await wrapper.get("[data-testid='wizard-to']").setValue("2026-11-09");
+      expect(pressed("7")).toBe("false");
+      expect(pressed("30")).toBe("false");
+      expect(pressed("6m")).toBe("false");
+      expect(from()).toBe("2026-05-10");
+      expect(to()).toBe("2026-11-09");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows a retryable error when the target catalog cannot be read", async () => {
     useHandlers({ catalogError: true });
     const { wrapper } = await mountWizard();
