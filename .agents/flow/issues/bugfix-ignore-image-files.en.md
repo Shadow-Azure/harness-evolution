@@ -4,11 +4,11 @@ English | [中文](bugfix-ignore-image-files.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-42
+id: bugfix-43
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - .gitignore
   - .agents/flow/issues/bugfix-ignore-image-files*
