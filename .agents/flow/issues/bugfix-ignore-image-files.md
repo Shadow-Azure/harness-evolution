@@ -8,7 +8,7 @@ id: bugfix-44
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - .gitignore
   - .agents/flow/issues/bugfix-ignore-image-files*
