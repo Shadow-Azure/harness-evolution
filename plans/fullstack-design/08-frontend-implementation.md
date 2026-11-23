@@ -674,7 +674,7 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 **Step 2 Session 关联**
 
 - 条件摘要 chip + 「修改条件」（条件同时展示 `targetVersion` ref 与解析后的 `targetRevision` body hash）；统计：上报过 bad case 的 Session / 关联 / 跳过 / 待轨迹同步。
-- 表格 4 条/页：Session 短标签 / 对象出现标记 / 对象触发点时间 / 该 Session 的 bad case 数；Session 单元格用 `short`（来源 `session_families.short_title`）单行省略，`title` 提供完整标题悬停，表格固定布局保证四列同屏；只列**对象出现过**的 Session，本步只做关联、不计算潜在数；未出现的只进「跳过」统计，不入表。skill/agent/knowledge 目标的“出现”都按归一化 body hash 匹配，tag 只用于解析内容 hash。
+- 表格 4 条/页：Session 短标签 / 对象出现标记 / 对象触发点时间 / 该 Session 的 bad case 数；Session 单元格用 `short`（来源 `session_families.short_title`）单行省略，`title` 提供完整标题悬停，表格固定布局保证四列同屏；只列**对象出现过**的 Session，本步只做关联、不计算潜在数；未出现的只进「跳过」统计，不入表。skill/agent/knowledge 目标的“出现”按整棵 Session 树中的类型和名称匹配；`targetRevision` 只用于读取原文、报告和缓存，不参与本步过滤。
 - 空态：「没有对象出现过的 Session；可回第 1 步调整时间段或选择其他对象」+ 前进禁用。
 - 分页只重新请求 `preview/sessions` 的 `page`，不重算匹配（服务端已按条件稳定排序）。
 
@@ -688,7 +688,7 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 **Step 4 归因预览与启动**
 
 - 开关「复用缓存归因」（默认开）：切换即重新请求 `preview/attribution`。
-- 展示对象版本的潜在 Badcase 数、按 Skill 分组的已有报告数、缺报告数、预计复用与重算数。每个候选最多计一份。缓存开启且零命中时禁用启动。关闭缓存时展示空间包选择器，所选包只用于本次启动。
+- 展示对象版本的潜在 Badcase 数、按 Skill 分组的已有报告数、缺报告数、预计复用与重算数。每个候选最多计一份。缓存开启时 `fresh=0`、`missing=potential-reused`；零命中时禁用启动并提示关闭缓存。关闭缓存时展示空间包选择器，默认选中对象绑定包，所选包只用于本次启动；启动后 Run 详情保留 `attributionSkill`。
 - 条件摘要 + 策略 badge + 缓存开关状态。
 - 两个出口：
   - 「仅聚类」→ `POST …/evolution/cluster-previews`（`mode:"cluster_only"`）→ 路由 `/workspaces/:wid/evolution/cluster/:runId`，先显示「准备中」
@@ -733,7 +733,7 @@ V1 向导只用于理解历史 run；生产入口一律四步。
 ```text
 Index.vue
 ├── 页头：标题 + "新增配置"
-├── TargetTable.vue：objectType / objectName / repoUrl / subDir / defaultRef / validationProjectId + testProjectId（合并“测试工程”列）/ enabled / 操作
+├── TargetTable.vue：objectType / objectName / repoUrl / subDir / defaultRef / validationProjectId + testProjectId（合并“测试工程”列）/ attributionSkill / enabled / 操作
 └── TargetFormDialog.vue（新增/编辑）
     ├── objectType（skill/agent）
     ├── objectName
@@ -742,6 +742,7 @@ Index.vue
     ├── defaultRef（可编辑组合框；直接输入分支或 tag，已保存对象的 tag 作为建议；启动向导的版本字段复用同一输入优先模式，并额外接受 commit SHA）
     ├── validationProjectId（验证集测试工程 ID，必填，不透明字符串）
     ├── testProjectId（测试集测试工程 ID，必填，不透明字符串）
+    ├── attributionSkill（空间 Skill 包选择器；默认取对象原绑定，缺省为空间默认包；历史内联提示词显示“历史内联提示词（只读）”，不主动换包）
     └── enabled 开关
 ```
 
@@ -752,12 +753,28 @@ Index.vue
 - `project_id_*` 的 `PROJECT_ID_INVALID` 同样按 `details.field` 落到对应工程 ID 字段。
 - 子目录帮助文案固定说明“格式在保存时校验，目录是否存在在启动运行时校验”，不承诺保存时检查目录。
 - 唯一键按空间：同一 `(objectType, objectName)` 可在不同空间各配一份，本空间内重复 → `409 TARGET_EXISTS`。
+- `attributionSkill` 可空：未选时提交省略或 `null`，后端使用空间默认包；显式换包时提交包 ID。包不存在、跨空间或已删除 → `409 ATTRIBUTION_SKILL_PACKAGE_INVALID`，错误落到该字段。
+- 保存、换包或修改影响分析的字段后，对象列表显示“分析中/待分析”，后台批次失败时显示原因与重试状态；只改工程 ID 不触发批次。
 - 表格“测试工程”列合并展示两行，历史空值显示“未填写”。
 - `defaultRef` 的输入文本就是表单值；失焦或直接提交不得清空。已保存对象可通过输入框内的展开按钮查看仓库 tag 建议，键盘与指针选择 tag 都只是可选快捷路径。
 - 新增态没有 target id，不请求版本建议，也不显示版本加载；编辑态只在版本请求实际进行时显示加载。建议获取失败或为空时仍可直接输入并保存。
 - 删除前提示"有进行中 run 时不可删除"（后端 409 `TARGET_IN_USE`）。
 - 保存成功失效 `["ws", wid, "evolution", "targets"]` 前缀，向导候选刷新。
 
+
+### 9.5.1 空间 Skill 资源库（`admin?tab=attribution-skills`）
+
+```text
+SkillResourcePage.vue
+├── 页头：自定义归因 Skill + 「上传自定义归因 Skill」
+├── SkillTable.vue：Skill 名 / 上传者 / 文件数 / 大小 / 资源详情 / 操作（下载、删除）
+└── SkillDetail.vue：已绑定的进化对象、目录结构、SKILL.md 原文
+```
+
+- 列表合并平台内置包与空间上传包；内置包显示“平台默认”，不提供删除。
+- 上传只接受通过文件名、文件数、大小与 `SKILL.md` 校验的 ZIP；页面提供示例 ZIP 便于演示。错误在页面内 `role=alert`，不跳转。上传后不自动生效，需到对象配置里绑定。
+- 删除前检查对象绑定；任一对象绑定该包时按钮提示“请先更改已绑定对象的归因 Skill”，后端 409 兜底。
+- “查看详情”切换右侧详情，不改变任何绑定；默认选中平台内置包。
 
 ## 10. 运行详情页（`pages/evolution/RunDetail.vue`）
 
@@ -776,7 +793,7 @@ RunDetail.vue
 └── （iteration step 内）ClusterCard.vue → DiffView / EvalCompare / CommitBlock
 ```
 
-**目标与输入口径**：4 列依次为进化对象 / 版本 / 时间段 / 工作空间，然后是关联 Session、时间段内 bad case、潜在 bad case、可归因 / 非该对象；「模型（多选）」不在详情页。分布标题固定为「潜在 bad case 的归因结论分布（N 条）」，N 取潜在 bad case 数，图例含非该对象、错误 / prompt / 模型与「＝ 归因 · 复用缓存 · 本次新增」。关联 Session 显示 `已关联 / 版本未知`；非该对象、复用缓存与本次新增按 attribution step 的 rows 行级统计（`category` 为空即非该对象，`source` 为 `cached` / `fresh`；「本次新增」只计可归因的 fresh 行，与原型一致），策略与缓存开关取 range step 的 condition，接口契约不新增字段。归因运行中按已关联报告更新分类、缓存与新增数量，分布条以入选候选数减去已出报告数补齐「未归因」。工作区折叠区包含 run 分支（可复制）、基线 ref / commit、仓库、子目录、推送状态与时间、评测状态、脱敏推送错误与本地路径。
+**目标与输入口径**：4 列依次为进化对象 / 版本 / 时间段 / 工作空间，然后是本次 Skill、关联 Session、时间段内 bad case、潜在 bad case、可归因 / 非该对象；「模型（多选）」不在详情页。分布标题固定为「潜在 bad case 的归因结论分布（N 条）」，N 取潜在 bad case 数，图例含非该对象、错误 / prompt / 模型与「＝ 归因 · 复用缓存 · 本次新增」。关联 Session 显示 `已关联 / 兼容版本未知`（新 Run 的兼容值为 0，旧 Run 按原快照显示）；非该对象、复用缓存、缺报告与本次新增按 attribution step 的 rows 行级统计（`category` 为空即非该对象，`source` 为 `cached` / `fresh` / `skipped`；「本次新增」在缓存关闭时等于潜在数、缓存开启时为 0，与原型一致），策略与缓存开关取 range step 的 condition，接口契约不新增字段。归因运行中按已关联报告更新分类、缓存与新增数量，分布条以入选候选数减去已出报告数补齐「未归因」。工作区折叠区包含 run 分支（可复制）、基线 ref / commit、仓库、子目录、推送状态与时间、评测状态、脱敏推送错误与本地路径。
 
 **单一 schema**：`run.steps` 恒为七步，`steps[].key` 由后端给定，前端按 key 渲染，不推算回退。
 
@@ -787,7 +804,7 @@ RunDetail.vue
 | 1 选择范围 | 条件摘要（对象@版本、时间窗、策略、缓存开关）+ 统计 |
 | 2 Session 关联 | 4 条/页表格（Session 短标签 + 完整 Session ID / 对象触发点 / bad case 数 / 潜在数）；Session 单元格用 `short` 单行省略，`title` 悬停展示完整标题，固定列宽保证四列同屏；存量 run 缺 `short` 时用 `title[:120]` 兜底 + 跳过统计 |
 | 3 潜在 bad case | 5 条/页，含「命中原因」列；`unknown` 标注触发点顺序待重放 |
-| 4 对象归因 | 统计四数 + 表格（来源 bad case / 归因 ID / 分类 / 现象 / 结果来源 cached\|fresh / 置信度）；对象·版本在 step 标题，不在表格重复「结论」；来源 bad case 与归因报告 ID 均为新窗口深链（问题描述 / 归因分析，`at` 选中该行归因） |
+| 4 对象归因 | 统计潜在 / 可归因 / 非该对象 / 复用缓存 / 缺报告 / 本次新增 + 表格（来源 bad case / 归因 ID / 分类 / 现象 / 结果来源 cached\|fresh\|skipped / 置信度）；对象·版本与本次 Skill 在 step 标题，不在表格重复「结论」；来源 bad case 与归因报告 ID 均为新窗口深链（问题描述 / 归因分析，`at` 选中该行归因） |
 | 5 聚类与严重度 | 簇卡片按 severity 降序，每簇标题 + 聚类描述 + 可折叠来源 bad case 表（ID 可深链错误详情），默认展开第一簇（或 active 簇） |
 | 6 迭代优化 | 沿用既有轮次卡（patch/candidate/push/eval/接纳），来源问题为 `cases[]` |
 | 7 测试集终评 | 沿用 V1（verdict/metrics/changes） |

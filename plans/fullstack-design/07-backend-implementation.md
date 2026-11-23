@@ -1273,13 +1273,13 @@ class PotentialMatcher:
 
 判定（[06 §7.5](06-database-design.md) 的口径）：`includeSelfReport` 命中 `object_name == target.name AND bad_case_type='self'`；`includeAfterObject` 命中「bad case 触发点 > 对象进入点」；custom 取启用规则并集，`sameObjectOnly` 再按 `object_name == target.name` 过滤。`self` 与 `sameObjectOnly` 都只比较名称，不比较 `bad_cases.object_type` 或 `object_version`；同名 skill/agent 与跨版本 self 会被纳入。命中原因优先级与封闭集合 `self_report / after_object / both / policy_excluded / order_unknown` 写进候选行；`orderState` 单独表达 `comparable / unknown`。
 
-- 查询形态：一次取空间窗口内 bad case（`bad_case_type IN ('self','discovery')`）；一次取这些根的 `session_families` 元数据；一次取已归一化根的 `agent_events JOIN agents` 对象触发事件（同时 select `object_version`、`object_revision` 与 skill `definition_hash`，按 session 取最早）；一次取关联 Session 的全部 agents；一次取锚点所需的 `kind=skill|agent` 事件；一次按批量 cache key 读既有 probe；一次统计历史 `non_target`。全部按 500 个标识分块，不做 per-case 查询。
+- 查询形态：一次取空间窗口内 bad case（`bad_case_type IN ('self','discovery')`）；一次取这些根的 `session_families` 元数据；一次取已归一化根的 `agent_events JOIN agents` 对象触发事件（同时 select `object_version`、`object_revision` 与 skill `definition_hash`，按 session 取最早）；一次取关联 Session 的全部 agents；一次取锚点所需的 `kind=skill|agent` 事件；一次按候选取每例最新完成报告（绑定包模式）或按批量 cache key 读既有 probe（legacy rule）；一次统计历史 `non_target`。全部按 500 个标识分块，不做 per-case 查询。
 - 对象总览复用同一 target resolver，但读页面不得被单个不可达/私有/慢仓库阻塞：各 version 解析并发执行并设置短有界超时；失败版本内部跳过、`byVersion` 计 0，不新增 DTO/UI 字段，回退 tag 不允许。
-- 触发点身份：skill/agent/knowledge 的 `targetRevision` 都是归一化 body hash。skill/agent 的裸 git tag 由 target 内容解析器读取 `repoUrl/subDir/SKILL.md` 或 `repoUrl/subDir/AGENT.md`，按与 parser 相同的 `normalize_definition_body` 计算 `digest:<sha256>`；knowledge 由文档内容归一化或 `defaultRef` digest 给出；已带 `digest:` 原样使用。tag 保留为 `targetVersion`（显示/代码基线），`targetRevision` 写 body hash；内容读取失败返回 `TARGET_CONTENT_UNRESOLVED`，不回退到 `tag:`。候选集 = `{targetVersion, targetRevision, legacy object_revision}`；事件侧 `definition_hash`、`document_revision`、`object_revision` 或 `object_version` 任一命中即可。对象进入点 = 该 Session 内 `kind` 映射 `object_type`（skill/agent/knowledge）、`name == target_name` 且 identity 命中候选集的最早 `agent_events`；取最早时与比较同口径：双方都有 `triggered_at` 才比时间，否则按 `(tree_index, event_index)`。bad case 触发点 = [06 §7.4](06-database-design.md) 的锚点事件；`anchorKind=post_process` 时 `eventIndex=INT_MAX`、`triggeredAt=bad_case.created_at`（审计/显示），候选记录 `case_anchor_kind=post_process`，比较时直接视为「对象之后」，不依赖 created_at 与对象进入点的时间先后；`anchorKind=unknown`（上报 agent 无法解析）保持 unknown。比较规则见 [06 §7.5](06-database-design.md)；`unknown` 不满足「之后」。
+- 触发点身份：skill/agent/knowledge 的 `targetRevision` 都是归一化 body hash。skill/agent 的裸 git tag 由 target 内容解析器读取 `repoUrl/subDir/SKILL.md` 或 `repoUrl/subDir/AGENT.md`，按与 parser 相同的 `normalize_definition_body` 计算 `digest:<sha256>`；knowledge 由文档内容归一化或 `defaultRef` digest 给出；已带 `digest:` 原样使用。tag 保留为 `targetVersion`（显示/代码基线），`targetRevision` 写 body hash；内容读取失败返回 `TARGET_CONTENT_UNRESOLVED`，不回退到 `tag:`。`targetRevision` 只用于选定原文、写报告和确定缓存范围，不参与 Session 关联。对象进入点 = 该 Session 内 `kind` 映射 `object_type`（skill/agent/knowledge）且 `name == target_name` 的最早 `agent_events`，不要求事件版本或 revision 命中；缺少调用事件时使用 Agent 节点或 Skill 名作为出现证据。取最早时与比较同口径：双方都有 `triggered_at` 才比时间，否则按 `(tree_index, event_index)`。bad case 触发点 = [06 §7.4](06-database-design.md) 的锚点事件；`anchorKind=post_process` 时 `eventIndex=INT_MAX`、`triggeredAt=bad_case.created_at`（审计/显示），候选记录 `case_anchor_kind=post_process`，比较时直接视为「对象之后」，不依赖 created_at 与对象进入点的时间先后；`anchorKind=unknown`（上报 agent 无法解析）保持 unknown。比较规则见 [06 §7.5](06-database-design.md)；`unknown` 不满足「之后」。
 - target 内容解析：skill/agent 目标按 `(repoUrl, subDir, tag)` 读取 `SKILL.md`/`AGENT.md`/`agent.md`；knowledge 目标按文档 revision 读取文档内容。skill/agent 文件必须先剥掉 YAML frontmatter（`definition_file_hash`），再复用 parser 的 `normalize_definition_body`；knowledge 文件读仍对全文归一化。优先复用 git 缓存做只读 `git show`，或使用受控的只读内容接口；按 `(repoUrl, subDir, ref)` 缓存并设置超时。失败返回 `TARGET_CONTENT_UNRESOLVED`，不回退到 `tag:`。golden fixture（public `superpowers` main `SKILL.md`）证明 resolver 与 parser 都得到 `digest:8e54…`。v6.4.1 整文件 `9080…`、去 frontmatter 后 `580c…`，与 trace 不一致，不能作为 target 版本；target 必须使用 main。当前 target 配置是无凭据公开仓库，私有仓库内容读取不在本轮。knowledge 的 `KnowledgeContentSource` 是注入缝：生产未绑定文档 Provider 时，裸 revision（非 `digest:`/`provider:`）只能返回 `TARGET_CONTENT_UNRESOLVED`；`digest:`/`provider:` 可直接启动，不静默回退。
 - 关联口径：整棵 Session 树中存在所选类型与名称的事件即关联。归因上下文保留每次出现的实测版本；目标版本用于选定原文和缓存。兼容字段 `versionUnresolved` 在新批次为零。
 - Session 关联输出五个互不重叠的计数（`reported = associated + versionUnresolved + skipped + pending`）；`pending` 是没有归一化轨迹的根。`badCases` 是关联 Session 内的候选数，`potential` 是纳入数；`byReason` 五键零填充，排除行只进 summary。第 2 步只做关联、不再计算 `potentialCount`。
-- policy 校验：default 携带任一开关、custom 缺任一开关、custom 同时关闭两条规则 → `422 POLICY_INVALID`。policy 语义版本固定 `v1`；归因预览缓存键使用首版归因引擎 `rule-v1`。
+- policy 校验：default 携带任一开关、custom 缺任一开关、custom 同时关闭两条规则 → `422 POLICY_INVALID`。policy 语义版本固定 `v1`。绑定包模式的归因预览按最新完成报告读取，不使用 `cache_key`；legacy rule 模式才保留 `rule-v1` 的缓存键计算。
 
 ### 5.13 归因生成与缓存（`service/evolution/attribution.py`）
 
@@ -1298,7 +1298,7 @@ class AttributionRunner:
             await self.candidates.link_probe(run.id, item.bad_case_id, row.probe_id, cached)
 ```
 
-- 运行缓存通过 `bad_case_analysis` 关联查找同空间、对象身份与解析版本的报告，在每个候选 Badcase 内按分析完成时间及报告 ID 排序。执行清单和批次标识用于重算写入及幂等恢复。
+- 绑定包模式的运行缓存通过 `bad_case_analysis` 关联查找同空间、对象身份与解析版本的报告，在每个候选 Badcase 内按分析完成时间及报告 ID 排序，并按 `attribution_skill_name` 分组。执行清单和批次标识用于重算写入及幂等恢复。legacy rule 模式继续走 `cache_key` 原子 upsert。
 - 命中且 `cache_enabled` → 复用：`reused_count+1`、`last_reused_run_id=当前 run`、候选 `is_cached=true`，不再计算。
 - run 创建时固化 `attribution_engine / cache_enabled / potential_policy`；runner 只读 run 快照，不读全局配置或请求方当前值。历史 run 的 `attribution_engine` 默认 `legacy-probe-import`，不会被 V2 runner 误用。
 - 关闭缓存时以本次选定 Skill 执行，在同一事务内保存新报告、来源 Skill 和 case 关联。
@@ -1307,13 +1307,20 @@ class AttributionRunner:
 - **簇级 confidence 与归因 confidence 是两回事**：`probe_reports.confidence` 是引擎对该 bad case 的结论置信度；聚类步写入的 `probe_clusters.confidence` 是簇级占位值（按 `probe_cluster_type`：error 0.82 / prompt 0.74 / model 0.66），`severity = round(min(10, 簇 confidence × impact × reportWeight), 1)`。两者不互相推导，避免把「单条归因的把握」误当成「整个簇的把握」。
 - `non_target` 候选保留在候选表、`probe_reports` 与 `bad_case_analysis`（错误详情可见），不进簇。
 
+### 5.13.1 对象绑定、Skill 包与后台批次
+
+- `AttributionSkillPackageService` 负责空间 ZIP 包：校验文件数/大小/路径与 `SKILL.md`，解包到 `attribute/<workspace>/attribute_skill/uploads/<package_id>/`，把元数据写 `attribution_skill_packages`；内置包 `default-attribute-badcases` 随 API 发布，不落库。上传不自动绑定。
+- `EvolutionTargetService` 在创建/更新时：`attributionPackageId` 为空则用空间默认包；显式换包时校验包属于当前空间；在同一事务里冻结目标定义原文、commit/路径与 `attribution_generation`，并登记待分析批次。历史内联提示词只在没有包时保留，不因改名或只改工程 ID 被覆盖。
+- `BindingWorker` 只领取 `enabled=true` 且 `attribution_generation` 未完成的对象。每批按绑定时的截止时间取本空间 Badcase，用 `PotentialMatcher.associated_sessions` 的 presence 口径圈定 Session，逐例归档输入、执行绑定包并写 `probe_reports.attribution_skill_name / binding_generation`；重试沿用原批次，完成后按 `(bad_case_id, probe_id)` 关联。
+- 后台批次与向导单次重算共用 `AttributionRunner`、`AIAgentProvider.run_skill()`、平台 `make_probe_report.py` 与报告写入逻辑；差别只在批次归属、Skill 解析和 `created_run_id`。
+
 ### 5.14 预览端点（`service/evolution/potential.py` + `api/evolution_workspace.py`）
 
 | 端点 | 服务实现 | 说明 |
 |---|---|---|
-| `preview/sessions` | `matcher.associated_sessions` + 分页（4/页） | 只列 identity 匹配的 Session；`reported/associated/skipped/versionUnresolved/pending` 互不重叠；只做关联，不算 potential |
+| `preview/sessions` | `matcher.associated_sessions` + 分页（4/页） | 只列出现所选类型和名称的 Session；`reported/associated/skipped/versionUnresolved/pending` 互不重叠，`versionUnresolved` 新批次恒 0；只做关联，不算 potential |
 | `preview/potential` | `matcher.potential_cases` + 分页（5/页） | `items` 只含纳入行，`total=potential`；`byReason` 含被排除行；0 → `NO_POTENTIAL_MATCHED` |
-| `preview/attribution` | `probe_reports.cache_key IN (...)` 查询既有结论 | **不执行归因**：`reused` 精确、`fresh = potential - reused`、`nonTargetKnown` 为历史参考值；`cacheEnabled=false` 时 `reused=0`；不接收 `engineKey` 或分页 |
+| `preview/attribution` | 绑定包模式：`bad_case_analysis JOIN probe_reports` 取每例最新完成报告；legacy rule 模式：`probe_reports.cache_key IN (...)` | **不执行归因**：绑定包模式返回 `reused`、`fresh`、`bySkill`、`missing`；`cacheEnabled=false` 时 `reused=0`、`fresh=potential`，缓存开启且零报告时启动返回 `409 NO_POTENTIAL_MATCHED`；legacy rule 保留 `fresh=potential-reused`。不接收 `engineKey` 或分页 |
 
 - 预览与启动共用同一条件归一化（target 空间内 enabled、版本缺省 `defaultRef`、窗口合法、policy 合法）；启动再判 `NO_ASSOCIATED_SESSIONS`/`NO_POTENTIAL_MATCHED`。
 - 三条端点最低 `viewer`；无关联 Session → `409 NO_ASSOCIATED_SESSIONS`（三段都触发），`details.summary` 带 `reported/associated/skipped/versionUnresolved/pending`；有关联但 `potential=0` → `409 NO_POTENTIAL_MATCHED`（潜在段与归因段）。

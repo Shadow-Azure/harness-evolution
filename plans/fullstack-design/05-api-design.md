@@ -255,7 +255,7 @@ erDiagram
   "createdAt": "2026-10-19T18:42:00+08:00",
   "status": "running",
   "error": null,
-  "stats": { "sessions": 9, "versionUnresolvedSessions": 2, "badCases": 42, "potential": 18, "attributed": 11,
+  "stats": { "sessions": 9, "versionUnresolvedSessions": 0, "badCases": 42, "potential": 18, "attributed": 11,
     "reused": 7, "clusters": 3, "byCategory": { "error": 6, "prompt": 3, "model": 2 } },
   "progress": { "unit": 5, "total": 9, "percent": 55,
     "stageLabel": "第 5/7 步 · 聚类与严重度", "doneRounds": 1, "accepted": 1 },
@@ -886,7 +886,7 @@ bad case 行与 Session 投影是两种存在：前者由上报写入，后者�
 - `reason` 是纯文本结论说明（列由原 `probe_description` 演进）；`reasoning` 是 **Markdown 字符串**（列由原 `probe_analysis` 演进），前端按 Markdown 渲染（禁用裸 HTML、外链加安全属性；不接语法高亮）。
 - `conclusion ∈ attributed|non_target`：后者是「非该对象问题」——不是未分析，也不否定 bad case 本身；同一 bad case 可对多个对象各有结论。
 - `category ∈ model|prompt|error`（`non_target` 为 `null`）；`policyVersion` / `attributionEngine` 进缓存键。
-- 归因由自进化 run 生成：`probe_reports` 保存对象·版本结论与缓存元数据，`bad_case_analysis` 保存 case↔probe 的多行关联；本服务**不提供「手动触发单条归因」端点**——没有关联行就是未归因，用户可「以该 bad case 启动自进化」触发。
+- 归因由对象绑定批次或自进化 Run 生成：`probe_reports` 保存对象·版本结论与缓存元数据，`bad_case_analysis` 保存 case↔probe 的多行关联；本服务**不提供「手动触发单条归因」端点**——没有关联行就是未归因，用户可「以该 bad case 启动自进化」或在对象配置里绑定 Skill 触发。
 
 `GET /sessions/{sid}/bad-cases` 示例（会话内问题列表，不内联归因正文）：
 
@@ -945,10 +945,10 @@ bad case 行与 Session 投影是两种存在：前者由上报写入，后者�
 
 V1 的 `POST /api/evolution/probes/query` 进入兼容期，V2 页面不调用，按 [docs/compatibility.md](../../docs/compatibility.md) 的 V3 条件删除。向导预演由三个端点承担（§4.20）：`preview/sessions`（第 2 步）、`preview/potential`（第 3 步）、`preview/attribution`（第 4 步）。命中源从 probe 换成「空间 bad case → Session 关联 → 潜在 bad case」。`targetType` 在预览与 target 配置中取 `skill|agent|knowledge`；`bad_cases.object_type` 仍只有 `skill|agent`。
 
-- 三段 `summary` 各管一段：Session 段用 `reported/associated/skipped/versionUnresolved/pending`，潜在段用 `badCases/potential/byReason`，归因段用 `potential/reused/fresh/nonTargetKnown`；不再有 `probes / usedProbes / byAttributeType`。
+- 三段 `summary` 各管一段：Session 段用 `reported/associated/skipped/versionUnresolved/pending`，潜在段用 `badCases/potential/byReason`，归因段用 `potential/reused/fresh/bySkill/missing/nonTargetKnown`；`versionUnresolved` 是历史兼容字段，新批次恒为 0；不再有 `probes / usedProbes / byAttributeType`。
 - 行结构用 `PotentialRow`（badCaseId/objectName/badCaseType/triggerAt/sessionId/hitReason/orderState/anchorSource），替代 V1 的 `ProbeRow`；`hitReason ∈ self_report|after_object|both|policy_excluded|order_unknown`，`orderState ∈ comparable|unknown`，`anchorSource ∈ event|node|post_process|unknown`。
 - 时间窗按 bad case 的 `created_at` 过滤，Asia/Shanghai 日边界；无 `from/to` 默认最近 90 天，`from > to` 或超过 366 天 → `422 WINDOW_INVALID`。
-- 版本口径：`targetVersion` 是选择入口，接受裸 git ref（tag、分支名或 commit SHA）；`versions` 端点返回的 tag 列表只是 UI 建议，不是可接受的完整集合。skill/agent 目标带裸 ref 时，服务端读取该 ref 下 `repoUrl/subDir/SKILL.md` 或 `repoUrl/subDir/AGENT.md`，用与 parser 相同的 `normalize_definition_body` 计算 body hash，得到 `targetRevision=digest:<sha256>`；knowledge 目标的 `defaultRef` 是文档 revision，body hash 从文档内容归一化；已带 `digest:` 的值原样使用，`tag:`/`provider:` 保持原语义。匹配接受 body hash、原始版本与 M9 legacy `object_revision`（过渡窗口）；内容读取或归一化失败返回稳定错误，不回退到 tag 猜测。
+- 版本口径：`targetVersion` 是选择入口，接受裸 git ref（tag、分支名或 commit SHA）；`versions` 端点返回的 tag 列表只是 UI 建议，不是可接受的完整集合。skill/agent 目标带裸 ref 时，服务端读取该 ref 下 `repoUrl/subDir/SKILL.md` 或 `repoUrl/subDir/AGENT.md`，用与 parser 相同的 `normalize_definition_body` 计算 body hash，得到 `targetRevision=digest:<sha256>`；knowledge 目标的 `defaultRef` 是文档 revision，body hash 从文档内容归一化；已带 `digest:` 的值原样使用，`tag:`/`provider:` 保持原语义。`targetRevision` 只用于固定原文、报告和缓存范围；Session 关联按对象类型和名称的出现，不使用 body hash 过滤。内容读取或归一化失败返回稳定错误，不回退到 tag 猜测。
 - 零命中：无关联 Session → `409 NO_ASSOCIATED_SESSIONS`，`details.summary` 带 `reported/associated/skipped/versionUnresolved/pending`，让向导能解释“为什么没有关联”；有关联但潜在为 0 → `409 NO_POTENTIAL_MATCHED`。向导把 409 映射为空态并禁用出口。
 - 三段预览只读：不写 `probe_reports`、`bad_case_analysis`、`evolution_run_candidates`，也不执行归因引擎。
 
@@ -1040,7 +1040,7 @@ POST /runs（同步校验）
 | 端点 | 说明 |
 |---|---|
 | `GET /api/evolution/targets` | V2 路径为 `/api/workspaces/{wid}/evolution/targets`；列出本空间配置 |
-| `POST /api/evolution/targets` | V2 生效路径同上；空间管理员或全局管理员可新增，body 含 `repoUrl/subDir/defaultRef/validationProjectId/testProjectId/enabled`；`409 TARGET_EXISTS`、`422 PROJECT_ID_INVALID` |
+| `POST /api/evolution/targets` | V2 生效路径同上；空间管理员或全局管理员可新增，body 含 `objectType/objectName/repoUrl/subDir/defaultRef/validationProjectId/testProjectId/attributionPackageId/enabled`；`attributionPackageId` 可空，缺省用空间默认包；`409 TARGET_EXISTS`、`422 PROJECT_ID_INVALID`、`409 ATTRIBUTION_SKILL_PACKAGE_INVALID` |
 | `PUT /api/evolution/targets/{id}` | 空间管理员或全局管理员修改；`404 TARGET_NOT_FOUND` |
 | `DELETE /api/evolution/targets/{id}` | 空间管理员或全局管理员删除；有进行中 run 时 `409 TARGET_IN_USE` |
 | `GET /api/evolution/targets/{id}/versions` | V2 路径为 `/api/workspaces/{wid}/evolution/targets/{id}/versions`；读取 tag 列表作为版本建议，不枚举分支或 commit；仓库不可用 → `422 REPO_INVALID` |
@@ -1053,7 +1053,7 @@ POST /runs（同步校验）
 { "items": [
   { "id": "tgt-123", "objectType": "skill", "objectName": "deep-research",
     "repoUrl": "https://git.example.com/agent-skills.git", "subDir": "skills/deep-research",
-    "defaultRef": "main",
+    "defaultRef": "main", "attributionPackageId": "pkg-123",
     "validationProjectId": "val-2026-q3", "testProjectId": "test-2026-q3", "enabled": true }
 ] }
 ```
@@ -1063,11 +1063,15 @@ POST /runs（同步校验）
 ```json
 { "objectType": "skill", "objectName": "deep-research",
   "repoUrl": "https://git.example.com/agent-skills.git", "subDir": "skills/deep-research",
-  "defaultRef": "main",
+  "defaultRef": "main", "attributionPackageId": "pkg-123",
   "validationProjectId": "val-2026-q3", "testProjectId": "test-2026-q3", "enabled": true }
 ```
 
 `POST` → `201` 创建后的 target；`PUT` → `200` 更新后的 target；`DELETE` → `204`。
+
+- `attributionPackageId` 可空：缺省或空串表示使用空间默认包（平台内置 `default-attribute-badcases` 或空间默认绑定）。取值必须是当前空间存在的包；跨空间、已删除或非法的包 → `409 ATTRIBUTION_SKILL_PACKAGE_INVALID`。
+- 新建对象、更换包或修改 `enabled/defaultRef/repoUrl/subDir/objectName/objectType` 时，服务端在同一事务里固定原文快照并登记新的绑定批次；仅改名或改 `validationProjectId/testProjectId` 不触发分析。`enabled=false` 的对象不进入向导，也不领取绑定批次。
+- 历史对象没有 `attributionPackageId` 且带有内联提示词时，更新请求省略该字段应保持内联绑定；只有显式提交包 ID 才切换。内联提示词只读回放，不再新增选择器。
 
 - `repoUrl` 支持 https/ssh；**不要**把 token 写进 URL（用 SSH agent / 凭据助手），错误信息脱敏。
 - target 不接受 push/eval URL 输入：provider 用 `repoUrl` + PAT 用户自动创建/定位 fork；prepare 把派生的 push 目标写入 run 快照，eval 直接复用同一目标，保证同源。凭据由部署级 `HE_GIT_PUSH_PROVIDER` / `HE_GIT_PUSH_TOKEN` 与 `GIT_ASKPASS` 提供，不写进 URL。
@@ -1079,6 +1083,20 @@ POST /runs（同步校验）
 - 创建 run 时把两个 project ID 从 target 快照到 `evolution_runs`；run API 响应不变。
 - 只有 `enabled=true` 的配置出现在向导的“对象/版本”下拉里。
 - 配置页入口在向导 Step1 提示文案内的「配置页」链接（[08 §9.2](08-frontend-implementation.md)）。
+
+### 4.11.1 空间归因 Skill 包
+
+所有端点挂在 `/api/workspaces/{wid}/attribution-skill-packages`，最低 `viewer`；上传与删除要求 `space_admin` 或全局管理员。内置包由平台提供，不允许删除。
+
+| 端点 | 用途 | 关键约束 |
+|---|---|---|
+| `GET ""` | 列出内置包与空间上传包 | `{items:[AttributionSkillPackage], runtimeEnabled}`；`runtimeEnabled` 表示部署是否具备公共 Agent Provider 的 Skill 执行能力 |
+| `POST ""` | 上传 Skill 文件夹 ZIP | `multipart/form-data` 字段 `file`；201 返回包元数据；200 个文件、ZIP 10 MiB、解包 20 MiB、`SKILL.md` 512 KiB 上限；同名 → `409 ATTRIBUTION_SKILL_PACKAGE_EXISTS`；超限 → `413 ATTRIBUTION_SKILL_PACKAGE_TOO_LARGE`；ZIP/SKILL.md 非法 → `422 ATTRIBUTION_SKILL_PACKAGE_INVALID` |
+| `GET "/{packageId}"` | 资源详情 | `{prompt, files[], targets[]}`；`targets` 是已绑定对象名；包不存在或跨空间 → `404` |
+| `GET "/{packageId}/download"` | 下载原包内容 | `application/zip`，由服务端重新打包，不暴露服务器路径 |
+| `DELETE "/{packageId}"` | 删除自定义包 | 204；被任一进化对象绑定 → `409 ATTRIBUTION_SKILL_PACKAGE_INVALID`；内置包 → `409` |
+
+`AttributionSkillPackage` 字段：`id/skillName/uploaderName/archiveName/fileCount/sizeBytes/contentHash/builtIn/uploadedAt`。上传只保存与解析包，不自动设为空间默认或对象绑定；绑定发生在 target CRUD。
 
 ### 4.12 仅聚类预览
 
@@ -1274,18 +1292,18 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 |---|---|---|
 | `POST …/evolution/preview/sessions` | 第 2 步：关联 Session 分页 | `{targetType,targetName,targetVersion?,from?,to?,page,pageSize=4}` → `{summary:{reported,associated,skipped,versionUnresolved,pending},items:[{sessionId,short,title,objectTriggerAt,badCaseCount}],total,page,pageSize}`；`short` 取 `session_families.short_title`，`title` 是完整标题供 UI 悬停；第 2 步只做关联，不算潜在 |
 | `POST …/evolution/preview/potential` | 第 3 步：潜在 bad case 分页 | 同上 + `policy`、`pageSize=5` → `{summary{badCases,potential,byReason},items:[PotentialRow],total,page,pageSize}`；`items` 只含纳入潜在的 case |
-| `POST …/evolution/preview/attribution` | 第 4 步：归因预览（**不执行归因**） | 同条件 + `policy`、`cacheEnabled=true` → `{summary{potential,reused,fresh,nonTargetKnown}}`；不接收 `engineKey` 或分页 |
+| `POST …/evolution/preview/attribution` | 第 4 步：归因预览（**不执行归因**） | 同条件 + `policy`、`cacheEnabled=true` → `{summary{potential,reused,fresh,bySkill,missing,nonTargetKnown},canRecompute,usesBoundSkill,targetRevision}`；不接收 `engineKey` 或分页 |
 | `POST …/evolution/runs` | 启动完整自进化 | 条件 + `policy` + `cacheEnabled` + `mode:"full"` + 可选 `engineKey`/`eval` → `202 {runId,jobId,status:"preparing"}` |
 | `POST …/evolution/cluster-previews` | 仅聚类 | 同上 `mode:"cluster_only"` → `202` |
 | `POST …/evolution/runs/{rid}/retry` | blocked 恢复 | 按 `blockedStage`（含 `attribution`）重入 |
 
-- `targetType ∈ skill|agent|knowledge`；未配置或已停用（必须在 URL 空间内）→ `409 TARGET_NOT_CONFIGURED`。未带 `targetVersion` 时取 target 的 `defaultRef`。`targetVersion` / `defaultRef` 最长 96（digest revision 71 字符）。skill/agent 目标的裸 git ref（tag、分支名或 commit SHA）是内容来源：服务端先用 git 校验该 ref 是否存在（缓存 mirror 上 `git rev-parse --verify <ref>^{commit}`，远端 ref 缺失时按需刷新；不存在 → `422 TARGET_CONTENT_UNRESOLVED`，reason `ref_not_found`），再读取该 ref 下 `repoUrl/subDir/SKILL.md` 或 `repoUrl/subDir/AGENT.md`，按与 parser 相同的 `normalize_definition_body` 计算 body hash，`targetRevision=digest:<sha256>`；knowledge 目标的 `defaultRef` 是文档 revision，body hash 从文档内容归一化；已带 `digest:` 原样使用，`tag:`/`provider:` 保持原语义。选中的 ref 保留为版本/显示与代码基线；内容读取或归一化失败返回 `422 TARGET_CONTENT_UNRESOLVED`，不回退到 `tag:` 猜测。run/步骤条件同时保存 `targetVersion`（ref）与 `targetRevision`（body hash）；关联与缓存键使用后者。历史 path+body revision 保留为历史，不参与新匹配；新 run 只写归一化 body hash。
+- `targetType ∈ skill|agent|knowledge`；未配置或已停用（必须在 URL 空间内）→ `409 TARGET_NOT_CONFIGURED`。未带 `targetVersion` 时取 target 的 `defaultRef`。`targetVersion` / `defaultRef` 最长 96（digest revision 71 字符）。skill/agent 目标的裸 git ref（tag、分支名或 commit SHA）是内容来源：服务端先用 git 校验该 ref 是否存在（缓存 mirror 上 `git rev-parse --verify <ref>^{commit}`，远端 ref 缺失时按需刷新；不存在 → `422 TARGET_CONTENT_UNRESOLVED`，reason `ref_not_found`），再读取该 ref 下 `repoUrl/subDir/SKILL.md` 或 `repoUrl/subDir/AGENT.md`，按与 parser 相同的 `normalize_definition_body` 计算 body hash，`targetRevision=digest:<sha256>`；knowledge 目标的 `defaultRef` 是文档 revision，body hash 从文档内容归一化；已带 `digest:` 原样使用，`tag:`/`provider:` 保持原语义。选中的 ref 保留为版本/显示与代码基线；内容读取或归一化失败返回 `422 TARGET_CONTENT_UNRESOLVED`，不回退到 `tag:` 猜测。run/步骤条件同时保存 `targetVersion`（ref）与 `targetRevision`（body hash）；`targetRevision` 只用于固定原文、报告和缓存范围，Session 关联按对象类型和名称的出现。历史 path+body revision 保留为历史，不参与新匹配；新 run 只写归一化 body hash。
 - Session 段五个计数互不重叠：`reported = associated + versionUnresolved + skipped + pending`。`associated` 才进 `items`；`pending` 是没有归一化轨迹的上报根；`versionUnresolved` 是兼容字段，新计算恒为零；`skipped` 是已有轨迹但未出现所选类型和名称的 Session。`objectTriggerAt` 取对象进入点时间，进入事件无 `triggered_at` 时回退 Session `startedAt`；混合时间戳时比较与取最早都按“双方都有时间才比时间，否则坐标”口径。
 - 潜在段：`badCases` 是关联 Session 内的候选 case 数（含被策略排除的行），`potential` 是纳入数，`total = potential`；`byReason` 是封闭集合五键的零填充计数。`triggerAt` 取 bad case 锚点时间；`kind=post_process` 用 `createdAt` 仅作展示/审计，潜在匹配时直接按「对象之后」；`kind=unknown` 才退化为 `createdAt` 展示；行序按 `triggerAt` 倒序、`badCaseId` 升序。`PotentialRow` 增加 `anchorSource`（`event|node|post_process|unknown`），后处理行在 UI 显示来源徽标。
 - `self` 与 `sameObjectOnly` 只按 `object_name` 判定，不比较 `bad_cases.object_type` 或 `object_version`：同名 skill/agent 或跨版本 self 会被纳入，这是明确的过渡语义；`object_type` 扩到 knowledge 后如需收紧，另开切片。
 - `policy` 结构：`{preset:"default"}` 或 `{preset:"custom", includeSelfReport, includeAfterObject, sameObjectOnly}`。default 携带任一开关、custom 缺任一开关、或 custom 同时关闭两条匹配规则 → `422 POLICY_INVALID`。custom 先取启用规则的并集，`sameObjectOnly` 再过滤；启动 run 时 policy 全量快照进 `evolution_runs.potential_policy`（m10-04）。
 - `orderState` 由两个触发点比较得出：双方 `triggered_at` 非空按时间严格大于；否则按 `(agents.tree_index, agent_events.event_index)` 字典序；`post_process` 使用 `created_at` 且坐标兜底为 INT_MAX，落在所有可解析对象之后；`unknown` 或坐标不全 → `unknown`，且不满足“之后”。
-- 第 4 步返回 `potential`、`bySkill`、`missing`、`reused`、`fresh` 和 `nonTargetKnown`。先按空间、对象身份、解析版本及候选 Badcase 选最新完成报告，再按 Skill 汇总。缓存开启时 `fresh=0`，缺报告的候选跳过；关闭时 `fresh=potential`，启动请求可带当前空间的 `attributionPackageId`。
+- 第 4 步返回 `potential`、`bySkill`、`missing`、`reused`、`fresh` 和 `nonTargetKnown`。先按空间、对象身份、解析版本及候选 Badcase 选最新完成报告，再按 Skill 汇总。缓存开启时 `fresh=0`、`missing=potential-reused`，缺报告的候选跳过且零报告时拒绝启动；关闭时 `fresh=potential`、`missing=0`，启动请求可带当前空间的 `attributionPackageId`。`canRecompute` 表示部署是否具备单次重算能力；`usesBoundSkill` 表示本次预览是否走对象绑定包。
 - 三段预览共用同一条件归一化：target 空间内 enabled、版本缺省 `defaultRef`、窗口合法（无边界默认最近 90 天）、policy 合法。归因预览不接收 `engineKey`，也不执行归因引擎。
 - knowledge target 只通过 target CRUD API 配置，`defaultRef` 接受 `tag:`/`digest:`/`provider:` revision；创建/更新跳过 git `ls-remote`，`versions` 返回空列表 + `defaultRef`。knowledge 的文件匹配使用文档内容的归一化 body hash；`KnowledgeContentSource` 是注入缝：生产未绑定文档 Provider 时，裸 revision（非 `digest:`/`provider:`）只能返回 `TARGET_CONTENT_UNRESOLVED`；`digest:`/`provider:` 可直接启动。target resolver 与 API 启动在本切片内，向导 catalog 与 target 表单暂不展示 knowledge（无选择器）——知识库 UI 选择器另开切片。
 - 零命中：无关联 Session（三段都触发）→ `409 NO_ASSOCIATED_SESSIONS`，`details.summary` 带五个分区计数；潜在段与归因段有关联但 `potential=0` → `409 NO_POTENTIAL_MATCHED`。第 2 步不返回 200 空页，而是同一个 409 + summary，向导据 `details.summary` 解释空态。

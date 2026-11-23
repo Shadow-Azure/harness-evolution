@@ -213,6 +213,39 @@ async def test_sessions_preview_partitions_and_paginates(preview_api: PreviewApi
     assert len(second.json()["items"]) == 3
 
 
+async def test_sessions_preview_associates_missing_and_different_versions(
+    preview_api: PreviewApi,
+) -> None:
+    """Presence wins: missing and mismatched observed versions both associate."""
+    versions = {
+        "session-version-missing": None,
+        "session-version-different": "v9.9.9",
+    }
+    for session_id, version in versions.items():
+        await seed_associated(preview_api, session_id=session_id, version=version)
+        await seed_case(
+            preview_api.database,
+            case_id=f"case-{session_id}",
+            session_id=session_id,
+            case_type="self",
+            object_name=TARGET_NAME,
+            created_at=LATER,
+        )
+
+    response = await preview_api.client.post(
+        path(preview_api, "sessions"),
+        headers=preview_api.reader,
+        json=body(),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["associated"] == 2
+    assert payload["summary"]["skipped"] == 0
+    assert payload["summary"]["versionUnresolved"] == 0
+    assert {item["sessionId"] for item in payload["items"]} == set(versions)
+
+
 async def test_sessions_preview_returns_short_title_for_long_prompt(
     preview_api: PreviewApi,
 ) -> None:
