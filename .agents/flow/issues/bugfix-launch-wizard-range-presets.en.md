@@ -11,6 +11,8 @@ depends:
 priority: P2
 status: in-progress
 scope:
+  - apps/web/**
+  - tests/e2e/**
   - plans/ui-prototype-v2/**
   - plans/fullstack-design/**
   - plans/**
@@ -41,7 +43,7 @@ The current prototype (baseline `main@d33b2c45`) has only two native date inputs
 ### Impact
 
 - No impact on the backend, API, contract, or run snapshot; this is a step-1 input-experience problem.
-- Production `LaunchWizard.vue` still has only two date inputs; this issue delivers a comparable prototype and the design contract first, and production implementation stays for a separate slice.
+- Production `LaunchWizard.vue` still has only two date inputs; this issue delivers a comparable prototype and the design contract first, then adds the production implementation after the requester's follow-up.
 
 ## Goals
 
@@ -49,6 +51,7 @@ The current prototype (baseline `main@d33b2c45`) has only two native date inputs
 - On click, write concrete `from/to` values into the date inputs: the end date is today (inclusive), last 7 days starts 6 days ago, last 30 days starts 29 days ago, and last half year starts 6 calendar months ago.
 - Highlight the matching pill with a light blue fill and blue text while the current range equals its computed values; clear the highlight when the user manually changes either date. Do not add an extra "custom" state.
 - Keep the existing required and `from <= to` validation and request fields unchanged; record the interaction in the V2 design doc and the 08 frontend design doc as the production authority.
+- Implement the same interaction in the production `LaunchWizard.vue`: a click fills concrete dates derived from the browser's local "today", the matching pill is highlighted, a manual change clears it, and validation and request fields are unchanged.
 
 ## Design authority
 
@@ -96,6 +99,15 @@ After the prototype change (same scenario, 1500×900 viewport, light theme, `u=a
 - Add the same interaction contract to the "time range" bullet under §9 Step 1 of `plans/fullstack-design/08-frontend-implementation.md` as the production `LaunchWizard.vue` authority.
 - Add the Agent Note `2026-11-23-launch-wizard-range-presets` to explain why a relative range is not sent to the server, why there is no "custom" button, and why a fixed 180-day window is not used.
 
+### Production implementation (added 2026-11-23)
+
+After the prototype and design docs merged in PR #536, the requester pointed out that the production `LaunchWizard.vue` still had no actual change and asked for the real implementation. This issue therefore also covers the production slice:
+
+- Add the three pills on the same row as the date inputs in step 1 of `apps/web/src/pages/evolution/components/LaunchWizard.vue`, reusing the prototype's light selected state; a click only writes `windowFrom`/`windowTo` and adds no request field.
+- Move the date math into `launchWizardRangePresets.ts`: last 7 / 30 days and half year in local calendar days, half year clamped to the target month's last day, and `activePresetId` to find the matching range.
+- Production computes from the browser's local "today"; the matching pill sets `aria-pressed=true`, a manual date change clears the highlight, and the existing required and `from <= to` validation is unchanged.
+- Unit tests cover 7/30 days, month and year boundaries, half-year month-end clamping, and the active lookup; the cross-stack e2e covers filling the dates, `aria-pressed`, and clearing the highlight after a manual edit.
+
 ## Implementation steps
 
 1. Add the pill shortcuts, date helpers, active highlight, and click handler to prototype step 1.
@@ -104,6 +116,10 @@ After the prototype change (same scenario, 1500×900 viewport, light theme, `u=a
 4. Capture before/after screenshots in the same browser scenario, upload them to an evidence Release, and keep them out of the repository.
 5. Run the syntax check, `pnpm verify:flow`, and `pnpm lint:docs`; confirm the PR title contains `(#<issue>)`.
 6. Open the prototype PR with before/after evidence and verification notes; a person merges it.
+7. Add the pills, the date helper module, and the active highlight to the production `LaunchWizard.vue` without changing request fields or validation.
+8. Add the `launchWizardRangePresets` and `LaunchWizard` unit tests and extend the `m10-05-launch-wizard` e2e.
+9. Capture production before/after screenshots in the same scenario, upload them to an evidence Release, and keep them out of the repository.
+10. Run the web typecheck, lint, unit tests, e2e, and the flow/doc gates.
 
 ## Related PR
 
@@ -112,8 +128,8 @@ After the prototype change (same scenario, 1500×900 viewport, light theme, `u=a
 ## Dependencies and boundary
 
 - Depends on m10-05 (four-step launch wizard, done); this issue only improves the step-1 range input and does not change the four-step state machine.
-- Delivery boundary: `plans/ui-prototype-v2/**`, `plans/fullstack-design/**`, `.agents/**`, and the PR self-review record.
-- Do not modify the production `LaunchWizard.vue` under `apps/web`, `apps/api`, `packages/contracts`, or the database; production work needs a separate issue.
+- Delivery boundary: `plans/ui-prototype-v2/**`, `plans/fullstack-design/**`, `apps/web/**`, `tests/e2e/**`, `.agents/**`, and the PR self-review record.
+- This issue now also covers production: modify the production `LaunchWizard.vue` and its tests under `apps/web`; do not change `apps/api`, `packages/contracts`, the database, Session association, potential matching, or cache keys.
 - Screenshots live as Release evidence and do not enter the repository; do not expose production run IDs, Session content, or credentials.
 
 ## Verification
@@ -130,12 +146,17 @@ node --check .tmp-proto-main.js
 rm .tmp-proto-main.js
 pnpm verify:flow
 pnpm lint:docs
+pnpm --filter @harness/web exec vitest run src/pages/evolution/components/LaunchWizard.test.ts src/pages/evolution/components/launchWizardRangePresets.test.ts
+pnpm --filter @harness/web typecheck
+pnpm --filter @harness/web lint
+node --test tests/e2e/m10-05-launch-wizard.test.mjs
 ```
 
 - Open `plans/ui-prototype-v2/harness-evolution.html?u=admin&page=evo&demo=wizard1` in Chrome at 1500×900 in the light theme.
 - The initial dates are `2026-10-01 ~ 2026-11-09` and no shortcut is highlighted. Clicking "Last 30 days" changes the inputs to `2026-10-12 ~ 2026-11-10` with only that pill highlighted; "Last 7 days" and "Last half year" produce `2026-11-04 ~ 2026-11-10` and `2026-05-10 ~ 2026-11-10`.
 - After manually changing the end date to `2026-11-09`, no shortcut is highlighted; clicking "Next: associate Sessions" still runs the original required and `from <= to` validation.
 - See the evidence above; the before image is baseline `main@d33b2c45`, and the after images come from this issue's branch.
+- Production page (the real `apps/web` started by e2e, 1440×1100, light theme): open the launch wizard, click "Last half year", and the dates become six local calendar months before today with the pill at `aria-pressed=true`; a manual end-date change clears the highlight; there is no horizontal scroll.
 
 ## Acceptance
 
@@ -143,21 +164,22 @@ pnpm lint:docs
 - Clicking a shortcut immediately fills both dates, ending today (inclusive); the three example ranges match the table, and last half year clamps at month ends.
 - The matching pill is highlighted with `aria-pressed=true`; manually changing a date clears the highlight; there is no extra "custom" button.
 - Existing required and `from <= to` validation, next-step previews, and request fields are unchanged; the page has no horizontal scroll and the modal height and button positions stay usable.
+- The production `LaunchWizard.vue` ships the same interaction: nothing selected by default; a click fills concrete dates derived from the browser's local "today" with half year clamped at month ends; a manual change clears the highlight; request fields and validation are unchanged.
+- The PR description contains same-scenario, same-viewport, same-theme Before / After production screenshots; screenshots stay as Release evidence and do not enter the repository.
 - `design-v2.md` and `08-frontend-implementation.md` state the same contract, and the Agent Note is bilingual with a refreshed pairing record.
 - The issue contains the before screenshot, after screenshots, and the solution; the PR description contains same-scenario, same-viewport, same-theme Before / After evidence.
-- The requester accepts the interaction: the issue stays open until the requester confirms the prototype matches expectations.
+- The requester accepts the interaction: the issue stays open until the requester confirms it matches expectations.
 
 ## Gates and CI
 
 - `pnpm verify:flow`: flow tree, dependencies, body sections, and state machine.
 - `pnpm verify:flow --diff origin/main`: PR title contains `(#<issue>)`, issue eligibility, and diff scope coverage.
 - `pnpm lint:docs`: Agent Note pairing, paragraph wrapping, and doc gates.
-- The PR only changes the prototype and design docs, so it does not run `apps/web` / `apps/api` tests; the CI static lane must still be green.
+- The PR changes `apps/web` and e2e as well: run the web unit tests, typecheck, lint, and the `m10-05-launch-wizard` e2e; the CI static lane must be green.
 - A person merges this PR; do not enable auto-merge.
 
 ## Non-goals
 
-- Do not change the production `LaunchWizard.vue` under `apps/web`, and do not require production UI in this PR.
 - Do not change the backend, API, contract, database, Session association, potential-matching policy, or cache keys.
 - Do not rearrange other step-1 fields, the version combo box, the policy radios, the step strip, or later steps.
 - Do not introduce a new date library, change native date-control behavior, or start a timezone/localization project.

@@ -169,6 +169,51 @@ async function selectOption(page, testId, label) {
   );
 }
 
+function localIsoDate(date) {
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function addCalendarDays(iso, days) {
+  const [year, month, day] = iso.split("-").map(Number);
+  const date = new Date(year, month - 1, day, 12);
+  date.setDate(date.getDate() + days);
+  return localIsoDate(date);
+}
+
+function addCalendarMonths(iso, months) {
+  const [year, month, day] = iso.split("-").map(Number);
+  const date = new Date(year, month - 1, day, 12);
+  const originalDay = date.getDate();
+  date.setDate(1);
+  date.setMonth(date.getMonth() + months);
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  date.setDate(Math.min(originalDay, lastDay));
+  return localIsoDate(date);
+}
+
+async function readRangePresets(page) {
+  return evaluate(
+    page,
+    `(() => {
+      const from = document.querySelector("[data-testid='wizard-from']");
+      const to = document.querySelector("[data-testid='wizard-to']");
+      return {
+        from: from?.value ?? "",
+        to: to?.value ?? "",
+        pressed: Object.fromEntries(
+          [...document.querySelectorAll("[data-testid^='wizard-range-']")].map(
+            (button) => [
+              button.dataset.testid.slice("wizard-range-".length),
+              button.getAttribute("aria-pressed"),
+            ],
+          ),
+        ),
+      };
+    })()`,
+  );
+}
+
 async function openAndFillWizard(page) {
   await click(page, "open-launch-wizard");
   await waitForDocument(
@@ -506,6 +551,71 @@ test("m10-05 four-step wizard previews and exits into both run routes", async ()
 
     assert.deepEqual(violations, []);
     console.log(`screenshots: ${screenshotDir}`);
+  } finally {
+    page.close();
+  }
+});
+
+test("m10-05 launch wizard presets fill concrete dates and clear on manual edit", async () => {
+  const page = await createBrowserPage();
+  const violations = browserViolations(page.session);
+  try {
+    await installCookie(page, await loginCookie());
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1440,
+      height: 1100,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}${evolutionPath}`,
+    });
+    await waitForDocument(
+      page.session,
+      `Boolean(document.querySelector("[data-testid='open-launch-wizard']"))`,
+      "evolution page",
+    );
+    await click(page, "open-launch-wizard");
+    await waitForDocument(
+      page.session,
+      `Boolean(document.querySelector("[data-testid='wizard-range-7']"))`,
+      "range preset pills",
+    );
+
+    const today = localIsoDate(new Date());
+    const expected = {
+      "7": { from: addCalendarDays(today, -6), to: today },
+      "30": { from: addCalendarDays(today, -29), to: today },
+      "6m": { from: addCalendarMonths(today, -6), to: today },
+    };
+
+    for (const id of ["7", "30", "6m"]) {
+      await click(page, `wizard-range-${id}`);
+      const state = await readRangePresets(page);
+      assert.equal(state.from, expected[id].from, `${id} preset start`);
+      assert.equal(state.to, expected[id].to, `${id} preset end`);
+      for (const other of ["7", "30", "6m"]) {
+        assert.equal(
+          state.pressed[other],
+          other === id ? "true" : "false",
+          `${id} preset aria-pressed for ${other}`,
+        );
+      }
+    }
+    await screenshot(page, "08-wizard-range-6m.png");
+
+    await setValue(page, "wizard-to", "2020-01-01");
+    const cleared = await readRangePresets(page);
+    assert.equal(cleared.from, expected["6m"].from);
+    for (const id of ["7", "30", "6m"]) {
+      assert.equal(
+        cleared.pressed[id],
+        "false",
+        `${id} clears after a manual end-date change`,
+      );
+    }
+    await screenshot(page, "09-wizard-range-custom.png");
+    assert.deepEqual(violations, []);
   } finally {
     page.close();
   }
