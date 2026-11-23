@@ -12,7 +12,7 @@ Two independent gaps existed beyond the tool surface. The submission allow rule 
 
 ## Decision
 
-The analyze argv drops `--bare` and always passes `--safe-mode`, `--restricted`, and `--strict-mcp-config` to keep bare's context minimization (no `CLAUDE.md` auto-discovery, no hooks/plugins/MCP, no command-running tools), plus `--tools Read,Write` to reduce the built-in set to reading the schema and writing the submission file. `--permission-mode dontAsk` is unchanged.
+The analyze argv drops `--bare` and always passes `--safe-mode`, `--restricted`, and `--strict-mcp-config` to keep bare's context minimization (no `CLAUDE.md` auto-discovery, hooks/plugins from user/project settings ignored, MCP closed, no command-running tools), plus `--tools Read,Write` to reduce the built-in set to reading the schema and writing the submission file. `--permission-mode dontAsk` is unchanged.
 
 Tool rules use the absolute task directory: `Read(//<task>/schema.json)` and `Edit(//<task>/result.json5)`. The task directory is resolved before building argv and is also the CLI `cwd`, so a symlinked temp root cannot make the requested path and rule path disagree. Only the single `Edit(//<task>/result.json5)` write is allowed; `Bash`, the `Edit` tool, and writes outside the task directory stay denied.
 

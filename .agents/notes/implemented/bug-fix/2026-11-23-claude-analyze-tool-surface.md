@@ -12,7 +12,7 @@ Status: implemented
 
 ## Decision
 
-analyze 的 argv 去掉 `--bare`，固定传 `--safe-mode`、`--restricted`、`--strict-mcp-config` 保留 bare 的上下文最小化（不自动发现 `CLAUDE.md`、不加载 hooks/plugins/MCP、不提供命令执行工具），再用 `--tools Read,Write` 把内置工具收缩为读取 schema 与写提交文件两项；`--permission-mode dontAsk` 不变。
+analyze 的 argv 去掉 `--bare`，固定传 `--safe-mode`、`--restricted`、`--strict-mcp-config` 保留 bare 的上下文最小化（不自动发现 `CLAUDE.md`、忽略用户/项目 settings 的 hooks/plugins、关闭 MCP、不提供命令执行工具），再用 `--tools Read,Write` 把内置工具收缩为读取 schema 与写提交文件两项；`--permission-mode dontAsk` 不变。
 
 工具规则由本次任务目录的绝对路径构造：`Read(//<task>/schema.json)` 与 `Edit(//<task>/result.json5)`。任务目录在构造 argv 前解析为真实路径，并同时作为 CLI 的 `cwd`，避免临时根目录是软链时请求路径与规则路径不一致。写入只放开 `Edit(//<task>/result.json5)` 这一条；`Bash`、`Edit` 工具与任务目录外的写入仍被拒绝。
 

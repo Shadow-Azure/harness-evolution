@@ -537,7 +537,8 @@ class ClaudeCodeProvider(AIAgentProvider):
 
         ``--bare`` is deliberately absent: it removes ``Write`` from the tool
         set, so the submission file could never be produced. The hardened flags
-        keep its context minimization (no CLAUDE.md/hooks/plugins, no MCP, no
+        keep its context minimization (no CLAUDE.md auto-discovery, hooks and
+        plugins from user/project settings ignored, MCP closed, no
         command-running tools) while ``--tools`` limits the built-in set to the
         two tools the submission needs. Writes are permission-checked against
         ``Edit`` rules, not ``Write`` rules, so the one write target is granted
