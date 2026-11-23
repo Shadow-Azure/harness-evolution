@@ -17,6 +17,7 @@ scope:
   - apps/api/app/third_party_api/ai_agent/**
   - apps/api/tests/**
   - tests/e2e/**
+  - plans/**
   - .agents/**
 adr:
   - ../../notes/proposed/feature/2026-11-22-evolution-real-ai-design.md
