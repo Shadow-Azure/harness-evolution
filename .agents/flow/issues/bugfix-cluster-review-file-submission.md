@@ -19,7 +19,8 @@ scope:
   - docs/**
   - plans/**
   - .agents/**
-adr: []
+adr:
+  - ../../notes/implemented/bug-fix/2026-11-23-claude-analyze-tool-surface.md
 github:
   number: 537
   url: https://github.com/Shadow-Azure/harness-evolution/issues/537
