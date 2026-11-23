@@ -457,7 +457,7 @@ jobs:
         run: |
           set -euo pipefail
           LOG="$RUNNER_TEMP/release.log"
-          CODES="$(grep -Eo 'ATTRIBUTION_(BWRAP_MISSING|BWRAP_UNUSABLE|PROVIDER_UNSUPPORTED|CONFIG_INVALID)' "$LOG" 2>/dev/null | sort -u | tr '\n' ' ' || true)"
+          CODES="$(grep -Eo 'ATTRIBUTION_(BWRAP_MISSING|BWRAP_UNUSABLE|PROVIDER_UNSUPPORTED|CONFIG_INVALID)' "$LOG" 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/ $//' || true)"
           {
             echo "## Deploy 失败"
             echo
@@ -468,7 +468,7 @@ jobs:
                 echo "主机缺少 \`bubblewrap\`。运行 [Provision workflow](https://github.com/${{ github.repository }}/actions/workflows/provision.yml) 并选择 \`install\`，完成后重跑 Deploy。"
                 ;;
               *ATTRIBUTION_BWRAP_UNUSABLE*)
-                echo "\`bubblewrap\` 存在但以 \`harness\` 身份运行命名空间探针失败。检查主机命名空间/seccomp 策略；Provision 的 \`check\` 会给出同一错误码。"
+                echo "\`bubblewrap\` 存在但以 \`harness\` 身份运行命名空间探针失败。检查主机命名空间/seccomp 策略；Ubuntu 24.04 可先用 Provision 的 \`install\` 安装 AppArmor profile。"
                 ;;
               *ATTRIBUTION_PROVIDER_UNSUPPORTED*)
                 echo "公共 Provider 缺少 Skill 能力；检查 \`AI_AGENT_PROVIDER\` 与 Provider 配置。"
