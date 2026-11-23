@@ -1,10 +1,10 @@
 # Annotate the production .env.example with required/optional and keep one template
 
-English | [中文](bugfix-29-env-example-required-first.md)
+English | [中文](bugfix-30-env-example-required-first.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-29
+id: bugfix-30
 milestone: bugfix
 depends: []
 priority: P2
@@ -76,7 +76,7 @@ grep -c '^# [A-Z][A-Z0-9_]*=' .env.example
 ```
 
 - All four gates are green.
-- `awk` prints nothing, proving every active required assignment is followed by a required explanation; `grep` prints 81, proving 81 optional entries are commented out by default.
+- `awk` prints nothing, proving every active required assignment is followed by a required explanation; `grep` prints 90, proving 90 optional entries are commented out by default.
 - The required block precedes the optional blocks in `.env.example`, and no line uses the `KEY=value # comment` form.
 
 ## Acceptance

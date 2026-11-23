@@ -1,10 +1,10 @@
 # 生产 .env.example 逐行标注必填/选填并收敛单一模板
 
-[English](bugfix-29-env-example-required-first.en.md) | 中文
+[English](bugfix-30-env-example-required-first.en.md) | 中文
 
 ```yaml flow
 kind: issue
-id: bugfix-29
+id: bugfix-30
 milestone: bugfix
 depends: []
 priority: P2
@@ -76,7 +76,7 @@ grep -c '^# [A-Z][A-Z0-9_]*=' .env.example
 ```
 
 - 四个门禁全绿。
-- `awk` 无输出，说明每个生效的必填赋值行后面都有一条必填说明；`grep` 输出 81，说明 81 个选填项默认被注释。
+- `awk` 无输出，说明每个生效的必填赋值行后面都有一条必填说明；`grep` 输出 90，说明 90 个选填项默认被注释。
 - `.env.example` 的必填段在选填段之前，且不存在 `KEY=value # 注释` 形式的行尾注释。
 
 ## 验收标准
