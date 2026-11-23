@@ -10,7 +10,7 @@ depends:
   - bugfix-19
   - bugfix-21
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - docs/**
