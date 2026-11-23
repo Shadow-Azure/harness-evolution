@@ -11,7 +11,7 @@ depends:
   - bugfix-26
   - bugfix-28
 priority: P2
-status: ready
+status: done
 scope:
   - apps/api/app/third_party_api/ai_agent/claude_code.py
   - apps/api/tests/**
