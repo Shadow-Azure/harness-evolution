@@ -261,12 +261,50 @@ jobs:
         run: |
           set -euo pipefail
           SSH_CMD="ssh -i ~/deploy_key -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
-          BIN=/opt/harness/shared/claude-code/current/usr/bin/claude
-          SETTINGS=/opt/harness/shared/claude-code/config/settings.json
-          $SSH_CMD "$SSH_USER@$SSH_HOST" \
-            "test -x '$BIN' && test -r '$SETTINGS' && [ \"\$(stat -c '%a' '$SETTINGS')\" = 644 ]" \
-            || { echo "::error::Claude Code 共享资产不可被服务用户执行/读取，发布中止"; exit 1; }
-          echo "Claude Code 共享资产预检通过：$BIN，$SETTINGS"
+          # deploy 是目录属主，test -x 必然通过；必须检查 other 位，等价于
+          # harness 视角。sudo -u harness 仅 bootstrap 授予 systemctl 权限，
+          # 没有该权限时退化为位检查并显式告警，不阻断流水线。
+          $SSH_CMD "$SSH_USER@$SSH_HOST" 'bash -s' <<'REMOTE'
+          set -uo pipefail
+          PREFIX=/opt/harness/shared/claude-code
+          BIN=$PREFIX/current/usr/bin/claude
+          SETTINGS=$PREFIX/config/settings.json
+          VER=$(readlink -f "$PREFIX/current" || true)
+          failed=0
+          require_other() {
+            path=$1
+            label=$2
+            mask=$3
+            if [ ! -e "$path" ]; then
+              echo "::error::$label 缺失：$path" >&2
+              failed=1
+              return
+            fi
+            mode=$(stat -c '%a' "$path") || { echo "::error::无法读取权限：$path" >&2; failed=1; return; }
+            other=$(( 10#$mode % 10 ))
+            if [ $(( other & mask )) -ne "$mask" ]; then
+              echo "::error::$label 对服务用户不可用（other 位 ${mode}）：$path" >&2
+              failed=1
+            fi
+          }
+          require_other "$PREFIX" "版本前缀目录" 1
+          require_other "$VER" "版本目录" 1
+          require_other "$VER/usr" "usr 目录" 1
+          require_other "$VER/usr/bin" "usr/bin 目录" 1
+          require_other "$BIN" "二进制" 1
+          require_other "$SETTINGS" "共享 settings" 4
+          if [ "$failed" -ne 0 ]; then
+            exit 1
+          fi
+          if sudo -n -u harness true >/dev/null 2>&1; then
+            sudo -n -u harness "$BIN" --version \
+              || { echo "::error::harness 无法执行 $BIN" >&2; exit 1; }
+            echo "Claude Code 共享资产预检通过（harness 冒烟成功）：$BIN，$SETTINGS"
+          else
+            echo "::warning::deploy 无 sudo -u harness 权限，跳过服务账号执行冒烟；other 位检查已通过"
+            echo "Claude Code 共享资产预检通过（other 位）：$BIN，$SETTINGS"
+          fi
+          REMOTE
 
       - name: 注入部署配置（数据目录 + 可选评测 + Git 代理 + Git 推送凭据）
         env:
