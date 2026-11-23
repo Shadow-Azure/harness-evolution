@@ -27,9 +27,9 @@ github:
 
 On 2026-11-23 a user reported that step 1 of "Launch evolution" still requires two manual date-picker selections for the bad-case time range. Common windows such as the last 7 days, last 30 days, or last half year are re-entered every time; it is slow and easy to reverse the start and end dates. The user asked for three presets in the prototype first, with the concrete dates filled in on click, and for the request, before/after prototype screenshots, and solution to be recorded in an issue while the PR also updates the design docs.
 
-The current prototype (baseline `main@6d473733`) has only two native date inputs in step 1, defaulting to `2026-10-01 ~ 2026-11-09`, with no shortcut above them:
+The current prototype (baseline `main@d33b2c45`) has only two native date inputs in step 1, defaulting to `2026-10-01 ~ 2026-11-09`, with no shortcut above them:
 
-![Prototype before: step 1 of the launch wizard has only two date inputs and no range shortcut (baseline main@6d473733)](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/before-wizard1.png)
+![Prototype before: step 1 of the launch wizard has only two date inputs and no range shortcut (baseline main@d33b2c45)](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/before-wizard1-v3.png)
 
 ### Observations
 
@@ -80,15 +80,15 @@ After the prototype change (same scenario, 1500×900 viewport, light theme, `u=a
 
 **Last 30 days selected; dates become 2026-10-12 ~ 2026-11-10**
 
-![Prototype after: clicking Last 30 days fills 2026-10-12 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-30d-v2.png)
+![Prototype after: clicking Last 30 days fills 2026-10-12 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-30d-v3.png)
 
 **Last 7 days selected; dates become 2026-11-04 ~ 2026-11-10**
 
-![Prototype after: clicking Last 7 days fills 2026-11-04 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-7d-v2.png)
+![Prototype after: clicking Last 7 days fills 2026-11-04 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-7d-v3.png)
 
 **Last half year selected; dates become 2026-05-10 ~ 2026-11-10**
 
-![Prototype after: clicking Last half year fills 2026-05-10 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-6m-v2.png)
+![Prototype after: clicking Last half year fills 2026-05-10 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-6m-v3.png)
 
 ### Design docs and decision record
 
@@ -135,7 +135,7 @@ pnpm lint:docs
 - Open `plans/ui-prototype-v2/harness-evolution.html?u=admin&page=evo&demo=wizard1` in Chrome at 1500×900 in the light theme.
 - The initial dates are `2026-10-01 ~ 2026-11-09` and no shortcut is highlighted. Clicking "Last 30 days" changes the inputs to `2026-10-12 ~ 2026-11-10` with only that pill highlighted; "Last 7 days" and "Last half year" produce `2026-11-04 ~ 2026-11-10` and `2026-05-10 ~ 2026-11-10`.
 - After manually changing the end date to `2026-11-09`, no shortcut is highlighted; clicking "Next: associate Sessions" still runs the original required and `from <= to` validation.
-- See the evidence above; the before image is baseline `main@6d473733`, and the after images come from this issue's branch.
+- See the evidence above; the before image is baseline `main@d33b2c45`, and the after images come from this issue's branch.
 
 ## Acceptance
 

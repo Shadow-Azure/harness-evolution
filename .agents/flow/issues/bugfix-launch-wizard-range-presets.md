@@ -27,9 +27,9 @@ github:
 
 2026-11-23，用户反馈「启动自进化」第 1 步的「bad case 时间段」只能手动点两次日期选择器。近 7 天、近 30 天、近半年这类常用窗口每次都要重复选择起止日，既慢又容易把起止日选反。用户希望在原型中先支持三个快捷项，点选后自动填出具体日期，并把诉求、原型修改前后截图和修改方案写进 issue，PR 同时修改设计文档。
 
-当前原型（基线 `main@6d473733`）第 1 步只有两个原生日期输入，默认 `2026-10-01 ~ 2026-11-09`，日期上方没有任何快捷入口：
+当前原型（基线 `main@d33b2c45`）第 1 步只有两个原生日期输入，默认 `2026-10-01 ~ 2026-11-09`，日期上方没有任何快捷入口：
 
-![原型修改前：启动自进化第 1 步只有两个日期输入，没有时间段快捷项（基线 main@6d473733）](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/before-wizard1.png)
+![原型修改前：启动自进化第 1 步只有两个日期输入，没有时间段快捷项（基线 main@d33b2c45）](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/before-wizard1-v3.png)
 
 ### 现场观察
 
@@ -80,15 +80,15 @@ github:
 
 **近 30 天已选中，日期自动填为 2026-10-12 ~ 2026-11-10**
 
-![原型修改后：点击近 30 天后自动填入 2026-10-12 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-30d-v2.png)
+![原型修改后：点击近 30 天后自动填入 2026-10-12 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-30d-v3.png)
 
 **近 7 天已选中，日期自动填为 2026-11-04 ~ 2026-11-10**
 
-![原型修改后：点击近 7 天后自动填入 2026-11-04 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-7d-v2.png)
+![原型修改后：点击近 7 天后自动填入 2026-11-04 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-7d-v3.png)
 
 **近半年已选中，日期自动填为 2026-05-10 ~ 2026-11-10**
 
-![原型修改后：点击近半年后自动填入 2026-05-10 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-6m-v2.png)
+![原型修改后：点击近半年后自动填入 2026-05-10 ~ 2026-11-10](https://github.com/Shadow-Azure/harness-evolution/releases/download/launch-wizard-range-presets-evidence-20261123/after-6m-v3.png)
 
 ### 设计文档与决策记录
 
@@ -135,7 +135,7 @@ pnpm lint:docs
 - 浏览器打开 `plans/ui-prototype-v2/harness-evolution.html?u=admin&page=evo&demo=wizard1`（Chrome，1500×900，浅色主题）。
 - 初始日期为 `2026-10-01 ~ 2026-11-09`，三个胶囊都不高亮；点击「近 30 天」后输入框变为 `2026-10-12 ~ 2026-11-10`，只有「近 30 天」高亮；点击「近 7 天」和「近半年」分别得到 `2026-11-04 ~ 2026-11-10` 与 `2026-05-10 ~ 2026-11-10`。
 - 手动把结束日改成 `2026-11-09` 后，三个胶囊都不再高亮；点击「下一步：关联 Session」仍按原有必填与 `from <= to` 校验执行。
-- 截图见上方证据；同一场景下的修改前图片为基线 `main@6d473733`，修改后图片为本 issue 分支。
+- 截图见上方证据；同一场景下的修改前图片为基线 `main@d33b2c45`，修改后图片为本 issue 分支。
 
 ## 验收标准
 
