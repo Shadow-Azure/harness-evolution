@@ -606,7 +606,9 @@ def _feedback_prompt(feedback: PatchFeedback | None) -> str:
     """Render the rejected round's feedback and rejected-edit buffer."""
     if feedback is None:
         return ""
-    lines = ["## 上一轮反馈（同一问题簇的候选被评测拒绝，本次必须修正）"]
+    lines = [
+        f"## 上一轮反馈（同一问题簇第 {feedback.attempt} 次尝试被评测拒绝，本次必须修正）",
+    ]
     if feedback.current_score is not None and feedback.candidate_score is not None:
         delta = feedback.candidate_score - feedback.current_score
         lines.append(
