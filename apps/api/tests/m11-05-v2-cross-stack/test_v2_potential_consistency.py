@@ -408,7 +408,7 @@ async def test_cache_reuse_equals_potential_and_non_target_stays_out_of_clusters
         "potential": POTENTIAL,
         "reused": POTENTIAL,
         "missing": 0,
-        "bySkill": {"platform-default": POTENTIAL},
+        "bySkill": {},
         "fresh": 0,
         "nonTargetKnown": 1,
     }

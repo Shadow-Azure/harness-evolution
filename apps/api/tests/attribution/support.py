@@ -172,6 +172,7 @@ async def seed_run(
     *,
     attribution_engine: str = "rule-v1",
     cache_enabled: bool = True,
+    target_revision: str | None = None,
 ) -> None:
     """Insert one V2 run with the attribution snapshot columns."""
     async with database.transaction() as session:
@@ -186,12 +187,14 @@ async def seed_run(
                 target_type="skill",
                 target_name=TARGET_NAME,
                 target_version=TARGET_VERSION,
+                target_revision=target_revision,
                 repo_url="https://example.invalid/skills.git",
                 sub_dir="skills/deep-research",
                 status="preparing",
                 progress_unit=2,
                 potential_policy={
                     "preset": "default",
+                    "legacyRule": False,
                     "includeSelfReport": True,
                     "includeAfterObject": True,
                     "sameObjectOnly": False,

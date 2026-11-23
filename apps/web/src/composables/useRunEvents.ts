@@ -160,6 +160,10 @@ export function useRunEvents(
     if (event === null) return;
     if (event.seq > loadedSeq.value) loadedSeq.value = event.seq;
     handlers.onEvent?.(event);
+    if (["run_pause_requested", "run_paused", "run_continued"].includes(event.eventType)) {
+      invalidateRun();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.evolutionRuns(toValue(workspaceId)) });
+    }
   }
 
   function registerLifecycle(

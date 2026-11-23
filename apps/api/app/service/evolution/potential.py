@@ -13,12 +13,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from functools import cmp_to_key
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field, field_validator
 
 from app.constants import POST_PROCESS_EVENT_INDEX
-from app.db.crud.attributions import AttributionRepository
+from app.db.crud.attributions import AttributionRepository, attribution_cache_key
 from app.db.crud.evolution_targets import EvolutionTargetRecord
 from app.db.crud.potential import (
     AgentNodeRecord,
@@ -30,7 +30,7 @@ from app.db.crud.potential import (
     window_day_boundaries,
 )
 from app.errors import AppError, ErrorCode
-from app.service.evolution.attribution_contracts import default_execution_manifest
+from app.service.evolution.attribution_contracts import default_execution_manifest, is_platform_rule
 from app.service.evolution.target_content import (
     TargetVersionResolver,
     resolve_legacy_target_version,
@@ -38,6 +38,9 @@ from app.service.evolution.target_content import (
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.schemas import IdentityModel
 from app.utils.time import now_shanghai
+
+if TYPE_CHECKING:
+    from app.service.evolution.attribution_skills import AttributionSkillService
 
 OrderState = Literal["comparable", "unknown"]
 HitReason = Literal[
@@ -328,6 +331,7 @@ class AttributionPreviewResult(IdentityModel):
     """Read-only counts and whether this deployment can run workspace Skill packages."""
 
     can_recompute: bool
+    uses_bound_skill: bool
 
     summary: AttributionPreviewSummary
     target_revision: str | None = None
@@ -791,6 +795,7 @@ class PotentialMatcher:
         match: PotentialMatch,
         *,
         cache_enabled: bool,
+        legacy_rule: bool = False,
     ) -> AttributionPreviewCounts:
         """Count existing cache keys and the historical non-target reference.
 
@@ -805,7 +810,17 @@ class PotentialMatcher:
         reused = 0
         if cache_enabled and match.included:
             keys = tuple(
-                default_execution_manifest(
+                attribution_cache_key(
+                    condition.workspace_id,
+                    item.bad_case_id,
+                    condition.target_type,
+                    condition.target_name,
+                    condition.target_revision,
+                    POLICY_VERSION,
+                    ATTRIBUTION_ENGINE,
+                )
+                if legacy_rule
+                else default_execution_manifest(
                     workspace_id=condition.workspace_id,
                     bad_case_id=item.bad_case_id,
                     target_type=condition.target_type,
@@ -849,12 +864,14 @@ class PotentialPreviewService:
         *,
         local_agent: bool = False,
         reports: AttributionRepository | None = None,
+        rule_skills: AttributionSkillService | None = None,
     ) -> None:
         """Bind target configuration validation, the matcher, and content resolution."""
         self._targets = targets
         self._matcher = matcher
         self._resolver = resolver
         self._reports = reports
+        self._rule_skills = rule_skills
         self._local_agent = local_agent
 
     async def sessions(
@@ -864,7 +881,7 @@ class PotentialPreviewService:
         workspace_id: str,
     ) -> SessionPreviewResult:
         """Return paged associated Sessions plus the non-overlapping partition."""
-        condition = await self._condition(body, workspace_id=workspace_id)
+        condition, _ = await self._condition(body, workspace_id=workspace_id)
         association = await self._matcher.associated_sessions(condition)
         if not association.sessions:
             raise _no_associated_sessions(association)
@@ -901,7 +918,7 @@ class PotentialPreviewService:
         workspace_id: str,
     ) -> PotentialPreviewResult:
         """Return paged included cases plus the closed reason distribution."""
-        condition = await self._condition(body, workspace_id=workspace_id)
+        condition, _ = await self._condition(body, workspace_id=workspace_id)
         policy = resolve_policy(body.policy)
         association = await self._matcher.associated_sessions(condition)
         if not association.sessions:
@@ -941,7 +958,7 @@ class PotentialPreviewService:
         workspace_id: str,
     ) -> AttributionPreviewResult:
         """Return cache reuse counts without executing or writing attribution."""
-        condition = await self._condition(body, workspace_id=workspace_id)
+        condition, config = await self._condition(body, workspace_id=workspace_id)
         policy = resolve_policy(body.policy)
         association = await self._matcher.associated_sessions(condition)
         if not association.sessions:
@@ -949,7 +966,7 @@ class PotentialPreviewService:
         match = await self._matcher.potential_cases(condition, association, policy)
         if not match.included:
             raise _no_potential_matched()
-        if self._reports:
+        if self._reports and config.attribution_package_id:
             rows = await self._reports.latest_reports(
                 workspace_id,
                 condition.target_type,
@@ -962,6 +979,7 @@ class PotentialPreviewService:
                 groups[skill] = groups.get(skill, 0) + 1
             return AttributionPreviewResult(
                 can_recompute=self._local_agent,
+                uses_bound_skill=True,
                 summary=AttributionPreviewSummary(
                     potential=match.potential,
                     reused=len(rows) if body.cache_enabled else 0,
@@ -972,14 +990,20 @@ class PotentialPreviewService:
                 ),
                 target_revision=condition.target_revision,
             )
+        legacy_rule = False
+        if not self._local_agent and self._rule_skills is not None:
+            resolved_skill = await self._rule_skills.resolve(workspace_id, config.id)
+            legacy_rule = is_platform_rule(resolved_skill.skill_key, resolved_skill.executor_type)
         deferred = self._local_agent and body.cache_enabled
         counts = await self._matcher.attribution_preview(
             condition,
             match,
             cache_enabled=body.cache_enabled and not deferred,
+            legacy_rule=legacy_rule,
         )
         return AttributionPreviewResult(
             can_recompute=self._local_agent,
+            uses_bound_skill=False,
             summary=AttributionPreviewSummary(
                 potential=counts.potential,
                 reused=None if deferred else counts.reused,
@@ -994,7 +1018,7 @@ class PotentialPreviewService:
         body: PreviewCondition,
         *,
         workspace_id: str,
-    ) -> MatchCondition:
+    ) -> tuple[MatchCondition, EvolutionTargetRecord]:
         """Validate the target/window and resolve the version and day bounds."""
         config = await self._targets.enabled_config(
             body.target_type,
@@ -1029,7 +1053,7 @@ class PotentialPreviewService:
             target_revision=target_revision,
             window_start=window_start,
             window_end=window_end,
-        )
+        ), config
 
     async def _resolve_version(
         self,

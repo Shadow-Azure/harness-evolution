@@ -44,17 +44,24 @@ Only the private key lives in GitHub; its public half sits in `deploy`'s `author
 
 ## Config injection
 
-The data directory and evaluation config share one channel into the server `.env`: `Deploy` takes an absolute path from the GitHub Environment `vars.HE_DATA_DIR` (the default applies when empty), and evaluation-platform secrets (`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`) arrive from GitHub Secrets; `apiKeyRef` stores only an environment-variable name and the step is skipped when absent. Values travel base64-encoded and `inject-config.py` writes them atomically, backing up `.env.bak.<sha>` first; decode failures warn and skip, disk-write failures abort the release. Steps: [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md); template: [deploy/env.production.example](../deploy/env.production.example).
+The data directory and evaluation config share one channel into the server `.env`: `Deploy` takes an absolute path from the GitHub Environment `vars.HE_DATA_DIR` (the default applies when empty), and evaluation-platform secrets (`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`) arrive from GitHub Secrets; `apiKeyRef` stores only an environment-variable name and the step is skipped when absent. Git push credentials ride the same channel: `HE_GIT_PUSH_PROVIDER` is always written, `HE_GIT_PUSH_TOKEN` is unset when empty, and `GIT_ASKPASS` points at `/opt/harness/shared/git-askpass.sh`. Values travel base64-encoded and `inject-config.py` writes them atomically while keeping `.env` at 0600, backing up `.env.bak.<sha>` first; decode failures warn, skip, and keep the old value, disk-write failures abort the release. Steps: [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md); template: [deploy/env.production.example](../deploy/env.production.example).
+
+### AI Agent configuration
+
+Model review and patch generation take Secrets `AI_AGENT_PROVIDER`, `HE_AI_AGENT_FAILURE_POLICY`, and `HE_PATCH_SOURCE_MODE`: a present, non-empty value is written to `.env`, a missing or empty one is explicitly `--unset`, and the service falls back to the Settings defaults (defaults and allowed values are in the [template](../deploy/env.production.example)). A newline or carriage return in a value fails the deploy before injection (a skipped value is not a deletion); other keys still warn, skip, and keep their old value on decode failures. When `HE_AI_AGENT_FAILURE_POLICY` is empty it derives from the provider: `degrade` for `fake` and `strict` for every other provider (including the default `claude-code`); under `strict`, a cluster AI failure fails the run explicitly at the cluster stage without fallback values.
+
+The API runs as `harness` with no home: the deploy installs Claude Code with a stable `current` path and shared settings (see below), and writes `CLAUDE_CODE_API_KEY` as `ANTHROPIC_API_KEY` into the 0600 `.env`; the CLI and settings no longer live in `deploy`'s home. The `HE_AI_AGENT_CLAUDE_BIN` Secret is only a manual override when the install step is skipped; `HE_AI_AGENT_CLAUDE_SETTINGS` and `CLAUDE_CONFIG_DIR` are injected automatically. `agent-edit` is available with a configured provider.
 
 ## Claude Code
 
-Before switching `current`, the deploy pipeline installs Claude Code for the `deploy` user and writes model configuration from GitHub Secrets; the runner fetches the package and the server only extracts it, with no `claude.ai` access, root, or Node.js. The three secrets, MiniMax setup, verification and rollback live in [Claude Code operations](claude-code.en.md).
+Before switching `current`, the deploy pipeline installs Claude Code and writes service-level shared configuration: a version directory plus a stable `current` symlink, a 0644 shared `settings.json` without credentials, and `ANTHROPIC_API_KEY` in the 0600 `.env`. The runner fetches the package and the server only extracts it, with no `claude.ai` access, root, or Node.js; a service-user executable/readable preflight runs before the `current` switch. Secrets, MiniMax setup, verification and rollback live in [Claude Code operations](claude-code.en.md).
 
 ## Release and rollback
 
 - Trigger: push to main → CI green → `Deploy`; `workflow_dispatch` also available.
 - Behavior: [deploy/release.sh](../deploy/release.sh) validates the data directory → installs dependencies → `alembic upgrade head` → switches the `current` symlink → restarts harness-api → probes `/api/health` (up to 60 seconds).
 - Rollback: on a failed probe it restores `.env` first, then returns the symlink to the previous release and restarts; the server keeps the latest 5 releases and 5 `.env` backups.
+- Restart drain: the systemd unit uses `KillMode=mixed` + `TimeoutStopSec=45` so the main process receives SIGTERM first; the application waits for in-flight jobs up to `HE_JOB_DRAIN_TIMEOUT_SECONDS` (25 seconds by default), then releases the lease and marks the job `interrupted` for automatic recovery on the next start.
 - Migrations are idempotent: repeated releases have zero side effects on applied migrations.
 
 ## Data directory and writability check
@@ -69,7 +76,7 @@ When production access to GitHub is unstable, a local Xray/VLESS proxy that serv
 
 ## Git workspaces and pushes
 
-Evolution run workspaces cache the target ref and clone from it; the push target is controlled by `HE_GIT_PUSH` / `HE_GIT_PUSH_URL`. See [Git workspaces and pushes](git-workspace.en.md) for the cache, single-ref clone, push credential policy, and per-operation proxy observability.
+Run workspaces cache the target ref and clone from it; the provider creates the fork automatically, with `HE_GIT_PUSH_URL` as the no-token fallback. See [Git workspaces and pushes](git-workspace.en.md) for the cache, single-ref clone, push credential policy, and per-operation proxy observability.
 
 ## Upstream health and drift logs
 

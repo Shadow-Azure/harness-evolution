@@ -10,12 +10,20 @@ import signal
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
+from app.third_party_api.ai_agent.claude_code import (
+    DEFAULT_CLAUDE_BIN,
+    claude_binary,
+    claude_settings_file,
+)
 from app.third_party_api.attribution.backend import AgentBackend
 from app.third_party_api.attribution.transcript import read_transcript
 from app.utils.redaction import sanitize_value
+
+if TYPE_CHECKING:
+    from app.config import Settings
 
 _PROVIDER_ENV = (
     "ANTHROPIC_API_KEY",
@@ -25,11 +33,12 @@ _PROVIDER_ENV = (
     "ANTHROPIC_DEFAULT_SONNET_MODEL",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL",
     "ANTHROPIC_MODEL",
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+    "CLAUDE_CODE_EFFORT_LEVEL",
 )
 
 
-def _provider_environment() -> dict[str, str]:
-    settings = Path.home() / ".claude/settings.json"
+def _provider_environment(settings: Path) -> dict[str, str]:
     configured = json.loads(settings.read_text()).get("env", {}) if settings.is_file() else {}
     return {
         key: value
@@ -38,7 +47,7 @@ def _provider_environment() -> dict[str, str]:
     }
 
 
-def _environment(directory: Path) -> dict[str, str]:
+def _environment(directory: Path, provider_env: dict[str, str]) -> dict[str, str]:
     home = directory / "home"
     temp = directory / "tmp"
     home.mkdir()
@@ -54,7 +63,7 @@ def _environment(directory: Path) -> dict[str, str]:
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         "CLAUDE_CONFIG_DIR": str(home / ".claude"),
     }
-    env.update(_provider_environment())
+    env.update(provider_env)
     return env
 
 
@@ -120,7 +129,8 @@ def _sandbox(directory: Path, executable: str) -> list[str]:
 
 
 class ClaudeBackend(AgentBackend):
-    def __init__(self) -> None:
+    def __init__(self, settings: "Settings | None" = None) -> None:
+        self._settings = settings
         self._session_id = str(uuid4())
         self._details: dict[str, Any] = {}
         self._secrets: tuple[str, ...] = ()
@@ -149,7 +159,7 @@ class ClaudeBackend(AgentBackend):
         return cast(dict[str, Any], scrub(details))
 
     def model_identity(self, model: str) -> dict[str, str]:
-        env = _provider_environment()
+        env = _provider_environment(claude_settings_file(self._settings))
         resolved = env.get(f"ANTHROPIC_DEFAULT_{model.upper()}_MODEL", model)
         # Cache identity covers the endpoint without persisting its path or user info.
         endpoint = env.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
@@ -160,11 +170,15 @@ class ClaudeBackend(AgentBackend):
         }
 
     async def execute(self, directory: Path, prompt: str, model: str, timeout_seconds: int) -> int:
-        executable = shutil.which("claude")
+        executable = shutil.which(claude_binary(self._settings))
+        if executable is None and (
+            not self._settings or self._settings.ai_agent_claude_bin == DEFAULT_CLAUDE_BIN
+        ):
+            executable = shutil.which("claude")
         if executable is None:
             raise RuntimeError("claude executable unavailable")
         directory = await asyncio.to_thread(directory.resolve)
-        env = _environment(directory)
+        env = _environment(directory, _provider_environment(claude_settings_file(self._settings)))
         self._secrets = tuple(
             env[k] for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN") if env.get(k)
         )

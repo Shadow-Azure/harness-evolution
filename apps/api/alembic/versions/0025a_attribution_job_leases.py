@@ -1,7 +1,7 @@
-"""Add durable leases, cancellation, and retry limits to jobs.
+"""Add attribution cancellation and retry limits to durable jobs.
 
-Revision ID: 0025
-Revises: 0024
+Revision ID: 0025a
+Revises: 0024a
 Create Date: 2026-11-18
 """
 
@@ -12,8 +12,8 @@ from sqlalchemy import inspect
 
 from alembic import op
 
-revision: str = "0025"
-down_revision: str | None = "0024"
+revision: str = "0025a"
+down_revision: str | None = "0024a"
 branch_labels: str | None = None
 depends_on: str | None = None
 
@@ -27,8 +27,6 @@ def upgrade() -> None:
     """Add cross-process claim metadata without changing existing job identities."""
     columns = _columns()
     additions = (
-        sa.Column("lease_owner", sa.String(length=64), nullable=True),
-        sa.Column("lease_expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "max_attempts",
             sa.Integer(),
@@ -45,21 +43,12 @@ def upgrade() -> None:
     for column in additions:
         if column.name not in columns:
             op.add_column("job_runs", column)
-    op.create_index(
-        "ix_job_runs_lease_expiry",
-        "job_runs",
-        ["status", "lease_expires_at"],
-        unique=False,
-    )
 
 
 def downgrade() -> None:
     """Remove durable-claim metadata."""
-    indexes = {item["name"] for item in inspect(op.get_bind()).get_indexes("job_runs")}
-    if "ix_job_runs_lease_expiry" in indexes:
-        op.drop_index("ix_job_runs_lease_expiry", table_name="job_runs")
     columns = _columns()
-    names = ("cancel_requested", "max_attempts", "lease_expires_at", "lease_owner")
+    names = ("cancel_requested", "max_attempts")
     if op.get_bind().dialect.name == "sqlite":
         with op.batch_alter_table("job_runs") as batch_op:
             for name in names:

@@ -308,10 +308,12 @@ def _apply_agent_revisions(
 
     The revision belongs to the parent's ``kind=agent`` event, but its body and
     builtin marker are only available in the child transcript. A parent tag from
-    explicit call metadata always wins; a missing child revision stays unknown.
+    explicit call metadata always wins. A missing child revision stays unknown,
+    but the definition hash still has to reach the event so the matcher can bind
+    the target body.
     """
     for transcript in transcripts:
-        if transcript.agent_revision is None:
+        if transcript.agent_revision is None and transcript.agent_definition_hash is None:
             continue
         child = nodes.get(transcript.agent_id)
         if child is None or child.parent_agent_id is None:

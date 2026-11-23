@@ -222,6 +222,20 @@ def test_digest_only_default_ref_merges_through_run_evidence() -> None:
     assert labels[old_digest].ref == "v6.4.1"
 
 
+def test_bound_snapshot_merges_a_ref_only_group_and_keeps_other_digests() -> None:
+    current = "digest:" + "a" * 64
+    historic = "digest:" + "b" * 64
+    observed = (
+        ObjectVersionRecord("tag:main", None),
+        ObjectVersionRecord("main", historic),
+        ObjectVersionRecord(None, current),
+    )
+    versions, labels = _build_version_labels("main", observed, (), bound_revision=current)
+    assert set(versions) == {current, historic}
+    assert labels[current].digest == current
+    assert labels[historic].digest == historic
+
+
 def test_newest_link_state_and_category_projection() -> None:
     """The newest matching link owns the state and only attributed rows get a category."""
     links = (

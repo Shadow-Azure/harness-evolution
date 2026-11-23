@@ -133,7 +133,8 @@ async function waitForTargetConfigPage(page, label, violations) {
   try {
     await waitForDocument(
       page.session,
-      `document.querySelector("h1")?.textContent === "进化对象配置"`,
+      `document.querySelector("h1")?.textContent === "进化对象配置" &&
+        document.querySelectorAll(".target-table tbody tr").length > 0`,
       label,
     );
   } catch (error) {
@@ -226,7 +227,8 @@ async function runTool(action, value) {
     env: {
       ...process.env,
       HE_DATA_DIR: dataDir,
-    HE_ATTRIBUTION_PACKAGE_DIR: path.join(dataDir, "attribute"),
+      HE_ATTRIBUTION_AGENT: "",
+      HE_ATTRIBUTION_PACKAGE_DIR: path.join(dataDir, "attribute"),
       HE_DB_DIALECT: "sqlite",
       HE_JWT_SECRET: secret,
       PYTHONPATH: apiDir,
@@ -249,6 +251,7 @@ before(async () => {
     HE_ADMIN_PASSWORD: initialPassword,
     HE_ADMIN_USERNAME: "admin",
     HE_DATA_DIR: dataDir,
+    HE_ATTRIBUTION_AGENT: "",
     HE_ATTRIBUTION_PACKAGE_DIR: path.join(dataDir, "attribute"),
     HE_DB_DIALECT: "sqlite",
     HE_JWT_SECRET: secret,
@@ -365,7 +368,7 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
     await installCookie(page, admin.cookie);
     await page.session.send("Emulation.setDeviceMetricsOverride", {
       width: 1408,
-      height: 960,
+      height: 788,
       deviceScaleFactor: 1,
       mobile: false,
     });
@@ -383,6 +386,9 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
         const note = page.querySelector(".page-note");
         const headingStyle = getComputedStyle(heading);
         const noteStyle = getComputedStyle(note);
+        const scroller = page.querySelector(".target-table-scroll");
+        const actions = [...page.querySelectorAll(".row-actions")];
+        const scrollerRect = scroller.getBoundingClientRect();
         return {
           width: rect.width,
           contentWidth:
@@ -402,11 +408,17 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
           headingFontWeight: headingStyle.fontWeight,
           noteFontSize: noteStyle.fontSize,
           noteColor: noteStyle.color,
+          tableScrollWidth: scroller.scrollWidth,
+          tableClientWidth: scroller.clientWidth,
+          actionsFullyVisible: actions.length > 0 &&
+            actions.every(
+              (node) => node.getBoundingClientRect().right <= scrollerRect.right + 0.5,
+            ),
         };
       })()`,
     );
-    assert.ok(Math.abs(desktopLayout.width - 1080) <= 1, JSON.stringify(desktopLayout));
-    assert.ok(Math.abs(desktopLayout.contentWidth - 1032) <= 1, JSON.stringify(desktopLayout));
+    assert.ok(Math.abs(desktopLayout.width - 1408) <= 1, JSON.stringify(desktopLayout));
+    assert.ok(Math.abs(desktopLayout.contentWidth - 1360) <= 1, JSON.stringify(desktopLayout));
     assert.equal(desktopLayout.paddingLeft, 24);
     assert.equal(desktopLayout.paddingRight, 24);
     assert.ok(
@@ -419,6 +431,90 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
     assert.equal(desktopLayout.noteFontSize, "12px");
     assert.equal(desktopLayout.noteColor, "rgb(154, 162, 174)");
     assert.equal(desktopLayout.pageScrollWidth, desktopLayout.pageClientWidth);
+    assert.equal(
+      desktopLayout.tableScrollWidth,
+      desktopLayout.tableClientWidth,
+      JSON.stringify(desktopLayout),
+    );
+    assert.equal(desktopLayout.actionsFullyVisible, true, JSON.stringify(desktopLayout));
+
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1920,
+      height: 1080,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    const wideLayout = await evaluate(
+      page,
+      `(() => {
+        const page = document.querySelector(".target-config-page");
+        const rect = page.getBoundingClientRect();
+        const style = getComputedStyle(page);
+        const scroller = page.querySelector(".target-table-scroll");
+        const actions = [...page.querySelectorAll(".row-actions")];
+        const scrollerRect = scroller.getBoundingClientRect();
+        return {
+          width: rect.width,
+          contentWidth:
+            rect.width -
+            Number.parseFloat(style.paddingLeft) -
+            Number.parseFloat(style.paddingRight),
+          center: rect.left + rect.width / 2,
+          viewportCenter: document.documentElement.clientWidth / 2,
+          pageScrollWidth: document.documentElement.scrollWidth,
+          pageClientWidth: document.documentElement.clientWidth,
+          tableScrollWidth: scroller.scrollWidth,
+          tableClientWidth: scroller.clientWidth,
+          actionsFullyVisible: actions.length > 0 &&
+            actions.every(
+              (node) => node.getBoundingClientRect().right <= scrollerRect.right + 0.5,
+            ),
+        };
+      })()`,
+    );
+    assert.ok(Math.abs(wideLayout.width - 1720) <= 1, JSON.stringify(wideLayout));
+    assert.ok(Math.abs(wideLayout.contentWidth - 1672) <= 1, JSON.stringify(wideLayout));
+    assert.ok(
+      Math.abs(wideLayout.center - wideLayout.viewportCenter) <= 1,
+      JSON.stringify(wideLayout),
+    );
+    assert.equal(wideLayout.pageScrollWidth, wideLayout.pageClientWidth);
+    assert.equal(wideLayout.tableScrollWidth, wideLayout.tableClientWidth, JSON.stringify(wideLayout));
+    assert.equal(wideLayout.actionsFullyVisible, true, JSON.stringify(wideLayout));
+
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1024,
+      height: 768,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    const narrowLayout = await evaluate(
+      page,
+      `(() => {
+        const page = document.querySelector(".target-config-page");
+        const rect = page.getBoundingClientRect();
+        const style = getComputedStyle(page);
+        const scroller = page.querySelector(".target-table-scroll");
+        return {
+          width: rect.width,
+          contentWidth:
+            rect.width -
+            Number.parseFloat(style.paddingLeft) -
+            Number.parseFloat(style.paddingRight),
+          pageScrollWidth: document.documentElement.scrollWidth,
+          pageClientWidth: document.documentElement.clientWidth,
+          tableScrollWidth: scroller.scrollWidth,
+          tableClientWidth: scroller.clientWidth,
+        };
+      })()`,
+    );
+    assert.ok(Math.abs(narrowLayout.width - 1024) <= 1, JSON.stringify(narrowLayout));
+    assert.ok(Math.abs(narrowLayout.contentWidth - 976) <= 1, JSON.stringify(narrowLayout));
+    assert.equal(narrowLayout.pageScrollWidth, narrowLayout.pageClientWidth);
+    assert.ok(
+      narrowLayout.tableScrollWidth > narrowLayout.tableClientWidth,
+      JSON.stringify(narrowLayout),
+    );
 
     await page.session.send("Emulation.setDeviceMetricsOverride", {
       width: 800,
@@ -691,8 +787,8 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
       /验证集.*val-m5-e2e.*测试集.*test-m5-e2e/s,
     );
 
-    assert.equal(created.attributionSkillName, "attribute-badcases");
-    assert.equal(created.attributionPackageId, "default-attribute-badcases");
+    assert.equal(created.attributionSkillName, null);
+    assert.equal(created.attributionPackageId, null);
 
     await evaluate(
       page,

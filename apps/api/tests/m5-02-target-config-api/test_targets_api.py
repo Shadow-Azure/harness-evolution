@@ -288,12 +288,15 @@ async def _complete_login(
 
 
 @pytest_asyncio.fixture
-async def target_http(tmp_path: Path) -> AsyncIterator[TargetHttpEnvironment]:
+async def target_http(
+    tmp_path: Path, request: pytest.FixtureRequest
+) -> AsyncIterator[TargetHttpEnvironment]:
     """Provide member/admin clients over one application with a fake git remote."""
     settings = Settings(
         db_dialect=DatabaseDialect.SQLITE,
         data_dir=tmp_path,
         attribution_package_dir=tmp_path / "attribute",
+        attribution_agent=getattr(request, "param", None),
         jwt_secret=SecretStr("target-http-signing-secret-with-sufficient-length"),
         admin_username="admin",
         admin_password=SecretStr(TARGET_ADMIN_TEMP_PASSWORD),
@@ -351,6 +354,8 @@ async def test_target_routes_round_trip_with_camel_case_and_member_reads(
     assert created.status_code == 201
     body = created.json()
     assert body["objectType"] == "skill"
+    assert body["attributionPackageId"] is None
+    assert body["definition"] is None
     assert body["objectName"] == "deep-research"
     assert body["repoUrl"] == "https://git.example.com/agent-skills.git"
     assert target_http.remote.validated == [
@@ -393,11 +398,42 @@ async def test_target_routes_round_trip_with_camel_case_and_member_reads(
     assert deleted.content == b""
 
 
+@pytest.mark.parametrize(
+    ("target_http", "runtime_enabled"),
+    [(None, False), ("claude", True)],
+    indirect=["target_http"],
+    ids=["rules", "agent"],
+)
+async def test_new_target_uses_deployment_default_only_when_enabled(
+    target_http: TargetHttpEnvironment,
+    runtime_enabled: bool,
+) -> None:
+    """Older clients can omit a package on both rule and agent deployments."""
+    response = await target_http.admin.get(
+        f"/api/workspaces/{DEFAULT_WORKSPACE_ID}/attribution-skill-packages"
+    )
+    assert response.status_code == 200
+    assert response.json()["runtimeEnabled"] is runtime_enabled
+    payload = _project_payload(enabled=False)
+    result = await target_http.admin.post("/api/evolution/targets", json=payload)
+    assert result.status_code == 201
+    target = result.json()
+    assert target["attributionPackageId"] == (
+        "default-attribute-badcases" if runtime_enabled else None
+    )
+    assert (target["definition"] is not None) == runtime_enabled
+
+
 async def test_definition_is_pinned_before_binding_and_failed_edit_preserves_it(
     target_http: TargetHttpEnvironment, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     payload = _write().model_dump(by_alias=True)
-    payload.update(objectType="agent", objectName="code-generator", subDir="agents/code-generator")
+    payload.update(
+        objectType="agent",
+        objectName="code-generator",
+        subDir="agents/code-generator",
+        attributionPackageId="default-attribute-badcases",
+    )
     endpoint = "/api/evolution/targets"
     commit = "a" * 40
     body = "---\nname: code-generator\n---\nGenerate code."
@@ -408,9 +444,9 @@ async def test_definition_is_pinned_before_binding_and_failed_edit_preserves_it(
         assert repo_url == payload["repoUrl"].strip() and ref == payload["defaultRef"].strip()
         if file_name != "agent.md" or sub_dir != "agents/code-generator":
             raise GitContentUnavailable("file_not_found")
-        return commit, body
+        return body, commit
 
-    monkeypatch.setattr(FakeDefinitionSource, "read_versioned_file", read)
+    monkeypatch.setattr(FakeDefinitionSource, "read_file_at_commit", read)
     rejected = await target_http.admin.post(endpoint, json={**payload, "subDir": "missing"})
     assert rejected.status_code == 422
     assert (await target_http.admin.get(endpoint)).json()["items"] == []

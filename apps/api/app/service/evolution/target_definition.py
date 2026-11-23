@@ -2,23 +2,20 @@
 
 import asyncio
 from pathlib import Path, PurePosixPath
-from typing import Protocol
 
 from app.service.evolution.attribution_inputs import disk_id, file_digest, publish_directory
-from app.service.evolution.target_content import TARGET_FILE_NAMES, target_content_unresolved
+from app.service.evolution.target_content import (
+    TARGET_FILE_NAMES,
+    CommitContentSource,
+    target_content_unresolved,
+)
 from app.third_party_api.git.content import GitContentUnavailable
 from app.utils.definition import definition_file_hash
 from app.utils.redaction import redact_text
 
 
-class VersionedFileSource(Protocol):
-    async def read_versioned_file(
-        self, *, repo_url: str, sub_dir: str, ref: str, file_name: str
-    ) -> tuple[str, str]: ...
-
-
 class TargetDefinitions:
-    def __init__(self, source: VersionedFileSource, root: Path):
+    def __init__(self, source: CommitContentSource, root: Path):
         self.source = source
         self.root = root
 
@@ -27,7 +24,7 @@ class TargetDefinitions:
     ) -> dict[str, str]:
         for name in TARGET_FILE_NAMES[kind]:
             try:
-                commit, body = await self.source.read_versioned_file(
+                body, commit = await self.source.read_file_at_commit(
                     repo_url=repo, sub_dir=subdir, ref=ref, file_name=name
                 )
             except GitContentUnavailable as exc:

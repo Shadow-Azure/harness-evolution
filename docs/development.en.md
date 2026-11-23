@@ -11,11 +11,12 @@ English | [中文](development.md)
 - Authenticate `gh` for `flow:sync` and `verify:flow-online`.
 - `pnpm dev` enables API docs; production defaults closed or sets `HE_DOCS_ENABLED=false`.
 - `pnpm dev` defaults to SQLite; MySQL sets `HE_DB_DIALECT`/`HE_DB_URL` with environment-only credentials.
+- Three settings drive the AI Agent outbound layer: `AI_AGENT_PROVIDER` (default `claude-code`; `fake` for tests), `HE_AI_AGENT_CLAUDE_BIN` (default `~/.local/bin/claude`) and `HE_PATCH_SOURCE_MODE` (default `placeholder`; accepts `minimal-config`/`agent-edit`); see [ai-agent.en.md](ai-agent.en.md).
 - Local sessions/data stay gitignored; CI uses synthetic fixtures.
 
 ## Development flow
 
-Once the flow tree is initialized, every change starts with an issue: `.agents/flow/` holds the roadmap → milestone → issue working files, with the contract and priority rules in [.agents/flow/README.md](../.agents/flow/README.en.md). Create a trio with `pnpm flow:new-issue -- …`; commits and PR titles carry `(#N)`; `pnpm flow:sync` writes the flow tree to GitHub and backfills numbers. Before deleting a compatibility layer, follow the checklist in [compatibility.en.md](compatibility.en.md).
+Once the flow tree exists, every change starts with an issue: `.agents/flow/` holds the roadmap → milestone → issue working files, with the contract and priorities in [.agents/flow/README.md](../.agents/flow/README.en.md). Create a trio with `pnpm flow:new-issue -- …`; commits and PR titles carry `(#N)`; `pnpm flow:sync` writes to GitHub and backfills numbers. Before deleting a compatibility layer, follow the checklist in [compatibility.en.md](compatibility.en.md).
 
 ## Daily loop
 
@@ -25,6 +26,7 @@ pnpm typecheck
 pnpm typecheck:web
 pnpm test:web
 pnpm test:api
+pnpm test:api:serial
 pnpm test:db
 pnpm test:db:mysql
 pnpm test:integration
@@ -58,7 +60,7 @@ When unsure, run `pnpm route:gates`.
 
 ## Upstream integration
 
-The real upstream is explicitly opt-in: the live case in `tests/m12-01-real-trace-upstream` reaches it only with `HE_UPSTREAM_LIVE=1` and both credentials; otherwise it skips, while the default loopback case covers pagination, isolation, and manual replay. Run:
+The real upstream is explicitly opt-in: the live case in `tests/m12-01-real-trace-upstream` reaches it only with `HE_UPSTREAM_LIVE=1` and both credentials, and skips otherwise, while the default loopback case covers pagination, isolation, and manual replay. Run:
 
 ```sh
 HE_UPSTREAM_LIVE=1 HE_UPSTREAM_BASE_URL=... HE_UPSTREAM_TOKEN=... pnpm test:api -- tests/m12-01-real-trace-upstream -m live_upstream
@@ -68,7 +70,7 @@ Logs and replay entry points are documented in [deployment.en.md](deployment.en.
 
 ## Live external-table contract
 
-Real bad_case/probe tables are explicitly opt-in: the live test reaches a real database only when `HE_EXTERNAL_CONTRACT_LIVE=1` and a read-only target (`HE_EXTERNAL_DB_DIALECT` + `HE_EXTERNAL_DB_URL`, or `HE_DB_*` as a fallback) are present, and it only inspects metadata and asserts SELECT. Run:
+Real bad_case/probe tables are explicitly opt-in: the live test reaches a real database only when `HE_EXTERNAL_CONTRACT_LIVE=1` and a read-only target (`HE_EXTERNAL_DB_DIALECT`+`HE_EXTERNAL_DB_URL`, or `HE_DB_*` as a fallback) are present, and it only inspects metadata and asserts SELECT. Run:
 
 ```sh
 HE_EXTERNAL_CONTRACT_LIVE=1 HE_EXTERNAL_DB_DIALECT=mysql HE_EXTERNAL_DB_URL=... pnpm test:api -- tests/m12-02-external-contract-live -m live_external
@@ -78,7 +80,7 @@ Drift and permission logs are documented in [deployment.md](deployment.en.md).
 
 ## Docs and pairing
 
-Resident docs are paired across Chinese and English. After changing either side, minimally patch the other side in the same PR and run `pnpm record:i18n -- <pair>`; the contract is in [i18n/README.en.md](i18n/README.en.md). Fences marked `ts` are compiled for real, while fences marked `ts type-equiv` are compared verbatim with source.
+Resident docs are paired across Chinese and English. After changing either side, minimally patch the other in the same PR and run `pnpm record:i18n -- <pair>`; the contract is in [i18n/README.en.md](i18n/README.en.md). Fences marked `ts` are compiled for real; `ts type-equiv` fences are compared verbatim with source.
 
 ## PR review
 

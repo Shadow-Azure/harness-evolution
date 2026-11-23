@@ -620,12 +620,19 @@ Index.vue
 ```
 
 - 分组与排序由后端给（`running` / `history`），前端不重排。
-- 卡片右上只显示 `createdAt`；创建人保留在 DTO，不在列表渲染。
+- 卡片右上显示 `createdAt` 及可用的运行控制操作；创建人保留在 DTO，不在列表渲染。
 - `run-meta` 依次为对象版本 chip、时间窗、工作空间 chip、`默认潜在策略` / `自定义潜在策略`、`复用缓存` / `不复用缓存`，随后是模型 chip；策略与缓存分别取 `run.policy.preset` 与 `run.cacheEnabled`。
 - 工作空间名来自 auth store 的当前路由空间，列表本就按空间过滤，卡片 DTO 不重复空间信息；空间名缺失时按空串处理，不伪造名称。
 - 进度条：`progress.percent` 直接用；阶段文案 `progress.stageLabel` 直接用（后端算）。
 - `failed` / `interrupted` 的 run 显示红色/橙色状态徽章 + `error.message` 摘要（tooltip），点击进入详情并定位"执行日志"。
 - 空态："当前没有正在执行的自进化"。
+- 滚动归属：工作区壳层固定 `main.workspace-main` 的高度并隐藏溢出，列表根节点 `.run-list-page` 以全宽 `height: 100%; overflow-y: auto` 承担页级滚动；左右内边距取 `max(24px, calc((100% - 1080px) / 2 + 24px))`，滚动条落在窗口右缘、内容列保持 1080px 框架。≤640px 时随壳层回到文档滚动。
+
+### 8.1 运行暂停与继续
+
+列表卡片标题行与运行详情页头复用 `RunControl.vue`，沿原型 `btn` / `btn primary`、圆角、间距及状态 token：运行时显示「暂停」；请求受理显示「暂停中」并禁用按钮，说明「等待当前操作结束」；确认后显示「已暂停」和「继续执行」，说明进度已保留及已提交的外部评测可能继续运行。暂停的运行保留在活动分组、保留进度条和已到达步骤，停止活动脉冲。原型可使用 `runcontrol=running|pause_requested|paused` 固定展示状态。
+
+控件仅对当前空间管理员或全局管理员显示，按钮可用性使用服务端 `canPause/canResume`；只读成员可看状态。点击卡片内动作不触发详情导航，提交期间禁用重复动作；接口失败保留原状态并显示错误，冲突时刷新服务端事实。响应先展示权威控制状态，再失效列表、详情查询；`run.event` 的三个控制事件同步刷新。等待确认时 REST fallback 每秒刷新，活动/已暂停运行每 15 秒兜底，终态停止刷新。刷新、跳转和继续均复用原 run ID 与冻结输入。
 
 ## 9. 启动向导（`pages/evolution/components/LaunchWizard.vue`）
 
@@ -780,7 +787,7 @@ RunDetail.vue
 | 1 选择范围 | 条件摘要（对象@版本、时间窗、策略、缓存开关）+ 统计 |
 | 2 Session 关联 | 4 条/页表格（Session 短标签 + 完整 Session ID / 对象触发点 / bad case 数 / 潜在数）；Session 单元格用 `short` 单行省略，`title` 悬停展示完整标题，固定列宽保证四列同屏；存量 run 缺 `short` 时用 `title[:120]` 兜底 + 跳过统计 |
 | 3 潜在 bad case | 5 条/页，含「命中原因」列；`unknown` 标注触发点顺序待重放 |
-| 4 对象归因 | 统计四数 + 表格（来源 bad case / 归因 ID / 分类 / 现象 / 结果来源 cached\|fresh / 置信度）；对象·版本在 step 标题，不在表格重复「结论」 |
+| 4 对象归因 | 统计四数 + 表格（来源 bad case / 归因 ID / 分类 / 现象 / 结果来源 cached\|fresh / 置信度）；对象·版本在 step 标题，不在表格重复「结论」；来源 bad case 与归因报告 ID 均为新窗口深链（问题描述 / 归因分析，`at` 选中该行归因） |
 | 5 聚类与严重度 | 簇卡片按 severity 降序，每簇标题 + 聚类描述 + 可折叠来源 bad case 表（ID 可深链错误详情），默认展开第一簇（或 active 簇） |
 | 6 迭代优化 | 沿用既有轮次卡（patch/candidate/push/eval/接纳），来源问题为 `cases[]` |
 | 7 测试集终评 | 沿用 V1（verdict/metrics/changes） |
@@ -800,6 +807,7 @@ RunDetail.vue
 | 中断/阻塞恢复 | 刷新后先拉 `run` 与 `events`；`blocked` 显示“可重试”，`interrupted` 显示“任务被中断，可查看最后事件” |
 | 点击 stepper | 只允许 `clickable === true` 的节点；点击 → `?step={key}` + 拉 `useRunStep` |
 | 簇深链 | `?step=clusters&cluster={clusterId}`：切到聚类步并滚动到该簇卡、加高亮（commit message 的「问题簇」链接落点）；簇不存在时忽略参数并提示“簇已不存在” |
+| 第 4 步归因深链 | 来源 bad case → 错误详情「问题描述」（`tab=desc`）；归因报告 ID → 「归因分析」并带 `at={attributionId}`；均在新窗口打开 |
 | Step 5 聚类展开 | 本地 `expandedClusters: Set<string>`；默认展开当前进行中的轮次 |
 | 自动推进 | 生产 UI 无「推进一轮」；后台逐轮自动执行，页面只通过 SSE/轮询更新 |
 | 评测状态 | `evalStatus`：pending/evaluating/completed/failed/timeout；`evaluating` 显示“评测中，下一次轮询 …”；failed/timeout 进入 blocked |
@@ -813,7 +821,7 @@ RunDetail.vue
 - 生成 patch 中：展示“正在生成/应用 patch、commit candidate”，不显示 candidate ref。
 - 评测中：展示 **candidate ref + commit**（如 `.../candidate/r2`），表示已 push、等待评测；显示 `evalStatus` 与下一次轮询时间。
 - 本地模式：`HE_GIT_PUSH=false` 时 candidate 只存在本地；卡片显示“本地候选（未推送）”，candidate 标签显示“已生成 · 未推送”，推送状态显示“已跳过（本地模式）”，不进入评测。
-- 已接纳：展示 **amend 后的 commit**（保留追溯信息并追加 current/candidate/delta/verdict），以及 `Harness-Evaluated-Commit`（评测时的 commit）。
+- 已接纳：展示 **amend 后的 commit**（保留追溯信息并追加 current/candidate/delta/verdict），以及 `Harness-Evaluated-Commit`（评测时的 commit）。commit 区块默认只显示 12 位 hash 与首行 subject；完整 `finalCommit.message`（Markdown）通过「查看完整 commit message」展开，复用 `renderMarkdown()` 渲染标题、列表、链接与 trailer，不得按纯文本插值；仅单行 message 不显示展开入口。
 - 未接纳：显示“candidate 已删除，run 分支不变”；不展示 commit hash。
 - blocked：显示是 patch、push 还是 eval 阶段失败；patch/push 阶段保留本轮中间状态，可重试。
 - `DiffView`：行首 `+`/`-`/`@@` 着色；原型的 diff 行数组直接渲染即可，不需要解析 unified diff。
@@ -842,7 +850,10 @@ RunLogPanel.vue
 - 顶部 banner："仅聚类分析：未执行 patch 生成与评测迭代" + 「以这批问题启动自进化 →」。
 - 输入概况：关联 Session / 潜在 bad case / 聚类数。
 - 聚类列表：每簇展示分类、来源 bad case 数、严重程度，簇内来源 bad case 表（可展开，ID 可深链错误详情）。
+- 来源 bad case 的深链由页面并行读取 `steps/attribution` 得到 `badCaseId → sessionId` 映射后拼出 `/workspaces/{wid}/sessions/{sid}/errors?case={badCaseId}&tab=attr`；不在 `steps/clusters` 契约里新增 session 字段。
 - 数据来自 `mode=cluster_only` 的 run（`GET /runs/{rid}/steps/clusters`）；「启动自进化」用同一条件再创建 `mode=full` 的 run（同样 202）。
+- 状态口径由后端给：`cluster_only` 的可见进度是 5 步，完成态 `progress.stageLabel` 为「第 5/5 步 · 聚类完成」，不出现迭代轮次；页面用中文状态徽标，不直接渲染 `completed` 等原始枚举。
+- 页面根节点按运行详情的约定承担页级滚动（`height` + `overflow-y: auto`），内容长时可以滚到最后一个簇；簇卡直接复用运行详情第 5 步的 `StepClusters`。
 
 ## 12. 样式与视觉实现
 

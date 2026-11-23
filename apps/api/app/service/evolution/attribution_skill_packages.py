@@ -61,6 +61,7 @@ class AttributionSkillPackageList(IdentityModel):
     """Workspace resources available for binding and one-off analysis."""
 
     items: list[AttributionSkillPackage]
+    runtime_enabled: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,9 +82,12 @@ class AttributionSkillPackageService:
         repository: AttributionSkillPackageRepository,
         package_root: Path,
         default_skill_path: Path,
+        *,
+        runtime_enabled: bool = False,
     ) -> None:
         """Bind database metadata to one configured filesystem root."""
         self._repository = repository
+        self._runtime_enabled = runtime_enabled
         self._root = package_root.resolve()
         self._default_skill_path = default_skill_path.resolve()
 
@@ -93,7 +97,8 @@ class AttributionSkillPackageService:
             self._repository.list(workspace_id), asyncio.to_thread(self._default)
         )
         return AttributionSkillPackageList(
-            items=[self._public(default), *(self._public(record) for record in records)]
+            items=[self._public(default), *(self._public(record) for record in records)],
+            runtime_enabled=self._runtime_enabled,
         )
 
     async def metadata(self, workspace: str, package: str) -> AttributionSkillPackage:

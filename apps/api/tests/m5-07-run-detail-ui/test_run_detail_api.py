@@ -144,6 +144,7 @@ async def test_run_detail_returns_workspace_and_seven_backend_states(
     assert body["runId"] == "run-detail"
     assert body["workspace"] == {
         "repoUrl": "https://example.invalid/skills.git",
+        "pushRepoUrl": "https://example.invalid/skills.git",
         "subDir": "skills/deep-research",
         "repoPath": "data/repos/target",
         "baseRef": "v2.0.0",

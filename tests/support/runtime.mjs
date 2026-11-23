@@ -6,6 +6,14 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+/**
+ * Upper bound for one Chrome DevTools Protocol handshake or command. A shared
+ * runner can accept the websocket and then stall; without this bound the whole
+ * suite waits on a promise that never settles and the step is killed by its
+ * outer timeout with no failing test name.
+ */
+const CDP_TIMEOUT_MS = Number(process.env.HE_E2E_CDP_TIMEOUT_MS ?? 30_000);
+
 const chromeCandidates = [
   process.env.CHROME_BIN,
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -157,10 +165,20 @@ class CdpSession {
   async open() {
     if (this.socket.readyState === WebSocket.OPEN) return this;
     await new Promise((resolve, reject) => {
-      this.socket.addEventListener("open", resolve, { once: true });
-      this.socket.addEventListener("error", () => reject(new Error("CDP websocket failed")), {
-        once: true,
-      });
+      const timer = setTimeout(
+        () => reject(new Error(`CDP websocket did not open within ${CDP_TIMEOUT_MS}ms`)),
+        CDP_TIMEOUT_MS,
+      );
+      const settle = (callback) => (value) => {
+        clearTimeout(timer);
+        callback(value);
+      };
+      this.socket.addEventListener("open", settle(resolve), { once: true });
+      this.socket.addEventListener(
+        "error",
+        settle(() => reject(new Error("CDP websocket failed"))),
+        { once: true },
+      );
     });
     return this;
   }
@@ -174,7 +192,21 @@ class CdpSession {
   async send(method, params = {}) {
     const id = this.nextId++;
     const response = new Promise((resolve, reject) => {
-      this.pending.set(id, { method, resolve, reject });
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`${method}: CDP command timed out after ${CDP_TIMEOUT_MS}ms`));
+      }, CDP_TIMEOUT_MS);
+      this.pending.set(id, {
+        method,
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      });
     });
     this.socket.send(JSON.stringify({ id, method, params }));
     return await response;

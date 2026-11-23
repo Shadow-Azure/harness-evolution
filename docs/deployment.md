@@ -44,17 +44,24 @@
 
 ## 配置注入
 
-数据目录与评测配置经同一通道写入服务器 `.env`：`Deploy` 从 GitHub Environment `vars.HE_DATA_DIR` 取绝对路径（空值用默认），评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入；`apiKeyRef` 只存环境变量名，未配置时跳过。值经 base64 传输、服务器侧 `inject-config.py` 原子写入，注入前备份 `.env.bak.<sha>`；解码失败告警跳过，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [deploy/env.production.example](../deploy/env.production.example)。
+数据目录与评测配置经同一通道写入服务器 `.env`：`Deploy` 从 GitHub Environment `vars.HE_DATA_DIR` 取绝对路径（空值用默认），评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入；`apiKeyRef` 只存环境变量名，未配置时跳过。Git 推送凭据同通道注入：`HE_GIT_PUSH_PROVIDER` 总是写入，`HE_GIT_PUSH_TOKEN` 为空时移除旧键，`GIT_ASKPASS` 指向 `/opt/harness/shared/git-askpass.sh`。值经 base64 传输、`inject-config.py` 原子写入并保持 `.env` 0600，注入前备份 `.env.bak.<sha>`；解码失败告警跳过并保留旧值，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [deploy/env.production.example](../deploy/env.production.example)。
+
+### AI Agent 配置
+
+模型审查与 patch 生成经 Secrets 注入 `AI_AGENT_PROVIDER`、`HE_AI_AGENT_FAILURE_POLICY`、`HE_PATCH_SOURCE_MODE`：非空写入 `.env`，缺失或空显式 `--unset`。`HE_AI_AGENT_FAILURE_POLICY` 留空按 provider 推导（`fake` → `degrade`，其余 → `strict`）；`strict` 下聚类 AI 失败让 run 在聚类阶段显式失败。值含换行/回车时注入前失败，其余解码失败告警跳过并保留旧值（默认值与合法值见[模板](../deploy/env.production.example)）。
+
+API 以 `harness` 运行且无 home：Deploy 安装 Claude Code 时注入稳定 `current` 路径、共享 settings、`CLAUDE_CONFIG_DIR` 与 0600 `.env` 中的 `ANTHROPIC_API_KEY`（见下节），CLI/settings 不再放在 `deploy` home。`HE_AI_AGENT_CLAUDE_BIN` Secret 仅在安装步骤跳过时作手工覆盖；`agent-edit` 需已配置 provider。
 
 ## Claude Code
 
-发布流水线在切换 `current` 之前为 `deploy` 用户安装 Claude Code，并用 GitHub Secrets 写入模型配置；安装包在 runner 侧获取，服务器只解包，不访问 `claude.ai`，不需要 root 或 Node.js。三个 Secret、MiniMax 配置、验证与回滚见 [Claude Code 运维](claude-code.md)。
+发布流水线在切换 `current` 前安装 Claude Code，并写服务级共享配置：版本目录 + 稳定 `current` 软链、0644 无密钥共享 `settings.json`、0600 `.env` 中的 `ANTHROPIC_API_KEY`。安装包在 runner 侧获取，服务器只解包，不访问 `claude.ai`，不需要 root 或 Node.js；切换前预检服务用户可执行/可读。Secret、MiniMax、验证与回滚见 [Claude Code 运维](claude-code.md)。
 
 ## 发布与回滚
 
 - 触发：push main → CI 全绿 → `Deploy`；支持 `workflow_dispatch` 手动触发。
 - 行为：[deploy/release.sh](../deploy/release.sh) 校验数据目录 → 安装依赖 → `alembic upgrade head` → 切换 `current` 软链 → `systemctl restart harness-api` → 探活 `/api/health`（最长 60 秒）。
 - 回滚：探活失败时先恢复 `.env`，再将软链退回上一 release 并重启；本地保留最近 5 个 release 与 5 份 `.env` 备份。
+- 重启排水：unit 用 `KillMode=mixed` + `TimeoutStopSec=45` 先发 SIGTERM；应用在 `HE_JOB_DRAIN_TIMEOUT_SECONDS`（默认 25 秒）内等在跑 job，超时释放租约并标 `interrupted`，下次启动续跑。
 - 迁移幂等：连续发布对已应用的迁移零副作用。
 
 ## 数据目录与可写校验
@@ -69,7 +76,7 @@ API 启动时解析绝对路径、`mkdir` 并写探针；不可写时 `/api/heal
 
 ## Git 工作区与推送
 
-自进化 run 的工作区按目标 ref 建缓存并克隆，推送目标由 `HE_GIT_PUSH` / `HE_GIT_PUSH_URL` 控制；缓存、单 ref 克隆、推送凭据策略与逐操作代理可观测性见 [Git 工作区与推送](git-workspace.md)。
+run 工作区按目标 ref 建缓存并克隆，推送目标由 provider 自动 fork，`HE_GIT_PUSH_URL` 作为无 token 兜底；缓存、单 ref 克隆、推送凭据策略与逐操作代理可观测性见 [Git 工作区与推送](git-workspace.md)。
 
 ## 上游健康与漂移日志
 

@@ -87,16 +87,18 @@ class CaseInputArchive:
         }
 
         if item.definition:
-            identity["definitionKey"] = item.definition.key
             identity["gitSource"] = {
                 "repoUrl": item.repo_url,
                 "commit": item.definition.commit,
                 "path": item.definition.path,
             }
-        else:
-            identity["definitionKey"] = canonical_json_hash(
-                [item.probe_type, item.probe_object, item.object_version]
-            )
+        elif item.source_commit:
+            identity["gitSource"] = {
+                "repoUrl": item.repo_url,
+                "commit": item.source_commit,
+                "subDir": item.sub_dir,
+            }
+        identity["definitionKey"] = item.definition_key
         return identity
 
     def load(self) -> dict[str, str] | None:

@@ -20,4 +20,4 @@ Status: implemented
 
 ## Consequences
 
-进程启动时会把未完成归因释放为 queued，worker 通过短租约和心跳持有 claim；租约与尝试上限防止无限自动执行。取消会传播到正在运行的批次及尚未完成的 Badcase 子任务；已提交报告保持可复用。当前离线执行器报告 Token 为零，真实内网 adapter 必须通过 executor response 回传用量；上下文观测只保存各 case manifest 上下文 hash 的批次哈希。部署升级必须先运行 Alembic `0025_attribution_job_leases`，管理员可在 Run 的“对象归因”步骤查看进度和脱敏错误并操作失败任务。
+进程启动时会把未完成归因释放为 queued，worker 通过短租约和心跳持有 claim；租约与尝试上限防止无限自动执行。取消会传播到正在运行的批次及尚未完成的 Badcase 子任务；已提交报告保持可复用。当前离线执行器报告 Token 为零，真实内网 adapter 必须通过 executor response 回传用量；上下文观测只保存各 case manifest 上下文 hash 的批次哈希。升级至 Alembic `head` 时，生产与旧归因数据库均保留报告及任务历史，复用生产的租约、心跳和索引。管理员可在 Run 的“对象归因”步骤查看进度和脱敏错误并操作失败任务。

@@ -15,6 +15,8 @@ const props = withDefaults(
     modelValue: boolean;
     target: EvolutionTarget | null;
     packages?: {id: string; skillName: string}[];
+    runtimeEnabled?: boolean;
+    packagesLoading?: boolean;
     versions?: string[];
     versionsLoading?: boolean;
     versionsError?: boolean;
@@ -23,6 +25,8 @@ const props = withDefaults(
   }>(),
   {
     packages: () => [],
+    runtimeEnabled: false,
+    packagesLoading: false,
     versions: () => [],
     versionsLoading: false,
     versionsError: false,
@@ -75,8 +79,10 @@ const visibleServerError = computed<TargetServerError | null>(() => {
   return value?.summary ? value : null;
 });
 
-const legacySkill = computed(() => props.target?.attributionPackageId
-  ? null : props.target?.attributionSkillName);
+const unboundLabel = computed(() => {
+  if (props.target) return props.target.attributionPackageId ? null : props.target.attributionSkillName ?? "未绑定";
+  return props.runtimeEnabled ? null : "未绑定 · 使用内置归因规则";
+});
 const title = computed(() => (props.target ? "编辑进化对象" : "新增进化对象"));
 const versionOptions = computed(() => {
   const values = new Set(props.versions);
@@ -137,7 +143,8 @@ function onFieldInput(field: TargetFormField, value: string): void {
 }
 
 function resetForm(): void {
-  form.attributionPackageId = props.target?.attributionPackageId ?? (legacySkill.value ? null : "default-attribute-badcases");
+  form.attributionPackageId = props.target?.attributionPackageId ?? null;
+  if (!props.target && props.runtimeEnabled) form.attributionPackageId = "default-attribute-badcases";
   form.objectType = props.target?.objectType ?? "skill";
   form.objectName = props.target?.objectName ?? "";
   form.repoUrl = props.target?.repoUrl ?? "";
@@ -181,6 +188,7 @@ function openVersionSuggestions(): void {
 }
 
 function submit(): void {
+  if (props.packagesLoading) return;
   clearErrors();
   const objectName = form.objectName.trim();
   const repoUrl = form.repoUrl.trim();
@@ -222,6 +230,15 @@ watch(
     if (open) resetForm();
   },
   { immediate: true },
+);
+
+watch(
+  () => props.runtimeEnabled,
+  (enabled) => {
+    if (props.modelValue && enabled && !props.target && !form.attributionPackageId) {
+      form.attributionPackageId = "default-attribute-badcases";
+    }
+  },
 );
 
 watch(
@@ -295,13 +312,14 @@ watch(
           <select
             v-model="form.attributionPackageId"
             aria-label="归因 Skill"
+            :disabled="packagesLoading"
             class="skill-select"
           >
             <option
-              v-if="legacySkill"
+              v-if="unboundLabel"
               :value="null"
             >
-              {{ legacySkill }}
+              {{ unboundLabel }}
             </option>
             <option
               v-if="!packages.length"
@@ -317,8 +335,11 @@ watch(
               {{ item.skillName }}
             </option>
           </select>
-          <p class="field-help">
-            保存绑定后，后台将分析当前与该对象关联的 Badcase。
+          <p
+            v-if="form.attributionPackageId"
+            class="field-help"
+          >
+            {{ runtimeEnabled ? "保存绑定后，后台将分析当前与该对象关联的 Badcase。" : "此部署尚未启用归因 Agent。Skill 绑定会保存，启用后开始后台归因。" }}
           </p>
         </ElFormItem>
         <details v-if="target?.definition">
@@ -364,7 +385,7 @@ watch(
               @input="onFieldInput('subDir', $event)"
             />
             <p class="field-help">
-              {{ form.objectType === "knowledge" ? "相对仓库根的路径。" : "保存时从指定版本读取此目录的对象定义，并保存原文快照。" }}
+              相对仓库根的路径。<span v-if="form.attributionPackageId && form.objectType !== 'knowledge'">保存绑定时从指定版本读取此目录的对象定义，并保存原文快照。</span>
             </p>
             <p
               v-if="hasFieldError('subDir')"
@@ -539,6 +560,7 @@ watch(
         <ElButton
           form="target-form"
           :loading="submitting"
+          :disabled="packagesLoading"
           native-type="submit"
           type="primary"
         >

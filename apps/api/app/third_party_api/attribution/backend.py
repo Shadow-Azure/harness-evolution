@@ -3,7 +3,10 @@
 from abc import ABC, abstractmethod
 from importlib import import_module
 from pathlib import Path
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
+
+if TYPE_CHECKING:
+    from app.config import Settings
 
 
 class ModelBackend(ABC):
@@ -61,8 +64,9 @@ class AgentFactory:
     providers: ClassVar[dict[str, type[AgentBackend]]] = {}
 
     @classmethod
-    def create(cls, provider: str) -> AgentBackend:
+    def create(cls, provider: str, settings: "Settings | None" = None) -> AgentBackend:
         from app.third_party_api.attribution.claude_backend import ClaudeBackend
 
-        providers: dict[str, type[AgentBackend]] = {"claude": ClaudeBackend, **cls.providers}
-        return _provider(provider, providers, AgentBackend)
+        if provider == "claude" and provider not in cls.providers:
+            return ClaudeBackend(settings)
+        return _provider(provider, cls.providers, AgentBackend)

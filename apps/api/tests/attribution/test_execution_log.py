@@ -42,7 +42,7 @@ print(json.dumps({'result':'visible reply','subtype':'success',
     monkeypatch.setattr(
         claude_backend,
         "_provider_environment",
-        lambda: {"ANTHROPIC_API_KEY": "test-credential-opaque"},
+        lambda _: {"ANTHROPIC_API_KEY": "test-credential-opaque"},
     )
     backend = ClaudeBackend()
     if exit_code:
@@ -63,3 +63,49 @@ print(json.dumps({'result':'visible reply','subtype':'success',
     transcript.rename(external)
     transcript.symlink_to(external)
     assert backend.execution_details(work)["transcript"]["status"] == "unavailable"
+
+
+async def test_attribution_uses_shared_service_binary_and_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.config import Settings
+    from app.third_party_api.attribution.backend import AgentFactory
+
+    binary = tmp_path / "shared" / "current" / "bin" / "claude"
+    binary.parent.mkdir(parents=True)
+    binary.write_text(
+        """#!/usr/bin/env python3
+import json, os
+assert os.environ["ANTHROPIC_BASE_URL"] == "https://gateway.example"
+assert os.environ["ANTHROPIC_API_KEY"] == "fixture-key"
+assert os.environ["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == "deployed-model"
+assert os.environ["CLAUDE_CONFIG_DIR"].startswith(os.getcwd() + "/")
+assert "UNRELATED_SETTING" not in os.environ
+print(json.dumps({"subtype": "success", "usage": {"input_tokens": 9}}))
+"""
+    )
+    binary.chmod(0o700)
+    settings_file = tmp_path / "shared" / "settings.json"
+    settings_file.write_text(
+        json.dumps(
+            {
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://gateway.example",
+                    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deployed-model",
+                    "UNRELATED_SETTING": "not-for-agent",
+                }
+            }
+        )
+    )
+    for key in ("ANTHROPIC_BASE_URL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fixture-key")
+    monkeypatch.setattr(claude_backend, "_sandbox", lambda *_: [])
+    backend = AgentFactory.create(
+        "claude",
+        Settings(ai_agent_claude_bin=str(binary), ai_agent_claude_settings=str(settings_file)),
+    )
+    work = tmp_path / "attempt"
+    work.mkdir()
+    assert backend.model_identity("haiku")["model"] == "deployed-model"
+    assert await backend.execute(work, "fixture prompt", "haiku", 10) == 9

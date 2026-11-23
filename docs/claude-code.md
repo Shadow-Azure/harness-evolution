@@ -16,24 +16,25 @@
 
 ## 配置
 
-安装包解包到 `/opt/harness/shared/claude-code/<version>`，`~/.local/bin/claude` 原子切到当前版本，保留当前和上一个版本。`~/.claude/settings.json`（600）保存 `model`、可选的 `ANTHROPIC_BASE_URL` 和 `apiKeyHelper`；真实 key 在 `~/.claude/api-key`（600），helper 脚本（700）读取，不进入 settings。`~/.claude.json`（600）合并 `hasCompletedOnboarding: true`，保留已有键。MiniMax 按文档写入 512K 自动压缩窗口（`524288`）与 `effort=max`，并把 Sonnet/Opus/Haiku 别名指向同一模型。
+安装包解包到 `/opt/harness/shared/claude-code/<version>`，并原子创建稳定软链 `current`；`~/.local/bin/claude` 只作 `deploy` 的手工入口。服务用 `current/usr/bin/claude`，CLI 升级只切软链。保留当前和上一个版本。
 
-三个 Secret 全缺时该步骤告警跳过；只配一部分时失败；安装或配置失败在切换 `current` 前中止，旧 release 继续服务。重跑同一版本只重写配置，不重复下载或解包。
+服务配置在 `/opt/harness/shared/claude-code/config/settings.json`（0644）：保存 `model`、可选 `ANTHROPIC_BASE_URL`、模型别名与 MiniMax 的 512K 窗口/heavy 参数，不含 `apiKeyHelper` 或密钥。`deploy` 的 `~/.claude` 只供手工 CLI，不参与服务调用。Deploy 把 `HE_AI_AGENT_CLAUDE_BIN`（current 路径）、`HE_AI_AGENT_CLAUDE_SETTINGS`、`CLAUDE_CONFIG_DIR` 与 `ANTHROPIC_API_KEY`（复用 `CLAUDE_CODE_API_KEY`，仅 base64/stdin）注入 0600 `.env`；服务只把环境传给 CLI，不读取/打印/落库。
+
+切换 `current` 前预检：二进制非属主可执行、settings 非属主可读、`config` 可遍历；失败即中止，旧 release 继续服务。三个 Secret 全缺时告警跳过；部分配置失败。重跑同版本只重写配置与软链。
 
 ## 验证
 
 ```sh
-ssh deploy@<host> '~/.local/bin/claude --version'
-ssh deploy@<host> '~/.local/bin/claude doctor'
-ssh deploy@<host> '~/.local/bin/claude -p "只回复 OK"'
+ssh deploy@<host> '/opt/harness/shared/claude-code/current/usr/bin/claude --version'
+ssh deploy@<host> 'stat -c "%a" /opt/harness/shared/claude-code/config/settings.json /opt/harness/shared/.env'
+ssh deploy@<host> 'sudo -u harness test -r /opt/harness/shared/claude-code/config/settings.json'
+ssh deploy@<host> 'sudo -u harness /opt/harness/shared/claude-code/current/usr/bin/claude --version'
 ```
 
-`claude -p` 需要真实 API key，属于人工验收；流水线只校验安装与配置结构。
+`claude -p` 需要真实 API key，属于人工验收；流水线只校验安装、共享权限与配置结构。生产验收看 `ai_agent_call.outcome=ok`、tokens>0、`model` 非 `unknown`，且无 `degraded`。
 
 ## 回滚
 
-把 `~/.local/bin/claude` 软链指回上一版本目录，或重新触发一次带所需 `CLAUDE_CODE_VERSION` 的 `Deploy`。`~/.claude/settings.json` 与 `api-key` 是原子写入，失败时保留上一份。操作步骤见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)。
+把 `/opt/harness/shared/claude-code/current` 软链指回上一版本目录，或重新触发一次带所需 `CLAUDE_CODE_VERSION` 的 `Deploy`。共享 settings 与 `.env` 都是原子写入，失败时保留上一份；`current` 与 `HE_AI_AGENT_CLAUDE_BIN` 解耦，回滚不需要改 `.env`。操作步骤见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)。
 
-## 本地归因
-
-本地归因在 API 环境中设 `HE_ATTRIBUTION_AGENT=claude` 和 `HE_ATTRIBUTION_MODEL`，Worker 需 Claude Code、Python 3 及 Seatbelt（macOS）或 bubblewrap（Linux）。`HE_ATTRIBUTION_PACKAGE_DIR` 指向可写持久目录。部署扩展可将 `HE_ATTRIBUTION_AGENT` 或 `HE_ATTRIBUTION_LLM` 设为已安装的 `module:Class`，实现分别继承 `AgentBackend`、`ModelBackend`。 bare Worker 从 API 进程环境或服务账号的 Claude settings.env 获取模型凭据。
+Skill 归因依赖 bubblewrap 及 `HE_ATTRIBUTION_AGENT=claude`。[部署验收](../plans/deploy-aliyun-playbook.md)

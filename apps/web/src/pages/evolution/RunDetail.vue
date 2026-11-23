@@ -24,6 +24,7 @@ import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import { workspacePath } from "../../router/workspace";
 import { useAuthStore } from "../../stores/auth";
 import { canManageWorkspace } from "../../utils/workspaceDisplay";
+import RunControl from "./components/RunControl.vue";
 import RunStepContent from "./components/RunStepContent.vue";
 import RunStepper from "./components/RunStepper.vue";
 import RunLogPanel from "./components/RunLogPanel.vue";
@@ -40,9 +41,7 @@ const router = useRouter();
 const queryClient = useQueryClient();
 const auth = useAuthStore();
 const workspaceId = useWorkspaceId();
-const canWriteAttribution = computed(() =>
-  canManageWorkspace(auth.workspaceById(workspaceId.value)?.role),
-);
+const canManage = computed(() => canManageWorkspace(auth.workspaceById(workspaceId.value)?.role));
 
 const runId = computed(() => String(route.params.runId ?? ""));
 const {
@@ -231,6 +230,8 @@ const {
 );
 
 const statusLabel = computed(() => {
+  if (run.value?.controlState === "paused") return "已暂停";
+  if (run.value?.controlState === "pause_requested") return "暂停中";
   switch (run.value?.status) {
     case "preparing":
       return "准备中";
@@ -240,6 +241,7 @@ const statusLabel = computed(() => {
       return "已阻塞";
     case "completed":
       if (!run.value.final) return "已完成 · 终评未知";
+      if (run.value.degraded) return "已完成 · 聚类降级";
       return run.value.final.verdict ? "✓ 已完成 · 自进化有效" : "已完成 · 无收益";
     case "failed":
       return "失败";
@@ -251,9 +253,11 @@ const statusLabel = computed(() => {
 });
 
 const statusClass = computed(() => {
+  if (run.value?.controlState === "paused" || run.value?.controlState === "pause_requested") return "blocked";
   const status = run.value?.status;
   if (status === "completed") {
     if (!run.value?.final) return "pending";
+    if (run.value.degraded) return "pending";
     return run.value.final.verdict ? "accepted" : "rejected";
   }
   if (status === "blocked" || status === "interrupted") return "blocked";
@@ -307,17 +311,23 @@ const reportCounts = computed(() => {
   const { rows, summary } = step.payload;
   const byCategory = { error: 0, prompt: 0, flow: 0, context: 0, model: 0 };
   let reused = 0;
+  let inconclusive = 0;
   for (const row of rows) {
-    if (row.category === null) continue;
+    if (row.conclusion === "inconclusive") {
+      inconclusive++;
+      continue;
+    }
+    if (row.conclusion === "non_target" || row.category === null) continue;
     byCategory[row.category]++;
     if (row.source === "cached") reused++;
   }
-  const attributed = rows.length - summary.nonTarget;
+  const attributed = rows.length - summary.nonTarget - inconclusive;
   return {
     total: summary.potential,
     reported: rows.length,
     attributed,
     nonTarget: summary.nonTarget,
+    inconclusive,
     reused,
     fresh: attributed - reused,
     byCategory,
@@ -350,6 +360,14 @@ const distribution = computed(() => {
       label: "非该对象",
       value: reportCounts.value.nonTarget,
       color: "var(--text-faint)",
+    });
+  }
+  if (reportCounts.value?.inconclusive) {
+    items.push({
+      key: "inconclusive",
+      label: "证据不足",
+      value: reportCounts.value.inconclusive,
+      color: "var(--text-dim)",
     });
   }
   if (pendingCount.value > 0) {
@@ -514,6 +532,12 @@ function clearMissingClusterFocus(): void {
           class="badge space"
           data-testid="run-workspace-badge"
         >{{ workspaceName }}</span>
+        <RunControl
+          v-if="run.controlState"
+          :wid="workspaceId"
+          :run="run"
+          :can-manage="canManage"
+        />
       </header>
 
       <div
@@ -572,7 +596,7 @@ function clearMissingClusterFocus(): void {
         data-testid="interrupted-banner"
         role="status"
       >
-        <span class="blocked-title">任务被中断，可查看最后事件</span>
+        <span class="blocked-title">任务被中断，系统将自动恢复；可查看最后事件</span>
         <span v-if="run.error">{{ run.error.message }}</span>
         <button
           type="button"
@@ -859,6 +883,17 @@ function clearMissingClusterFocus(): void {
                   {{ run.evalStatus }}
                 </div>
               </div>
+              <div class="kv">
+                <div class="k">
+                  推送目标
+                </div>
+                <div
+                  class="v mono workspace-path"
+                  data-testid="run-push-repo"
+                >
+                  {{ run.workspace.pushRepoUrl }}
+                </div>
+              </div>
             </div>
             <p
               v-if="run.workspace.pushError"
@@ -893,12 +928,13 @@ function clearMissingClusterFocus(): void {
           <RunStepper
             :steps="steps"
             :selected="selectedKey"
+            :paused="run.controlState === 'paused'"
             @select="selectStep"
           />
         </article>
 
         <div
-          v-if="run.status === 'preparing'"
+          v-if="run.status === 'preparing' && run.controlState !== 'paused'"
           class="preparing-copy"
         >
           <span class="pulse" />
@@ -925,7 +961,7 @@ function clearMissingClusterFocus(): void {
           :is-pending="selectedStep?.clickable === true && stepPending"
           :is-unreached="selectedStep?.clickable !== true"
           :focus-cluster="focusCluster"
-          :can-write="canWriteAttribution"
+          :can-write="canManage"
           @page-change="stepPage = $event"
           @missing-cluster-focus="clearMissingClusterFocus"
         />
@@ -975,6 +1011,10 @@ function clearMissingClusterFocus(): void {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.detail-head :deep(.run-control) {
+  margin-left: auto;
 }
 
 .detail-head h1 {

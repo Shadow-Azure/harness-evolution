@@ -10,6 +10,8 @@ import {
   listAttributionJobs,
   listEvolutionRunEvents,
   listEvolutionRuns,
+  pauseEvolutionRun,
+  resumeEvolutionRun,
   previewAttribution,
   previewPotential,
   previewSessions,
@@ -30,6 +32,21 @@ const response: EvolutionRunList = {
 };
 
 describe("evolution run API", () => {
+  it("posts workspace-scoped pause and resume with encoded run IDs and accepted status codes", async () => {
+    const calls: string[] = [];
+    const control = { runId: "run with spaces", controlState: "pause_requested", canPause: false, canResume: false };
+    server.use(http.post("/api/workspaces/:wid/evolution/runs/:runId/:action", ({ request, params }) => {
+      calls.push(new URL(request.url).pathname);
+      return HttpResponse.json({ ...control, controlState: params.action === "resume" ? "running" : "pause_requested" }, { status: params.action === "resume" ? 200 : 202 });
+    }));
+    await expect(pauseEvolutionRun(workspaceId, control.runId)).resolves.toMatchObject({ controlState: "pause_requested" });
+    await expect(resumeEvolutionRun(workspaceId, control.runId)).resolves.toMatchObject({ controlState: "running" });
+    expect(calls).toEqual([
+      "/api/workspaces/ws-test/evolution/runs/run%20with%20spaces/pause",
+      "/api/workspaces/ws-test/evolution/runs/run%20with%20spaces/resume",
+    ]);
+  });
+
   it("reads the workspace run list from the exact endpoint", async () => {
     let method = "";
     let path = "";

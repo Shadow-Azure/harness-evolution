@@ -195,7 +195,7 @@ def test_normalizes_mixed_transcript_without_persisting_message_detail() -> None
         agent_meta=None,
     )
 
-    assert CURRENT_PARSER_VERSION == 7
+    assert CURRENT_PARSER_VERSION == 8
     assert parsed.root_session_id == ROOT_ID
     assert parsed.agent_id == ROOT_ID
     assert parsed.lines == 14

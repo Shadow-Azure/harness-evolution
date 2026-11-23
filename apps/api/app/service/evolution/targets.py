@@ -404,11 +404,14 @@ class EvolutionTargetService:
         repository: EvolutionTargetStore,
         git_remote: GitRemote,
         definitions: TargetDefinitions | None = None,
+        *,
+        default_package_id: str | None = None,
     ) -> None:
         """Bind target storage and the sanitized git remote boundary."""
         self._repository = repository
         self._git_remote = git_remote
         self._definitions = definitions
+        self._default_package_id = default_package_id
 
     async def list(
         self,
@@ -441,7 +444,11 @@ class EvolutionTargetService:
                 code=ErrorCode.TARGET_EXISTS,
                 message="target already exists",
             )
-        write = await self._prepare_write(workspace_id, values)
+        package = values.attribution_package_id or self._default_package_id
+        values = values.model_copy(update={"attribution_package_id": package})
+        write = await self._prepare_write(
+            workspace_id, values, freeze_definition=package is not None
+        )
         try:
             record = await self._repository.insert(
                 {
@@ -484,7 +491,11 @@ class EvolutionTargetService:
                 code=ErrorCode.TARGET_EXISTS,
                 message="target already exists",
             )
-        write = await self._prepare_write(target.workspace_id, values)
+        write = await self._prepare_write(
+            target.workspace_id,
+            values,
+            freeze_definition=bool(values.attribution_package_id or target.attribution_package_id),
+        )
         try:
             record = await self._repository.update(
                 target_id,
@@ -593,11 +604,11 @@ class EvolutionTargetService:
         return enabled[0]
 
     async def _prepare_write(
-        self, workspace: str, values: EvolutionTargetWrite
+        self, workspace: str, values: EvolutionTargetWrite, *, freeze_definition: bool
     ) -> dict[str, object]:
         await self._validate_remote(values)
         write = values.model_dump()
-        if self._definitions and values.object_type != "knowledge":
+        if self._definitions and freeze_definition and values.object_type != "knowledge":
             write["definition"] = await self._definitions.freeze(
                 workspace, values.object_type, values.repo_url, values.sub_dir, values.default_ref
             )

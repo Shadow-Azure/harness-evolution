@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, Protocol, cast
 
@@ -11,6 +12,7 @@ from app.db.crud.evolution_targets import EvolutionTargetRecord
 from app.db.crud.potential import ObjectType, window_day_boundaries
 from app.errors import AppError, ErrorCode
 from app.service.evolution.attribution import DEFAULT_ATTRIBUTION_ENGINE
+from app.service.evolution.attribution_contracts import is_platform_rule
 from app.service.evolution.attribution_executor import AGENT_SKILL_STUB_ENGINE
 from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.events import EvolutionRunEventService
@@ -31,6 +33,9 @@ from app.service.evolution.target_content import (
     TargetVersionResolver,
 )
 from app.service.jobs import JobRunner, sanitize_job_payload
+from app.utils.ids import new_id
+
+logger = logging.getLogger(__name__)
 
 
 class LaunchTargetStore(Protocol):
@@ -134,6 +139,7 @@ class EvolutionLaunchService:
             body.target_name,
             workspace_ids=workspace_ids,
         )
+        latest_only = bool(self._reports and config.attribution_package_id and body.cache_enabled)
         effective_skill = None
         if body.attribution_package_id and (body.cache_enabled or self._attribution_skills is None):
             raise AppError(
@@ -141,7 +147,7 @@ class EvolutionLaunchService:
                 code=ErrorCode.VALIDATION_INVALID,
                 message="select a Skill only for recomputation using a configured agent",
             )
-        if self._attribution_skills and not (self._reports and body.cache_enabled):
+        if self._attribution_skills and not latest_only:
             effective_skill = await self._attribution_skills.resolve_for_run(
                 config, body.attribution_package_id
             )
@@ -156,7 +162,7 @@ class EvolutionLaunchService:
         cases = await self._require_potential(condition, policy)
         if (
             self._reports
-            and body.cache_enabled
+            and latest_only
             and not await self._reports.latest_reports(
                 config.workspace_id,
                 body.target_type,
@@ -170,6 +176,7 @@ class EvolutionLaunchService:
                 code=ErrorCode.NO_POTENTIAL_MATCHED,
                 message="no cached attribution reports for these cases",
             )
+        job_id = new_id()
         run = await self._runs.create_run(
             self._run_values(
                 body,
@@ -179,29 +186,32 @@ class EvolutionLaunchService:
                 policy=policy,
                 created_by=created_by,
                 effective_skill=effective_skill,
+                latest_only=latest_only,
             ),
+            initial_job_id=job_id,
         )
-        if self._events is not None:
-            await self._events.record(
-                run.id,
-                "run_created",
-                level="info",
-                stage="prepare",
-                message="运行已创建",
-                payload={
-                    "mode": run.mode,
-                    "targetType": run.target_type,
-                    "targetName": run.target_name,
-                    "targetVersion": run.target_version,
-                },
+        try:
+            if self._events is not None:
+                await self._events.record(
+                    run.id,
+                    "run_created",
+                    level="info",
+                    stage="prepare",
+                    message="运行已创建",
+                    payload={
+                        "mode": run.mode,
+                        "targetType": run.target_type,
+                        "targetName": run.target_name,
+                        "targetVersion": run.target_version,
+                    },
+                )
+        except Exception:
+            logger.exception(
+                "failed to record run creation event", extra={"run_id": run.id, "job_id": job_id}
             )
-        job = await self._jobs.submit(
-            kind="evolution_prepare",
-            payload={"runId": run.id},
-            ref_id=run.id,
-            created_by=created_by,
-        )
-        return RunAccepted(run_id=run.id, job_id=job.id, status="preparing")
+        finally:
+            self._jobs.schedule(job_id)
+        return RunAccepted(run_id=run.id, job_id=job_id, status="preparing")
 
     async def _require_potential(
         self,
@@ -260,6 +270,7 @@ class EvolutionLaunchService:
         policy: ResolvedPolicy,
         created_by: str | None,
         effective_skill: LaunchAttributionSkill | None,
+        latest_only: bool,
     ) -> Mapping[str, Any]:
         """Build the immutable run snapshot inserted before enqueueing.
 
@@ -274,6 +285,11 @@ class EvolutionLaunchService:
         Returns:
             Column values for one `preparing` run row.
         """
+        start, end = resolve_window(query.window_from, query.window_to)
+        legacy_rule = not config.attribution_package_id and (
+            effective_skill is None
+            or is_platform_rule(effective_skill.skill_key, effective_skill.executor_type)
+        )
         return {
             "title": f"{query.target_name} {resolved.target_version} 自进化",
             "workspace_id": config.workspace_id,
@@ -282,7 +298,13 @@ class EvolutionLaunchService:
             "eval_config": _snapshot_eval(body.eval),
             "potential_policy": {
                 **policy.snapshot(),
-                **({"latestReportsOnly": True} if self._reports and body.cache_enabled else {}),
+                **({"latestReportsOnly": True} if latest_only else {}),
+                **({"legacyRule": True} if legacy_rule else {}),
+                **(
+                    {"attributionPackageId": body.attribution_package_id}
+                    if body.attribution_package_id
+                    else {}
+                ),
             },
             "cache_enabled": body.cache_enabled,
             "attribution_engine": _attribution_engine(effective_skill),
@@ -300,13 +322,14 @@ class EvolutionLaunchService:
             "target_name": query.target_name,
             "target_version": resolved.target_version,
             "target_revision": resolved.target_revision,
+            "base_commit": resolved.base_commit,
             "repo_url": config.repo_url,
             "sub_dir": config.sub_dir,
             "validation_project_id": config.validation_project_id,
             "test_project_id": config.test_project_id,
             "base_ref": resolved.target_version,
-            "window_from": query.window_from,
-            "window_to": query.window_to,
+            "window_from": start,
+            "window_to": end,
             "models": list(query.models),
             "status": "preparing",
             "created_by": created_by,

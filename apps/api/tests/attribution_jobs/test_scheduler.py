@@ -83,6 +83,28 @@ async def test_attribution_lane_does_not_hold_the_serial_worker(
     assert (await runner.wait(attribution_job.id)).status == "completed"
 
 
+async def test_wait_observes_attribution_child_owned_by_another_runner(
+    scheduler: tuple[JobRepository, JobRunner],
+) -> None:
+    """Prepare joins a reused foreign claim until its persisted result is available."""
+    repository, runner = scheduler
+
+    async def unexpected(_job: JobRunRecord) -> None:
+        pytest.fail("the foreign lease was still valid")
+
+    runner.register_handler("attribution_batch", unexpected, concurrency_limit=1)
+    child = await repository.insert(
+        kind="attribution_batch", payload={}, ref_id="run-shared", created_by=None
+    )
+    assert await repository.claim(child.id, owner="other-process") is not None
+    joining = asyncio.create_task(runner.wait(child.id))
+    await asyncio.sleep(0.01)
+    assert not joining.done()
+    assert await repository.complete(child.id, {"processed": 3}, owner="other-process")
+    completed = await asyncio.wait_for(joining, timeout=2)
+    assert completed.status == "completed" and completed.result == {"processed": 3}
+
+
 async def test_duplicate_trigger_reuses_one_active_attribution_job(
     scheduler: tuple[JobRepository, JobRunner],
 ) -> None:
@@ -185,7 +207,7 @@ async def test_restart_requeues_claim_and_retry_keeps_audit_identity(
         created_by=None,
     )
     claimed = await repository.claim(job.id, owner="dead-worker")
-    assert claimed.lease_expires_at is not None
+    assert claimed is not None and claimed.lease_expires_at is not None
 
     await runner.recover()
     recovered = await runner.get(job.id)

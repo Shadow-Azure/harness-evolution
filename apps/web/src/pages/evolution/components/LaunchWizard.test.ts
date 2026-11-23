@@ -96,6 +96,7 @@ const potentialPreview: PotentialPreviewResult = {
 };
 
 const attributionPreview: AttributionPreviewResult = {
+  usesBoundSkill: true,
   canRecompute: true,
   summary: { potential: 2, reused: 1, fresh: 0, missing: 1, bySkill: {"attribute-badcases": 1}, nonTargetKnown: 0 },
   targetRevision: resolvedRevision,
@@ -686,6 +687,49 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(wrapper.find("select[aria-label='本次重算使用的归因 Skill']").exists()).toBe(false);
     expect(wrapper.text()).toContain("HE_ATTRIBUTION_AGENT");
     expect(wrapper.get("[data-testid='wizard-cluster']").attributes("disabled")).toBeUndefined();
+  });
+
+  it.each([true, false])("can generate reports for an unbound production target with cache=%s", async (cacheEnabled) => {
+    const submitted: unknown[] = [];
+    useHandlers({
+      attribution: () => HttpResponse.json({
+        ...attributionPreview,
+        usesBoundSkill: false,
+        canRecompute: false,
+        summary: { potential: 2, reused: 0, fresh: 2, missing: 0, bySkill: {}, nonTargetKnown: 0 },
+      }),
+    });
+    server.use(http.post(`${apiBase}/runs`, async ({ request }) => {
+      submitted.push(await request.json());
+      return HttpResponse.json({ runId: "new-run", jobId: "new-job", status: "preparing" }, { status: 202 });
+    }));
+    const { wrapper } = await mountWizard();
+    await reachStep4(wrapper);
+    expect(wrapper.get("[data-testid='wizard-cache']").attributes("disabled")).toBeUndefined();
+    if (!cacheEnabled) {
+      await wrapper.get("[data-testid='wizard-cache']").setValue(false);
+      await flushPromises();
+    }
+    expect(wrapper.find("select[aria-label='本次重算使用的归因 Skill']").exists()).toBe(false);
+    const start = wrapper.get("[data-testid='wizard-start']");
+    expect(start.attributes("disabled")).toBeUndefined();
+    await start.trigger("click");
+    await flushPromises();
+    expect(submitted[0]).toMatchObject({ cacheEnabled });
+    expect(submitted[0]).not.toHaveProperty("attributionPackageId");
+    wrapper.unmount();
+  });
+
+  it("keeps cached launch unavailable when a bound target has no reports", async () => {
+    useHandlers({ attribution: () => HttpResponse.json({
+      ...attributionPreview,
+      summary: { potential: 2, reused: 0, fresh: 0, missing: 2, bySkill: {}, nonTargetKnown: 0 },
+    }) });
+    const { wrapper } = await mountWizard();
+    await reachStep4(wrapper);
+    expect(wrapper.get("[data-testid='wizard-start']").attributes("disabled")).toBeDefined();
+    expect(wrapper.get("[data-testid='wizard-effective-skill']").text()).toContain("本次跳过");
+    wrapper.unmount();
   });
 
   it("re-requests the attribution preview when the cache switch changes", async () => {

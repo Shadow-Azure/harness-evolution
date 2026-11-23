@@ -1041,10 +1041,15 @@
               }
             ],
             "title": "Targetrevision"
+          },
+          "usesBoundSkill": {
+            "title": "Usesboundskill",
+            "type": "boolean"
           }
         },
         "required": [
           "canRecompute",
+          "usesBoundSkill",
           "summary"
         ],
         "title": "AttributionPreviewResult",
@@ -1540,10 +1545,15 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "runtimeEnabled": {
+            "title": "Runtimeenabled",
+            "type": "boolean"
           }
         },
         "required": [
-          "items"
+          "items",
+          "runtimeEnabled"
         ],
         "title": "AttributionSkillPackageList",
         "type": "object"
@@ -2866,6 +2876,7 @@
           "RUN_NOT_FOUND",
           "STEP_NOT_READY",
           "RUN_BUSY",
+          "RUN_CONTROL_CONFLICT",
           "RUN_NOT_RETRYABLE",
           "REPO_INVALID",
           "PROJECT_ID_INVALID",
@@ -3068,6 +3079,26 @@
             "title": "Cacheenabled",
             "type": "boolean"
           },
+          "canPause": {
+            "default": false,
+            "title": "Canpause",
+            "type": "boolean"
+          },
+          "canResume": {
+            "default": false,
+            "title": "Canresume",
+            "type": "boolean"
+          },
+          "controlState": {
+            "default": "running",
+            "enum": [
+              "running",
+              "pause_requested",
+              "paused"
+            ],
+            "title": "Controlstate",
+            "type": "string"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
@@ -3083,6 +3114,11 @@
               }
             ],
             "title": "Createdby"
+          },
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
           },
           "error": {
             "anyOf": [
@@ -3118,6 +3154,41 @@
             },
             "title": "Models",
             "type": "array"
+          },
+          "pauseRequestedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pauserequestedat"
+          },
+          "pausedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pausedat"
+          },
+          "pausedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pausedby"
           },
           "policy": {
             "$ref": "#/components/schemas/EvolutionRunPolicy"
@@ -3175,6 +3246,76 @@
         "title": "EvolutionRunCard",
         "type": "object"
       },
+      "EvolutionRunControl": {
+        "additionalProperties": false,
+        "description": "Server-authoritative controls shared by mutations, cards and details.",
+        "properties": {
+          "canPause": {
+            "default": false,
+            "title": "Canpause",
+            "type": "boolean"
+          },
+          "canResume": {
+            "default": false,
+            "title": "Canresume",
+            "type": "boolean"
+          },
+          "controlState": {
+            "default": "running",
+            "enum": [
+              "running",
+              "pause_requested",
+              "paused"
+            ],
+            "title": "Controlstate",
+            "type": "string"
+          },
+          "pauseRequestedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pauserequestedat"
+          },
+          "pausedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pausedat"
+          },
+          "pausedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pausedby"
+          },
+          "runId": {
+            "title": "Runid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "title": "EvolutionRunControl",
+        "type": "object"
+      },
       "EvolutionRunDetail": {
         "additionalProperties": false,
         "description": "Complete shell consumed by the seven-step run-detail page.",
@@ -3210,6 +3351,26 @@
             "title": "Cacheenabled",
             "type": "boolean"
           },
+          "canPause": {
+            "default": false,
+            "title": "Canpause",
+            "type": "boolean"
+          },
+          "canResume": {
+            "default": false,
+            "title": "Canresume",
+            "type": "boolean"
+          },
+          "controlState": {
+            "default": "running",
+            "enum": [
+              "running",
+              "pause_requested",
+              "paused"
+            ],
+            "title": "Controlstate",
+            "type": "string"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
@@ -3225,6 +3386,11 @@
               }
             ],
             "title": "Createdby"
+          },
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
           },
           "error": {
             "anyOf": [
@@ -3287,6 +3453,41 @@
               }
             ],
             "title": "Nextretryat"
+          },
+          "pauseRequestedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pauserequestedat"
+          },
+          "pausedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pausedat"
+          },
+          "pausedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pausedby"
           },
           "policy": {
             "$ref": "#/components/schemas/EvolutionRunPolicy"
@@ -3432,12 +3633,18 @@
               "attribution_reused",
               "workspace_prepared",
               "clusters_created",
+              "ai_agent_call",
+              "degraded",
               "step_advanced",
+              "run_pause_requested",
+              "run_paused",
+              "run_continued",
               "run_blocked",
               "run_resumed",
               "final_completed",
               "run_failed",
               "run_interrupted",
+              "job_recovered",
               "candidate_committed",
               "candidate_pushed",
               "eval_submitted",
@@ -3991,6 +4198,10 @@
             ],
             "title": "Pusherror"
           },
+          "pushRepoUrl": {
+            "title": "Pushrepourl",
+            "type": "string"
+          },
           "pushStatus": {
             "enum": [
               "pending",
@@ -4051,6 +4262,7 @@
         },
         "required": [
           "repoUrl",
+          "pushRepoUrl",
           "subDir",
           "repoPath",
           "baseRef",
@@ -7729,7 +7941,7 @@
       },
       "StepAttributionRow": {
         "additionalProperties": false,
-        "description": "One case attribution conclusion of step 4.",
+        "description": "One case attribution conclusion of step 4.\n\n``session_id`` is the source Session that owns the bad case. The client\nneeds it to build the canonical error-detail deep link without a second\nlookup; rows without a Session cannot offer that link.",
         "properties": {
           "attributionId": {
             "title": "Attributionid",
@@ -7757,6 +7969,22 @@
             ],
             "title": "Category"
           },
+          "conclusion": {
+            "anyOf": [
+              {
+                "enum": [
+                  "attributed",
+                  "non_target",
+                  "inconclusive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conclusion"
+          },
           "confidence": {
             "anyOf": [
               {
@@ -7772,6 +8000,10 @@
             "title": "Description",
             "type": "string"
           },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
           "source": {
             "enum": [
               "cached",
@@ -7783,6 +8015,7 @@
         },
         "required": [
           "badCaseId",
+          "sessionId",
           "attributionId",
           "category",
           "description",
@@ -7989,14 +8222,58 @@
       },
       "StepClustersPayload": {
         "additionalProperties": false,
-        "description": "Clusters ordered by severity descending.",
+        "description": "Clusters ordered by severity descending plus the AI-mode audit facts.\n\n``degraded`` lists the task keys a ``degrade`` policy replaced with\ndeterministic fallbacks, so a degraded result is never presented as model\nparticipation. ``failure`` carries the sanitized run error when a strict\npolicy failed the run at this step.",
         "properties": {
+          "algorithm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Algorithm"
+          },
           "clusters": {
             "items": {
               "$ref": "#/components/schemas/StepCluster"
             },
             "title": "Clusters",
             "type": "array"
+          },
+          "degraded": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Degraded",
+            "type": "array"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure"
+          },
+          "failurePolicy": {
+            "anyOf": [
+              {
+                "enum": [
+                  "strict",
+                  "degrade"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failurepolicy"
           }
         },
         "required": [
@@ -8099,6 +8376,11 @@
             },
             "title": "Changes",
             "type": "array"
+          },
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
           },
           "initScore": {
             "anyOf": [
@@ -8300,6 +8582,17 @@
         "additionalProperties": false,
         "description": "Immutable selection snapshot shown on step 1.",
         "properties": {
+          "attributionPackageId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributionpackageid"
+          },
           "cacheEnabled": {
             "title": "Cacheenabled",
             "type": "boolean"
@@ -8612,9 +8905,9 @@
         "title": "StepRoundEval",
         "type": "object"
       },
-      "StepRoundPatch": {
+      "StepRoundFilePatch": {
         "additionalProperties": false,
-        "description": "Patch preview stored with the round.\n\n``note`` carries the patch source's one-line change description (for the\nminimal-config source it starts with \"最小配置变更\"). Rounds published\nbefore the patch-source seam persist only ``file``/``lines``, so the field\nstays optional and older snapshots keep rendering unchanged.",
+        "description": "One file inside a round's patch preview.",
         "properties": {
           "file": {
             "title": "File",
@@ -8625,6 +8918,30 @@
               "type": "string"
             },
             "title": "Lines",
+            "type": "array"
+          },
+          "overwrite": {
+            "default": false,
+            "title": "Overwrite",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file",
+          "lines"
+        ],
+        "title": "StepRoundFilePatch",
+        "type": "object"
+      },
+      "StepRoundPatch": {
+        "additionalProperties": false,
+        "description": "Patch preview projected from the round's stored bundle.\n\nThe durable shape carries ``files[]`` plus ``note``/``intent``/``report``,\nand single-file rounds also keep the legacy ``file``/``lines`` keys. This\nread model is built from :func:`stored_bundle` instead of validating the\nraw dictionary, so a later writer field cannot break step 6 again.",
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/StepRoundFilePatch"
+            },
+            "title": "Files",
             "type": "array"
           },
           "note": {
@@ -8640,8 +8957,7 @@
           }
         },
         "required": [
-          "file",
-          "lines"
+          "files"
         ],
         "title": "StepRoundPatch",
         "type": "object"
@@ -18236,6 +18552,208 @@
           }
         ],
         "summary": "Read Run Events",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/pause": {
+      "post": {
+        "description": "Request a cooperative pause at the next durable checkpoint.",
+        "operationId": "pause_run_api_workspaces__wid__evolution_runs__run_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionRunControl"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Pause Run",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/resume": {
+      "post": {
+        "description": "Release a user pause and admit the first unfinished operation.",
+        "operationId": "resume_run_api_workspaces__wid__evolution_runs__run_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionRunControl"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Resume Run",
         "tags": [
           "workspace-evolution"
         ]

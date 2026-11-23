@@ -398,13 +398,14 @@ async def test_attribution_preview_counts_cache_and_non_target(
     assert enabled.status_code == 200
     assert enabled.json() == {
         "canRecompute": False,
+        "usesBoundSkill": False,
         "summary": {
             "potential": 3,
             "reused": 2,
-            "fresh": 0,
-            "missing": 1,
-            "bySkill": {"历史报告 · Skill 未记录": 2},
-            "nonTargetKnown": 0,
+            "fresh": 1,
+            "missing": 0,
+            "bySkill": {},
+            "nonTargetKnown": 1,
         },
         "targetRevision": "tag:v2.0.0",
     }

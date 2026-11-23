@@ -2,17 +2,26 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
+from sqlalchemy import update
 
 from app.db.base import Database
 from app.db.crud.attributions import AttributionRepository, EvolutionRunCandidateRepository
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.probe_query import ProbeQueryRepository
+from app.db.models.evolution import evolution_runs
 from app.errors import AppError
 from app.service.evolution.attribution import AttributionRunner, RuleBasedEngine
 from app.service.evolution.engine.contracts import RunBlocked
 from app.service.evolution.prepare import EvolutionPrepareService
-from app.service.evolution.stages import EvolutionStageService, StepSessionRow
+from app.service.evolution.stages import (
+    EvolutionStageService,
+    StepAttributionPayload,
+    StepClustersPayload,
+    StepSessionRow,
+)
 from app.service.evolution.state import STEP_KEYS
 from tests.evolution.test_m10_04_prepare import (
     FailingEngine,
@@ -84,6 +93,7 @@ async def test_v2_run_returns_all_seven_steps_in_order(harness: Harness) -> None
     attribution = await service.step("run-m10-04", "attribution")
     assert attribution.payload.summary.potential == 1  # type: ignore[union-attr]
     assert attribution.payload.summary.non_target == 0  # type: ignore[union-attr]
+    assert attribution.payload.rows[0].session_id == "session-m10-04"  # type: ignore[union-attr]
     clusters = await service.step("run-m10-04", "clusters")
     cluster = clusters.payload.clusters[0]  # type: ignore[union-attr]
     assert cluster.case_count == 1
@@ -111,6 +121,30 @@ async def test_unreported_candidate_counts_as_potential_but_not_fresh(harness: H
     assert step.payload.summary.potential == 1
     assert step.payload.summary.fresh == 0
     assert step.payload.rows == []
+
+
+async def test_step_keeps_inconclusive_reports_out_of_non_target_count(harness: Harness) -> None:
+    """A V2 insufficient-evidence report is completed and distinct from a negative result."""
+    from sqlalchemy import update
+
+    from app.db.models.domain import probe_reports
+
+    await _seed_self_case(harness)
+    await _create_run(harness.database)
+    await _prepare_service(harness.database, harness).handle(_job())
+    async with harness.database.transaction() as session:
+        await session.execute(
+            update(probe_reports)
+            .where(probe_reports.c.created_run_id == "run-m10-04")
+            .values(conclusion="inconclusive", attribute_type=None)
+        )
+    step = await _stage_service(harness.database).step("run-m10-04", "attribution")
+    assert step.key == "attribution"
+    (row,) = step.payload.rows
+    assert row.conclusion == "inconclusive"
+    assert row.category is None
+    assert step.payload.summary.non_target == 0
+    assert step.payload.summary.fresh == 1
 
 
 async def test_historical_session_rows_fall_back_to_bounded_title(
@@ -165,6 +199,11 @@ async def test_legacy_run_maps_six_step_progress_onto_seven_steps(
     assert sessions.status == "done"
     assert sessions.payload.summary.associated == 1  # type: ignore[union-attr]
 
+    attribution = await service.step(data["run"]["id"], "attribution")
+    attribution_rows = cast(StepAttributionPayload, attribution.payload).rows
+    assert attribution_rows
+    assert attribution_rows[0].session_id == "050b81ba-0000-4000-8000-0000000000c3"
+
     range_step = await service.step(data["run"]["id"], "range")
     assert range_step.status == "done"
     assert range_step.payload.condition.target_version == "v2.0.0"  # type: ignore[union-attr]
@@ -192,3 +231,30 @@ async def test_pending_step_is_not_readable(harness: Harness) -> None:
         with pytest.raises(AppError) as pending:
             await service.step("run-preparing", key)
         assert pending.value.code.value == "STEP_NOT_READY"
+
+
+async def test_failed_cluster_step_reports_the_strict_failure(harness: Harness) -> None:
+    """The clusters step exposes a strict failure and its policy instead of a 404."""
+    await _create_run(harness.database)
+    async with harness.database.transaction() as session:
+        await session.execute(
+            update(evolution_runs)
+            .where(evolution_runs.c.id == "run-m10-04")
+            .values(
+                status="failed",
+                error_stage="cluster",
+                error_message="cluster.review failed: AgentProviderError: could not start",
+                stats={"clusterFailurePolicy": "strict"},
+            ),
+        )
+    service = _stage_service(harness.database)
+
+    step = await service.step("run-m10-04", "clusters")
+    payload = cast(StepClustersPayload, step.payload)
+
+    assert step.status == "active"
+    assert payload.failure_policy == "strict"
+    assert payload.failure == ("cluster.review failed: AgentProviderError: could not start")
+    assert payload.clusters == []
+    assert payload.degraded == []
+    assert payload.algorithm is None

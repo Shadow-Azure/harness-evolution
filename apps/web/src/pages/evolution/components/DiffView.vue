@@ -15,19 +15,31 @@ function lineClass(line: string): string {
 
 <template>
   <div class="diff">
-    <div class="fhead">
-      {{ patch.file }}
-    </div>
     <div
-      v-for="(line, index) in patch.lines"
-      :key="`${index}-${line}`"
-      class="dline"
-      :class="lineClass(line)"
+      v-for="file in (patch.files ?? [])"
+      :key="file.file"
+      class="file"
     >
-      {{ line }}
+      <div class="fhead">
+        {{ file.file }}
+      </div>
+      <div
+        v-for="(line, index) in file.lines"
+        :key="`${index}-${line}`"
+        class="dline"
+        :class="lineClass(line)"
+      >
+        {{ line }}
+      </div>
+      <div
+        v-if="file.lines.length === 0"
+        class="empty-patch"
+      >
+        patch 内容为空
+      </div>
     </div>
     <div
-      v-if="patch.lines.length === 0"
+      v-if="(patch.files ?? []).length === 0"
       class="empty-patch"
     >
       patch 内容为空
@@ -42,6 +54,10 @@ function lineClass(line: string): string {
   border-radius: 8px;
   font-family: var(--mono);
   font-size: 11.5px;
+}
+
+.file + .file {
+  border-top: 1px solid var(--border);
 }
 
 .fhead {

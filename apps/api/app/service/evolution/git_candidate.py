@@ -9,7 +9,7 @@ import html
 import logging
 import re
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import NoReturn
@@ -17,7 +17,9 @@ from urllib.parse import urlsplit
 
 from app.db.crud.evolution import EvolutionRepository
 from app.db.models.evolution import EvolutionRoundRecord, EvolutionRunRecord
+from app.service.evolution.ai_observability import AiAgentCall
 from app.service.evolution.backoff import next_retry_at
+from app.service.evolution.control import checkpoint
 from app.service.evolution.engine.contracts import ConfigError, RunBlocked
 from app.service.evolution.events import (
     EvolutionRunEventLevel,
@@ -28,10 +30,13 @@ from app.service.evolution.events import (
 from app.service.evolution.git_failures import classify_git_failure
 from app.service.evolution.patch_source import (
     PLACEHOLDER_PATCH_NOTE,
+    PatchBundle,
     PatchSource,
     default_patch_source_factory,
 )
+from app.service.evolution.round_patch import stored_bundle
 from app.service.evolution.state import StageConflict
+from app.third_party_api.ai_agent.contracts import AgentProviderError
 from app.third_party_api.git.workspace import (
     CandidateWorkspace,
     GitOperationError,
@@ -208,38 +213,77 @@ class EvolutionCandidateService:
         trace: CandidateTrace,
         *,
         job_id: str | None = None,
+        resume: bool = False,
     ) -> EvolutionRoundRecord:
         """Create, commit, and push one candidate with bounded immediate retries."""
         if round_.status in {"evaluating", "deciding", "accepted", "rejected", "skipped"}:
             return round_
+        await checkpoint(self._runs, run.id)
+        if round_.candidate_commit:
+            return await self.repush_existing(run, round_, job_id=job_id)
         prepared = _prepared_workspace(run)
         current = await self._runs.mark_round_patching(
             round_.id,
-            started_at=self._now(),
+            started_at=round_.started_at or self._now(),
         )
-        patch_source = self._patch_source_factory(run)
-        try:
-            patch = await patch_source.build(run, current.seq, trace)
-            change_note = await patch_source.change_note(run, current.seq, trace)
-        except ConfigError as exc:
-            await self._fail_patch_generation(run, current.id, exc, job_id=job_id)
+        saved = current.patch
+        bundle = stored_bundle(saved)
+        if bundle is None:
+            patch_source = self._patch_source_factory(run)
+            try:
+                bundle = await patch_source.build_bundle(run, current.seq, trace)
+            except AgentProviderError as exc:
+                await self._record_ai_call(
+                    run.id,
+                    current.id,
+                    _last_ai_call(patch_source),
+                    job_id=job_id,
+                )
+                await self._handle_provider_failure(run, current.id, exc, job_id=job_id)
+            except ConfigError as exc:
+                await self._record_ai_call(
+                    run.id,
+                    current.id,
+                    _last_ai_call(patch_source),
+                    job_id=job_id,
+                )
+                await self._fail_patch_generation(run, current.id, exc, job_id=job_id)
+            else:
+                await self._record_ai_call(
+                    run.id,
+                    current.id,
+                    _last_ai_call(patch_source),
+                    job_id=job_id,
+                )
+            saved = _stored_patch(bundle)
+            await self._runs.save_round_patch(current.id, saved)
+        if bundle is None:
+            raise ConfigError("patch generation produced no candidate bundle")
+        if saved is None:
+            raise ConfigError("patch generation produced no stored patch payload")
+        await checkpoint(self._runs, run.id)
         candidate_ref = f"{prepared.branch}/candidate/r{current.seq}"
+        files = tuple(patch.file for patch in bundle.files)
         message = build_candidate_message(
             run,
             round_seq=current.seq,
-            trace=_with_patch_file(trace, patch.file, change_note),
-            patch_sha256=patch.sha256,
-            created_at=self._now(),
+            trace=_with_patch_file(trace, ", ".join(files), bundle.note),
+            patch_sha256=bundle.sha256,
+            created_at=current.started_at or self._now(),
             web_base_url=self._web_base_url,
         )
         try:
-            candidate = await self._workspaces.create_candidate(
+            candidate = await self._workspaces.create_candidate_bundle(
                 prepared,
                 run_branch=prepared.branch,
                 candidate_ref=candidate_ref,
-                patch=patch,
+                bundle=bundle,
                 message=message,
                 expected_run_id=run.id,
+                reset_workspace=resume,
+                # The legacy placeholder commits its document under
+                # .harness-evolution/; an audited agent plan must never stage it.
+                allow_protected_paths=bundle.intent is None,
             )
         except GitOperationError as exc:
             await self._handle_git_failure(
@@ -252,7 +296,7 @@ class EvolutionCandidateService:
             candidate_ref=candidate.ref,
             candidate_commit=candidate.commit,
             candidate_message=candidate.message,
-            patch={"file": patch.file, "lines": list(patch.lines), "note": change_note},
+            patch=saved,
         )
         await self._record(
             run.id,
@@ -261,9 +305,10 @@ class EvolutionCandidateService:
             message=f"候选提交已创建：第 {current.seq} 轮",
             round_id=current.id,
             job_id=job_id,
-            payload={"files": [patch.file], "patchHash": f"sha256:{patch.sha256}"},
+            payload=_audit_payload(bundle, files=files, unified_diff=candidate.unified_diff),
         )
 
+        await checkpoint(self._runs, run.id)
         if not self._workspaces.push_enabled:
             return await self._runs.mark_round_and_run_push_skipped(
                 run.id,
@@ -274,6 +319,7 @@ class EvolutionCandidateService:
 
         async def attempt_push() -> None:
             nonlocal attempt_counter
+            await checkpoint(self._runs, run.id)
             attempt_counter += 1
             await self._runs.mark_round_pushing(
                 current.id,
@@ -344,6 +390,7 @@ class EvolutionCandidateService:
                 next_retry_at=retry_at,
                 retry_attempts=0,
                 retryable=exc.retryable,
+                detail=exc.detail,
             ) from None
 
         pushed = await self._runs.mark_round_push_succeeded(
@@ -380,14 +427,16 @@ class EvolutionCandidateService:
         retry_attempts: int = 0,
     ) -> EvolutionRoundRecord:
         """Push one already-committed candidate exactly once and re-enter evaluation."""
+        if round_.push_status == "succeeded":
+            return await self._runs.mark_round_evaluating(round_.id)
+        if not self._workspaces.push_enabled:
+            return await self._runs.mark_round_and_run_push_skipped(run.id, round_.id)
         if (
             round_.candidate_ref is None
             or round_.candidate_commit is None
             or not round_.candidate_message
         ):
             raise ValueError("candidate push retry requires a persisted candidate")
-        if not self._workspaces.push_enabled:
-            raise ValueError("push-disabled runs cannot resume a candidate push")
         prepared = _prepared_workspace(run)
         candidate = CandidateWorkspace(
             workspace_path=prepared.path,
@@ -398,7 +447,9 @@ class EvolutionCandidateService:
             message=round_.candidate_message,
             run_id=run.id,
             base_commit=prepared.base_commit,
+            push_url=prepared.push_url,
         )
+        await checkpoint(self._runs, run.id)
         attempt = round_.push_attempts + 1
         pushing = await self._runs.mark_round_pushing(round_.id, attempt=attempt)
         await self._record(
@@ -500,6 +551,7 @@ class EvolutionCandidateService:
             message=deciding.candidate_message or "",
             run_id=run.id,
             base_commit=prepared.base_commit,
+            push_url=prepared.push_url,
         )
         patch_hash = _patch_hash(deciding)
         message = build_accepted_message(
@@ -584,6 +636,7 @@ class EvolutionCandidateService:
             message=deciding.candidate_message or "",
             run_id=run.id,
             base_commit=prepared.base_commit,
+            push_url=prepared.push_url,
         )
         cleanup_error = await self._workspaces.reject_candidate(
             candidate,
@@ -654,6 +707,7 @@ class EvolutionCandidateService:
         round_id: str,
         job_id: str | None,
         cluster_id: str | None = None,
+        step_index: int | None = None,
         level: EvolutionRunEventLevel = "info",
         payload: Mapping[str, object] | None = None,
         error: BaseException | None = None,
@@ -668,6 +722,7 @@ class EvolutionCandidateService:
                 level=level,
                 stage=stage,
                 cluster_id=cluster_id,
+                step_index=step_index,
                 round_id=round_id,
                 job_id=job_id,
                 message=message,
@@ -679,6 +734,74 @@ class EvolutionCandidateService:
                 "failed to record candidate event",
                 extra={"run_id": run_id, "event_type": event_type},
             )
+
+    async def _record_ai_call(
+        self,
+        run_id: str,
+        round_id: str,
+        call: AiAgentCall | None,
+        *,
+        job_id: str | None,
+    ) -> None:
+        """Record one provider call in the iteration step, when one happened."""
+        if call is None:
+            return
+        await self._record(
+            run_id,
+            "ai_agent_call",
+            stage="candidate",
+            step_index=5,
+            round_id=round_id,
+            job_id=job_id,
+            message=f"AI 调用：{call.task}（{call.outcome}）",
+            payload=call.payload(),
+        )
+
+    async def _handle_provider_failure(
+        self,
+        run: EvolutionRunRecord,
+        round_id: str,
+        error: AgentProviderError,
+        *,
+        job_id: str | None,
+    ) -> NoReturn:
+        """Fail terminally or pause for retry when the agent backend fails."""
+        if not error.retryable:
+            await self._fail_patch_generation(
+                run,
+                round_id,
+                ConfigError(sanitize_message(str(error), limit=2_000)),
+                job_id=job_id,
+            )
+        message = sanitize_message(str(error), limit=2_000)
+        await self._runs.mark_blocked(
+            run.id,
+            stage="patch",
+            message=message,
+            error_stage="patch",
+            next_retry_at=None,
+            retry_attempts=0,
+        )
+        await self._record(
+            run.id,
+            "run_blocked",
+            stage="candidate",
+            message="AI 编辑失败，patch 生成暂停",
+            round_id=round_id,
+            job_id=job_id,
+            level="warn",
+            payload={"provider": error.provider_id, "retryable": True},
+            error=error,
+        )
+        raise RunBlocked(
+            message,
+            stage="patch",
+            error_stage="patch",
+            next_retry_at=None,
+            retry_attempts=0,
+            retryable=True,
+            detail=error.detail,
+        ) from None
 
     async def _handle_git_failure(
         self,
@@ -714,6 +837,7 @@ class EvolutionCandidateService:
             next_retry_at=retry_at,
             retry_attempts=retry_attempts,
             retryable=error.retryable,
+            detail=error.detail,
         ) from None
 
 
@@ -886,6 +1010,7 @@ def _prepared_workspace(run: EvolutionRunRecord) -> PreparedWorkspace:
         ref=run.base_ref or run.target_version,
         base_commit=run.base_commit,
         branch=run.branch_name,
+        push_url=(run.push_repo_url or None),
     )
 
 
@@ -908,31 +1033,85 @@ def _with_patch_file(
 
 
 def _patch_file(round_: EvolutionRoundRecord) -> str:
-    """Read the applied file from one stored patch."""
-    if not isinstance(round_.patch, Mapping):
+    """Read the applied file (or comma-joined files) from one stored patch."""
+    bundle = stored_bundle(round_.patch)
+    if bundle is None:
         return ".harness-evolution.md"
-    value = round_.patch.get("file")
-    return value if isinstance(value, str) and value else ".harness-evolution.md"
+    return ", ".join(patch.file for patch in bundle.files)
 
 
 def _patch_note(round_: EvolutionRoundRecord) -> str:
     """Read the stored change description for accepted-message reproduction."""
-    if not isinstance(round_.patch, Mapping):
-        return PLACEHOLDER_PATCH_NOTE
-    value = round_.patch.get("note")
-    return value if isinstance(value, str) and value else PLACEHOLDER_PATCH_NOTE
+    bundle = stored_bundle(round_.patch)
+    return bundle.note if bundle is not None else PLACEHOLDER_PATCH_NOTE
 
 
 def _patch_hash(round_: EvolutionRoundRecord) -> str:
-    """Recompute the stored patch digest for accepted-message reproduction."""
-    file = _patch_file(round_)
-    raw_lines = round_.patch.get("lines") if isinstance(round_.patch, Mapping) else None
-    lines = (
-        tuple(line for line in raw_lines if isinstance(line, str))
-        if isinstance(raw_lines, (list, tuple))
-        else ()
+    """Recompute the stored bundle digest for accepted-message reproduction."""
+    bundle = stored_bundle(round_.patch)
+    if bundle is None:
+        return Patch(file=_patch_file(round_), lines=()).sha256
+    return bundle.sha256
+
+
+def _last_ai_call(source: PatchSource) -> AiAgentCall | None:
+    """Return the optional call record a patch source attached to its last build.
+
+    Only the agent-edit source performs a provider call, so the absence of the
+    attribute means the patch generation was deterministic and no AI event is
+    owed. ``isinstance`` keeps duck-typed test sources from smuggling a wrong
+    shape into the event payload.
+    """
+    call = getattr(source, "last_ai_call", None)
+    return call if isinstance(call, AiAgentCall) else None
+
+
+def _stored_patch(bundle: PatchBundle) -> dict[str, object]:
+    """Serialize one bundle into the durable round patch payload."""
+    files = [
+        {"file": patch.file, "lines": list(patch.lines), "overwrite": patch.overwrite}
+        for patch in bundle.files
+    ]
+    saved: dict[str, object] = {
+        "files": files,
+        "note": bundle.note,
+        "intent": bundle.intent.model_dump(mode="json") if bundle.intent is not None else None,
+        "report": [asdict(status) for status in bundle.report],
+    }
+    if len(bundle.files) == 1:
+        # Keep the legacy single-file keys so old readers and existing runs
+        # resolve the same file, lines, and note without a migration.
+        saved.update(files[0])
+    return saved
+
+
+_MAX_EVENT_DIFF_CHARS = 20_000
+
+
+def _audit_payload(
+    bundle: PatchBundle,
+    *,
+    files: tuple[str, ...],
+    unified_diff: str,
+) -> dict[str, object]:
+    """Build the candidate_committed payload, including agent intent and diff."""
+    payload: dict[str, object] = {
+        "files": list(files),
+        "patchHash": f"sha256:{bundle.sha256}",
+    }
+    if bundle.intent is None:
+        return payload
+    diff = unified_diff
+    if len(diff) > _MAX_EVENT_DIFF_CHARS:
+        diff = diff[:_MAX_EVENT_DIFF_CHARS].rstrip() + "\n…（diff 已截断）"
+    payload.update(
+        {
+            "intent": bundle.intent.model_dump(mode="json"),
+            "report": [asdict(status) for status in bundle.report],
+            "unifiedDiff": diff,
+        },
     )
-    return Patch(file=file, lines=lines).sha256
+    return payload
 
 
 async def _default_sleep(seconds: float) -> None:

@@ -6,7 +6,14 @@ from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BeforeValidator,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _API_DIR = Path(__file__).resolve().parents[1]
@@ -103,6 +110,9 @@ class Settings(BaseSettings):
     event_replay_limit: int = Field(default=500, gt=0, le=5_000)
     sync_interval_seconds: int = Field(default=60, ge=0)
     sync_lock_ttl_seconds: int = Field(default=30 * 60, gt=0)
+    job_lease_seconds: int = Field(default=90, ge=10, le=86_400)
+    job_heartbeat_seconds: float = Field(default=15.0, gt=0, le=3_600)
+    job_drain_timeout_seconds: float = Field(default=25.0, ge=0, le=600)
     upstream_base_url: str | None = None
     upstream_token: SecretStr | None = None
     upstream_api_major: UpstreamApiMajor = 1
@@ -136,6 +146,8 @@ class Settings(BaseSettings):
         le=86_400,
     )
     git_push: bool = True
+    git_push_provider: Literal["github", "gitlab"] = "github"
+    git_push_token: SecretStr | None = None
     git_push_url: str | None = None
     git_proxy: str | None = None
     git_proxy_probe_interval_seconds: float = Field(default=60.0, ge=5, le=3_600)
@@ -150,6 +162,13 @@ class Settings(BaseSettings):
     eval_base_url: str | None = None
     eval_api_key: SecretStr | None = None
     patch_source_mode: str = "placeholder"
+    ai_agent_provider: str = Field(
+        default="claude-code",
+        validation_alias=AliasChoices("AI_AGENT_PROVIDER", "HE_AI_AGENT_PROVIDER"),
+    )
+    ai_agent_claude_bin: str = "~/.local/bin/claude"
+    ai_agent_claude_settings: str | None = None
+    ai_agent_failure_policy: Literal["strict", "degrade"] | None = None
     blocked_sweep_seconds: float = Field(default=30.0, ge=1)
     web_base_url: str | None = None
     auth_provider: AuthProviderName = AuthProviderName.PASSWORD
@@ -196,6 +215,13 @@ class Settings(BaseSettings):
         """Reject configuration that would sign JWTs with an empty key."""
         if not self.jwt_secret.get_secret_value():
             raise ValueError("HE_JWT_SECRET must not be empty")
+        return self
+
+    @model_validator(mode="after")
+    def require_valid_job_timing(self) -> "Settings":
+        """Keep at least one heartbeat renewal inside every lease window."""
+        if self.job_heartbeat_seconds >= self.job_lease_seconds:
+            raise ValueError("HE_JOB_HEARTBEAT_SECONDS must be less than HE_JOB_LEASE_SECONDS")
         return self
 
     @model_validator(mode="after")
@@ -312,10 +338,70 @@ class Settings(BaseSettings):
     @field_validator("patch_source_mode")
     @classmethod
     def validate_patch_source_mode(cls, value: str) -> str:
-        """Accept only registered patch source modes."""
-        if value not in {"placeholder", "minimal-config"}:
-            raise ValueError("HE_PATCH_SOURCE_MODE must be placeholder or minimal-config")
+        """Accept only modes registered by the patch source factory."""
+        from app.service.evolution.patch_source import PATCH_SOURCE_MODES
+
+        if value not in PATCH_SOURCE_MODES:
+            choices = ", ".join(PATCH_SOURCE_MODES)
+            raise ValueError(f"HE_PATCH_SOURCE_MODE must be one of: {choices}")
         return value
+
+    @field_validator("ai_agent_provider")
+    @classmethod
+    def validate_ai_agent_provider(cls, value: str) -> str:
+        """Accept only registered AI Agent providers; unknown values fail startup."""
+        normalized = value.strip().lower()
+        from app.third_party_api.ai_agent.factory import registered_provider_ids
+
+        legal = registered_provider_ids()
+        if normalized not in legal:
+            choices = ", ".join(sorted(legal))
+            raise ValueError(
+                f"unknown AI agent provider: {normalized!r}; expected one of: {choices}",
+            )
+        return normalized
+
+    @field_validator("ai_agent_claude_bin")
+    @classmethod
+    def validate_ai_agent_claude_bin(cls, value: str) -> str:
+        """Keep the CLI path a non-empty deployment value."""
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("AI_AGENT_CLAUDE_BIN must not be empty")
+        return normalized
+
+    @field_validator("ai_agent_failure_policy", mode="before")
+    @classmethod
+    def treat_blank_failure_policy_as_unset(cls, value: object) -> object:
+        """Treat an empty template value as unset so the provider default applies."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("ai_agent_claude_settings")
+    @classmethod
+    def validate_ai_agent_claude_settings(cls, value: str | None) -> str | None:
+        """Treat a blank settings path as unset; otherwise keep the explicit path."""
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def derive_ai_agent_failure_policy(self) -> "Settings":
+        """Default the policy from the provider: fake degrades, real providers are strict."""
+        if self.ai_agent_failure_policy is None:
+            self.ai_agent_failure_policy = (
+                "degrade" if self.ai_agent_provider == "fake" else "strict"
+            )
+        return self
+
+    @property
+    def effective_ai_agent_failure_policy(self) -> Literal["strict", "degrade"]:
+        """Return the resolved policy, failing loudly on an unresolved settings object."""
+        if self.ai_agent_failure_policy is None:
+            raise RuntimeError("ai_agent_failure_policy was not resolved")
+        return self.ai_agent_failure_policy
 
     @field_validator("oidc_client_secret_env")
     @classmethod

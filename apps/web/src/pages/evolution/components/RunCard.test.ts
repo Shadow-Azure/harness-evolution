@@ -2,12 +2,14 @@
 
 import type { EvolutionRunCard } from "@harness/contracts";
 import { mount } from "@vue/test-utils";
+import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { describe, expect, it } from "vitest";
 
 import RunCard from "./RunCard.vue";
 
 const run = (overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard => ({
   runId: "run-1",
+  controlState: "running", canPause: false, canResume: false,
   title: "deep-research v2.0.0 自进化",
   mode: "full",
   target: {
@@ -25,6 +27,7 @@ const run = (overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard => ({
   createdBy: "Ada",
   createdAt: "2026-10-19T18:42:00+08:00",
   status: "running",
+  degraded: false,
   error: null,
   stats: {
     sessions: 128,
@@ -55,6 +58,21 @@ const run = (overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard => ({
 });
 
 describe("RunCard", () => {
+  it("keeps paused progress visible without an active pulse or member actions", () => {
+    const wrapper = mount(RunCard, {
+      props: { wid: "ws-test", workspaceName: "测试空间", run: run({
+        controlState: "paused", canPause: false, canResume: true,
+        pauseRequestedAt: null, pausedAt: null, pausedBy: null,
+      }) },
+      global: { plugins: [[VueQueryPlugin, { queryClient: new QueryClient() }]] },
+    });
+    expect(wrapper.get(".badge").text()).toBe("已暂停");
+    expect(wrapper.find(".pulse").exists()).toBe(false);
+    expect(wrapper.text()).toContain("第 6/7 步");
+    expect(wrapper.find(".control-button").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("renders the preparing status explicitly", () => {
     const wrapper = mount(RunCard, {
       props: {
@@ -202,6 +220,30 @@ describe("RunCard", () => {
     expect(wrapper.get(".final-line").text()).toContain("+4.6");
     expect(wrapper.get(".final-line").text()).toContain("接纳 1/2 个 patch");
     expect(wrapper.find("[role='progressbar']").exists()).toBe(false);
+  });
+
+  it("marks a completed degraded run without claiming model-backed success", () => {
+    const wrapper = mount(RunCard, {
+      props: {
+        wid: "ws-test",
+        workspaceName: "测试空间",
+        run: run({
+          status: "completed",
+          degraded: true,
+          final: {
+            bestVersion: "v2.0.1-best",
+            branchName: "evo/run-1",
+            pushStatus: "succeeded",
+            verdict: true,
+            bestScore: 88.9,
+            initScore: 84.3,
+          },
+        }),
+      },
+    });
+
+    expect(wrapper.get(".badge").text()).toBe("已完成 · 聚类降级");
+    expect(wrapper.get(".badge").classes()).toContain("done-pending");
   });
 
   it("marks completed runs without improvement without claiming success", () => {
@@ -365,6 +407,34 @@ describe("RunCard", () => {
     expect(wrapper.get(".run-card-link").attributes("href")).toBe(
       "/workspaces/ws-test/evolution/cluster/run-1",
     );
+  });
+
+  it("labels a completed cluster-only card without iteration or final facts", () => {
+    const wrapper = mount(RunCard, {
+      props: {
+        wid: "ws-test",
+        workspaceName: "测试空间",
+        run: run({
+          mode: "cluster_only",
+          status: "completed",
+          progress: {
+            unit: 5,
+            total: 5,
+            percent: 100,
+            stageLabel: "第 5/5 步 · 聚类完成",
+            doneRounds: 0,
+            accepted: 0,
+          },
+        }),
+      },
+    });
+
+    expect(wrapper.get(".badge").text()).toBe("✓ 已完成 · 仅聚类");
+    expect(wrapper.get(".badge").classes()).toContain("done-ok");
+    expect(wrapper.text()).toContain("仅聚类分析 · 未执行 patch 生成与评测迭代");
+    expect(wrapper.text()).toContain("聚类");
+    expect(wrapper.text()).not.toContain("已跑轮次");
+    expect(wrapper.text()).not.toContain("终评数据暂不可用");
   });
 
   it("keeps the error tooltip button from opening the detail", async () => {

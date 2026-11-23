@@ -1,6 +1,6 @@
 """Add isolated attribution evaluation and promotion audit storage.
 
-Revision ID: 0024
+Revision ID: 0024a
 Revises: 0023a
 Create Date: 2026-11-18
 """
@@ -12,7 +12,7 @@ from sqlalchemy import inspect
 
 from alembic import op
 
-revision: str = "0024"
+revision: str = "0024a"
 down_revision: str | None = "0023a"
 branch_labels: str | None = None
 depends_on: str | None = None

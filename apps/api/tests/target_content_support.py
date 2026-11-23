@@ -51,7 +51,7 @@ class FakeTargetVersionResolver:
 class FakeDefinitionSource:
     body = "# Deep research\nAlways inspect the evidence."
 
-    async def read_versioned_file(
+    async def read_file_at_commit(
         self, *, repo_url: str, sub_dir: str, ref: str, file_name: str
     ) -> tuple[str, str]:
-        return "a" * 40, self.body
+        return self.body, "a" * 40

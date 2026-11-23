@@ -16,13 +16,13 @@ Bugfix 虚拟 milestone 的设计目标是一次性承接后续所有 bugfix iss
 - `verify:flow` 对 `standing: true` 的 milestone 跳过 status ↔ 「issue 全 done」的等价校验：它可以在 issue 全 done 时仍为 active，也可以在有未 done issue 时为 active；`flow:sync` 按 status 把它同步为 open。
 - 退役常驻 milestone 必须由 roadmap 显式决策：把 status 改为 `done` 再 `flow:sync`，不靠 issue 完成度自动推导。
 - 规则落在 `.agents/flow/README.md` 与英文侧；`scripts/gates.spec.mjs` 增加常驻 milestone 通过、非布尔 `standing` 报错的用例。
-- issue #423 保持 done/closed；Bugfix milestone 保持 active/open，并继续承接后续 bugfix issue。
+- 常驻桶固定在 roadmap 序列末尾，新增 milestone 写在它之前；其长期 open 的验收 issue 不能通过「跨 milestone 同 priority 串行」阻塞后续 milestone。
+- issue #423 由提出人重新打开，保持 ready 等待验收；Bugfix milestone 保持 active/open，并继续承接后续 bugfix issue。
 
 ## Alternatives considered
 
 - **保持自动关闭、每次新 bugfix 再重开 milestone**：会产生关闭/重开的抖动，且新 issue 未进本地流程树时远端状态与本地不一致；本次已经实际触发。拒绝。
 - **在代码里写死 `id === "bugfix"` 的例外**：规则会藏在实现里，无法解释为什么只有 bugfix 特殊；任何其他常驻桶都要再改代码。显式 `standing` 字段可读、可测试、可复用。拒绝。
-- **让 issue #423 保持 ready 以维持 milestone active**：本地状态会与远端已关闭的 issue 不一致，`verify-flow-online` 失败；也没有完成闭环。拒绝。
 - **把远端「是否有 open issue」纳入离线 gate**：离线 gate 不应依赖 GitHub 网络与实时状态，且 CI token 可见性不同；常驻语义应由本地声明表达。拒绝。
 
 ## Consequences
@@ -30,4 +30,5 @@ Bugfix 虚拟 milestone 的设计目标是一次性承接后续所有 bugfix iss
 - 常驻 milestone 的 status 是人工/roadmap 决策，不再由 issue 完成度自动推导；忘记退役时 gate 不会报红，需要 roadmap 评审兜底。
 - `standing` 只允许布尔值，未声明的 milestone 保持原有等价规则；已有 milestone 行为不变。
 - 远程 milestone 由 `flow:sync` 按 status 打开/关闭；本次 #34 已重开，后续闭环 PR 会保持 open。
+- bugfix 桶位于 M27 之后；后续新增 milestone 必须插在常驻桶之前，否则同档阻塞会重新出现。
 - 流程文档、门禁自测试与本 Note 同 PR 更新；若未来需要更多常驻桶，只需加 `standing: true`，不改代码。

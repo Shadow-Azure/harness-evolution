@@ -29,8 +29,9 @@ milestones:
   - m22
   - m23
   - m24
-  - bugfix
   - m25
+  - m27
+  - bugfix
 ```
 
 ## Vision
@@ -63,6 +64,7 @@ Harness Evolution connects traceable Claude Code sessions, reported problems, an
 - **m23 Run list aligned with the prototype**: history cards gain workspace, potential-policy, and cache labels, and the creator leaves the list meta.
 - **m24 Single-ref clones and iterative pushes for run workspaces**: run workspaces fetch only the target ref, the cache hits and refreshes per target + ref, and push URLs and git observability are added.
 - **m25 Session-scoped parser and trace selection**: can_parse selection and subclass session links.
+- **m27 Project introduction and README showcase**: rewrite the README around a capability map, one key screenshot and quick start, paired in Chinese and English while keeping the demo-data boundary.
 
 ## Delivery rules
 

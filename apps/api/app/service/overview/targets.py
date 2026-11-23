@@ -404,9 +404,9 @@ def _version_accumulators(
 
 def _merge_version_groups(
     groups: dict[str, _VersionAccumulator],
-    runs: Sequence[TargetRunVersionRecord],
+    ref_revisions: Sequence[tuple[str | None, str | None]],
 ) -> dict[str, _VersionAccumulator]:
-    """Merge a ref-only group into its digest group using newest run evidence.
+    """Merge a ref-only group using its binding snapshot or newest run evidence.
 
     A run stores both the selected ref and the revision it resolved to. When the
     trigger events only carry the digest, that run is the evidence that the
@@ -414,9 +414,9 @@ def _merge_version_groups(
     keep a separate ``main`` row at zero next to ``main`` from the digest.
     """
     latest_by_ref: dict[str, str] = {}
-    for run in runs:
-        ref = _known_version(run.target_version)
-        digest = _known_version(run.target_revision)
+    for version, revision in ref_revisions:
+        ref = _known_version(version)
+        digest = _known_version(revision)
         if (
             ref is None
             or ref.startswith(("digest:", "provider:"))
@@ -511,6 +511,8 @@ def _build_version_labels(
     default_ref: str,
     observed: Sequence[ObjectVersionRecord],
     runs: Sequence[TargetRunVersionRecord],
+    *,
+    bound_revision: str | None = None,
 ) -> tuple[tuple[str, ...], dict[str, TargetVersionLabel]]:
     """Build canonical versions and their ref/commit display evidence.
 
@@ -519,7 +521,11 @@ def _build_version_labels(
     ``target_version``. No git lookup happens for digest-only history: it keeps
     the digest instead of guessing a moving ref.
     """
-    groups = _merge_version_groups(_version_accumulators(default_ref, observed), runs)
+    ref_revisions = [(run.target_version, run.target_revision) for run in runs]
+    if bound_revision:
+        observed = (*observed, ObjectVersionRecord(default_ref, bound_revision))
+        ref_revisions.insert(0, (default_ref, bound_revision))
+    groups = _merge_version_groups(_version_accumulators(default_ref, observed), ref_revisions)
     by_revision: dict[str, TargetRunVersionRecord] = {}
     by_ref: dict[str, TargetRunVersionRecord] = {}
     for run in runs:
@@ -902,12 +908,12 @@ class TargetOverviewService:
             if link.report_schema_version == REPORT_SCHEMA_VERSION and link.object_version
         }
         observed = (*observed, *(ObjectVersionRecord(None, v) for v in sorted(analyzed_versions)))
-        if target.definition:
-            observed = (
-                *observed,
-                ObjectVersionRecord(target.default_ref, target.definition["revision"]),
-            )
-        versions, labels = _build_version_labels(target.default_ref, observed, runs)
+        versions, labels = _build_version_labels(
+            target.default_ref,
+            observed,
+            runs,
+            bound_revision=target.definition["revision"] if target.definition else None,
+        )
         associated_sessions: set[str] = set()
         version_sessions: dict[str, frozenset[str]] = {}
         resolved = await asyncio.gather(

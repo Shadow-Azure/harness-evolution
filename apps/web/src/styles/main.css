@@ -59,9 +59,17 @@ a {
    V1 frame must not compensate for the old centered 1280px column. */
 .workspace-main .evolution-page-frame {
   left: 0;
-  width: min(1080px, 100%);
+  width: min(var(--evolution-page-max-width, 1080px), 100%);
   margin: 0 auto;
   padding: 20px 24px 64px;
+}
+
+/* The target config page follows the V2 prototype's 1720px content column:
+   its 8-column table no longer fits the 1080px reading frame. Only this page
+   raises the shared frame's cap; the run list and workspace admin pages keep
+   1080px until they are migrated separately. */
+.workspace-main .evolution-page-frame.target-config-page {
+  --evolution-page-max-width: 1720px;
 }
 
 @media (max-width: 640px) {
@@ -79,4 +87,27 @@ a {
 .type-chip.type-context,
 .state-chip.context {
   color: var(--green);
+}
+
+/* The workspace shell fixes main's height and hides overflow, so the list page
+   owns page-level scrolling. The full-width node keeps the scrollbar at the
+   window edge; symmetric inline padding preserves the 1080px frame and its
+   1032px content column. */
+.workspace-main .run-list-page {
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 20px max(24px, calc((100% - 1080px) / 2 + 24px)) 64px;
+  overflow-y: auto;
+}
+
+@media (max-width: 640px) {
+  /* The shell hands scrolling back to the document below this breakpoint, so
+     the list must not nest a second scroll container. */
+  .workspace-main .run-list-page {
+    height: auto;
+    padding: 8px 24px 0;
+    overflow-y: visible;
+  }
 }

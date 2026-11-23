@@ -464,11 +464,23 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
         if (!text.includes("第 4 步 · 对象归因")) return null;
         const rows = document.querySelectorAll(".rep tbody tr");
         if (rows.length !== 6) return null;
+        const sourceLinks = [...document.querySelectorAll("td.id a")];
+        const reportLinks = [...document.querySelectorAll("td.report-id a")];
+        if (sourceLinks.length !== 6 || reportLinks.length !== 6) return null;
+        reportLinks[0].focus();
         return {
           text,
           rows: rows.length,
           cached: [...document.querySelectorAll(".source-chip.cached")].length,
           fresh: [...document.querySelectorAll(".source-chip.fresh")].length,
+          sourceHrefs: sourceLinks.map((link) => link.getAttribute("href")),
+          reports: reportLinks.map((link) => ({
+            href: link.getAttribute("href"),
+            target: link.target,
+            rel: link.rel,
+            label: link.getAttribute("aria-label"),
+          })),
+          focused: document.activeElement === reportLinks[0],
         };
       })()`,
       "attribution step",
@@ -476,6 +488,39 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
     assert.equal(attribution.rows, 6);
     assert.equal(attribution.cached, 2);
     assert.equal(attribution.fresh, 4);
+    assert.equal(attribution.focused, true);
+    assert.equal(attribution.sourceHrefs.length, 6);
+    assert.equal(
+      attribution.sourceHrefs[0],
+      "/workspaces/ws-default/sessions/v2-session-1/errors?case=v2-case-1&tab=desc",
+    );
+    assert.equal(
+      attribution.sourceHrefs[5],
+      "/workspaces/ws-default/sessions/v2-session-5/errors?case=v2-case-6&tab=desc",
+    );
+    assert.deepEqual(
+      attribution.reports.map((report) => report.href),
+      [
+        "/workspaces/ws-default/sessions/v2-session-1/errors?case=v2-case-1&tab=attr&at=v2-probe-1",
+        "/workspaces/ws-default/sessions/v2-session-2/errors?case=v2-case-2&tab=attr&at=v2-probe-2",
+        "/workspaces/ws-default/sessions/v2-session-1/errors?case=v2-case-3&tab=attr&at=v2-probe-3",
+        "/workspaces/ws-default/sessions/v2-session-3/errors?case=v2-case-4&tab=attr&at=v2-probe-4",
+        "/workspaces/ws-default/sessions/v2-session-4/errors?case=v2-case-5&tab=attr&at=v2-probe-5",
+        "/workspaces/ws-default/sessions/v2-session-5/errors?case=v2-case-6&tab=attr&at=v2-probe-6",
+      ],
+    );
+    assert.ok(
+      attribution.reports.every(
+        (report) =>
+          report.target === "_blank" &&
+          report.rel.includes("noopener") &&
+          report.label?.includes("归因分析"),
+      ),
+    );
+    assert.match(
+      attribution.reports[0].label,
+      /归因报告 v2-probe-1，在新窗口打开归因分析/,
+    );
     assert.match(attribution.text, /非该对象问题/);
     assert.match(attribution.text, /6\s*潜在 bad case/);
     assert.match(attribution.text, /2\s*复用缓存/);
@@ -635,7 +680,76 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
   }
 });
 
-test("m12 attribution-jobs UI shows sanitized metrics and retries unfinished work", async () => {
+test("m10-06 step-4 attribution links resolve to the description and analysis tabs", async () => {
+  const page = await createBrowserPage();
+  try {
+    await installCookie(page, await currentLoginCookie());
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1408,
+      height: 960,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await openRun(page, "run-v2-completed", "?step=attribution");
+    const links = await waitForDocument(
+      page.session,
+      `(() => {
+        if (!document.body.textContent.includes("第 4 步 · 对象归因")) return null;
+        const source = document.querySelector("td.id a")?.getAttribute("href");
+        const report = document.querySelector("td.report-id a")?.getAttribute("href");
+        return source && report ? { source, report } : null;
+      })()`,
+      "step-4 attribution links",
+    );
+
+    await installCookie(page, await currentLoginCookie());
+    await page.session.send("Page.navigate", { url: `${baseUrl}${links.report}` });
+    const report = await waitForDocument(
+      page.session,
+      `(() => {
+        const tab = document.querySelector("#attr-tab");
+        const report = document.querySelector("[data-testid='attribution-report']");
+        const deepLink = document.querySelector("[data-testid='attribution-deep-link']");
+        if (!tab || !report || !deepLink) return null;
+        return {
+          active: tab.getAttribute("aria-selected"),
+          label: tab.textContent,
+          attributionId: deepLink.getAttribute("title"),
+          href: location.href,
+        };
+      })()`,
+      "attribution analysis deep link",
+    );
+    assert.equal(report.active, "true");
+    assert.match(report.label, /归因分析/);
+    assert.equal(report.attributionId, "v2-probe-1");
+    assert.match(report.href, /tab=attr&at=v2-probe-1$/);
+    await screenshot(page, "07-after-attribution-link-target.png");
+
+    await installCookie(page, await currentLoginCookie());
+    await page.session.send("Page.navigate", { url: `${baseUrl}${links.source}` });
+    const description = await waitForDocument(
+      page.session,
+      `(() => {
+        const tab = document.querySelector("#desc-tab");
+        if (!tab) return null;
+        return {
+          active: tab.getAttribute("aria-selected"),
+          href: location.href,
+        };
+      })()`,
+      "problem description deep link",
+    );
+    assert.equal(description.active, "true");
+    assert.match(description.href, /case=v2-case-1&tab=desc$/);
+    await screenshot(page, "08-after-attribution-source-target.png");
+  } finally {
+    await page.session.send("Emulation.clearDeviceMetricsOverride").catch(() => {});
+    await page.close();
+  }
+});
+
+test("m10-06 blocked attribution shows retry facts and does not request unreached steps, m12 attribution-jobs UI shows sanitized metrics and retries unfinished work", async () => {
   const page = await createBrowserPage();
   const violations = browserViolations(page.session);
   const stepRequests = [];
@@ -942,6 +1056,221 @@ test("m10-06 run detail owns the page scroll and keeps the V2 gutter", async () 
       mobile.documentScrollHeight > mobile.documentClientHeight,
       "mobile documents must scroll instead of nesting a second scrollbar",
     );
+
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+  } finally {
+    await page.session.send("Emulation.clearDeviceMetricsOverride").catch(() => {});
+    await page.close();
+  }
+});
+
+test("m10-06 step 6 renders the accepted commit as collapsible Markdown", async () => {
+  const page = await createBrowserPage();
+  const violations = browserViolations(page.session);
+  try {
+    await installCookie(page, await currentLoginCookie());
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1500,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await openRun(page, "run-v2-completed");
+    await waitForDocument(
+      page.session,
+      `document.querySelectorAll("[data-step-key]").length === 7`,
+      "seven-step run detail",
+    );
+    await evaluate(
+      page,
+      `document.querySelector("[data-step-key='iteration']").click()`,
+    );
+    const collapsed = await waitForDocument(
+      page.session,
+      `(() => {
+        const commit = document.querySelector(".commit");
+        if (!commit) return null;
+        const toggle = commit.querySelector(".commit-toggle");
+        return {
+          hash: commit.querySelector(".hash")?.textContent ?? "",
+          subject: commit.querySelector(".commit-subject")?.textContent ?? "",
+          text: commit.textContent,
+          toggle: toggle?.textContent ?? "",
+          expanded: toggle?.getAttribute("aria-expanded") ?? "",
+          body: Boolean(commit.querySelector(".commit-message")),
+          pageHorizontalScroll:
+            document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      })()`,
+      "collapsed accepted commit",
+    );
+    assert.match(collapsed.hash, /^ef56ab12cd34$/);
+    assert.match(collapsed.subject, /^evolve\(deep-research@v2\.0\.0\): /);
+    assert.doesNotMatch(collapsed.text, /##|---|Harness-Verdict/);
+    assert.equal(collapsed.body, false);
+    assert.equal(collapsed.expanded, "false");
+    assert.match(collapsed.toggle, /查看完整 commit message/);
+    assert.equal(collapsed.pageHorizontalScroll, false);
+    await evaluate(
+      page,
+      `document.querySelector(".commit").scrollIntoView({ block: "center" })`,
+    );
+    await screenshot(page, "07-after-step6-commit-collapsed.png");
+
+    await evaluate(page, `document.querySelector(".commit-toggle").click()`);
+    const expanded = await waitForDocument(
+      page.session,
+      `(() => {
+        const body = document.querySelector(".commit-message");
+        if (!body) return null;
+        const toggle = document.querySelector(".commit-toggle");
+        return {
+          headings: [...body.querySelectorAll("h2")].map((node) =>
+            node.textContent.trim(),
+          ),
+          items: body.querySelectorAll("li").length,
+          links: [...body.querySelectorAll("a")].map((node) =>
+            node.getAttribute("href"),
+          ),
+          bodyText: body.textContent,
+          toggle: toggle?.textContent ?? "",
+          expanded: toggle?.getAttribute("aria-expanded") ?? "",
+          pageHorizontalScroll:
+            document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      })()`,
+      "expanded commit markdown",
+    );
+    assert.deepEqual(expanded.headings, ["问题", "分析", "改动", "追溯"]);
+    assert.ok(expanded.items >= 6, JSON.stringify(expanded));
+    assert.ok(
+      expanded.links.includes("https://example.com/badcases/BC-HC-0007"),
+      JSON.stringify(expanded.links),
+    );
+    assert.doesNotMatch(expanded.bodyText, /##|---/);
+    assert.match(expanded.toggle, /收起完整 commit message/);
+    assert.equal(expanded.expanded, "true");
+    assert.equal(expanded.pageHorizontalScroll, false);
+    await evaluate(
+      page,
+      `document.querySelector(".commit").scrollIntoView({ block: "center" })`,
+    );
+    await screenshot(page, "07-after-step6-commit-expanded.png");
+
+    await evaluate(page, `document.querySelector(".commit-toggle").click()`);
+    await waitForDocument(
+      page.session,
+      `!document.querySelector(".commit-message")`,
+      "collapsed commit markdown again",
+    );
+
+    await installCookie(page, await currentLoginCookie());
+    await openRun(page, "run-v2-legacy");
+    await waitForDocument(
+      page.session,
+      `document.querySelectorAll("[data-step-key]").length === 7`,
+      "legacy seven-step run detail",
+    );
+    await evaluate(
+      page,
+      `document.querySelector("[data-step-key='iteration']").click()`,
+    );
+    const legacy = await waitForDocument(
+      page.session,
+      `(() => {
+        const commit = document.querySelector(".commit");
+        if (!commit) return null;
+        return {
+          text: commit.textContent,
+          toggle: Boolean(commit.querySelector(".commit-toggle")),
+        };
+      })()`,
+      "legacy accepted commit",
+    );
+    assert.match(legacy.text, /evolve\(deep-research\): 历史问题/);
+    assert.equal(legacy.toggle, false);
+    await evaluate(
+      page,
+      `document.querySelector(".commit").scrollIntoView({ block: "center" })`,
+    );
+    await screenshot(page, "08-after-step6-legacy-commit.png");
+
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+  } finally {
+    await page.session.send("Emulation.clearDeviceMetricsOverride").catch(() => {});
+    await page.close();
+  }
+});
+
+test("m10-06 step 6 iteration renders every stored bundle patch file", async () => {
+  const page = await createBrowserPage();
+  const violations = browserViolations(page.session);
+  try {
+    await installCookie(page, await currentLoginCookie());
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1500,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await openRun(page, "run-v2-completed");
+    await waitForDocument(
+      page.session,
+      `document.querySelectorAll("[data-step-key]").length === 7`,
+      "seven-step run detail",
+    );
+    await evaluate(
+      page,
+      `document.querySelector("[data-step-key='iteration']").click()`,
+    );
+    const bundle = await waitForDocument(
+      page.session,
+      `(() => {
+        const round = document.querySelector("[data-round-id='v2-round-1']");
+        const diff = round?.querySelector(".diff");
+        if (!diff) return null;
+        return {
+          files: [...diff.querySelectorAll(".fhead")].map((node) => node.textContent.trim()),
+          added: [...diff.querySelectorAll(".dline.add")].length,
+          deleted: [...diff.querySelectorAll(".dline.del")].length,
+          pageHorizontalScroll:
+            document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      })()`,
+      "multi-file bundle patch diff",
+    );
+    assert.deepEqual(bundle.files, ["SKILL.md", "config/synthetic-review.json"]);
+    assert.ok(bundle.added >= 2, JSON.stringify(bundle));
+    assert.ok(bundle.deleted >= 2, JSON.stringify(bundle));
+    assert.equal(bundle.pageHorizontalScroll, false);
+    await evaluate(
+      page,
+      `document.querySelector("[data-round-id='v2-round-1'] .diff").scrollIntoView({ block: "center" })`,
+    );
+    await screenshot(page, "09-after-step6-iteration-patch.png");
+
+    await evaluate(
+      page,
+      `document.querySelector("[data-round-id='v2-round-2'] .cluster-head").click()`,
+    );
+    const legacy = await waitForDocument(
+      page.session,
+      `(() => {
+        const round = document.querySelector("[data-round-id='v2-round-2']");
+        const diff = round?.querySelector(".diff");
+        if (!diff) return null;
+        return {
+          files: [...diff.querySelectorAll(".fhead")].map((node) => node.textContent.trim()),
+        };
+      })()`,
+      "legacy single-file patch diff",
+    );
+    assert.deepEqual(legacy.files, ["SKILL.md"]);
+    await evaluate(
+      page,
+      `document.querySelector("[data-round-id='v2-round-2'] .diff").scrollIntoView({ block: "center" })`,
+    );
+    await screenshot(page, "10-after-step6-legacy-patch.png");
 
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
   } finally {

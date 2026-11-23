@@ -65,6 +65,7 @@ class TestEventSource {
 function run(overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard {
   return {
     runId: "evo-full-1",
+    controlState: "running", canPause: false, canResume: false,
     title: "deep-research v2.0.0 自进化",
     mode: "full",
     target: {
@@ -84,6 +85,7 @@ function run(overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard {
     createdBy: "Ada",
     createdAt: "2026-10-19T18:42:00+08:00",
     status: "preparing",
+    degraded: false,
     error: null,
     stats: {
       sessions: 128,
@@ -140,6 +142,7 @@ const attributionRows = Array.from({ length: 28 }, (_, index) => {
   const attributed = index < 16;
   return {
     badCaseId: `case-${index + 1}`,
+    sessionId: `session-${index + 1}`,
     attributionId: `probe-${index + 1}`,
     category: attributed ? "error" : null,
     description: `结论 ${index + 1}`,
@@ -240,11 +243,16 @@ const iterationStep = {
           message: "candidate",
         },
         patch: {
-          file: "SKILL.md",
-          lines: [
-            "@@ -1 +1 @@",
-            "- 读取索引",
-            "+ 读取索引前校验快照",
+          files: [
+            {
+              file: "SKILL.md",
+              lines: [
+                "@@ -1 +1 @@",
+                "- 读取索引",
+                "+ 读取索引前校验快照",
+              ],
+              overwrite: false,
+            },
           ],
         },
         push: { status: "succeeded", attempts: 1, error: null },
@@ -315,6 +323,7 @@ function detail(
     evalStatus: card.status === "blocked" ? "failed" : "pending",
     workspace: {
       repoUrl: "https://example.invalid/skills.git",
+      pushRepoUrl: "https://example.invalid/fork/skills.git",
       subDir: "skills/deep-research",
       repoPath: "data/repos/target",
       baseRef: "v2.0.0",
@@ -413,6 +422,37 @@ afterAll(() => {
 });
 
 describe("evolution run detail page", () => {
+  it("pauses and continues the existing run through the workspace API without losing reached steps", async () => {
+    let snapshot = detail(run({ status: "running", canPause: true }));
+    let resumes = 0;
+    server.use(
+      http.get(`${evolutionBase}/runs/:runId`, () => HttpResponse.json(snapshot)),
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () => HttpResponse.json(iterationStep)),
+      http.post(`${evolutionBase}/runs/:runId/pause`, () => {
+        snapshot = { ...snapshot, controlState: "paused", canPause: false, canResume: true };
+        return HttpResponse.json(snapshot, { status: 202 });
+      }),
+      http.post(`${evolutionBase}/runs/:runId/resume`, () => {
+        resumes++;
+        snapshot = { ...snapshot, controlState: "running", canPause: true, canResume: false };
+        return HttpResponse.json(snapshot);
+      }),
+    );
+    const wrapper = await mountPage();
+    expect(wrapper.get(".control-button").text()).toBe("暂停");
+    await wrapper.get(".control-button").trigger("click");
+    await flushPromises();
+    expect(wrapper.get(".detail-head .badge").text()).toBe("已暂停");
+    expect(wrapper.find(".stepper .pulse").exists()).toBe(false);
+    expect(wrapper.find('[data-step-key="iteration"]').exists()).toBe(true);
+    expect(wrapper.get(".control-button").text()).toBe("继续执行");
+    await wrapper.get(".control-button").trigger("click");
+    await flushPromises();
+    expect(resumes).toBe(1);
+    expect(wrapper.get(".detail-head .badge").text()).toBe("正在执行");
+    expect(snapshot.runId).toBe("evo-full-1");
+  });
+
   it("shows an unreached explanation when a failed run stops before step 1", async () => {
     const requested: string[] = [];
     server.use(
@@ -560,6 +600,10 @@ describe("evolution run detail page", () => {
     expect(workspace.element instanceof HTMLDetailsElement).toBe(true);
     expect((workspace.element as HTMLDetailsElement).open).toBe(false);
     expect(info.find("[data-testid='copy-branch']").exists()).toBe(true);
+    expect(workspace.text()).toContain("推送目标");
+    expect(workspace.get("[data-testid='run-push-repo']").text()).toBe(
+      "https://example.invalid/fork/skills.git",
+    );
 
     const html = wrapper.html();
     expect(html.indexOf('data-testid="run-info-panel"')).toBeLessThan(
@@ -984,7 +1028,8 @@ describe("evolution run detail page", () => {
         payload: {
           summary: { potential: 8, reused: 0, fresh: count, nonTarget: count ? 1 : 0 },
           rows: attributionRows.slice(0, count).map((row, index) => ({
-            ...row, category: index === 0 ? null : "flow", source: "fresh",
+            ...row, category: index < 2 ? null : "flow", source: "fresh",
+            conclusion: ["non_target", "inconclusive"][index] ?? "attributed",
           })),
         },
       })),
@@ -1000,9 +1045,11 @@ describe("evolution run detail page", () => {
       queryKey: queryKeys.evolutionRun(workspaceId, "evo-full-1"), exact: true,
     });
     await vi.waitFor(() => expect(info.text()).toContain("未归因 4"));
-    expect(info.text()).toContain("流程 3");
+    expect(info.text()).toContain("流程 2");
+    expect(info.text()).toContain("证据不足 1");
+    expect(wrapper.get(".type-inconclusive").text()).toBe("证据不足");
     expect(info.text()).toContain("非该对象 1");
-    expect(info.text()).toContain("＝ 归因 3 · 复用缓存 0 · 本次新增 3");
+    expect(info.text()).toContain("＝ 归因 2 · 复用缓存 0 · 本次新增 2");
     expect(wrapper.get(".wz-stats").text()).toContain("8潜在 bad case4已出报告");
     expect(wrapper.findAll("tbody tr")).toHaveLength(4);
   });
@@ -1116,6 +1163,7 @@ describe("evolution run detail page", () => {
             rows: [
               {
                 badCaseId: "legacy-case-1",
+                sessionId: "legacy-session-1",
                 attributionId: "legacy-probe-1",
                 category: "error",
                 description: "归因结论",
@@ -1124,6 +1172,7 @@ describe("evolution run detail page", () => {
               },
               {
                 badCaseId: "legacy-case-2",
+                sessionId: "legacy-session-2",
                 attributionId: "legacy-probe-2",
                 category: "error",
                 description: "归因结论",
@@ -1132,6 +1181,7 @@ describe("evolution run detail page", () => {
               },
               {
                 badCaseId: "legacy-case-3",
+                sessionId: "legacy-session-3",
                 attributionId: "legacy-probe-3",
                 category: null,
                 description: "非该对象",
@@ -1471,7 +1521,7 @@ describe("evolution run detail page", () => {
     const wrapper = await mountPage();
 
     expect(wrapper.get("[data-testid='interrupted-banner']").text()).toContain(
-      "任务被中断，可查看最后事件",
+      "任务被中断，系统将自动恢复；可查看最后事件",
     );
     expect(wrapper.find("[data-testid='run-retry']").exists()).toBe(false);
   });

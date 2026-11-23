@@ -5,15 +5,17 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
-from typing import Literal, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 from pydantic import Field
 
 from app.db.models.evolution import EvolutionRunSummaryRecord
+from app.service.evolution.control import EvolutionRunControl, control_view
 from app.service.evolution.state import (
     PREPARE_COMPLETE_UNIT,
     effective_unit,
     is_legacy_run,
+    progress_total,
     step_states,
     total_units,
     validate_cursor,
@@ -56,6 +58,14 @@ _RUN_STAGE_LABELS = (
     "第 4/7 步 · 对象归因中…",
     "第 5/7 步 · 聚类与严重度排序中…",
 )
+_CLUSTER_ONLY_STAGE_LABELS = (
+    "第 1/5 步 · 选择范围中…",
+    "第 2/5 步 · Session 关联中…",
+    "第 3/5 步 · 筛选潜在 bad case 中…",
+    "第 4/5 步 · 对象归因中…",
+    "第 5/5 步 · 聚类与严重度排序中…",
+)
+_CLUSTER_ONLY_DONE_LABEL = "第 5/5 步 · 聚类完成"
 
 
 class EvolutionRunTarget(IdentityModel):
@@ -139,7 +149,7 @@ class EvolutionRunFinal(IdentityModel):
     init_score: float
 
 
-class EvolutionRunCard(IdentityModel):
+class EvolutionRunCard(EvolutionRunControl):
     """One complete run-list card contract."""
 
     run_id: str
@@ -157,12 +167,14 @@ class EvolutionRunCard(IdentityModel):
     stats: EvolutionRunStats
     progress: EvolutionRunProgress
     final: EvolutionRunFinal | None
+    degraded: bool = False
 
 
 class EvolutionRunWorkspace(IdentityModel):
     """Repository and worktree state shown by the run detail."""
 
     repo_url: str
+    push_repo_url: str
     sub_dir: str
     repo_path: str | None
     base_ref: str | None
@@ -256,6 +268,12 @@ def _non_negative_int(value: object) -> int:
     return max(value, 0)
 
 
+def _has_degraded_clusters(stats: Mapping[str, Any]) -> bool:
+    """Return whether the cluster step recorded any deterministic fallback."""
+    value = stats.get("clusterDegraded")
+    return isinstance(value, list) and any(isinstance(item, str) for item in value)
+
+
 def _stats(summary: EvolutionRunSummaryRecord) -> EvolutionRunStats:
     """Normalize V2 stats and synthesize them from legacy probe counts."""
     raw = summary.run.stats
@@ -298,13 +316,27 @@ def _progress(summary: EvolutionRunSummaryRecord) -> EvolutionRunProgress:
     """Derive every user-visible progress value from the persisted cursor."""
     run = summary.run
     cluster_count = summary.cluster_count
-    total = total_units(cluster_count)
     validate_cursor(run.progress_unit, cluster_count)
     unit = effective_unit(
         run.progress_unit,
         cluster_count,
         attribution_engine=run.attribution_engine,
     )
+    if run.mode == "cluster_only":
+        total = progress_total(run.mode, cluster_count)
+        unit = min(unit, total)
+        stage_label = (
+            _CLUSTER_ONLY_DONE_LABEL if unit >= total else _CLUSTER_ONLY_STAGE_LABELS[unit]
+        )
+        return EvolutionRunProgress(
+            unit=unit,
+            total=total,
+            percent=math.floor(unit * 100 / total + 0.5),
+            stage_label=stage_label,
+            done_rounds=0,
+            accepted=0,
+        )
+    total = total_units(cluster_count)
     if unit < PREPARE_COMPLETE_UNIT:
         stage_label = _RUN_STAGE_LABELS[unit]
     elif unit < PREPARE_COMPLETE_UNIT + cluster_count:
@@ -359,7 +391,7 @@ def _card(summary: EvolutionRunSummaryRecord) -> EvolutionRunCard:
     """Map one repository summary to the public list card."""
     run = summary.run
     return EvolutionRunCard(
-        run_id=run.id,
+        **control_view(run).model_dump(),
         title=run.title,
         mode=cast(Literal["full", "cluster_only"], run.mode),
         target=EvolutionRunTarget(
@@ -391,6 +423,7 @@ def _card(summary: EvolutionRunSummaryRecord) -> EvolutionRunCard:
         stats=_stats(summary),
         progress=_progress(summary),
         final=_final(summary),
+        degraded=_has_degraded_clusters(summary.run.stats),
     )
 
 
@@ -404,6 +437,7 @@ def _detail_steps(
         summary.cluster_count,
         run.status,
         attribution_engine=run.attribution_engine,
+        error_stage=run.error_stage,
     )
     unit = effective_unit(
         run.progress_unit,
@@ -501,6 +535,7 @@ class EvolutionRunService:
             eval_status=cast(EvolutionRunEvalStatus, run.eval_status),
             workspace=EvolutionRunWorkspace(
                 repo_url=run.repo_url,
+                push_repo_url=run.push_repo_url or run.repo_url,
                 sub_dir=run.sub_dir,
                 repo_path=run.repo_path,
                 base_ref=run.base_ref,

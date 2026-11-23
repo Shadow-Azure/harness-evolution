@@ -206,3 +206,113 @@ def test_configure_preserves_existing_claude_json(tmp_path: Path) -> None:
 
     data = json.loads((home / ".claude.json").read_text(encoding="utf-8"))
     assert data == {"existing": 1, "hasCompletedOnboarding": True}
+
+
+def test_build_shared_settings_has_no_credential(tmp_path: Path) -> None:
+    settings = install_claude_code.build_shared_settings(
+        "MiniMax-M3.1-Flash[1m]",
+        "https://api.minimax.cn/anthropic",
+    )
+
+    assert settings["model"] == "MiniMax-M3.1-Flash[1m]"
+    assert "apiKeyHelper" not in settings
+    assert settings["env"]["ANTHROPIC_BASE_URL"] == "https://api.minimax.cn/anthropic"
+    assert settings["env"]["CLAUDE_CODE_EFFORT_LEVEL"] == "max"
+
+
+def test_configure_shared_writes_service_readable_settings(tmp_path: Path) -> None:
+    prefix = tmp_path / "claude-code"
+    path = install_claude_code.configure_shared(
+        {
+            "CLAUDE_CODE_MODEL": "MiniMax-M3.1-Flash[1m]",
+            "CLAUDE_CODE_API_KEY": "sk-secret-value",
+            "CLAUDE_CODE_BASE_URL": "https://api.minimax.cn/anthropic",
+        },
+        prefix,
+    )
+
+    assert path == prefix / "config" / "settings.json"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o644
+    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o755
+    text = path.read_text(encoding="utf-8")
+    assert "sk-secret-value" not in text
+    assert "apiKeyHelper" not in text
+    assert json.loads(text)["model"] == "MiniMax-M3.1-Flash[1m]"
+
+
+def test_configure_shared_requires_model_and_key(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="required"):
+        install_claude_code.configure_shared({"CLAUDE_CODE_MODEL": "model"}, tmp_path)
+
+
+def test_switch_current_is_a_relative_atomic_link(tmp_path: Path) -> None:
+    prefix = tmp_path / "claude-code"
+    binary = prefix / "2.1.323-1" / "usr" / "bin" / "claude"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+
+    current = install_claude_code.switch_current(binary, prefix)
+
+    assert current.is_symlink()
+    assert current.readlink().as_posix() == "2.1.323-1"
+    assert (current / "usr" / "bin" / "claude").resolve() == binary
+
+
+def test_preflight_accepts_service_readable_assets(tmp_path: Path) -> None:
+    prefix = tmp_path / "claude-code"
+    binary = prefix / "2.1.323-1" / "usr" / "bin" / "claude"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    binary.chmod(0o755)
+    settings = prefix / "config" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text("{}\n", encoding="utf-8")
+    settings.chmod(0o644)
+    for directory in (tmp_path, prefix, prefix / "2.1.323-1", prefix / "config"):
+        directory.chmod(0o755)
+
+    install_claude_code.preflight_shared_access(binary, settings, prefix)
+
+
+def test_preflight_rejects_unreadable_settings(tmp_path: Path) -> None:
+    prefix = tmp_path / "claude-code"
+    binary = prefix / "2.1.323-1" / "usr" / "bin" / "claude"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    binary.chmod(0o755)
+    settings = prefix / "config" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text("{}\n", encoding="utf-8")
+    settings.chmod(0o600)
+    for directory in (tmp_path, prefix, prefix / "2.1.323-1", prefix / "config"):
+        directory.chmod(0o755)
+
+    with pytest.raises(RuntimeError, match="not readable"):
+        install_claude_code.preflight_shared_access(binary, settings, prefix)
+
+
+def test_preflight_rejects_non_executable_binary(tmp_path: Path) -> None:
+    prefix = tmp_path / "claude-code"
+    binary = prefix / "2.1.323-1" / "usr" / "bin" / "claude"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    binary.chmod(0o644)
+    settings = prefix / "config" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text("{}\n", encoding="utf-8")
+    settings.chmod(0o644)
+    for directory in (tmp_path, prefix, prefix / "2.1.323-1", prefix / "config"):
+        directory.chmod(0o755)
+
+    with pytest.raises(RuntimeError, match="not executable"):
+        install_claude_code.preflight_shared_access(binary, settings, prefix)
+
+
+def test_write_atomic_does_not_chmod_an_existing_home(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir(mode=0o755)
+    home.chmod(0o755)
+
+    install_claude_code.write_atomic(home / ".claude.json", "{}\n", 0o600)
+
+    assert stat.S_IMODE(home.stat().st_mode) == 0o755

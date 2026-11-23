@@ -95,7 +95,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => {
   server.use(
     http.get(`/api/workspaces/${workspaceId}/attribution-skill-packages`, () =>
-      HttpResponse.json({ items: skillPackages }),
+      HttpResponse.json({ items: skillPackages, runtimeEnabled: true }),
     ),
   );
 });
@@ -181,7 +181,7 @@ describe("target configuration page", () => {
     expect(wrapper.text()).toContain("deep-research");
     expect(wrapper.find(".target-create").exists()).toBe(false);
     expect(wrapper.find(".row-actions").exists()).toBe(false);
-    expect(wrapper.text()).toContain("attribute-badcases");
+    expect(wrapper.text()).toContain("未绑定");
   });
 
   it("retries a failed target query without replacing the page", async () => {

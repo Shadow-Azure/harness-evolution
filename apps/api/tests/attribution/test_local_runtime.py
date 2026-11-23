@@ -272,3 +272,100 @@ def test_frozen_plural_writer_is_validated_before_normalization(tmp_path: Path) 
         == report
         == {**draft, "probe_type": "agent"}
     )
+
+
+async def test_historical_inline_binding_can_freeze_and_recover_its_exact_revision(
+    attribution_harness: Harness,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Freeze the prior registry instructions and platform writer for an upgraded target."""
+    from app.errors import AppError
+    from app.service.evolution.attribution_skills import AttributionSkillCreate
+
+    db = attribution_harness.database
+    settings = Settings(attribution_package_dir=tmp_path, attribution_agent="test")
+    monkeypatch.setitem(AgentFactory.providers, "test", ScriptAgent)
+    repo = AttributionSkillRepository(db)
+    registry = AttributionSkillService(repo)
+    packages = AttributionSkillPackageService(
+        AttributionSkillPackageRepository(db), tmp_path, settings.attribution_default_skill_path
+    )
+    runtime = LocalAttribution(settings, packages, registry, db, Source())
+    workspace = "ws-default"
+    target_id = "existing-inline-target"
+    revision = await registry.create(
+        workspace,
+        AttributionSkillCreate(
+            skill_key="inline-analysis",
+            display_name="Old inline Skill",
+            content={"instructions": "Inspect the saved trace and cite its evidence.", "tools": []},
+        ),
+    )
+    run = await load_run(db)
+    async with db.transaction() as session:
+        await session.execute(
+            insert(evolution_targets).values(
+                id=target_id,
+                workspace_id=workspace,
+                object_type="skill",
+                object_name=run.target_name,
+                repo_url=run.repo_url,
+                sub_dir=run.sub_dir,
+                default_ref=run.target_version,
+                created_at=NOW,
+                updated_at=NOW,
+            )
+        )
+    await repo.bind(workspace_id=workspace, revision_id=revision.id, target_id=target_id)
+    selected = await runtime.effective(workspace, target_id)
+    assert selected.id == revision.id and selected.executor_type == "local_agent"
+    frozen = await runtime.resolve(workspace, target_id)
+    path = runtime.root(workspace) / "attribute_skill/snapshots" / frozen.content_hash
+    assert "cite its evidence" in (path / "skill/SKILL.md").read_text()
+    assert (path / "skill/make_probe_report.py").read_bytes() == packages.writer_path.read_bytes()
+    saved = await runtime.resolve_snapshot(
+        workspace, frozen.skill_key, frozen.revision, frozen.content_hash
+    )
+    assert saved.content["name"] == revision.skill_key
+    with pytest.raises(ValueError, match="identity mismatch"):
+        await runtime.resolve_snapshot(
+            workspace, frozen.skill_key, frozen.revision + 1, frozen.content_hash
+        )
+    with pytest.raises(AppError):
+        await runtime.resolve(workspace, "missing-target")
+    with pytest.raises(AppError):
+        await runtime.effective(workspace, "missing-target")
+    stale = await runtime.resolve_snapshot(
+        workspace, revision.skill_key, revision.revision, revision.content_hash
+    )
+    assert stale.content["instructions"] == selected.content["instructions"]
+
+
+def test_canonical_report_retains_detail_and_proposal_for_verified_input(tmp_path: Path) -> None:
+    """Keep optional fields and preserve the last valid report when validation fails."""
+    writer = Settings().attribution_default_skill_path.with_name("make_probe_report.py")
+    row = {"bad_case_id": "case", "type": "skill", "object": "reporter"}
+    original = json.dumps({"session_id": "session", "bad_cases": [row]})
+    report = runpy.run_path(str(writer))["build_report"](
+        session_id="session",
+        bad_case=row,
+        probe_type="agent",
+        probe_object="owner",
+        object_version="main",
+        attribute_type="context",
+        probe_description="Missing input",
+        probe_analysis="No input appeared in the trace.",
+        detail_description="Test evidence",
+        proposal={"change": "Pass the input."},
+    )
+    assert canonical_report(writer, original, report, tmp_path) == report
+    for invalid, reason in (
+        ({"probe_type": None}, "probe_type"),
+        ({"probe_object": ""}, "report field"),
+        ({"from_bad_cases": []}, "provenance"),
+        ({"proposal": {"omitted_field": "not in the input contract"}}, "proposal field"),
+    ):
+        with pytest.raises(ValueError, match=reason):
+            canonical_report(writer, original, {**report, **invalid}, tmp_path)
+        assert json.loads((tmp_path / "probe_report.json").read_bytes()) == report

@@ -26,7 +26,7 @@ pnpm setup:api           # 安装 API 依赖
 pnpm lint:api            # ruff
 pnpm lint:web            # eslint
 pnpm typecheck:api       # mypy
-pnpm test:api            # API 测试
+pnpm test:api[:serial]   # API 测试
 pnpm test:db[:mysql]     # 数据库测试
 pnpm test:all
 pnpm test:e2e            # 串行浏览器 E2E；--pattern 只跑匹配文件

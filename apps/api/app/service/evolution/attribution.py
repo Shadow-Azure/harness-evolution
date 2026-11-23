@@ -1,8 +1,10 @@
 """Object-revision attribution: pure rule engine, cache, and runner.
 
 The engine is a pure function of the bad case, its trigger coordinates, and the
-knowledge evidence gathered in the same Session. ``AttributionRunner`` owns the
-cache reads, dialect upserts, reuse accounting, and run-candidate pointers.
+knowledge evidence gathered in the same Session; its case-level confidence is a
+deterministic evidence-completeness score, never a model call. ``AttributionRunner``
+owns the cache reads, dialect upserts, reuse accounting, and run-candidate
+pointers.
 """
 
 from __future__ import annotations
@@ -21,8 +23,14 @@ from app.db.crud.attributions import (
     KnowledgeEvidenceRecord,
     ProbeCacheRecord,
     ProbeWrite,
+    attribution_cache_key,
 )
 from app.db.models.evolution import EvolutionRunRecord
+from app.service.evolution.attribution_confidence import (
+    EvidenceSignals,
+    attribution_confidence,
+    extract_signals,
+)
 from app.service.evolution.attribution_context import (
     AttributionCaseContext,
     AttributionContextProvider,
@@ -48,6 +56,7 @@ from app.service.evolution.attribution_executor import (
     AttributionExecutorTarget,
     resolve_attribution_executor,
 )
+from app.service.evolution.control import PauseAtCheckpoint
 from app.service.evolution.engine.contracts import ConfigError, RunBlocked
 from app.service.evolution.potential import (
     POLICY_VERSION,
@@ -117,15 +126,49 @@ class AttributionInput:
     repo_url: str = ""
     sub_dir: str = ""
     selected_version: str = ""
+    source_commit: str | None = None
     report_source: str = ""
     local_input: Mapping[str, str] = field(default_factory=dict)
     definition: GitDefinitionRef | None = None
     local_input_hash: str | None = None
     batch_trigger: Literal["target_binding", "evolution_run"] = "evolution_run"
+    legacy_rule: bool = False
+    case_object_name: str | None = None
+    case_object_version: str | None = None
+
+    def evidence_signals(self) -> EvidenceSignals:
+        """Return the three deterministic evidence checks for this input."""
+        return extract_signals(
+            order_state=self.order_state,
+            case_object_name=self.case_object_name,
+            case_object_version=self.case_object_version,
+            probe_object=self.probe_object,
+            target_revision=self.object_version,
+        )
+
+    @property
+    def definition_key(self) -> str:
+        """Address a bound definition or the immutable Git selection of this Run."""
+        if self.definition is not None:
+            return self.definition.key
+        parts = [self.probe_type, self.probe_object, self.object_version]
+        if self.source_commit:
+            parts.extend((self.repo_url, self.sub_dir, self.source_commit))
+        return canonical_json_hash(parts)
 
     @property
     def cache_key(self) -> str:
-        """Return the canonical execution-manifest hash for this input."""
+        """Return the cache identity frozen for the selected attribution mode."""
+        if self.legacy_rule:
+            return attribution_cache_key(
+                self.workspace_id,
+                self.bad_case_id,
+                self.probe_type,
+                self.probe_object,
+                self.object_version,
+                self.policy_version,
+                self.attribution_engine,
+            )
         return self.execution_manifest.content_hash
 
     @property
@@ -200,10 +243,11 @@ class RuleBasedEngine:
 
     async def attribute(self, item: AttributionInput) -> AttributionResult:
         """Classify one case using the policy hit reason and persisted evidence."""
+        signals = item.evidence_signals()
         self_match = item.hit_reason in {"self_report", "both"}
         if self_match:
             if not (item.title.strip() or item.description.strip()):
-                return self._inconclusive(item, "证据不足")
+                return self._insufficient(item, "证据不足", signals)
             error = _error_evidence(item.metadata)
             category: AttributionCategory = "error" if error is not None else "prompt"
             evidence = (
@@ -214,7 +258,7 @@ class RuleBasedEngine:
             return self._attributed(
                 item,
                 category=category,
-                confidence=0.8,
+                signals=signals,
                 reason=f"对象自身上报：{_headline(item)}；{evidence}",  # noqa: RUF001
                 lead="对象自身上报",
             )
@@ -226,21 +270,18 @@ class RuleBasedEngine:
             return self._attributed(
                 item,
                 category="error",
-                confidence=0.6,
+                signals=signals,
                 reason=f"对象进入点之后发现：{_headline(item)}；按 error 归类",  # noqa: RUF001
                 lead="bad case 触发点严格晚于对象进入点",
             )
-        return self._inconclusive(
-            item,
-            "顺序不可比或证据不足",
-        )
+        return self._insufficient(item, "顺序不可比或证据不足", signals)
 
     def _attributed(
         self,
         item: AttributionInput,
         *,
         category: AttributionCategory,
-        confidence: float,
+        signals: EvidenceSignals,
         reason: str,
         lead: str,
     ) -> AttributionResult:
@@ -263,12 +304,17 @@ class RuleBasedEngine:
         return AttributionResult(
             conclusion="attributed",
             category=category,
-            confidence=confidence,
+            confidence=attribution_confidence("attributed", signals),
             reason=reason,
             reasoning="\n".join(lines),
         )
 
-    def _non_target(self, item: AttributionInput, why: str) -> AttributionResult:
+    def _non_target(
+        self,
+        item: AttributionInput,
+        why: str,
+        signals: EvidenceSignals,
+    ) -> AttributionResult:
         """Build one visible non-target conclusion that never enters a cluster."""
         lines = [
             f"1. 命中原因：{item.hit_reason}；orderState={item.order_state}。",  # noqa: RUF001
@@ -279,13 +325,17 @@ class RuleBasedEngine:
         return AttributionResult(
             conclusion="non_target",
             category=None,
-            confidence=0.7,
+            confidence=attribution_confidence("non_target", signals),
             reason=f"非该对象问题：{_headline(item)}；{why}",  # noqa: RUF001
             reasoning="\n".join(lines),
         )
 
-    def _inconclusive(self, item: AttributionInput, why: str) -> AttributionResult:
-        """Keep insufficient evidence distinct from a confident non-target result."""
+    def _insufficient(
+        self, item: AttributionInput, why: str, signals: EvidenceSignals
+    ) -> AttributionResult:
+        """Retain historical rule outcomes for unbound production targets."""
+        if item.legacy_rule:
+            return self._non_target(item, why, signals)
         return AttributionResult(
             conclusion="inconclusive",
             category=None,
@@ -592,7 +642,7 @@ class AttributionStore(Protocol):
         self,
         case_ids: Sequence[str],
     ) -> dict[str, BadCaseEvidenceRecord]:
-        """Batch-load bad-case titles, descriptions, and metadata."""
+        """Batch-load bad-case identity, titles, descriptions, and metadata."""
 
     async def load_knowledge_evidence(
         self,
@@ -674,6 +724,7 @@ class AttributionRunner:
         cache_enabled: bool,
         *,
         on_progress: AttributionProgressCallback | None = None,
+        before_case: Callable[[], Awaitable[None]] | None = None,
         target_revision: str | None = None,
     ) -> AttributionRunSummary:
         """Attribute included candidates and return exact reuse/creation counts.
@@ -815,6 +866,8 @@ class AttributionRunner:
             item: AttributionInput,
         ) -> tuple[str, bool, float, int, bool, int]:
             async with semaphore:
+                if before_case is not None:
+                    await before_case()
                 started = perf_counter()
                 now = self._now()
                 if (
@@ -868,6 +921,7 @@ class AttributionRunner:
                         ),
                         execution_manifest=manifest.model_dump(mode="json", by_alias=True),
                         execution_manifest_hash=manifest.content_hash,
+                        legacy_rule=item.legacy_rule,
                         attribution_skill_name=manifest.skill.key,
                         binding_generation=run.id if isinstance(run, BindingBatch) else None,
                         binding_owner=run.owner if isinstance(run, BindingBatch) else None,
@@ -906,6 +960,7 @@ class AttributionRunner:
         token_count = 0
         latencies: list[float] = []
         errors: list[Exception] = []
+        paused = False
         try:
             for future in asyncio.as_completed(tasks):
                 try:
@@ -917,6 +972,9 @@ class AttributionRunner:
                     evidence_covered += int(covered)
                     token_count += tokens
                     latencies.append(latency_ms)
+                except PauseAtCheckpoint:
+                    paused = True
+                    continue
                 except Exception as exc:  # keep sibling cases durable before surfacing failure
                     failed += 1
                     errors.append(exc)
@@ -945,6 +1003,9 @@ class AttributionRunner:
             if isinstance(first, (ConfigError, ValueError, RunBlocked)):
                 raise first
             raise self._blocked(run.id, None, first) from first
+
+        if paused:
+            raise PauseAtCheckpoint
 
         progress = _progress(
             total=len(pending),
@@ -988,6 +1049,15 @@ class AttributionRunner:
         evidence = bad_cases.get(candidate.bad_case_id)
         if evidence is None:
             raise LookupError(f"bad case evidence not found: {candidate.bad_case_id}")
+        legacy_rule = False
+        if (
+            isinstance(run, EvolutionRunRecord)
+            and run.attribution_engine == DEFAULT_ATTRIBUTION_ENGINE
+        ):
+            # Main's queued/interrupted rule runs predate Skill snapshots and the mode marker.
+            legacy_rule = bool(
+                (run.potential_policy or {}).get("legacyRule", run.attribution_skill_key is None)
+            )
         return AttributionInput(
             bad_case_id=candidate.bad_case_id,
             run_id=run.id,
@@ -1020,6 +1090,7 @@ class AttributionRunner:
             repo_url=run.repo_url,
             sub_dir=run.sub_dir,
             selected_version=run.target_version,
+            source_commit=run.base_commit if isinstance(run, EvolutionRunRecord) else None,
             report_source=evidence.source or "",
             hit_reason=candidate.hit_reason,
             order_state=candidate.order_state,
@@ -1037,6 +1108,9 @@ class AttributionRunner:
                 for item in knowledge.get(candidate.session_id, ())
             ),
             context=contexts.get(candidate.bad_case_id),
+            legacy_rule=legacy_rule,
+            case_object_name=evidence.object_name,
+            case_object_version=evidence.object_version,
         )
 
     async def _resolve_skill_snapshot(

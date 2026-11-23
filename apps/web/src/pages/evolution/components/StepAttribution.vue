@@ -10,28 +10,27 @@ import { computed, ref } from "vue";
 
 import { formatApiError } from "../../../app/apiError";
 import { useAttributionJobs } from "../../../composables/useAttributionJobs";
+import { badCaseDeepLink } from "../../../utils/badCaseId";
 
 const props = defineProps<{
-  workspaceId?: string;
   canWrite?: boolean;
   step: EvolutionStepAttribution;
   run: EvolutionRunCard;
+  wid: string;
 }>();
 
 const operationError = ref("");
-const attributionJobs = props.workspaceId
-  ? useAttributionJobs(
-      computed(() => props.workspaceId ?? ""),
-      computed(() => props.run.runId),
-    )
-  : null;
-const latestJob = computed(() => attributionJobs?.jobs.data.value?.items[0] ?? null);
-const canWrite = computed(() => props.canWrite ?? false);
+const attributionJobs = useAttributionJobs(
+  () => props.wid,
+  () => props.run.runId,
+);
+const latestJob = computed(() => attributionJobs.jobs.data.value?.items[0] ?? null);
+const canWrite = computed(() => props.canWrite && props.run.controlState === "running");
 const mutating = computed(
   () =>
-    attributionJobs?.start.isPending.value === true ||
-    attributionJobs?.retry.isPending.value === true ||
-    attributionJobs?.cancel.isPending.value === true,
+    attributionJobs.start.isPending.value === true ||
+    attributionJobs.retry.isPending.value === true ||
+    attributionJobs.cancel.isPending.value === true,
 );
 
 const summary = computed(() => props.step.payload.summary);
@@ -39,7 +38,9 @@ const targetLabel = computed(
   () => `${props.run.target.name}@${props.run.target.version}`,
 );
 
-function categoryLabel(category: StepAttributionRow["category"]): string {
+function categoryLabel({ category, conclusion }: StepAttributionRow): string {
+  if (conclusion === "inconclusive") return "证据不足";
+  if (conclusion === "non_target") return "非该对象问题";
   if (category === "flow") return "流程";
   if (category === "context") return "上下文";
   if (category === "prompt") return "prompt";
@@ -48,7 +49,9 @@ function categoryLabel(category: StepAttributionRow["category"]): string {
   return "非该对象问题";
 }
 
-function categoryClass(category: StepAttributionRow["category"]): string {
+function categoryClass({ category, conclusion }: StepAttributionRow): string {
+  if (conclusion === "inconclusive") return "type-inconclusive";
+  if (conclusion === "non_target") return "type-non-target";
   return category ? `type-${category}` : "type-non-target";
 }
 
@@ -73,7 +76,6 @@ function statusLabel(status: AttributionJobView["status"]): string {
 }
 
 async function startJob(): Promise<void> {
-  if (!attributionJobs) return;
   operationError.value = "";
   try {
     await attributionJobs.start.mutateAsync();
@@ -84,7 +86,6 @@ async function startJob(): Promise<void> {
 }
 
 async function retryJob(jobId: string): Promise<void> {
-  if (!attributionJobs) return;
   operationError.value = "";
   try {
     await attributionJobs.retry.mutateAsync(jobId);
@@ -95,7 +96,6 @@ async function retryJob(jobId: string): Promise<void> {
 }
 
 async function cancelJob(jobId: string): Promise<void> {
-  if (!attributionJobs) return;
   operationError.value = "";
   try {
     await attributionJobs.cancel.mutateAsync(jobId);
@@ -176,14 +176,14 @@ async function cancelJob(jobId: string): Promise<void> {
       </p>
     </section>
     <p
-      v-if="attributionJobs?.jobs.isError.value"
+      v-if="attributionJobs.jobs.isError.value"
       class="runtime-error"
       role="alert"
     >
       归因任务进度读取失败，正在重试。
     </p>
     <div
-      v-else-if="canWrite && attributionJobs?.jobs.isSuccess.value && !latestJob && run.status === 'blocked' && step.status === 'active'"
+      v-else-if="canWrite && attributionJobs.jobs.isSuccess.value && !latestJob && run.status === 'blocked' && step.status === 'active'"
       class="runtime-empty"
     >
       <span>当前没有归因执行记录。</span>
@@ -227,19 +227,39 @@ async function cancelJob(jobId: string): Promise<void> {
               class="id mono"
               :title="row.badCaseId"
             >
-              {{ row.badCaseId }}
+              <a
+                :href="badCaseDeepLink(wid, row.sessionId, row.badCaseId, 'desc')"
+                :title="row.badCaseId"
+                :aria-label="`来源问题 ${row.badCaseId}，在新窗口打开问题描述`"
+                rel="noopener noreferrer"
+                target="_blank"
+              >{{ row.badCaseId }}</a>
             </td>
             <td
-              class="mono"
+              class="report-id mono"
               :title="row.attributionId"
             >
-              {{ row.attributionId }}
+              <a
+                :href="
+                  badCaseDeepLink(
+                    wid,
+                    row.sessionId,
+                    row.badCaseId,
+                    'attr',
+                    row.attributionId,
+                  )
+                "
+                :aria-label="`归因报告 ${row.attributionId}，在新窗口打开归因分析`"
+                rel="noopener noreferrer"
+                target="_blank"
+                title="归因报告 ID · 打开归因分析"
+              >{{ row.attributionId }}</a>
             </td>
             <td>
               <span
                 class="type-chip"
-                :class="categoryClass(row.category)"
-              >{{ categoryLabel(row.category) }}</span>
+                :class="categoryClass(row)"
+              >{{ categoryLabel(row) }}</span>
             </td>
             <td class="desc">
               {{ row.description }}
@@ -428,11 +448,43 @@ table.rep tr:last-child td {
 }
 
 .id {
-  color: var(--blue);
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.report-id {
+  white-space: nowrap;
+}
+
+.id a {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.id a,
+.report-id a {
+  color: var(--blue);
+  font-family: var(--mono);
+  text-decoration: none;
+  border-bottom: 1px dashed color-mix(in srgb, var(--blue) 45%, transparent);
+}
+
+.id a:hover,
+.report-id a:hover {
+  border-bottom-style: solid;
+  text-decoration: none;
+}
+
+.id a:focus-visible,
+.report-id a:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
 }
 
 .desc {
@@ -459,6 +511,10 @@ table.rep tr:last-child td {
 
 .type-model {
   color: var(--purple);
+}
+
+.type-inconclusive {
+  color: var(--text-dim);
 }
 
 .type-non-target {

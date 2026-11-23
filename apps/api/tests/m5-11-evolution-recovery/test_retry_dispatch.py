@@ -42,9 +42,9 @@ from app.service.evolution.git_candidate import (
 )
 from app.service.evolution.retry import EvolutionRetryService
 from app.third_party_api.git.workspace import (
+    CandidateBundle,
     CandidateWorkspace,
     GitOperationError,
-    Patch,
     PreparedWorkspace,
 )
 
@@ -123,18 +123,20 @@ class WorkspaceDouble:
     created: list[str] = field(default_factory=list)
     pushed: list[str] = field(default_factory=list)
 
-    async def create_candidate(
+    async def create_candidate_bundle(
         self,
         prepared: PreparedWorkspace,
         *,
         run_branch: str,
         candidate_ref: str,
-        patch: Patch,
+        bundle: CandidateBundle,
         message: str,
         expected_run_id: str | None = None,
+        reset_workspace: bool = False,
+        allow_protected_paths: bool = False,
     ) -> CandidateWorkspace:
-        """Record and return one deterministic candidate."""
-        del prepared, patch
+        """Record and return one deterministic multi-file candidate."""
+        del prepared, bundle, reset_workspace, allow_protected_paths
         self.created.append(candidate_ref)
         return CandidateWorkspace(
             workspace_path=Path("workspace"),
@@ -594,6 +596,67 @@ async def test_permanent_push_error_never_schedules_automatic_retry(state: State
     assert raised.value.retry_attempts == 1
 
 
+async def test_resume_committed_candidate_pushes_without_creating_again(state: State) -> None:
+    """The saved commit is sufficient to resume between local Git and remote push."""
+    await _create_run(state.repository, status="running", blocked_stage=None, push_status="pending")
+    await _seed_cluster_and_round(state, round_status="patching", push_status="pending")
+    run = await state.repository.get_run(RUN_ID)
+    round_ = await state.repository.get_round(ROUND_ID)
+    assert run and round_
+    candidates = EvolutionCandidateService(state.repository, state.workspace)  # type: ignore[arg-type]
+    published = await candidates.publish(
+        run, round_, CandidateTrace("cluster-retry", "test", (), (), "evidence")
+    )
+    assert state.workspace.created == []
+    assert published.candidate_commit == CANDIDATE_COMMIT
+    assert published.status == "evaluating"
+    assert len(state.workspace.pushed) == 1
+
+
+async def test_saved_patch_bypasses_model_generation(state: State) -> None:
+    from sqlalchemy import update
+
+    await _create_run(state.repository, status="running", blocked_stage=None, push_status="pending")
+    await _seed_cluster_and_round(
+        state, round_status="patching", push_status="pending", candidate=False
+    )
+    patch = {
+        "file": "SKILL.md",
+        "lines": ["line from saved patch"],
+        "note": "saved",
+        "overwrite": True,
+    }
+    async with state.database.transaction() as session:
+        await session.execute(
+            update(evolution_rounds).where(evolution_rounds.c.id == ROUND_ID).values(patch=patch)
+        )
+    run = await state.repository.get_run(RUN_ID)
+    round_ = await state.repository.get_round(ROUND_ID)
+    assert run and round_
+
+    def forbidden(_: Any) -> Any:
+        raise AssertionError("resuming a durable patch called the model twice")
+
+    events = EvolutionRunEventService(
+        SqlRunEventStore(state.database),
+        state.repository,
+        EventBus(queue_capacity=8),
+    )
+    service = EvolutionCandidateService(
+        state.repository,
+        state.workspace,  # type: ignore[arg-type]
+        events=events,
+        patch_source_factory=forbidden,
+    )
+    published = await service.publish(
+        run, round_, CandidateTrace("cluster-retry", "test", (), (), "evidence")
+    )
+    assert published.patch == patch
+    assert published.status == "evaluating"
+    page = await events.list(RUN_ID, after_seq=0, limit=50, level=None)
+    assert [event for event in page.items if event.event_type == "ai_agent_call"] == []
+
+
 async def test_initial_transient_push_failure_carries_one_minute_backoff(
     state: State,
 ) -> None:
@@ -818,3 +881,120 @@ async def test_apply_accept_keeps_the_recovery_retry_ladder(state: State) -> Non
     assert run.status == "blocked"
     assert run.retry_attempts == 2
     assert run.next_retry_at == NOW + timedelta(minutes=15)
+
+
+async def test_recovery_retry_applies_completed_evaluation_without_resubmitting(
+    state: State,
+) -> None:
+    """Restart preserves an already completed external evaluation and its identity."""
+    from dataclasses import replace
+
+    await _create_run(state.repository, status="interrupted", blocked_stage=None)
+    result_payload = {
+        "currentScore": 80.0,
+        "candidateScore": 90.0,
+        "externalVerdict": "accept",
+        "metrics": [],
+    }
+    await _seed_cluster_and_round(
+        state,
+        round_status="evaluating",
+        push_status="succeeded",
+        eval_status="completed",
+        eval_external_id="external-completed",
+        eval_result=result_payload,
+    )
+    apply = RecordingStage("apply")
+    job = _retry_job(automatic=False)
+    await _service(state, apply=apply).handle(
+        replace(job, payload={**job.payload, "recovery": True})
+    )
+    assert apply.calls == [RUN_ID]
+    round_ = await state.repository.get_round(ROUND_ID)
+    assert round_ and round_.eval_external_id == "external-completed"
+    assert round_.eval_result == result_payload
+    assert state.workspace.pushed == []
+
+
+@pytest.mark.parametrize("decision", ["accepted", "rejected"])
+async def test_replayed_decision_restores_run_and_schedules_next_stage(
+    state: State,
+    decision: str,
+) -> None:
+    """A durable decision survives a crash before its worker completion callback."""
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from app.service.evolution.advance import EvolutionJobLifecycle
+
+    await _create_run(state.repository, status="interrupted", blocked_stage=None)
+    await _seed_cluster_and_round(state, round_status=decision, eval_status="completed")
+    job = _apply_job(retry_attempts=0)
+    service = EvolutionApplyService(
+        state.repository,
+        EvolutionCandidateService(state.repository, state.workspace),  # type: ignore[arg-type]
+        EmptyProbeReader(),
+    )
+    result = await service.handle(job)
+    assert result["applied"] is False
+    run = await state.repository.get_run(RUN_ID)
+    assert run and run.status == "running"
+    round_ = await state.repository.get_round(ROUND_ID)
+    assert round_ and round_.status == decision
+    lifecycle = EvolutionJobLifecycle(
+        state.repository,
+        state.jobs,
+        SimpleNamespace(cleanup_workspaces=lambda **kwargs: None),
+    )
+    await lifecycle.on_terminal(replace(job, status="completed", result=dict(result)))
+    assert [item.kind for item in state.jobs.items] == ["evolution_finalize"]
+
+
+@pytest.mark.parametrize(
+    ("workspace_prepared", "has_cluster", "expected"),
+    [
+        (False, False, "evolution_prepare"),
+        (False, True, "evolution_prepare"),
+        (True, True, "evolution_prepare"),
+        (True, False, "evolution_finalize"),
+    ],
+)
+async def test_pause_before_round_creation_resumes_preparation(
+    state: State,
+    workspace_prepared: bool,
+    has_cluster: bool,
+    expected: str,
+) -> None:
+    """A saved local path alone cannot prove that full preparation finished."""
+    from sqlalchemy import delete, update
+
+    from app.db.crud.evolution_control import EvolutionControlRepository
+    from app.db.crud.jobs import JobRepository
+    from app.db.models.evolution import evolution_runs
+    from tests.workspaces.helpers import create_user
+
+    await _create_run(state.repository, status="running", blocked_stage=None, progress_unit=5)
+    async with state.database.transaction() as session:
+        await session.execute(
+            update(evolution_runs)
+            .where(evolution_runs.c.id == RUN_ID)
+            .values(
+                attribution_engine="llm-attribution-v1",
+                stats={"workspacePrepared": workspace_prepared},
+            )
+        )
+    if has_cluster:
+        await _seed_cluster_and_round(state)
+        async with state.database.transaction() as session:
+            await session.execute(
+                delete(evolution_rounds).where(evolution_rounds.c.run_id == RUN_ID)
+            )
+    actor = await create_user(state.database, username="pause-before-rounds")
+    run = await state.repository.get_run(RUN_ID)
+    assert run
+    control = EvolutionControlRepository(state.database)
+    assert (await control.pause(run.id, run.workspace_id, actor)).run.control_state == "paused"
+    resumed = await control.resume(run.id, run.workspace_id, actor)
+    assert resumed.job_id
+    job = await JobRepository(state.database).get(resumed.job_id)
+    assert job and job.kind == expected

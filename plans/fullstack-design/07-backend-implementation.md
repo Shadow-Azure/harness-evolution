@@ -159,6 +159,9 @@ class ParsedTranscript:
 10. **模型**：从 assistant 消息的 `model` 字段取该 agent 的实际模型，写 `agents.model`；`meta.model` 写 `requested_model`；主 agent 同时写 `session_families.model`；整棵树去重写 `session_families.models`。
 11. **会话元数据**：主 payload 的 `cwd` / `gitBranch` / `version` / `entrypoint` 写 `session_families.project_path/git_branch/cli_version/entrypoint`。
 12. **V2 触发点坐标与对象版本**：每条 `agent_events` 额外写 `triggered_at`——取该触发事件 `tool_use` 所在 assistant 消息的 `timestamp`（转换到 Asia/Shanghai；取不到留 NULL，不猜测）；同时给每个 `agents` 节点写 `tree_index`——Session 内 DFS 先序遍历（父先于子，兄弟按 `sort_key`）赋的全局递增整数。skill/agent/知识库的**文件匹配键**是 `definition_hash = sha256(normalize_definition_body(body))`：skill 取 `SKILL.md`，agent 取 `AGENT.md`/`agent.md`，知识库取文件读内容；`source_path` 只作诊断证据，不参与匹配。skill 的 `object_revision` 使用该 body hash；agent 的 `object_revision` 保留 `agentType + isBuiltIn + body hash` 作为诊断身份；知识库文件读的 `document_revision`/`object_revision` 使用归一化 body hash，Provider 原始 revision 仍为 `provider:`。有显式 `version` / `skillVersion` / `agentVersion` 元数据时才写 `tag:<value>`。上述列是自进化“对象身份进入点 vs bad case 触发点”的坐标（[06 §7.5](06-database-design.md)）：身份必须精确匹配；时间戳缺失时用 `(tree_index, event_index)` 字典序，双缺失记 `unknown`。`parser_version` 从 5 递增到 6，由下一次归一化或 `pnpm data:replay:sessions` 重放补齐存量。
+
+**Agent 定义证据的实际形状（2026-11-21 实测）**：Claude Code 生产轨迹可能把 subagent 的 prompt snapshot 嵌套为 `type=attachment` + `attachment.type=prompt_snapshot` + `attachment.systemPrompt[0]`，而不是顶层 `type=prompt_snapshot`。解析器必须把这两种 `prompt_snapshot` 形状视为等价，并优先于 `api-request-shape`；`api-request-shape.shape.system` 是运行时 system 快照，实测 hash 与目标 `AGENT.md` 不一致，不能作为定义正文，也不覆盖 prompt snapshot。`definition_source` 仍记为 `prompt_snapshot`，不新增枚举值；`parser_version` 升级触发已存 payload 重放。仅有 body hash 还不够：实测子 agent 的 `agentMeta` 只有 `name`、没有 `agentType`，而 `_agent_revision` 依赖 `agentType`，会返回 None；`agent_tree._apply_agent_revisions` 必须在 revision 缺失时仍把 child `definition_hash` 挂到父 `kind=agent` 事件，matcher 才能按 `definition_hash` 命中。
+
 13. **知识库文档触发（M9-05，parser 6）**：只有两类证据生成 `kind=knowledge`——配置知识根内的普通 `Read`，以及白名单 MCP 知识工具（`mcp__knowledge__search` / `mcp__knowledge__retrieve` / `mcp__knowledge-base__search` / `mcp__knowledge_base__search` / `mcp__kb__search` / `mcp__kb__retrieve`）返回的文档。`Read` 的路径优先级是 **result `filePath` 优先、`tool_input.file_path` 回退**（结果里的真实路径更可信），之后做规范化再与 roots 做最长前缀、段边界匹配（`/kb` 不匹配 `/kb2`），命中才写事件；`Edit`/`Bash` 永不生成。相对路径不匹配、也不解析 cwd，因此工具侧必须以绝对路径上报。文件读的 `definition_hash`/`document_revision`/`object_revision` 使用 `sha256(normalize_definition_body(content))`；`file_read_hash` 保留原始内容 hash；不完整读取或内容缺失为 `unknown`。
 
     每条文档写 `document_id`（`doc:` + sha256(规范化根相对路径)[:32]）、`document_revision`（Provider 原始 revision 或 `digest:<sha256>` / `unknown`）、`source_path`（规范化后截断到 1024）、`retrieval_kind`、`retrieval_scope`（配置上限 512）与调用坐标（`line_no/message_offset/triggered_at` 取 `tool_use` 所在 assistant 记录）。`object_revision` 走共享封闭词汇：文件读为 `digest:<sha256>` 或 `unknown`，MCP 为 `provider:<原始 revision>` 或 `unknown`，所以它与 `document_revision` 语义不同。完整文件读的 revision 为 `digest:<sha256>`，不完整或内容缺失为 `unknown`。`event_index` 在 finalize 按 `(line_no, event_index)` 稳定重排，所以结果到达顺序不影响事件顺序。文档正文、chunk 与 MCP 原始响应不进入中间结构，也不落库。
@@ -321,7 +324,7 @@ class TraceParserFactory:
 @TraceParserFactory.register
 class ClaudeCodeTraceParser(BaseTraceParser):
     runtime_key = "claude-code"
-    parser_version = 7
+    parser_version = 8
 
     @classmethod
     def can_parse(cls, payloads):
@@ -514,6 +517,14 @@ stateDiagram-v2
 ```
 
 `status` 映射与前端不推算的约定不变（[05 §3.6](05-api-design.md)）：`range / sessions / potential / attribution / clusters / iteration / final`，进度公式 `5 + M + 1`。历史 V1 run 只由 `build_step_payload` 的兼容分支映射为同样的七步 DTO。
+
+### 5.1.1 协作式暂停
+
+用户控制状态独立于执行状态：`running → pause_requested → paused → running`。控制服务统一暂停请求、检查点确认及继续入队。暂停先持久化意图，当前不可分的模型调用、Git 操作或提交操作可结束；worker 在阶段及批次边界保存产物并退出，不持有串行执行锁等待用户。确认暂停后不得开始新的外部副作用；其他 run 可以使用 worker。
+
+prepare、advance、apply/final、blocked sweeper、eval poller、重启恢复和清理统一检查控制状态。继续在行锁事务内检查现有 queued/running job，使用冻结快照、unit、轮次状态、候选提交与远端评测 ID 确定唯一后续工作。候选提交、推送和提交评测均沿用持久化产物，禁止因继续而重做。暂停不等价于 blocked 或 interrupted，终态竞争应保留真实执行结果。
+
+已提交评测暂停期间仍可由 poller 观测与落库，但不能 apply 或推进后续轮次；继续时先查询远端结果，再判定超时。暂停等待从本地评测等待预算扣除。暂停及待确认运行跨进程重启保留控制状态和工作区，已执行产物作为恢复依据；控制转换只在状态改变时发出持久化事件。
 
 ### 5.2 对象配置（`service/evolution/targets.py`）
 
@@ -729,7 +740,8 @@ async def evolution_dispatch(job) -> None:
 - **事件记录由各阶段模板所在类统一调用**：prepare 的事件在基类，advance/apply/finalize 的事件在 Full；子类（钩子实现）不直接调 `events.record`，保证 F20 执行日志不因子类遗漏而缺行。
 - `eval_poller` / `blocked_sweeper` 是进程级基础设施循环，不属于 engine；但遇到具体 run 时同样经 `EngineFactory.for_run` 解析，用 `engine.gateway` 调外部评测（§5.7）。
 - `POST /cluster-previews` 与 `POST /runs` 共用同一入口；差异全部收敛在 `ClusterOnlyEngine`：不建 workspace、不建 `evolution_rounds`、不提交 advance；聚类与 `confidence`/`severity` 落库后 run 直接 `completed`（终态，归入历史组），前端轮询到 `completed` 再拉 `steps/clusters`（[08 §11](08-frontend-implementation.md)）。
-- `Workspace.prepare`：按 target + ref 维护 `data/repos/{target_id}/{sha256(ref)[:16]}` 裸缓存（tag/分支保留该 ref 全历史，完整 SHA 用 depth 1），从缓存本地克隆 → 建 `evo/{YYYYMMDD}-{run_id}` 分支；远端已有 run 分支时显式 fetch 后 `switch --track`，push 前先补齐远端 commit 再做 ancestry 校验。详见 [Git 工作区与推送](../../docs/git-workspace.md)。
+- `Workspace.prepare`：按 target + ref 维护 `data/repos/{target_id}/{sha256(ref)[:16]}` 裸缓存（tag/分支保留该 ref 全历史，完整 SHA 用 depth 1），从缓存本地克隆 → 建 `evo/{YYYYMMDD}-{run_id}` 分支；远端已有 run 分支时显式 fetch 后 `switch --track`，push 前先补齐远端 commit 再做 ancestry 校验。push 目标按 provider 自动 fork / `HE_GIT_PUSH_URL` / `repo_url` 解析，prepare 把派生目标写入 `run.push_repo_url`，eval 复用；详见 [Git 工作区与推送](../../docs/git-workspace.md)。
+- 推送的托管平台差异收敛在 `GitPushProvider`：`GitPushProviderFactory` 按 `HE_GIT_PUSH_PROVIDER` 选择 `GitHubProvider` / `GitLabProvider`；父类定义 `remote_url` / `auth_environment` / `ensure_fork` / 公共 `push_ref` / `remote_ref`，子类实现 URL、API、fork 与认证。`HE_GIT_PUSH_TOKEN` 通过 `GIT_ASKPASS` 注入 git 子进程，不写 URL/DB/事件/日志；新增平台只加子类与注册项，不改 prepare/candidate/final 状态机。
 - prepare 只读 run 快照（`repo_url` / `sub_dir` / `target_version` / `engine_key` / `eval_config`），不读 `evolution_targets` 的当前值；target 配置后续变更不影响已创建的 run。
 - `TYPE_IMPACT = {"error": 9, "prompt": 7, "model": 5}`：建簇时写入 `probe_clusters.impact` 并固化；聚类步写入 `confidence / severity / rank`（簇级占位，按 `probe_cluster_type`）。这些列落库后 `build_step_payload` 只读，不在接口层重算。
 - 第 4/5 步必须是独立写库点：归因步骤写单条结论，聚类步骤写簇级 `confidence / severity / rank`，**之后才**按 rank 顺序创建 `evolution_rounds`。不能把归因和聚类合并成一次不可恢复的内存步骤。
@@ -771,6 +783,76 @@ def cluster_probes(probes: list[ProbeForCluster]) -> list[Cluster]:
 - **描述生成**：取簇内最小 `probe_id` 的标题，空白归一化并截断到 120 字符；无标题时用成员条数兜底。簇描述不再是占位文案。
 - **复现参数**：算法版本、阈值与簇结果 hash 写入 `clusters_created` 事件 payload；`confidence` / `impact` / `severity` / `rank` 仍按 [06 §5.3](06-database-design.md) 计算并固化。
 - 只替换聚类组合与描述生成，继续写 `probe_clusters` / `probe_cluster_probes`，表、关联和 API 字段不变。
+
+### 5.5.1 AI Agent Provider 出站适配层（`third_party_api/ai_agent`）
+
+自进化的审查、评分与 patch 生成依赖模型能力；所有模型出站调用收口到一个「父类定义接口 + 子类实现细节 + 工厂按配置选择」的适配层，当前唯一真实子类是 Claude Code（复用生产部署的 `claude` CLI），未来换 OpenCode 或直连模型 API 只新增子类。
+
+```python
+class AIAgentProvider(ABC):
+    """出站 AI 代理后端统一接口；父类只定义契约，不提供实现。"""
+
+    provider_id: ClassVar[str]            # claude-code / opencode / model / fake
+
+    @abstractmethod
+    async def analyze(self, request: AnalysisRequest) -> AnalysisResult: ...
+    """无副作用结构化分析；结果必须通过调用方传入的 JSON Schema"""
+
+    @abstractmethod
+    async def edit_workspace(self, request: EditRequest) -> EditResult: ...
+    """产出编辑计划；确定性应用由 patch source 在临时镜像上执行，diff 以 git 为准"""
+
+    @abstractmethod
+    async def health_check(self) -> ProviderHealth: ...
+```
+
+- **接口按能力而非厂商划分**：`analyze`（结构化分析）与 `edit_workspace`（受控工作区编辑）是两个稳定能力面；聚类审查、簇置信度、严重度都是 `analyze` 的不同任务键（`cluster.review` / `cluster.score` / `severity.score`），接口数量不随环节膨胀。主接口不含 `embed`：向量化是分组层（§5.5.2）的升级能力，以可选能力接口 `SupportsEmbedding` 扩展。
+- **归一化返回**：用量（model、tokens、cost_usd）、会话 id、latency、可重试标志是结果对象的固定字段；错误折叠为 `AgentProviderError(retryable, provider_id, detail)`。
+- **工厂与配置**：注册表 + `build_agent_provider(settings)`；选择键 `AI_AGENT_PROVIDER`（`AliasChoices` 兼收 `HE_AI_AGENT_PROVIDER`，校验器限定注册表内的值，未知值启动即红）。子配置段 `HE_AI_AGENT_*`（CLI 路径、CLI settings 显式路径、失败策略、超时、预算、`HE_AI_AGENT_NATIVE_SCHEMA` 可选快路径开关）。装配点在 `main.py`，与 `patch_source_factory` 同款姿势。
+- **fake 先行**：确定性 `FakeAIAgentProvider` 注册 `"fake"`，全部单测与 CI 走 fake；真实 CLI 只在 e2e 冒烟触碰。子类进程管理复用 git workspace 的姿势：`create_subprocess_exec` + `start_new_session=True` + `wait_for`，SIGINT 优雅终止后 `killpg(SIGKILL)`，退出码 143 识别为「已取消」。
+- **凭据零感知**：模型端点与 key 在 `~/.claude` 由部署管道管理（M15），服务进程不读取任何生产凭据。
+
+### 5.5.2 聚类三层：分组 / 审查 / 评分
+
+规模红线：**LLM 的输入输出一律与归因报告总量 N 解耦**（草稿键引用 + 代表采样 + 统计量注入）——N 只影响无 LLM 的分组层。
+
+- **① 分组层（O(N)，无 LLM）**：`lexical-jaccard-v1`（§5.5）是第一实现；产出 K 个草稿簇，**成员列表由代码持有、不进任何 prompt**。向量化升级位：`SupportsEmbedding`（未来 `model` 子类实现）以语义相似合并词面不同语义相同的 case（「超时」vs「卡死」），收缩 K、缩小下游输入，附带产出簇内紧密度作评分层统计信号。向量化只替换分组与相似召回，不替换身份归因（归因靠对象锚点与时序的精确匹配）。降级：embedding 不可用 → 回 lexical。
+- **② 审查层（O(K×s)，`analyze(task="cluster.review")`）**：输入 = 草稿摘要（约 60 tokens/簇）+ 每草稿采样 3–5 条代表 case；任务只允许合并草稿、命名、写摘要。输出 schema 用**草稿键引用**（`{"from": ["D1","D2"], "title": …}`），成员由代码按 `from` 展开——输出量 O(K)，守恒是构造性的。硬闸：**草稿划分完整性**（每个输入草稿在输出 `from` 里恰好出现一次）+ 只合并不拆分；违反 → 整批降级用草稿。
+- **③ 评分层（O(K×s)，两次调用失败隔离）**：输入 = 最终簇摘要 + 代表样本 + 确定性统计量（成员数、签名重合度、时间跨度、可选紧密度）。`cluster.score`（簇置信度直评 0–1，rubric 锚定 + `evidence_refs ⊆ 输入` 引用校验，写 `probe_clusters.confidence`，降级回类目常量）与 `severity.score`（维度 0–10 + CoT grader，`overall` 为决策分、公式分对照进 metrics、CVSS 式向量串可审计，降级回 `cluster_severity()` 公式）分开执行。
+- **归因置信度不上模型**：归因行 `probe_reports.confidence`（case 级归因置信度）改为证据完整度规则分（时间序可比 / 错误签名匹配 / 版本直证三信号计票映射区间），零模型调用；逐条模型分留作预算开关，不进默认路径。
+- 落库：算法标识升级 `hybrid-lexical-llm-v1`（embedding 上线后 `hybrid-embed-llm-v1`）随 run 快照可回放。成本形态：每 run 恰好 3 次有界 analyze + patch 阶段 edit 调用，与 N 无关。
+- 失败策略：`HE_AI_AGENT_FAILURE_POLICY` 默认按 provider 推导（`fake` → `degrade`，其余 → `strict`）。`strict` 下任一任务失败在记录 `ai_agent_call(outcome=error)` 后抛 `ClusterAIFailure`，run 在聚类阶段显式失败，不写兜底 confidence/severity、不写成功口径的 `clusters_created`；`degrade` 仅用于 `fake` 或显式配置，回退仍写 `degraded` 事件。`/steps/clusters` 暴露 `algorithm`/`failurePolicy`/`degraded`/`failure`，失败 run 的聚类步骤保持可读；run 卡片与终评按 `degraded` 标“聚类降级”，不显示“自进化有效”。
+
+### 5.5.3 结构化提交通道（`submission.py`）与 JSON 可靠性防线
+
+`analyze` 的结构化收货不依赖任何 CLI 的内部机制（如 Claude Code 的 `--json-schema`）：provider 层公共组件 `third_party_api/ai_agent/submission.py` 实现「agent 写宽松字面量文件、确定性解析器收货」的通道，所有 CLI 后端共享。
+
+- **机制**：`prepare()` 在任务目录预置 `schema.json` 与指令片段，工具白名单只有 `Write(./result.json5)`；agent 把结论写进 `result.json5`（JSON5 宽松格式：注释、尾逗号、单引号、裸键）——「用 JS 生成 JSON」的真实价值是字面量容错 + 确定性序列化，且不执行任何模型代码。`collect()` 读文件 → JSON5 解析（失败走 json-repair 抢救）→ 规范化 → 任务模型 `model_validate`（语义 validator 在此执行）；失败则 `feedback_prompt()` 生成「哪个字段、违反什么约束」的回喂文案，子类重试 ≤1 轮；Claude Code 以无状态新调用回喂，不复用 `--resume`（`--no-session-persistence` 使会话不可 resume）。
+- **六层防线**：0 契约设计（Pydantic 单一事实源，跨字段语义规则放 validator 不塞 schema）→ 1 提交通道（自建字面量通道，默认）→ 2 服务端校验 → 3 json-repair 兜底（仅回退路径）→ 4 有限重试与降级（不静默落库半成品）→ 5 可观测（提交文件解析失败率、回喂重试次数入 `ai_agent_call` 事件）。
+- **`--json-schema` 仅为可选快路径**：`HE_AI_AGENT_NATIVE_SCHEMA=true` 且 capability 探测支持时 ClaudeCodeProvider 可改用 CLI 原生通道（`structured_output` 字段 + 内部回喂重试）；默认关闭，统一走自建通道保证行为一致、测试一套。`model` 子类直连 API 时，API 级结构化输出是公开契约，直接使用。
+
+### 5.5.4 Edit 指令式 patch（EditPlan + `edits.py`）
+
+patch 生成采用 SkillOpt 式编辑指令（对齐 [microsoft/SkillOpt](https://github.com/microsoft/SkillOpt) 的 `Edit`/`Patch` 结构）：agent 不直接改仓库文件，而是提交结构化编辑计划，经 §5.5.3 通道收货、由确定性应用器执行、以 `git diff` 收结果——意图态（可审计、可计数）与结果态（git 真值）合一。
+
+```json5
+// <workspace>/.harness-evolution/edits.json5 —— agent 在 edit 阶段唯一可写的文件
+{
+  summary: "fetch 超时 30s→120s 并增加一次重试",
+  edits: [
+    { op: "replace",                       // append | insert_after | replace | delete
+      file: "skills/fetch-github-file/config.json",
+      target: "\"timeoutSeconds\": 30",    // 锚文本：文件内必须存在且唯一
+      content: "\"timeoutSeconds\": 120",
+      rationale: "三条 case 均为 30s 超时，同一根因" }
+  ]
+}
+```
+
+- **执行流**：agent 以只读工具（Read/Grep/Glob）探索 → 写 `edits.json5`（submission 通道收货）→ 语义校验（`file ∈ allowed_paths`；锚**存在且唯一**，多义回喂要求补上下文；`len(edits) ≤ edit_budget`（默认 8，SkillOpt learning-rate 等价物：prompt 约束 + 硬截断））→ `edits.py` 确定性应用（replace 首个匹配 / insert_after 行边界 / append 追加，逐条 status 报告、后续编辑的锚实时复查）→ `git diff` 收真实改动 → `PatchBundle{files, unified_diff, note=intent.summary, intent=EditPlan, report=逐条状态}` → candidate 提交（`Harness-Patch-Hash` trailer）→ push → eval。
+- **拒绝处理**：评测 reject 沿用既有状态机结束该轮并清理候选，不自动开启下一轮，也不注入 `--resume` 反馈或 rejected-edit buffer（2026-11-23 决定：失败即拒绝，避免 round 生命周期改造）；accept → 并入 run 分支。
+- **安全闸**：agent 工具面 = 只读 + 写一个 json5 文件（`dontAsk` 模式，无文件编辑权限）；`.harness-evolution/` 排除在 diff scope 外；应用器只在临时镜像上写入，越界/失败编辑不会触达仓库，因此无需 `git checkout -- .` 回滚；diff + intent + report 落 run events（diff 为候选 commit 的真实 git diff，超长时按事件载荷上限截断）。声明（intent）与实际（diff）的对照本身是审计信号。
+- **patch source 接入**：新增第三种模式 `agent-edit` 注册进 `PATCH_SOURCE_MODES` 与工厂，沿用「run 冻结配置优先、env 兜底」的选择语义；`PatchSource` 增加 `build_bundle()`（默认实现包装旧 `build()` 为单文件 bundle，旧实现零改动）。
 
 ### 5.6 单轮执行：candidate → push → 提交评测（`FullEvolutionEngine.advance_one_round`）
 
@@ -1218,7 +1300,7 @@ class AttributionRunner:
 - run 创建时固化 `attribution_engine / cache_enabled / potential_policy`；runner 只读 run 快照，不读全局配置或请求方当前值。历史 run 的 `attribution_engine` 默认 `legacy-probe-import`，不会被 V2 runner 误用。
 - 关闭缓存时以本次选定 Skill 执行，在同一事务内保存新报告、来源 Skill 和 case 关联。
 - 并发同键 upsert 走方言原子语句（`ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO UPDATE`），不先查后写。
-- V2 首版引擎 `rule-v1`（规则占位）：自身上报 → `attributed`，`category` 按证据判 `error|prompt`，confidence 0.8；`after_object` 且 discovery → `attributed`/`error`，0.6；证据不足或顺序不可比 → `non_target`，0.7。`reason`/`reasoning` 为模板化占位文案；换真实归因只新增 Engine 子类并注册新 `key`，缓存键自动隔离。
+- V2 首版引擎 `rule-v1`（规则引擎）：自身上报 → `attributed`，`category` 按证据判 `error|prompt`；`after_object` 且 discovery → `attributed`/`error`；证据不足或顺序不可比 → `non_target`。confidence 为证据完整度规则分（三票 0.9 / 两票 0.8 / 一票 0.5 / 零票 0.3 / 矛盾 0.2，非目标取补数），只读候选与 bad case 证据、不调用模型；`reason`/`reasoning` 为模板化文案。换真实归因只新增 Engine 子类并注册新 `key`，缓存键自动隔离。
 - **簇级 confidence 与归因 confidence 是两回事**：`probe_reports.confidence` 是引擎对该 bad case 的结论置信度；聚类步写入的 `probe_clusters.confidence` 是簇级占位值（按 `probe_cluster_type`：error 0.82 / prompt 0.74 / model 0.66），`severity = round(min(10, 簇 confidence × impact × reportWeight), 1)`。两者不互相推导，避免把「单条归因的把握」误当成「整个簇的把握」。
 - `non_target` 候选保留在候选表、`probe_reports` 与 `bad_case_analysis`（错误详情可见），不进簇。
 
@@ -1267,7 +1349,8 @@ app/api/deps.py             # require_workspace_role(wid, minimum)
 - `service/jobs.py` 提供 `JobRunner`：`submit(kind, payload, ref_id)` 落 `job_runs` 行（`queued`），由进程内 worker 串行执行；
 - **串行**用一把全局 `asyncio.Lock` 保证；同 `(kind, ref_id)` 已有活跃任务时按 kind 区分：`sync` / `evolution_retry` 命中去重，service 层捕获后返回已有 job（路由层 `202 {jobId, reused:true}`，见 §2.2.1 / §5.8.1）；`evolution_prepare` / `evolution_advance` / `evolution_apply` 冲突抛 `RUN_BUSY`（409）；
 - 状态与进度写 `job_runs`（`queued/running/completed/failed/interrupted` + `progress`）；
-- 重启恢复：lifespan 把残留 `running` 标 `interrupted`；若 `ref_id` 指向 evolution run，同时写 `run_interrupted` 事件；可重试的 kind（sync）重新入队；
+- 重启恢复：lifespan 把残留 `running` 标 `interrupted`；若 `ref_id` 指向 evolution run，同时写 `run_interrupted` 与 `job_recovered` 事件，并按同一阶段 kind 重新入队（sync 保持新 ref 重试）；各 evolution 阶段从持久检查点继续，prepare/push 先对账远端 ref；
+- 租约与心跳：领取写 `lease_owner`/`lease_expires_at`/`heartbeat_at`，handler 运行期间续租，终结时清租；停机先停止接单，在 `HE_JOB_DRAIN_TIMEOUT_SECONDS` 内等待在跑 handler，超时取消并标 `interrupted`，由下次启动接管；
 - 未来并行/CI：新增 executor 实现（调 CI 平台接口），`job_runs.executor='ci'`、`external_job_id` 记录远端任务 id，业务 service 不变。
 
 ```python

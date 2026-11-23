@@ -14,6 +14,7 @@ from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
 from app.service.evolution.advance import build_candidate_trace
 from app.service.evolution.backoff import next_retry_delay
+from app.service.evolution.control import PauseAtCheckpoint, checkpoint
 from app.service.evolution.engine.contracts import EvolutionBlockedStage, RunBlocked
 from app.service.evolution.events import (
     EvolutionRunEventService,
@@ -169,7 +170,14 @@ class EvolutionRetryService:
         if run is None:
             raise LookupError("evolution run not found")
         automatic = job.payload.get("automatic") is True
+        if run.status == "interrupted":
+            await self._runs.mark_recovered(run.id)
+            refreshed = await self._runs.get_run(run.id)
+            if refreshed is not None:
+                run = refreshed
         if run.status != "blocked" or run.blocked_stage is None:
+            if job.payload.get("recovery") is True and run.status == "running":
+                return await self._recover_running(run, job)
             return {
                 "runId": run.id,
                 "resumed": False,
@@ -205,6 +213,7 @@ class EvolutionRetryService:
         refreshed = await self._runs.get_run(run.id)
         if refreshed is not None:
             run = refreshed
+        await checkpoint(self._runs, run.id)
         try:
             if blocked_stage == "eval":
                 if cleared_round is None:
@@ -217,6 +226,8 @@ class EvolutionRetryService:
                 )
             else:
                 dispatched = await self._dispatch(run, blocked_stage, job)
+        except PauseAtCheckpoint:
+            raise
         except RunBlocked as exc:
             raise self._with_backoff(attempts, exc) from None
         except Exception as exc:
@@ -245,6 +256,33 @@ class EvolutionRetryService:
             if active is None:
                 return await self._schedule_next(run, job)
             return await self._regenerate_round(run, active, job)
+        final = await self._runs.get_final(run.id)
+        if final is not None:
+            return await self._finalize(run, job)
+        evaluated = await self._undecided_evaluated_round(run.id)
+        if evaluated is not None:
+            return await self._apply(run, evaluated, job)
+        active = await self._active_round(run.id)
+        if active is not None:
+            if active.status in {"pushing", "evaluating"}:
+                return await self._republish_push(run, active, job)
+            return await self._regenerate_round(run, active, job)
+        rounds = await self._runs.list_rounds(run.id)
+        if rounds and all(round_.status in _TERMINAL_ROUND_STATUSES for round_ in rounds):
+            return await self._finalize(run, job)
+        return await self._schedule_next(run, job)
+
+    async def _recover_running(
+        self,
+        run: EvolutionRunRecord,
+        job: JobRunRecord,
+    ) -> Mapping[str, Any]:
+        """Resume an interrupted retry job from its durable round/final facts."""
+        stale_eval = await self._stale_eval_round(run.id)
+        if stale_eval is not None:
+            previous_eval_id = stale_eval.eval_external_id
+            cleared = await self._runs.reset_round_for_eval_retry(run.id, stale_eval.id)
+            return await self._resubmit_eval(run, cleared, previous_eval_id, job)
         final = await self._runs.get_final(run.id)
         if final is not None:
             return await self._finalize(run, job)
@@ -316,6 +354,7 @@ class EvolutionRetryService:
             round_,
             trace,
             job_id=job.id,
+            resume=True,
         )
         if current.status == "evaluating" and current.eval_external_id is None:
             submitter = self._require_stage(self._eval_submitter, "eval submitter")
@@ -408,6 +447,20 @@ class EvolutionRetryService:
         """Find one evaluated round whose accept/reject decision is still missing."""
         for round_ in await self._runs.list_rounds(run_id):
             if round_.status in {"evaluating", "deciding"} and round_.eval_result is not None:
+                return round_
+        return None
+
+    async def _stale_eval_round(
+        self,
+        run_id: str,
+    ) -> EvolutionRoundRecord | None:
+        """Find an evaluating round whose external poll can no longer progress."""
+        for round_ in await self._runs.list_rounds(run_id):
+            if round_.status != "evaluating" or round_.eval_status == "completed":
+                continue
+            if round_.eval_status in {"failed", "timeout"}:
+                return round_
+            if round_.eval_external_id is not None and round_.eval_next_poll_at is None:
                 return round_
         return None
 

@@ -109,6 +109,7 @@ class ProbeWrite:
     report_payload: Mapping[str, object] | None = None
     execution_manifest: Mapping[str, object] | None = None
     execution_manifest_hash: str | None = None
+    legacy_rule: bool = False
 
     def __post_init__(self) -> None:
         """Reject malformed identities and normalize an empty object version."""
@@ -131,7 +132,7 @@ class ProbeWrite:
             return hashlib.sha256(
                 f"{self.analysis_id}:{self.execution_manifest_hash}".encode()
             ).hexdigest()
-        if self.execution_manifest_hash is not None:
+        if self.execution_manifest_hash is not None and not self.legacy_rule:
             return self.execution_manifest_hash
         return attribution_cache_key(
             self.workspace_id,
@@ -186,9 +187,12 @@ class BadCaseEvidenceRecord:
     bad_case_id: str
     session_id: str
     bad_case_type: str
+    object_name: str
+    object_version: str | None
     title: str
     description: str
     metadata: Mapping[str, object]
+    created_at: datetime
     source: str | None = None
 
 
@@ -617,30 +621,43 @@ class AttributionRepository:
         self,
         case_ids: Sequence[str],
     ) -> dict[str, BadCaseEvidenceRecord]:
-        """Load titles, descriptions, and metadata for a bounded case set."""
+        """Load identity, titles, descriptions, and metadata for one case set.
+
+        The object identity columns feed the deterministic evidence-completeness
+        score; they are read in the same batch so a retried attribution step
+        reconstructs exactly the same signals as the first pass. ``created_at``
+        supplies the deterministic cluster time span without a second query.
+        """
         found: dict[str, BadCaseEvidenceRecord] = {}
         for chunk in _chunks(tuple(dict.fromkeys(case_ids))):
             statement = select(
                 bad_cases.c.bad_case_id,
                 bad_cases.c.bad_case_session_id,
                 bad_cases.c.bad_case_type,
+                bad_cases.c.object_name,
+                bad_cases.c.object_version,
                 bad_cases.c.title,
                 bad_cases.c.bad_case_description,
                 bad_cases.c.meta_data,
                 bad_cases.c.source,
+                bad_cases.c.created_at,
             ).where(bad_cases.c.bad_case_id.in_(chunk))
             async with self._database.session() as session:
                 rows = (await session.execute(statement)).mappings().all()
             for row in rows:
                 metadata = row["meta_data"]
+                object_version = row["object_version"]
                 found[str(row["bad_case_id"])] = BadCaseEvidenceRecord(
                     bad_case_id=str(row["bad_case_id"]),
                     session_id=str(row["bad_case_session_id"]),
                     bad_case_type=str(row["bad_case_type"]),
+                    object_name=str(row["object_name"]),
+                    object_version=(str(object_version) if object_version is not None else None),
                     title=str(row["title"]),
                     description=str(row["bad_case_description"]),
                     metadata=dict(metadata) if isinstance(metadata, Mapping) else {},
                     source=row["source"],
+                    created_at=row["created_at"],
                 )
         return found
 

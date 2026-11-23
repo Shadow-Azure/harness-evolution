@@ -102,6 +102,7 @@ const credentials: WorkspaceCredential[] = [
 ];
 
 const skillPackages: AttributionSkillPackageList = {
+  runtimeEnabled: false,
   items: [
     {
       id: "default-attribute-badcases",

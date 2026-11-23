@@ -33,6 +33,35 @@ from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 
 BASE = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
 LONG_SESSION_PROMPT = ("SWE-bench astropy-12907 修复任务 " * 200)[:3337]
+ACCEPTED_COMMIT_MESSAGE = """evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取
+
+## 问题
+
+聚类「检索索引读取失败」包含 3 个来源 bad case：BC-HC-0007、BC-HC-0011、BC-HC-0014。读取索引前未校验快照字段，遇到旧快照时会越界读取。
+
+## 分析
+
+deep-research@v2.0.0 默认假设快照字段完整，但历史快照可能缺少 `chunk_count`。复现输入见追溯段的链接。
+
+## 改动
+
+- `SKILL.md`：读取索引前校验 `chunk_count` 与 `doc_count`
+- 补充边界测试，覆盖旧快照
+- 失败时返回可诊断的错误信息
+
+## 追溯
+
+- 自进化运行：EV-20261109-01
+- 问题簇：C1 检索索引读取失败
+- https://example.com/badcases/BC-HC-0007
+- 来源问题：BC-HC-0007、BC-HC-0011
+
+---
+
+Harness-Evaluated-Commit: ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12
+Harness-Verdict: accepted (88.9 vs 84.3, +4.6)
+Harness-Decision-Rule: external-verdict
+"""
 RUN_IDS = (
     "run-v2-completed",
     "run-v2-blocked-attribution",
@@ -731,8 +760,21 @@ async def main() -> None:
                     "seq": 1,
                     "status": "accepted",
                     "patch": {
-                        "file": "SKILL.md",
-                        "lines": ["@@ -1 +1 @@", "- 读取索引", "+ 读取索引前校验快照字段"],
+                        "files": [
+                            {
+                                "file": "SKILL.md",
+                                "lines": ["@@ -1 +1 @@", "- 读取索引", "+ 读取索引前校验快照字段"],
+                                "overwrite": False,
+                            },
+                            {
+                                "file": "config/synthetic-review.json",
+                                "lines": ["-  \"requestTimeoutSeconds\": 30", "+  \"requestTimeoutSeconds\": 60"],
+                                "overwrite": True,
+                            },
+                        ],
+                        "note": "启用快照字段校验并放宽请求超时",
+                        "intent": None,
+                        "report": [],
                     },
                     "candidate_ref": "evo/run-v2-completed/candidate/r1",
                     "candidate_commit": "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12",
@@ -746,7 +788,7 @@ async def main() -> None:
                     "eval_candidate": 88.9,
                     "accepted": True,
                     "commit_hash": "ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56",
-                    "commit_message": "evolve(deep-research): 校验快照字段",
+                    "commit_message": ACCEPTED_COMMIT_MESSAGE,
                 },
                 {
                     **round_defaults,

@@ -14,6 +14,8 @@ dependencies = [
   "asyncmy>=0.2.10,<1",
   "fastapi>=0.115,<1",
   "httpx>=0.27,<1",
+  "json-repair>=0.30,<1",
+  "json5>=0.9,<1",
   "pyjwt>=2.10,<3",
   "python-multipart>=0.0.18,<1",
   "python-ulid>=2.7,<3",
@@ -30,6 +32,8 @@ dev = [
   "mypy>=1.14,<2",
   "pytest>=8.3,<9",
   "pytest-asyncio>=1.0,<2",
+  "pytest-cov>=6,<8",
+  "pytest-xdist>=3.6,<4",
   "ruff>=0.8,<1",
 ]
 
@@ -84,6 +88,8 @@ ignore = ["S104"]
 "tests/m5-08-run-events/**" = ["S105"]
 "tests/m5-09-git-candidate/**" = ["ASYNC221", "ASYNC240", "RUF001", "S603", "S607"]
 "tests/m24-01-git-single-ref-workspace/**" = ["ASYNC221", "ASYNC240", "S108", "S603", "S607"]
+"tests/bugfix-09-git-push-provider/**" = ["S105", "S108", "S603", "S607"]
+"tests/bugfix-11-prepare-resume/**" = ["ASYNC221", "S603", "S607"]
 "tests/m5-11-evolution-recovery/**" = ["ASYNC221", "ASYNC240", "RUF001", "S105", "S603", "S607"]
 "tests/m12-03-real-patch-eval/**" = ["ASYNC221", "ASYNC240", "B017", "RUF001", "S105", "S106", "S603", "S607"]
 "tests/evolution/**" = ["S105", "S108"]

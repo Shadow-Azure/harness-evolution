@@ -2,52 +2,47 @@
 
 [English](README.en.md) | 中文
 
-面向 coding agent 的轨迹查看与问题诊断服务：导入真实执行轨迹，按轮次看清目标、工具调用、错误与结果，把问题回链到证据，再转化为可评测的 harness 改进项。
+面向 coding agent 的轨迹诊断与自进化服务：导入真实执行轨迹，按轮次还原目标、工具调用、错误与结果，把 bad case 归因到具体对象与证据，再送入自进化流程。
 
-## 当前状态
+![Session 浏览器、执行流与问题卡](docs/assets/readme/session-overview.png)
 
-M1 工程骨架推进中：pnpm workspace、React + Vite 前端、Python 3.12 + FastAPI 后端、共享 contracts 包与健康检查已打通。数据、鉴权、轨迹和诊断能力按 [路线图](docs/roadmap.md) 逐步接入，边界见 [架构](docs/architecture.md)。
+<sub>Session 浏览器与执行流：按 lane 查看工具调用、子 Agent 与失败，问题卡回链到证据。截图使用本地合成 fixtures。</sub>
+
+## 核心能力
+
+- **轨迹查看**：归一化 Claude Code 轨迹为根 Session、用户轮次、消息与 Agent 树；执行流按 lane 展示工具调用、失败与子 Agent。
+- **问题归因**：bad case 支持多对象归因，问题卡带类型、对象、完整 ID 与证据；错误详情可深链和按归因过滤。
+- **自进化闭环**：对象配置、四步向导、七步运行与 lane DAG，把结论送进自进化流程，先评审再接纳。
+- **工程边界**：工作空间隔离数据、成员、额度与上报；契约、文档、流程与 E2E 门禁随 CI 执行。
 
 ## 快速开始
 
 ```sh
 pnpm install
 pnpm setup:api
+pnpm fixtures:seed
 pnpm dev
 ```
 
-- Web：http://localhost:5173
-- API：http://127.0.0.1:8787/api/health
+Web：http://localhost:5173 · API：http://127.0.0.1:8787/api/health
 
-## 生产部署前置
+## 文档
 
-生产环境先以 root 执行一次 [deploy/bootstrap-server.sh](deploy/bootstrap-server.sh)（安装带 `StateDirectory=` 的 unit 并准备 `/var/lib/harness-evolution`），已有环境重跑同一脚本即可更新 unit。然后在 GitHub Environment `production` 可选配置绝对路径 `vars.HE_DATA_DIR`（留空用默认值）；日常发布不再需要服务器操作。首次发布后运行 `curl -sf http://127.0.0.1:8787/api/health`，确认 `"data":{"ok":true}`。路径约束与数据迁移见 [部署文档](docs/deployment.md)。
-
-## 文档与门禁
-
-- 文档地图：[docs/README.md](docs/README.md)
-- 文档标准：[docs/AGENTS.md](docs/AGENTS.md)
-- 双语配对契约：[docs/i18n/README.md](docs/i18n/README.md)
-- 开发流程：[.agents/flow/README.md](.agents/flow/README.md)
-- 决策记录：[.agents/notes/README.md](.agents/notes/README.md)
-- PR 检视：[docs/review.md](docs/review.md)
-
-```sh
-pnpm lint:docs     # 快速文档门禁
-pnpm verify:docs   # 全量文档门禁
-pnpm verify:flow   # 开发流程状态机
-```
+- [架构](docs/architecture.md)：服务边界、请求链路与数据层
+- [开发指南](docs/development.md)：本地环境与日常循环
+- [部署](docs/deployment.md)：生产引导、发布与回滚
+- [文档地图](docs/README.md)：全部常驻文档
+- [开发流程](.agents/flow/README.md)：roadmap → milestone → issue
+- [决策记录](.agents/notes/README.md)：为什么这样设计
 
 ## 结构
 
 ```text
-apps/web/          React + Vite frontend
-apps/api/          Python 3.12 + FastAPI backend
-packages/contracts Shared protocols
-docs/              Engineering docs (layers in docs/AGENTS.md)
-.agents/flow/      Roadmap / milestone / issue tree
-.agents/notes/     Decision records
-.agents/skills/    Reusable review and Computer Use skills
-research/          Evaluation tasks, adapters and experiments
-scripts/           Dependency-free gates
+apps/web/           Vue 3 + Vite frontend
+apps/api/           Python 3.12 + FastAPI backend
+packages/contracts  Shared protocols
+docs/               Engineering docs
+.agents/            Flow, notes and skills
+research/           Evaluation tasks, adapters and experiments
+scripts/            Dependency-free gates
 ```

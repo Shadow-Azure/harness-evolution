@@ -18,6 +18,8 @@ Status: implemented
 
 报告按实际归因对象写入 `probe_type`。Agent 的标准值为 `agent`，旧包传入的 `agents` 在生成新报告时归一化。冻结脚本的产物先按原格式校验，原始上报对象的类型保留在 `from_bad_cases`。
 
+归因执行器复用生产 AI 的 Claude 二进制与模型端点，只把所需模型配置传入每个 Badcase 的独立 CLI 环境，以便复验快照、输出脚本和会话记录。归因与自进化向导通过同一把缓存锁读取 Git 定义及其提交。
+
 ## Alternatives considered
 
 空间级生效会影响无关对象。按全部历史报告计数会在重算后重复统计同一 Badcase。先按对象版本和 Badcase 取最新报告，再按 Skill 分组。

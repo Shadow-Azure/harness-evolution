@@ -44,7 +44,10 @@ def upgrade() -> None:
             "attribution_skills",
         )
     ]
-    for row in db.execute(sa.select(t.c.id, t.c.workspace_id)).all():
+    unbound = sa.select(t.c.id, t.c.workspace_id).where(
+        t.c.attribution_package_id.is_(None), t.c.attribution_skill_name.is_(None)
+    )
+    for row in db.execute(unbound).all():
         binding = db.execute(
             sa.select(r.c.content, skills.c.skill_key)
             .select_from(
@@ -70,22 +73,28 @@ def upgrade() -> None:
                 sa.select(w.c.package_id).where(w.c.workspace_id == row.workspace_id)
             ).scalar_one_or_none()
         )
-        name = db.execute(
-            sa.select(p.c.skill_name).where(p.c.workspace_id == row.workspace_id, p.c.id == pid)
-        ).scalar_one_or_none()
-        db.execute(
-            t.update()
-            .where(t.c.id == row.id)
-            .values(
-                attribution_package_id=pid if name else "default-attribute-badcases",
-                attribution_skill_name=name or "attribute-badcases",
+        if not pid:
+            # An existing production target stays on its configured pipeline until explicitly bound.
+            continue
+        if pid == "default-attribute-badcases":
+            name = "attribute-badcases"
+        else:
+            name = db.execute(
+                sa.select(p.c.skill_name).where(p.c.workspace_id == row.workspace_id, p.c.id == pid)
+            ).scalar_one_or_none()
+        if name:
+            db.execute(
+                t.update()
+                .where(t.c.id == row.id)
+                .values(attribution_package_id=pid, attribution_skill_name=name)
             )
-        )
     if not sa.inspect(db).has_table("probe_reports"):
         return
     reports = sa.Table("probe_reports", metadata, autoload_with=db)
     db.execute(
-        reports.update().values(
+        reports.update()
+        .where(reports.c.analyzed_at.is_(None))
+        .values(
             analyzed_at=reports.c.created_at,
             attribution_skill_name=reports.c.execution_manifest["skill"]["key"].as_string(),
         )

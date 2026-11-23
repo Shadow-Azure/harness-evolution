@@ -10,15 +10,15 @@ English | [中文](2026-10-28-ci-lane-split.md)
 
 ## Decision
 
-- Split `build-and-docs` into seven concurrent lanes by environment: `web-static`, `api-static`, `unit-tests`, `db-sqlite`, `e2e`, `build-lane`, `docs-flow`; `mysql` and `flow-online` stay as they were. Each lane carries its own checkout and pnpm/pip setup with shared caches.
-- The only real artifact dependency (build → verify:bundle) serializes inside `build-lane`; the ≥80% coverage verdict stays within the single `unit-tests` job with no cross-job coverage aggregation.
+- Split `build-and-docs` into concurrent lanes by environment: `web-static`, `api-static`, `unit-tests-web`, `unit-tests-api`, `db-sqlite`, `e2e`, `build-lane`, `docs-flow`; `mysql` and `flow-online` stay as they were. Each lane carries its own checkout and pnpm/pip setup with shared caches.
+- The only real artifact dependency (build → verify:bundle) serializes inside `build-lane`; the coverage verdict is not aggregated across jobs — Web's vitest 80% and API's pytest 90% are each judged inside their suite, so `unit-tests` can split into parallel web/api jobs (see [2026-11-20 CI unit-test parallelization](2026-11-20-ci-unit-tests-parallelization.en.md)).
 - Add a `ci-ok` aggregate job: `needs` every lane with `if: always()`, vetoing only `failure`/`cancelled` via the `needs.*.result` expression and letting `skipped` pass — covering `flow-online`'s PR-only condition being skipped on push events. Branch protection's required check moves to the single `ci-ok` point; adding or removing lanes later only touches the `needs` list.
 - Every run still executes every gate with no path filtering; the "no bypass for code or docs" principle is unchanged.
 
 ## Alternatives considered
 
 - Path filters (skip e2e/build lanes for docs-only PRs): bigger payoff, but violates the repo's explicit no-bypass principle by letting docs PRs dodge gates; rejected.
-- Splitting `unit-tests` into web/api jobs: one more parallel slice, but the 80% coverage threshold becomes a cross-job aggregation problem requiring a coverage-artifact merge facility; the complexity is not worth it; rejected.
+- Splitting `unit-tests` into web/api jobs: the first version rejected it because the 80% threshold seemed to need cross-job aggregation and a coverage-artifact merge facility; measurements showed both thresholds are judged per suite, so no aggregation is needed and [2026-11-20 CI unit-test parallelization](2026-11-20-ci-unit-tests-parallelization.en.md) adopts the split.
 - Keeping one job and only raising the timeout: does not address wall time; rejected.
 - Sharding E2E per file across jobs: `m3-session-browser` alone is the big single chunk, but sharding changes `--test-concurrency=1` semantics and needs artifact merging; evaluate in a separate issue.
 

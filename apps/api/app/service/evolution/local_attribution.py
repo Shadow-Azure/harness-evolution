@@ -240,7 +240,7 @@ class LocalAttribution:
         agent = self.settings.attribution_agent
         if not agent:
             raise ValueError("attribution agent is not configured")
-        backend = AgentFactory.create(agent)
+        backend = AgentFactory.create(agent, self.settings)
         model = ModelFactory.create(self.settings.attribution_llm).resolve(
             self.settings.attribution_model
         )
@@ -426,11 +426,7 @@ class LocalAttribution:
             if _digest(raw) != key:
                 raise ValueError("frozen target definition checksum mismatch")
             return raw.decode("utf-8")
-        dest = (
-            root
-            / canonical_json_hash([item.probe_type, item.probe_object, item.object_version])
-            / "definition.md"
-        )
+        dest = root / item.definition_key / "definition.md"
         if dest.is_file():
             return dest.read_text()
         for filename in TARGET_FILE_NAMES.get(item.probe_type, ()):
@@ -438,7 +434,7 @@ class LocalAttribution:
                 body = await self.source.read_file(
                     repo_url=item.repo_url,
                     sub_dir=item.sub_dir,
-                    ref=item.selected_version.removeprefix("tag:"),
+                    ref=item.source_commit or item.selected_version.removeprefix("tag:"),
                     file_name=filename,
                 )
             except GitContentUnavailable as exc:
@@ -546,7 +542,7 @@ class LocalAttribution:
             await asyncio.to_thread(_write_log, history, log)
             try:
                 await asyncio.to_thread(self._stage_attempt, snapshot, work, name, manifest, item)
-                backend = AgentFactory.create(manifest["agent"])
+                backend = AgentFactory.create(manifest["agent"], self.settings)
                 if backend.model_identity(manifest["model"]) != manifest["modelIdentity"]:
                     raise ValueError("model configuration differs from the frozen run")
                 log["stage"] = "agent"

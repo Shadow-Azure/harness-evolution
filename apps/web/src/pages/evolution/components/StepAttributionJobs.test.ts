@@ -31,6 +31,10 @@ const step = {
 
 const run = {
   runId,
+  controlState: "running",
+  canPause: false,
+  canResume: false,
+  degraded: false,
   title: "归因观测",
   mode: "full",
   policy: { preset: "default" },
@@ -61,7 +65,7 @@ const run = {
     accepted: 0,
   },
   final: null,
-} as EvolutionRunCard;
+} satisfies EvolutionRunCard;
 
 function failedJob() {
   return {
@@ -113,13 +117,19 @@ describe("attribution job observability", () => {
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
     const wrapper = mount(StepAttribution, {
-      props: { workspaceId, canWrite: true, step, run },
+      props: { wid: workspaceId, canWrite: true, step, run },
       global: { plugins: [[VueQueryPlugin, { queryClient }]] },
     });
     await flushPromises();
 
     expect(wrapper.get("[data-testid='attribution-job-runtime']").text()).toContain("P95 610ms");
     expect(wrapper.text()).toContain("证据覆盖 50%");
+    for (const controlState of ["pause_requested", "paused"] as const) {
+      await wrapper.setProps({ run: { ...run, controlState } });
+      expect(wrapper.find("button.primary").exists()).toBe(false);
+      expect(wrapper.get("[data-testid='attribution-job-runtime']").text()).toContain("失败");
+    }
+    await wrapper.setProps({ run });
     await wrapper.get("button.primary").trigger("click");
     await flushPromises();
     expect(retries).toBe(1);

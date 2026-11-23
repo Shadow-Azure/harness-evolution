@@ -422,7 +422,7 @@ class ClaudeCodeTraceParser(BaseTraceParser):
     """Interpret Claude Code JSONL records and closed subagent metadata."""
 
     runtime_key = "claude-code"
-    parser_version = 7
+    parser_version = 8
 
     @classmethod
     def can_parse(cls, payloads: Sequence[TracePayload]) -> bool:
@@ -481,6 +481,12 @@ class ClaudeCodeTraceParser(BaseTraceParser):
         if record_type == "attachment":
             attachment = _dict(record.get("attachment"))
             if attachment:
+                if attachment.get("type") == "prompt_snapshot":
+                    self._record_agent_definition(
+                        {"systemPrompt": attachment.get("systemPrompt")},
+                        "prompt_snapshot",
+                        ctx,
+                    )
                 ctx.skill_digests.update(_skill_listing_digests(attachment))
 
         if payload.agent_kind == "main":

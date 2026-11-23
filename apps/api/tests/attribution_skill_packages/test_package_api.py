@@ -130,6 +130,7 @@ async def test_upload_inspect_download_and_delete_resource(
     initial = await client.get(_base())
     assert initial.status_code == 200
     assert initial.json()["items"][0]["skillName"] == "attribute-badcases"
+    assert initial.json()["runtimeEnabled"] is False
     assert initial.json()["items"][0]["uploaderName"] == "default"
     assert initial.json()["items"][0]["fileCount"] == 2
     default_zip = await client.get(f"{_base()}/default-attribute-badcases/download")

@@ -1,7 +1,7 @@
 """Add attribution Skill revisions, bindings, and run snapshots.
 
 Revision ID: 0023a
-Revises: 0023
+Revises: 0026
 Create Date: 2026-11-17
 """
 
@@ -16,7 +16,7 @@ from sqlalchemy import inspect
 from alembic import op
 
 revision: str = "0023a"
-down_revision: str | None = "0023"
+down_revision: str | None = "0026"
 branch_labels: str | None = None
 depends_on: str | None = None
 

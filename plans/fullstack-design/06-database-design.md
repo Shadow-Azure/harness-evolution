@@ -375,8 +375,11 @@ erDiagram
 | `error` | `TEXT` | 失败原因 |
 | `created_by` | `VARCHAR(36)` NULL | FK → `users.id` |
 | `created_at` / `started_at` / `finished_at` / `updated_at` | DATETIME | — |
+| `lease_owner` | `VARCHAR(64)` NULL | 持有执行权的实例/worker 标识；历史行为 NULL 视为已过期 |
+| `lease_expires_at` | DATETIME NULL | 租约到期时间；到期 running 可被重新领取 |
+| `heartbeat_at` | DATETIME NULL | 最近一次续租时间 |
 
-索引：`INDEX(status)`、`INDEX(kind, created_at DESC)`、`INDEX(ref_id)`。
+索引：`INDEX(status)`、`INDEX(kind, created_at DESC)`、`INDEX(ref_id)`、`INDEX(status, lease_expires_at)`。
 
 ### 3.10 `workspaces` —— 工作空间（V2）
 
@@ -565,6 +568,9 @@ erDiagram
 
 ### 5.2 `evolution_runs`
 
+暂停控制由增量迁移 `0026` 添加：`control_state VARCHAR(16) NOT NULL DEFAULT running`、`pause_requested_at/paused_at/resumed_at DATETIME NULL`、`paused_by VARCHAR(36) NULL`；当前暂停请求与确认时间独立，操作者及历次转换保留在持久化运行事件中。`evolution_rounds.eval_paused_seconds` 为非空浮点秒数，默认 0，用于排除本地暂停等待。执行状态、unit、轮次产物、外部评测 ID 和原始输入快照继续作为恢复事实，不改变运行身份。并发暂停、确认与继续通过行锁事务和 job 认领互斥；暂停工作区不进入普通终态清理。
+
+
 | 列 | 类型 | 说明 |
 |---|---|---|
 | `id` | `VARCHAR(36)` PK | `evo-…` |
@@ -582,6 +588,7 @@ erDiagram
 | `target_version` | `VARCHAR(96)` | 本次使用的 tag/版本；决定 checkout 的基线；96 容纳 skill/agent tag 与 knowledge 的 71 字符 digest revision |
 | `target_revision` | `VARCHAR(96)` | NULL | V2：解析后的文件匹配身份；skill/agent 为 tag 内容解析出的 `digest:<sha256(body)>`，knowledge 为文档归一化 body hash；历史 run 为空，首次重试解析成功后回写 |
 | `repo_url` | `VARCHAR(1024)` | 被进化对象（skill/agent）所在的远端仓库；创建 run 时从 target 配置快照，不是自进化服务代码仓 |
+| `push_repo_url` | `VARCHAR(1024)` | prepare 时由 provider 派生的 push 目标（fork 或 `repo_url`）；eval 复用；不含凭据 |
 | `sub_dir` | `VARCHAR(512)` NOT NULL | 对象目录相对仓库根（如 `skills/deep-research`）；从 target 配置快照，避免配置变更后历史 run 无法定位 |
 | `validation_project_id` | `VARCHAR(128)` NOT NULL DEFAULT `''` | 创建 run 时从 target 快照的验证集测试工程 ID；历史 run 为空串 |
 | `test_project_id` | `VARCHAR(128)` NOT NULL DEFAULT `''` | 创建 run 时从 target 快照的测试集测试工程 ID；历史 run 为空串 |
@@ -612,7 +619,7 @@ erDiagram
 索引：`INDEX(created_at DESC)`、`INDEX(status)`、`INDEX(push_status)`、`INDEX(status, next_retry_at)`、`INDEX(target_type, target_name, target_version)`、`INDEX(target_config_id)`、`INDEX(workspace_id, created_at DESC)`。
 
 > `repo_url` 指向**被进化对象（skill/agent）所在的 git 仓库**，不是自进化服务代码仓。一次 run 的仓库生命周期：clone 到 `repo_path` 缓存 → 复制到独立 `workspace_path` → checkout `target_version`（解析 `base_commit`）→ 建 `branch_name` → 每轮从 run 分支拉 `candidate_ref`、应用 `patch`、commit、push → 外部评测 → 接纳后 fast-forward run 分支、拒绝删除 candidate ref。仓库记录代码/分支/commit，`evolution_rounds` / `evolution_run_events` 记录过程与评测/接纳结果；后端只做 git 操作，不执行仓库里的脚本，评测由外部 gateway 完成。
-> `repo_url` 与 `sub_dir` 都是创建 run 时的配置快照；prepare 只读这两个字段，不读 `evolution_targets` 的当前值。`validation_project_id` / `test_project_id` 采用同一快照语义；本切片只落库，不改变评测 gateway。
+> `repo_url`、`sub_dir`、`push_repo_url` 都是创建 run 时或 prepare 时的快照；`push_repo_url` 由 provider 从 `repo_url` 自动派生，eval 复用，保证 push 与 eval 同一个可 fetch 的仓。target 不新增 push/eval 字段；凭据只来自部署级 env，不落库。`validation_project_id` / `test_project_id` 采用同一快照语义。
 
 ### 5.3 `probe_clusters` —— 本次 run 的聚类结果
 

@@ -181,6 +181,8 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
     <TargetFormDialog
       v-model="dialogOpen"
       :packages="skillLibrary.packages.data.value?.items"
+      :runtime-enabled="skillLibrary.packages.data.value?.runtimeEnabled"
+      :packages-loading="skillLibrary.packages.isPending.value"
       :server-error="formError"
       :submitting="submitting"
       :target="editingTarget"

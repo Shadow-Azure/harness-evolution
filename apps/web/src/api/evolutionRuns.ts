@@ -7,6 +7,7 @@ import type {
   EvolutionStep,
   EvolutionStepKey,
   EvolutionRunDetail,
+  EvolutionRunControl,
   EvolutionRunEventLevel,
   EvolutionRunEventPage,
   EvolutionRunList,
@@ -23,6 +24,32 @@ import { request } from "./http";
 
 function workspaceEvolutionPath(workspaceId: string, suffix: string): string {
   return `/api/workspaces/${encodeURIComponent(workspaceId)}/evolution${suffix}`;
+}
+
+/**
+ * Request a cooperative pause at the next safe checkpoint.
+ * @param workspaceId Owning workspace identifier.
+ * @param runId Existing run identifier.
+ * @returns Authoritative control state and available actions.
+ */
+export function pauseEvolutionRun(workspaceId: string, runId: string): Promise<EvolutionRunControl> {
+  return request<EvolutionRunControl>(
+    workspaceEvolutionPath(workspaceId, `/runs/${encodeURIComponent(runId)}/pause`),
+    { method: "POST" }, { acceptedStatuses: [200, 202] },
+  );
+}
+
+/**
+ * Continue a paused run using its persisted inputs and checkpoint.
+ * @param workspaceId Owning workspace identifier.
+ * @param runId Existing run identifier.
+ * @returns Authoritative control state and available actions.
+ */
+export function resumeEvolutionRun(workspaceId: string, runId: string): Promise<EvolutionRunControl> {
+  return request<EvolutionRunControl>(
+    workspaceEvolutionPath(workspaceId, `/runs/${encodeURIComponent(runId)}/resume`),
+    { method: "POST" }, { acceptedStatuses: [200, 202] },
+  );
 }
 
 /**

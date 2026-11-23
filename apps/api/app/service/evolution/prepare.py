@@ -5,12 +5,14 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 from urllib.parse import urlsplit
+
+from pydantic import TypeAdapter
 
 from app.db.crud.attributions import (
     AttributionRepository,
+    BadCaseEvidenceRecord,
     CandidateWrite,
     EvolutionRunCandidateRepository,
 )
@@ -23,42 +25,56 @@ from app.db.models.evolution import (
 )
 from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
+from app.service.evolution.ai_observability import AiAgentCall
 from app.service.evolution.attribution import AttributionRunner, AttributionRunSummary
+from app.service.evolution.attribution_jobs import candidate_snapshot
 from app.service.evolution.cluster import (
-    CLUSTER_ALGORITHM,
+    HYBRID_ALGORITHM,
+    LEXICAL_ALGORITHM,
     SIMILARITY_THRESHOLD,
     TYPE_CONFIDENCE,
     TYPE_IMPACT,
+    ClusterDraft,
     ProbeForCluster,
     cluster_hash,
     cluster_probes,
     cluster_severity,
+    signature_overlap,
 )
+from app.service.evolution.cluster_llm import (
+    CallRecord,
+    ClusterCaseEvidence,
+    ClusterDraftStats,
+    DegradedCall,
+    EnhancedCluster,
+    EnhancedClusters,
+    enhance_clusters,
+)
+from app.service.evolution.control import checkpoint
 from app.service.evolution.engine.contracts import ConfigError, RunBlocked
 from app.service.evolution.events import (
+    EvolutionRunEventLevel,
     EvolutionRunEventService,
     EvolutionRunEventStage,
     EvolutionRunEventType,
 )
 from app.service.evolution.git_failures import classify_git_failure
 from app.service.evolution.potential import (
-    AnchorSource,
-    HitReason,
     MatchCondition,
-    OrderState,
     PotentialCase,
     PotentialMatcher,
     ResolvedPolicy,
     SessionAssociation,
-    TriggerPoint,
     resolve_policy,
     resolve_window,
 )
 from app.service.evolution.target_content import (
     ResolvedTargetVersion,
     TargetVersionResolver,
+    prefixed_revision,
     resolve_legacy_target_version,
 )
+from app.third_party_api.ai_agent.base import AIAgentProvider
 from app.third_party_api.git.observability import (
     GitOperationCollector,
     git_operation_scope,
@@ -69,6 +85,8 @@ from app.utils.redaction import sanitize_message
 from app.utils.time import now_shanghai
 
 logger = logging.getLogger(__name__)
+
+_ASSOCIATION = TypeAdapter(SessionAssociation)
 
 ATTRIBUTION_EVENT_BATCH = 20
 """Batched attribution event size from 07 §5.11."""
@@ -114,7 +132,17 @@ class _PrepareContext:
     """Mutable facts shared across the seven prepare stages."""
 
     association: SessionAssociation | None = None
-    summary: AttributionRunSummary | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ClusterBuild:
+    """Durable result of one clustering step, including its audit identity."""
+
+    clusters: tuple[ProbeClusterRecord, ...]
+    fingerprint: str
+    algorithm: str
+    severity_comparison: tuple[dict[str, Any], ...] = ()
+    degraded: tuple[str, ...] = ()
 
 
 class EvolutionPrepareService:
@@ -130,10 +158,18 @@ class EvolutionPrepareService:
         workspaces: WorkspacePreparer,
         events: PrepareEventRecorder | EvolutionRunEventService | None = None,
         resolver: TargetVersionResolver | None = None,
+        agent: AIAgentProvider | None = None,
+        failure_policy: Literal["strict", "degrade"] = "degrade",
         *,
         attribution_jobs: AttributionBatchDispatcher | None = None,
     ) -> None:
-        """Bind persistence, the shared matcher, the runner, and git workspaces."""
+        """Bind persistence, the shared matcher, the runner, git workspaces, and the agent.
+
+        ``agent`` is optional: without a provider the prepare workflow keeps the
+        legacy lexical clustering path byte for byte, which is what existing
+        callers and tests rely on. ``failure_policy`` applies only to the bound
+        agent path: ``strict`` fails the run on the first failed cluster task.
+        """
         self._runs = runs
         self._candidates = candidates
         self._attributions = attributions
@@ -143,6 +179,8 @@ class EvolutionPrepareService:
         self._events = events
         self._attribution_jobs = attribution_jobs
         self._resolver = resolver
+        self._agent = agent
+        self._failure_policy = failure_policy
 
     async def handle(self, job: JobRunRecord) -> Mapping[str, Any]:
         """Prepare one run idempotently and return its durable summary."""
@@ -150,6 +188,11 @@ class EvolutionPrepareService:
         run = await self._runs.get_run(run_id)
         if run is None:
             raise LookupError("evolution run not found")
+        if run.status == "interrupted":
+            await self._runs.mark_recovered(run.id)
+            refreshed = await self._runs.get_run(run.id)
+            if refreshed is not None:
+                run = refreshed
         if await self._already_prepared(run):
             return {
                 "runId": run.id,
@@ -157,10 +200,13 @@ class EvolutionPrepareService:
                 "progressUnit": run.progress_unit,
                 "reused": True,
             }
-        resolved = await self._resolve_target(run)
-        persist_revision = run.target_revision is None and self._resolver is not None
+        await checkpoint(self._runs, run.id)
+        resolved = await self._resolve_target(run) if run.progress_unit < 4 else None
+        if resolved and run.target_revision is None and self._resolver is not None:
+            await self._runs.freeze_revision(run.id, resolved.target_revision)
 
         context = _PrepareContext()
+        await checkpoint(self._runs, run.id)
         if run.progress_unit == 0:
             await self._record(
                 run.id,
@@ -176,7 +222,8 @@ class EvolutionPrepareService:
                 cluster_count=0,
             )
 
-        if run.progress_unit < 2:
+        await checkpoint(self._runs, run.id)
+        if resolved is not None and run.progress_unit < 2:
             condition = self._condition(run, resolved)
             association = await self._matcher.associated_sessions(condition)
             context.association = association
@@ -187,10 +234,14 @@ class EvolutionPrepareService:
                     message="no Session contains the requested object version",
                     details={"summary": _association_summary(association)},
                 )
-            await self._runs.write_stats(
+            run = await self._runs.advance_unit(
                 run.id,
-                {
+                expected=1,
+                target=2,
+                cluster_count=0,
+                stats={
                     **dict(run.stats),
+                    "associationSnapshot": _ASSOCIATION.dump_python(association, mode="json"),
                     "reportedSessions": association.reported,
                     "sessions": association.associated,
                     "skippedSessions": association.skipped,
@@ -220,29 +271,38 @@ class EvolutionPrepareService:
                 job_id=job.id,
                 payload=_association_summary(association),
             )
-            run = await self._runs.advance_unit(
-                run.id,
-                expected=1,
-                target=2,
-                cluster_count=0,
-            )
 
-        if run.progress_unit < 3:
+        await checkpoint(self._runs, run.id)
+        if resolved is not None and run.progress_unit < 3:
             condition = self._condition(run, resolved)
-            association = context.association or await self._matcher.associated_sessions(condition)
+            if context.association is None:
+                snapshot = run.stats.get("associationSnapshot")
+                if snapshot is None and run.resumed_at:
+                    raise ConfigError("Cannot resume without the frozen association snapshot")
+                association = (
+                    _ASSOCIATION.validate_python(snapshot)
+                    if snapshot is not None
+                    else await self._matcher.associated_sessions(condition)
+                )
+            else:
+                association = context.association
             context.association = association
             policy = _run_policy(run)
             match = await self._matcher.potential_cases(condition, association, policy)
             await self._candidates.upsert_many(_candidate_writes(run, match.cases))
             stats = _potential_stats(run, association, match.cases, match.potential)
-            await self._runs.write_stats(run.id, stats)
             if not match.included:
+                await self._runs.write_stats(run.id, stats)
                 raise AppError(
                     status_code=409,
                     code=ErrorCode.NO_POTENTIAL_MATCHED,
                     message="no potential bad case matches the run policy",
                     details={"summary": _potential_summary(stats)},
                 )
+            stats.pop("associationSnapshot", None)
+            run = await self._runs.advance_unit(
+                run.id, expected=2, target=3, cluster_count=0, stats=stats
+            )
             await self._record(
                 run.id,
                 "potential_computed",
@@ -252,48 +312,47 @@ class EvolutionPrepareService:
                 job_id=job.id,
                 payload=_potential_summary(stats),
             )
-            run = await self._runs.advance_unit(
-                run.id,
-                expected=2,
-                target=3,
-                cluster_count=0,
-            )
 
-        if run.progress_unit < 4:
-            candidates = await self._candidates_from_rows(run)
-            try:
-                summary = (
-                    await self._attribution_jobs.run_for_prepare(run)
-                    if self._attribution_jobs is not None
-                    else await self._attribution.run(
-                        run,
-                        candidates,
-                        run.cache_enabled,
-                        target_revision=resolved.target_revision,
-                    )
-                )
-            except RunBlocked:
-                raise
-            except (ConfigError, ValueError):
-                raise
-            except Exception as exc:
-                raise RunBlocked(
-                    "attribution failed",
-                    stage="attribution",
-                    error_stage="prepare",
-                    retryable=True,
-                ) from exc
-            context.summary = summary
+        await checkpoint(self._runs, run.id)
+        if resolved is not None and run.progress_unit < 4:
+            if self._attribution_jobs is not None:
+                summary = await self._attribution_jobs.run_for_prepare(run)
+                await self._record_attribution_batches(run, summary, job.id)
+                await checkpoint(self._runs, run.id)
+            else:
+                candidates = await candidate_snapshot(run, self._candidates, self._attributions)
+                for offset in range(0, len(candidates), ATTRIBUTION_EVENT_BATCH):
+                    batch = candidates[offset : offset + ATTRIBUTION_EVENT_BATCH]
+                    try:
+                        summary = await self._attribution.run(
+                            run,
+                            batch,
+                            run.cache_enabled,
+                            target_revision=resolved.target_revision,
+                        )
+                    except RunBlocked:
+                        raise
+                    except (ConfigError, ValueError):
+                        raise
+                    except Exception as exc:
+                        raise RunBlocked(
+                            "attribution failed",
+                            stage="attribution",
+                            error_stage="prepare",
+                            retryable=True,
+                        ) from exc
+                    await self._record_attribution_batches(run, summary, job.id)
+                    await checkpoint(self._runs, run.id)
+            rows = await self._candidates.list(run.id)
             stats = dict(run.stats)
             stats.update(
                 {
                     "attributed": await self._attributed_count(run),
-                    "reused": summary.reused,
+                    "reused": sum(row.is_cached for row in rows),
                     "byCategory": await self._category_counts(run),
-                },
+                }
             )
             await self._runs.write_stats(run.id, stats)
-            await self._record_attribution_batches(run, summary, job.id)
             run = await self._runs.advance_unit(
                 run.id,
                 expected=3,
@@ -301,34 +360,64 @@ class EvolutionPrepareService:
                 cluster_count=0,
             )
 
+        await checkpoint(self._runs, run.id)
         if run.progress_unit < 5:
-            clusters, fingerprint = await self._build_clusters(run)
+            # Persist the policy before the first model call so a strict failure
+            # is still explainable from the run snapshot and the step payload.
+            if run.stats.get("clusterFailurePolicy") != self._failure_policy:
+                await self._runs.write_stats(
+                    run.id,
+                    {**dict(run.stats), "clusterFailurePolicy": self._failure_policy},
+                )
+                run = await self._runs.get_run(run.id) or run
+            built = await self._build_clusters(run)
             stats = dict(run.stats)
             stats.update(
                 {
-                    "clusters": len(clusters),
+                    "clusters": len(built.clusters),
                     "byCategory": await self._category_counts(run),
+                    "clusterAlgorithm": built.algorithm,
+                    "clusterFailurePolicy": self._failure_policy,
+                    "clusterDegraded": list(built.degraded),
                 },
             )
             await self._runs.write_stats(run.id, stats)
+            payload: dict[str, Any] = {
+                "clusters": len(built.clusters),
+                "algorithm": built.algorithm,
+                "similarityThreshold": SIMILARITY_THRESHOLD,
+                "clusterHash": built.fingerprint,
+            }
+            if built.severity_comparison:
+                payload["severityFormula"] = [dict(item) for item in built.severity_comparison]
+            if built.degraded:
+                payload["degraded"] = list(built.degraded)
             await self._record(
                 run.id,
                 "clusters_created",
                 stage="cluster",
                 step_index=4,
-                message=f"聚类完成：{len(clusters)} 个簇",  # noqa: RUF001
+                message=f"聚类完成：{len(built.clusters)} 个簇",  # noqa: RUF001
                 job_id=job.id,
-                payload={
-                    "clusters": len(clusters),
-                    "algorithm": CLUSTER_ALGORITHM,
-                    "similarityThreshold": SIMILARITY_THRESHOLD,
-                    "clusterHash": fingerprint,
-                },
+                payload=payload,
             )
 
+        await checkpoint(self._runs, run.id)
         workspace = None
         if run.mode == "full":
-            workspace = await self._prepare_workspace(run, job)
+            if not (run.stats.get("workspacePrepared") and run.workspace_path and run.base_commit):
+                workspace = await self._prepare_workspace(run, job)
+                await self._runs.write_workspace_checkpoint(
+                    run.id,
+                    repo_path=str(workspace.repo_path),
+                    base_ref=workspace.ref,
+                    base_commit=workspace.base_commit,
+                    branch_name=workspace.branch,
+                    workspace_path=str(workspace.path),
+                    push_repo_url=workspace.push_url or "",
+                    prepared=True,
+                )
+                await checkpoint(self._runs, run.id)
             await self._build_rounds(run)
         refreshed = await self._runs.get_run(run.id)
         prepared = await self._runs.mark_prepared(
@@ -340,7 +429,7 @@ class EvolutionPrepareService:
             base_commit=workspace.base_commit if workspace else run.base_commit,
             branch_name=workspace.branch if workspace else run.branch_name,
             workspace_path=str(workspace.path) if workspace else run.workspace_path,
-            target_revision=(resolved.target_revision if persist_revision else None),
+            push_repo_url=(workspace.push_url if workspace else None),
             stats=await self._final_stats(refreshed or run),
         )
         return {
@@ -355,6 +444,20 @@ class EvolutionPrepareService:
         """Resolve the run target once so matching and attribution share one identity."""
         if run.target_revision:
             return ResolvedTargetVersion(run.target_version, run.target_revision)
+        if run.resumed_at:
+            if prefixed_revision(run.target_version):
+                return resolve_legacy_target_version(run.target_version)
+            if not run.base_commit or self._resolver is None:
+                raise ConfigError("Cannot resume without a frozen target revision or commit")
+            pinned = await self._resolver.resolve(
+                object_type=run.target_type,
+                repo_url=run.repo_url,
+                sub_dir=run.sub_dir,
+                version=run.base_commit,
+            )
+            return ResolvedTargetVersion(
+                run.target_version, pinned.target_revision, run.base_commit
+            )
         if self._resolver is None:
             return resolve_legacy_target_version(run.target_version)
         return await self._resolver.resolve(
@@ -370,7 +473,7 @@ class EvolutionPrepareService:
         resolved: ResolvedTargetVersion,
     ) -> MatchCondition:
         """Build the matcher condition from the run snapshot and resolved revision."""
-        start, end = resolve_window(run.window_from, run.window_to)
+        start, end = resolve_window(run.window_from, run.window_to, today=run.created_at.date())
         window_start, window_end = window_day_boundaries(start, end)
         return MatchCondition(
             workspace_id=run.workspace_id,
@@ -392,11 +495,15 @@ class EvolutionPrepareService:
             return False
         return bool(await self._runs.list_rounds(run.id))
 
-    async def _build_clusters(
-        self,
-        run: EvolutionRunRecord,
-    ) -> tuple[tuple[ProbeClusterRecord, ...], str]:
-        """Cluster attributed candidates, persist scores, and return the audit hash."""
+    async def _build_clusters(self, run: EvolutionRunRecord) -> _ClusterBuild:
+        """Cluster attributed candidates, persist scores, and return the audit facts.
+
+        Without a bound agent this is the legacy lexical path: the same drafts,
+        the same constants, the same rank order, and the same hash. With an
+        agent the lexical drafts still own the partition, and the review and
+        scoring layers may only replace the description, confidence, and
+        severity; the algorithm identity becomes ``hybrid-lexical-llm-v1``.
+        """
         rows = await self._attributions.list_clusterable_probes(run.id)
         cases_by_probe: dict[str, set[str]] = {}
         type_by_probe: dict[str, str] = {}
@@ -422,44 +529,129 @@ class EvolutionPrepareService:
                 if type_by_probe.get(probe_id) in TYPE_CONFIDENCE
             ),
         )
-        scored: list[tuple[float, int, ClusterWrite]] = []
-        for draft in drafts:
-            case_ids = {
-                bad_case_id
-                for probe_id in draft.probes
-                for bad_case_id in cases_by_probe.get(probe_id, set())
-            }
-            scored.append(
-                (
-                    cluster_severity(draft.type, len(case_ids)),
-                    len(case_ids),
-                    ClusterWrite(
-                        type=draft.type,
-                        description=draft.description,
-                        probes=draft.probes,
-                        impact=float(TYPE_IMPACT[draft.type]),
-                        confidence=TYPE_CONFIDENCE[draft.type],
-                    ),
+        agent = self._agent
+        if agent is None:
+            writes = _lexical_writes(drafts, cases_by_probe)
+            persisted = await self._runs.replace_prepared_clusters(run.id, writes)
+            return _ClusterBuild(
+                clusters=persisted,
+                fingerprint=cluster_hash(drafts),
+                algorithm=LEXICAL_ALGORITHM,
+            )
+        enhanced = await self._enhance_clusters(
+            run,
+            agent,
+            drafts,
+            cases_by_probe,
+            title_by_probe,
+            evidence,
+        )
+        writes = _enhanced_writes(enhanced, cases_by_probe)
+        persisted = await self._runs.replace_prepared_clusters(run.id, writes)
+        fingerprint = cluster_hash(
+            tuple(
+                ClusterDraft(
+                    type=cluster.type,
+                    description=cluster.description,
+                    probes=cluster.probes,
+                )
+                for cluster in enhanced.clusters
+            ),
+        )
+        return _ClusterBuild(
+            clusters=persisted,
+            fingerprint=fingerprint,
+            algorithm=HYBRID_ALGORITHM,
+            severity_comparison=tuple(
+                _severity_comparison(cluster) for cluster in enhanced.clusters
+            ),
+            degraded=tuple(item.task for item in enhanced.degraded),
+        )
+
+    async def _enhance_clusters(
+        self,
+        run: EvolutionRunRecord,
+        agent: AIAgentProvider,
+        drafts: Sequence[ClusterDraft],
+        cases_by_probe: Mapping[str, set[str]],
+        title_by_probe: Mapping[str, str],
+        evidence: Mapping[str, BadCaseEvidenceRecord],
+    ) -> EnhancedClusters:
+        """Run review and scoring over the lexical drafts and record every call.
+
+        The deterministic statistics are gathered here, after the lexical
+        partition exists, so the prompts can receive counts, signature overlap,
+        and time spans instead of the member lists.
+        """
+        samples = {
+            case_id: ClusterCaseEvidence(
+                case_id=case_id,
+                title=record.title,
+                text=record.description,
+                reported_at=record.created_at,
+            )
+            for case_id, record in evidence.items()
+        }
+        stats_by_draft: dict[int, ClusterDraftStats] = {}
+        for index, draft in enumerate(drafts):
+            case_ids = tuple(
+                sorted(
+                    {
+                        case_id
+                        for probe_id in draft.probes
+                        for case_id in cases_by_probe.get(probe_id, set())
+                    },
                 ),
             )
-        ordered = sorted(
-            scored,
-            key=lambda item: (-item[0], -item[1], item[2].type),
-        )
-        writes = tuple(
-            ClusterWrite(
-                type=item[2].type,
-                description=item[2].description,
-                probes=item[2].probes,
-                impact=item[2].impact,
-                confidence=item[2].confidence,
-                severity=item[0],
-                rank=rank,
+            stats_by_draft[index] = ClusterDraftStats(
+                case_ids=case_ids,
+                signature_overlap=signature_overlap(
+                    [title_by_probe.get(probe_id, "") for probe_id in draft.probes],
+                ),
+                time_span_days=_time_span_days(case_ids, evidence),
             )
-            for rank, item in enumerate(ordered, start=1)
+
+        async def record_call(call: CallRecord) -> None:
+            await self._record(
+                run.id,
+                "ai_agent_call",
+                stage="cluster",
+                step_index=4,
+                message=f"AI 调用：{call.task}（{call.outcome}）",  # noqa: RUF001
+                payload=AiAgentCall(
+                    task=call.task,
+                    provider=call.provider_id,
+                    model=call.model,
+                    input_tokens=call.input_tokens,
+                    output_tokens=call.output_tokens,
+                    cost_usd=call.cost_usd,
+                    latency_ms=call.latency_ms,
+                    outcome=call.outcome,
+                    session_id=call.session_id,
+                    trace=call.trace,
+                ).payload(),
+            )
+
+        async def record_degraded(item: DegradedCall) -> None:
+            await self._record(
+                run.id,
+                "degraded",
+                stage="cluster",
+                step_index=4,
+                message=f"聚类降级：{item.task}",  # noqa: RUF001
+                payload={"task": item.task, "reason": item.reason},
+                level="warn",
+            )
+
+        return await enhance_clusters(
+            agent,
+            drafts,
+            samples,
+            stats_by_draft=stats_by_draft,
+            record_call=record_call,
+            record_degraded=record_degraded,
+            failure_policy=self._failure_policy,
         )
-        persisted = await self._runs.replace_prepared_clusters(run.id, writes)
-        return persisted, cluster_hash(drafts)
 
     async def _prepare_workspace(
         self,
@@ -476,7 +668,7 @@ class EvolutionPrepareService:
                 target_host=_repo_host(run.repo_url),
             ) as scope:
                 collector = scope
-                workspace = await self._workspaces.prepare(run)
+                workspace = await self._prepare_workspace_with_checkpoint(run)
         except GitOperationError as exc:
             disposition = classify_git_failure(exc)
             if disposition.action == "blocked" and disposition.blocked_stage is not None:
@@ -490,6 +682,7 @@ class EvolutionPrepareService:
                     "run branch publication failed",
                     stage=disposition.blocked_stage,
                     error_stage=disposition.error_stage,
+                    detail=exc.detail,
                 ) from None
             raise
         operations: list[dict[str, object]] = []
@@ -516,6 +709,29 @@ class EvolutionPrepareService:
             },
         )
         return workspace
+
+    async def _prepare_workspace_with_checkpoint(
+        self,
+        run: EvolutionRunRecord,
+    ) -> PreparedWorkspace:
+        """Use the checkpoint-capable preparer when the bound manager offers it."""
+        prepare_with_checkpoint = getattr(self._workspaces, "prepare_with_checkpoint", None)
+        if not callable(prepare_with_checkpoint):
+            return await self._workspaces.prepare(run)
+
+        async def persist(workspace: PreparedWorkspace) -> None:
+            await self._runs.write_workspace_checkpoint(
+                run.id,
+                repo_path=str(workspace.repo_path),
+                base_ref=workspace.ref,
+                base_commit=workspace.base_commit,
+                branch_name=workspace.branch,
+                workspace_path=str(workspace.path),
+                push_repo_url=workspace.push_url or "",
+            )
+            await checkpoint(self._runs, run.id)
+
+        return cast(PreparedWorkspace, await prepare_with_checkpoint(run, checkpoint=persist))
 
     async def _build_rounds(self, run: EvolutionRunRecord) -> None:
         """Create one pending round per cluster for a full run exactly once."""
@@ -544,50 +760,6 @@ class EvolutionPrepareService:
                 code=ErrorCode.VALIDATION_INVALID,
                 message="prepared run has an incomplete round snapshot",
             )
-
-    async def _candidates_from_rows(
-        self,
-        run: EvolutionRunRecord,
-    ) -> tuple[PotentialCase, ...]:
-        """Reconstruct included matcher rows from stored candidates on retry."""
-        rows = await self._candidates.list(run.id)
-        included = [row for row in rows if row.included]
-        evidence = await self._attributions.load_bad_case_evidence(
-            tuple(row.bad_case_id for row in included),
-        )
-        candidates: list[PotentialCase] = []
-        for row in included:
-            case = evidence.get(row.bad_case_id)
-            candidates.append(
-                PotentialCase(
-                    bad_case_id=row.bad_case_id,
-                    session_id=row.session_id,
-                    object_name=run.target_name,
-                    bad_case_type=case.bad_case_type if case is not None else "self",
-                    trigger_at=row.case_trigger_at or row.created_at,
-                    hit_reason=cast(HitReason, row.included_reason),
-                    order_state=cast(OrderState, row.order_state),
-                    included=True,
-                    object_trigger=_trigger_point(
-                        row.object_trigger_agent_id,
-                        row.object_trigger_event_index,
-                        row.object_trigger_at,
-                    ),
-                    case_trigger=(
-                        _trigger_point(
-                            row.case_trigger_agent_id,
-                            row.case_trigger_event_index,
-                            row.case_trigger_at,
-                        )
-                        if row.case_trigger_agent_id is not None
-                        or row.case_trigger_event_index is not None
-                        or row.case_trigger_at is not None
-                        else None
-                    ),
-                    anchor_source=cast(AnchorSource, row.case_anchor_kind or "unknown"),
-                ),
-            )
-        return tuple(candidates)
 
     async def _attributed_count(self, run: EvolutionRunRecord) -> int:
         """Count distinct included bad cases with an attributed conclusion."""
@@ -648,6 +820,7 @@ class EvolutionPrepareService:
         job_id: str | None = None,
         step_index: int | None = None,
         payload: Mapping[str, Any] | None = None,
+        level: EvolutionRunEventLevel = "info",
     ) -> None:
         """Record one best-effort phase event without masking domain work."""
         if self._events is None:
@@ -656,7 +829,7 @@ class EvolutionPrepareService:
             await self._events.record(
                 run_id,
                 event_type,
-                level="info",
+                level=level,
                 stage=stage,
                 message=message,
                 step_index=step_index,
@@ -723,20 +896,6 @@ def _candidate_writes(
     )
 
 
-def _trigger_point(
-    agent_id: str | None,
-    event_index: int | None,
-    triggered_at: datetime | None,
-) -> TriggerPoint:
-    """Rebuild one stored trigger coordinate without inventing order."""
-    return TriggerPoint(
-        agent_id=agent_id,
-        event_index=event_index,
-        triggered_at=triggered_at,
-        tree_index=None,
-    )
-
-
 def _association_summary(association: SessionAssociation) -> dict[str, int]:
     """Map the matcher partition to the persisted session summary."""
     return {
@@ -791,6 +950,121 @@ def _potential_summary(stats: Mapping[str, Any]) -> dict[str, Any]:
                 "order_unknown",
             )
         },
+    }
+
+
+def _lexical_writes(
+    drafts: Sequence[ClusterDraft],
+    cases_by_probe: Mapping[str, set[str]],
+) -> tuple[ClusterWrite, ...]:
+    """Score lexical drafts with the documented constants (legacy path)."""
+    scored: list[tuple[float, int, ClusterWrite]] = []
+    for draft in drafts:
+        case_count = _member_case_count(draft.probes, cases_by_probe)
+        scored.append(
+            (
+                cluster_severity(draft.type, case_count),
+                case_count,
+                ClusterWrite(
+                    type=draft.type,
+                    description=draft.description,
+                    probes=draft.probes,
+                    impact=float(TYPE_IMPACT[draft.type]),
+                    confidence=TYPE_CONFIDENCE[draft.type],
+                ),
+            ),
+        )
+    ordered = sorted(
+        scored,
+        key=lambda item: (-item[0], -item[1], item[2].type),
+    )
+    return tuple(
+        ClusterWrite(
+            type=item[2].type,
+            description=item[2].description,
+            probes=item[2].probes,
+            impact=item[2].impact,
+            confidence=item[2].confidence,
+            severity=item[0],
+            rank=rank,
+        )
+        for rank, item in enumerate(ordered, start=1)
+    )
+
+
+def _enhanced_writes(
+    enhanced: EnhancedClusters,
+    cases_by_probe: Mapping[str, set[str]],
+) -> tuple[ClusterWrite, ...]:
+    """Persist enhanced values, ranked by decision severity then member count then type."""
+    scored: list[tuple[float, int, EnhancedCluster]] = [
+        (
+            cluster.severity,
+            _member_case_count(cluster.probes, cases_by_probe),
+            cluster,
+        )
+        for cluster in enhanced.clusters
+    ]
+    ordered = sorted(scored, key=lambda item: (-item[0], -item[1], item[2].type))
+    return tuple(
+        ClusterWrite(
+            type=cluster.type,
+            description=cluster.description,
+            probes=cluster.probes,
+            impact=cluster.impact,
+            confidence=cluster.confidence,
+            severity=cluster.severity,
+            rank=rank,
+        )
+        for rank, (_, _, cluster) in enumerate(ordered, start=1)
+    )
+
+
+def _member_case_count(
+    probes: Sequence[str],
+    cases_by_probe: Mapping[str, set[str]],
+) -> int:
+    """Count the distinct bad cases behind one cluster's probes."""
+    return len(
+        {case_id for probe_id in probes for case_id in cases_by_probe.get(probe_id, set())},
+    )
+
+
+def _time_span_days(
+    case_ids: Sequence[str],
+    evidence: Mapping[str, BadCaseEvidenceRecord],
+) -> int | None:
+    """Return the reported time span of one draft, or None without two timestamps."""
+    timestamps = [evidence[case_id].created_at for case_id in case_ids if case_id in evidence]
+    if len(timestamps) < 2:
+        return None
+    return (max(timestamps) - min(timestamps)).days
+
+
+def _severity_comparison(cluster: EnhancedCluster) -> dict[str, Any]:
+    """Return one formula-versus-decision severity row for the clusters payload.
+
+    The ``clusters_created`` payload is the chosen home: ``severityFormula`` is
+    the deterministic formula score kept for metrics even when the LLM severity
+    succeeded, and ``severity`` is the value persisted in
+    ``probe_clusters.severity``. ``dimensions`` and ``vector`` are audit-only
+    facts of the grading, so they stay in the payload while the DB columns keep
+    the ``confidence / severity / rank`` contract (06 §5.3, zero migration).
+    """
+    return {
+        "clusterHash": cluster_hash(
+            (
+                ClusterDraft(
+                    type=cluster.type,
+                    description=cluster.description,
+                    probes=cluster.probes,
+                ),
+            ),
+        ),
+        "severityFormula": cluster.formula_severity,
+        "severity": cluster.severity,
+        "dimensions": dict(cluster.dimensions),
+        "vector": cluster.vector,
     }
 
 

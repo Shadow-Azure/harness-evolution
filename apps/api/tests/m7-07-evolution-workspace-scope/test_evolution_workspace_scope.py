@@ -176,6 +176,74 @@ async def scope(tmp_path: Path) -> AsyncIterator[ScopeEnvironment]:
         await client.aclose()
 
 
+async def test_pause_resume_is_durable_scoped_and_idempotent(scope: ScopeEnvironment) -> None:
+    """An idle run pauses immediately; two resume requests admit one continuation."""
+    from app.db.models.jobs import job_runs
+
+    run_id = "run-control"
+    async with scope.database.transaction() as session:
+        await session.execute(
+            insert(evolution_runs).values(
+                **_run_values(
+                    run_id,
+                    scope.workspace_a,
+                    status="preparing",
+                )
+            )
+        )
+    path = f"/api/workspaces/{scope.workspace_a}/evolution/runs/{run_id}"
+    admin = _bearer(scope.space_admin_token)
+    assert (
+        await scope.client.post(f"{path}/pause", headers=_bearer(scope.viewer_token))
+    ).status_code == 403
+    foreign = path.replace(scope.workspace_a, scope.workspace_b)
+    assert (
+        await scope.client.post(f"{foreign}/pause", headers=_bearer(scope.admin_token))
+    ).status_code == 404
+    assert (await scope.client.post(f"{path}/resume", headers=admin)).status_code == 409
+    paused = await scope.client.post(f"{path}/pause", headers=admin)
+    assert paused.status_code == 200
+    facts = paused.json()
+    assert facts["controlState"] == "paused"
+    assert facts["pausedBy"] and facts["pauseRequestedAt"] and facts["pausedAt"]
+    assert facts["canResume"] and not facts["canPause"]
+    assert (await scope.client.post(f"{path}/pause", headers=admin)).json() == facts
+    assert (await scope.client.get(path, headers=admin)).json()["controlState"] == "paused"
+    # Hold the serial worker while inspecting durable admission.
+    async with scope.app.state.jobs._worker_lock:
+        for _ in range(2):
+            resumed = await scope.client.post(f"{path}/resume", headers=admin)
+            assert resumed.status_code == 200
+            assert resumed.json()["controlState"] == "running"
+        async with scope.database.session() as session:
+            jobs = (
+                await session.execute(select(job_runs).where(job_runs.c.ref_id == run_id))
+            ).all()
+        assert len(jobs) == 1 and jobs[0].kind == "evolution_prepare"
+
+
+async def test_blocked_and_terminal_controls_refuse_both_actions(scope: ScopeEnvironment) -> None:
+    for status in ("blocked", "completed", "failed", "interrupted"):
+        run_id = f"control-{status}"
+        async with scope.database.transaction() as session:
+            await session.execute(
+                insert(evolution_runs).values(
+                    **_run_values(run_id, scope.workspace_a, status=status)
+                )
+            )
+        path = f"/api/workspaces/{scope.workspace_a}/evolution/runs/{run_id}"
+        for action in ("pause", "resume"):
+            response = await scope.client.post(
+                f"{path}/{action}", headers=_bearer(scope.space_admin_token)
+            )
+            assert (
+                response.status_code == 409
+                and response.json()["error"]["code"] == "RUN_CONTROL_CONFLICT"
+            )
+        detail = (await scope.client.get(path, headers=_bearer(scope.space_admin_token))).json()
+        assert detail["canPause"] is False and detail["canResume"] is False
+
+
 async def test_targets_are_workspace_scoped_and_write_is_space_admin(
     scope: ScopeEnvironment,
 ) -> None:

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import subprocess
-from dataclasses import replace
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -18,11 +20,14 @@ from app.service.evolution.git_candidate import (
     build_accepted_message,
     build_candidate_message,
 )
+from app.service.evolution.patch_source import PatchBundle
 from app.third_party_api.git.workspace import (
     GitOperationError,
     GitProcessResult,
     GitWorkspaceManager,
     Patch,
+    _is_scratch_status_line,
+    _run_process,
     retry_push,
 )
 
@@ -100,6 +105,19 @@ def _run(repo_url: str, base_commit: str) -> EvolutionRunRecord:
         created_at=NOW,
         finished_at=None,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _StubBundle:
+    """Minimal structural bundle for seam-validation tests."""
+
+    files: tuple[Patch, ...]
+    sha256: str
+
+
+def _bundle_message(run_id: str, patch_hash: str, subject: str = "candidate") -> str:
+    """Build a minimal message carrying the two candidate trailers."""
+    return f"{subject}\n\nHarness-Run-Id: {run_id}\nHarness-Patch-Hash: sha256:{patch_hash}"
 
 
 async def test_prepare_creates_isolated_workspace_and_run_branch(
@@ -201,6 +219,358 @@ async def test_prepare_sanitizes_clone_and_workspace_copy_failures(
     with pytest.raises(GitOperationError, match="workspace clone failed"):
         await copy_manager.prepare(_run(str(bare), base_commit))
     assert not (tmp_path / "copy-workspaces" / "run-m5-09").exists()
+
+
+async def test_resume_prepares_original_baseline_after_branch_moves(
+    tmp_path: Path, remote_repo: tuple[Path, Path, str]
+) -> None:
+    """The checkout uses the commit frozen alongside the target definition digest."""
+    bare, seed, initial = remote_repo
+    (seed / "skills/deep-research/SKILL.md").write_text("# Changed", encoding="utf-8")
+    _git(seed, "commit", "-am", "branch moved while paused")
+    _git(seed, "push", "origin", "HEAD:refs/heads/main")
+    run = replace(_run(str(bare), initial), target_version="main", resumed_at=NOW)
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos", workspaces_root=tmp_path / "workspaces", push_enabled=False
+    )
+    workspace = await manager.prepare(run)
+    assert workspace.base_commit == initial
+    assert _git(workspace.path, "rev-parse", "HEAD") == initial
+
+
+async def test_replaying_an_unacknowledged_local_commit_keeps_the_candidate_branch(
+    tmp_path: Path, remote_repo: tuple[Path, Path, str]
+) -> None:
+    from app.third_party_api.git.workspace import _run_process
+
+    bare, _, initial = remote_repo
+    fork = tmp_path / "fork.git"
+    _git(tmp_path, "clone", "--bare", str(bare), str(fork))
+    commits: list[tuple[str, ...]] = []
+
+    async def record(argv: tuple[str, ...], cwd: Path | None) -> GitProcessResult:
+        if "commit" in argv and "-m" in argv:
+            commits.append(argv)
+        return await _run_process(argv, cwd)
+
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+        push_enabled=True,
+        runner=record,
+    )
+    run = _run(str(bare), initial)
+    prepared = replace(await manager.prepare(run), push_url=str(fork))
+    patch = Patch("sample.md", ("retry fixture",))
+    trace = CandidateTrace("cluster", "candidate", (), (), "evidence")
+    message = build_candidate_message(
+        run, round_seq=1, trace=trace, patch_sha256=patch.sha256, created_at=NOW, web_base_url=None
+    )
+    ref = f"{prepared.branch}/candidate/r1"
+    candidate = await manager.create_candidate(
+        prepared, run_branch=prepared.branch, candidate_ref=ref, patch=patch, message=message
+    )
+    replay = await manager.create_candidate(
+        prepared, run_branch=prepared.branch, candidate_ref=ref, patch=patch, message=message
+    )
+    assert replay.commit == candidate.commit
+    assert len(commits) == 1
+    assert replay.push_url == str(fork)
+    await manager.push_candidate(replay, expected_remote_commit=None)
+    assert _git(fork, "rev-parse", f"refs/tags/{ref}") == candidate.commit
+    assert _git(bare, "tag", "--list", ref) == ""
+
+
+async def test_create_candidate_bundle_commits_stageable_files_and_reuses_the_commit(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+) -> None:
+    """A bundle commits every stageable file and replays from the same inputs."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+        push_enabled=False,
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+    bundle = PatchBundle(
+        files=(
+            Patch(file="skills/deep-research/a.md", lines=("alpha",), overwrite=True),
+            Patch(file="skills/deep-research/b.md", lines=("beta",), overwrite=True),
+        ),
+        note="two files",
+    )
+    trace = CandidateTrace("cluster-1", "检索索引读取失败", ("probe-1",), ("case-1",), "分析")
+    message = build_candidate_message(
+        run,
+        round_seq=1,
+        trace=trace,
+        patch_sha256=bundle.sha256,
+        created_at=NOW,
+        web_base_url=None,
+    )
+    ref = f"{prepared.branch}/candidate/r1"
+
+    candidate = await manager.create_candidate_bundle(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=ref,
+        bundle=bundle,
+        message=message,
+    )
+
+    committed = set(
+        _git(prepared.path, "ls-tree", "-r", "--name-only", candidate.commit).splitlines()
+    )
+    assert {
+        "skills/deep-research/a.md",
+        "skills/deep-research/b.md",
+    } <= committed
+    assert "skills/deep-research/a.md" in candidate.unified_diff
+    assert "skills/deep-research/b.md" in candidate.unified_diff
+    assert f"Harness-Patch-Hash: sha256:{bundle.sha256}" in (
+        await manager._commit_message(prepared.path, candidate.commit)
+    )
+    assert (prepared.path / "skills" / "deep-research" / "a.md").read_text(
+        encoding="utf-8"
+    ) == "alpha\n"
+
+    replay = await manager.create_candidate_bundle(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=ref,
+        bundle=bundle,
+        message=message,
+    )
+
+    assert replay.commit == candidate.commit
+    assert replay.unified_diff == candidate.unified_diff
+
+
+@pytest.mark.parametrize(
+    ("file", "allow_protected", "message"),
+    [
+        (".harness-evolution/edits.json5", False, "outside the agent edit scope"),
+        (".harness-evolution/edits.json5", True, None),
+        (".git/config", False, "never stageable"),
+        (".git/config", True, "never stageable"),
+    ],
+)
+def test_candidate_bundle_protected_paths_are_never_silently_dropped(
+    file: str,
+    allow_protected: bool,
+    message: str | None,
+) -> None:
+    """A requested protected file either stays legacy-allowed or fails loudly."""
+    bundle = PatchBundle(files=(Patch(file=file, lines=("x",)),), note="protected")
+
+    if message is None:
+        selected = GitWorkspaceManager._stageable_files(
+            bundle,
+            allow_protected_paths=allow_protected,
+        )
+        assert [patch.file for patch in selected] == [file]
+        return
+    with pytest.raises(GitOperationError, match=message) as rejected:
+        GitWorkspaceManager._stageable_files(
+            bundle,
+            allow_protected_paths=allow_protected,
+        )
+    assert file in str(rejected.value)
+
+
+@pytest.mark.parametrize(
+    ("file", "message"),
+    [
+        ("../escape.md", "unsafe"),
+        ("/absolute.md", "canonical"),
+        ("C:/escape.md", "drive prefix"),
+        ("a\\b.md", "POSIX"),
+        ("a\x00b.md", "NUL"),
+        ("./a.md", "canonical"),
+        ("a//b.md", "canonical"),
+        (" a.md", "whitespace"),
+        (".GIT/config", "never stageable"),
+    ],
+)
+def test_candidate_bundle_paths_are_validated_before_staging(
+    file: str,
+    message: str,
+) -> None:
+    """Bundle paths use the same canonical POSIX and protected-path rules."""
+    bundle = PatchBundle(files=(Patch(file=file, lines=("x",)),), note="unsafe")
+
+    with pytest.raises(GitOperationError, match=message):
+        GitWorkspaceManager._stageable_files(bundle, allow_protected_paths=False)
+
+
+async def test_legacy_create_candidate_still_rejects_git_paths(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+) -> None:
+    """The single-patch legacy path may stage .harness-evolution but never .git."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+    patch = Patch(file=".git/config", lines=("evil",), overwrite=True)
+    message = build_candidate_message(
+        run,
+        round_seq=1,
+        trace=CandidateTrace("cluster-1", "检索索引读取失败", ("probe-1",), ("case-1",), "分析"),
+        patch_sha256=patch.sha256,
+        created_at=NOW,
+        web_base_url=None,
+    )
+
+    with pytest.raises(GitOperationError, match="never stageable"):
+        await manager.create_candidate(
+            prepared,
+            run_branch=prepared.branch,
+            candidate_ref=f"{prepared.branch}/candidate/r1",
+            patch=patch,
+            message=message,
+        )
+
+
+async def test_create_candidate_still_commits_the_legacy_harness_evolution_patch(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+) -> None:
+    """The single-patch path preserves the placeholder's protected document."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+    patch = Patch(
+        file=".harness-evolution/candidate-r1.md",
+        lines=("placeholder candidate",),
+        overwrite=True,
+    )
+    message = build_candidate_message(
+        run,
+        round_seq=1,
+        trace=CandidateTrace("cluster-1", "检索索引读取失败", ("probe-1",), ("case-1",), "分析"),
+        patch_sha256=patch.sha256,
+        created_at=NOW,
+        web_base_url=None,
+    )
+
+    candidate = await manager.create_candidate(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=f"{prepared.branch}/candidate/r1",
+        patch=patch,
+        message=message,
+    )
+
+    committed = set(
+        _git(prepared.path, "ls-tree", "-r", "--name-only", candidate.commit).splitlines()
+    )
+    assert ".harness-evolution/candidate-r1.md" in committed
+    assert ".harness-evolution/candidate-r1.md" in candidate.unified_diff
+
+
+@pytest.mark.parametrize(
+    ("line", "ignored"),
+    [
+        ("?? .harness-evolution/edits.json5", True),
+        (" M .harness-evolution/candidate-r1.md", True),
+        ("R  .harness-evolution/a.md -> .harness-evolution/b.md", True),
+        ("R  .harness-evolution/a.md -> docs/a.md", False),
+        ('?? ".harness-evolution/with space.json5"', False),
+        (" M skills/deep-research/SKILL.md", False),
+        ("?? .git/config", False),
+    ],
+)
+def test_only_scratch_status_lines_are_ignored(line: str, ignored: bool) -> None:
+    """Only porcelain entries confined to the agent scratch are ignored."""
+    assert _is_scratch_status_line(line) is ignored
+
+
+async def test_untracked_harness_evolution_scratch_does_not_block_a_candidate(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+) -> None:
+    """An untracked edits.json5 under the agent scratch is not a dirty workspace."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+    scratch = prepared.path / ".harness-evolution" / "edits.json5"
+    scratch.parent.mkdir(parents=True)
+    scratch.write_text('{"summary": "x", "edits": []}\n', encoding="utf-8")
+    patch = Patch(
+        file="skills/deep-research/scratch-safe.md",
+        lines=("safe",),
+        overwrite=True,
+    )
+    message = build_candidate_message(
+        run,
+        round_seq=1,
+        trace=CandidateTrace("cluster-1", "检索索引读取失败", ("probe-1",), ("case-1",), "分析"),
+        patch_sha256=patch.sha256,
+        created_at=NOW,
+        web_base_url=None,
+    )
+
+    candidate = await manager.create_candidate(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=f"{prepared.branch}/candidate/r1",
+        patch=patch,
+        message=message,
+    )
+
+    committed = set(
+        _git(prepared.path, "ls-tree", "-r", "--name-only", candidate.commit).splitlines()
+    )
+    assert "skills/deep-research/scratch-safe.md" in committed
+    assert ".harness-evolution/edits.json5" not in committed
+
+
+async def test_modified_tracked_file_still_blocks_a_candidate(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+) -> None:
+    """Ignoring the scratch directory does not relax the tracked-file check."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+    tracked = prepared.path / "skills" / "deep-research" / "SKILL.md"
+    tracked.write_text("# Deep Research\nedited\n", encoding="utf-8")
+    patch = Patch(file="skills/deep-research/blocked.md", lines=("blocked",), overwrite=True)
+    message = build_candidate_message(
+        run,
+        round_seq=1,
+        trace=CandidateTrace("cluster-1", "检索索引读取失败", ("probe-1",), ("case-1",), "分析"),
+        patch_sha256=patch.sha256,
+        created_at=NOW,
+        web_base_url=None,
+    )
+
+    with pytest.raises(GitOperationError, match="workspace is not clean"):
+        await manager.create_candidate(
+            prepared,
+            run_branch=prepared.branch,
+            candidate_ref=f"{prepared.branch}/candidate/r1",
+            patch=patch,
+            message=message,
+        )
 
 
 async def test_candidate_accept_amends_ffs_run_branch_and_removes_candidate(
@@ -1057,34 +1427,66 @@ async def test_git_timeout_terminates_the_process_group_before_returning(
     tmp_path: Path,
 ) -> None:
     """A timed-out command cannot keep producing side effects during a later retry."""
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init")
+    started = tmp_path / "process-started"
     marker = tmp_path / "late-side-effect"
     script = tmp_path / "slow-git"
     script.write_text(
         (
             "#!/bin/sh\n"
-            'touch "$(dirname "$0")/process-started"\n'
+            f'echo $$ > "{started}"\n'
             "trap '' HUP PIPE TERM\n"
-            '(sleep 4; touch "$(dirname "$0")/late-side-effect") &\n'
+            f'(sleep 3; touch "{marker}") &\n'
             "wait\n"
         ),
         encoding="utf-8",
     )
     script.chmod(0o755)
-    _git(repo, "config", "alias.delayed", f"!{script}")
+
+    async def runner(_argv: Sequence[str], cwd: Path | None) -> GitProcessResult:
+        return await _run_process((str(script),), cwd)
+
     manager = GitWorkspaceManager(
         repos_root=tmp_path / "repos",
         workspaces_root=tmp_path / "workspaces",
+        runner=runner,
         timeout_seconds=2.0,
     )
+    loop = asyncio.get_running_loop()
+    command = asyncio.create_task(
+        manager._git(tmp_path, ("git", "delayed"), stage="workspace"),
+    )
+    try:
+        # Poll for readiness instead of sleeping a fixed interval: under a loaded
+        # xdist worker the shell may start later than the 2 s command timeout.
+        deadline = loop.time() + 10.0
+        while not started.exists():
+            assert loop.time() < deadline, "the timed-out command never started"
+            await asyncio.sleep(0.01)
+        ready_at = loop.time()
 
-    with pytest.raises(GitOperationError, match="workspace operation failed"):
-        await manager._git(repo, ("git", "delayed"), stage="workspace")
-    await asyncio.sleep(4.5)
+        with pytest.raises(GitOperationError, match="workspace operation failed"):
+            await command
+    finally:
+        if not command.done():
+            command.cancel()
 
-    assert (tmp_path / "process-started").exists()
+    process_group = int(started.read_text(encoding="utf-8").strip())
+
+    # Timeout returns only after the whole process group is gone, so the
+    # background `sleep 3` child of the script cannot touch the marker.
+    deadline = loop.time() + 5.0
+    while True:
+        try:
+            os.killpg(process_group, 0)
+        except ProcessLookupError:
+            break
+        assert loop.time() < deadline, "timed-out process group survived before returning"
+        await asyncio.sleep(0.01)
+    # The side effect was due 3 s after the script started; observe that full
+    # window so a surviving child would be caught, not just the return moment.
+    while loop.time() < ready_at + 3.5:
+        assert not marker.exists(), "a timed-out command kept producing side effects"
+        await asyncio.sleep(0.02)
     assert not marker.exists()
 
 
@@ -1146,3 +1548,20 @@ def test_workspace_cleanup_keeps_active_and_newest_inactive_runs(tmp_path: Path)
     assert len(removed) == 2
     assert created[1] in removed
     assert created[2] in removed
+
+
+async def test_resume_without_a_frozen_baseline_does_not_fetch_a_moving_ref(tmp_path: Path) -> None:
+    """A historical run must fail explicitly instead of silently selecting a new baseline."""
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos", workspaces_root=tmp_path / "workspaces"
+    )
+    run = replace(
+        _run("https://example.invalid/unreachable.git", "a" * 40),
+        base_commit=None,
+        target_revision="digest:" + "b" * 64,
+        resumed_at=NOW,
+    )
+    with pytest.raises(GitOperationError, match="frozen baseline") as failure:
+        await manager.prepare(run)
+    assert failure.value.stage == "reference"
+    assert not manager.repos_root.exists()

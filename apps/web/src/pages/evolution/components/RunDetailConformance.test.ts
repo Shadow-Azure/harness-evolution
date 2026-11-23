@@ -7,6 +7,7 @@ import type {
   EvolutionStepIteration,
   StepRound,
 } from "@harness/contracts";
+import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
@@ -25,6 +26,7 @@ const RouterLinkStub = {
 
 const run = {
   runId: "run-1",
+  controlState: "running" as const, canPause: false, canResume: false,
   title: "run",
   mode: "full" as const,
   target: { type: "skill" as const, name: "deep-research", version: "v2.0.0" },
@@ -35,6 +37,7 @@ const run = {
   createdBy: "Ada",
   createdAt: "2026-10-19T18:42:00+08:00",
   status: "running" as const,
+  degraded: false,
   error: null,
   stats: {
     sessions: 2,
@@ -455,23 +458,126 @@ describe("run detail conformance", () => {
     expect(wrapper.text()).toContain("Harness-Evaluated-Commit");
     expect(wrapper.text()).toContain(evaluatedCommit.slice(0, 12));
     expect(wrapper.text()).toContain(finalCommit.slice(0, 12));
+    expect(wrapper.get(".commit-subject").text()).toBe("accepted candidate");
+    expect(wrapper.find(".commit-toggle").exists()).toBe(false);
   });
 
-  it("colors added, deleted, hunk and context diff lines", () => {
+  it("renders an accepted commit message as collapsible Markdown", async () => {
+    const evaluatedCommit = "abcdef1234567890";
+    const finalCommit = "fedcba0987654321";
+    const message = [
+      "evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取",
+      "",
+      "## 问题",
+      "",
+      "聚类「检索索引读取失败」包含 3 个来源 bad case。",
+      "",
+      "## 改动",
+      "",
+      "- 读取前校验 `chunk_count`",
+      "- 补充边界测试",
+      "",
+      "## 追溯",
+      "",
+      "- https://example.com/run/1",
+      "",
+      "---",
+      "",
+      "Harness-Evaluated-Commit: abc",
+    ].join("\n");
+    const wrapper = mount(StepIterations, {
+      props: {
+        wid: "ws-test",
+        step: iterationStep([
+          round({
+            status: "accepted",
+            candidate: {
+              ref: "refs/candidate",
+              commit: evaluatedCommit,
+              message: "candidate",
+            },
+            push: { status: "succeeded", attempts: 1, error: null },
+            eval: {
+              status: "completed",
+              current: 84.6,
+              candidate: 85.1,
+              nextPollAt: null,
+            },
+            accepted: true,
+            finalCommit: { hash: finalCommit, message },
+          }),
+        ]),
+      },
+    });
+
+    const commit = wrapper.get(".commit");
+    expect(commit.get(".commit-subject").text()).toBe(
+      "evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取",
+    );
+    expect(commit.text()).not.toContain("##");
+    expect(commit.text()).not.toContain("---");
+    expect(commit.find(".commit-message").exists()).toBe(false);
+    expect(commit.get(".commit-toggle").attributes("aria-expanded")).toBe("false");
+    expect(commit.get(".commit-toggle").text()).toContain(
+      "查看完整 commit message",
+    );
+
+    await commit.get(".commit-toggle").trigger("click");
+
+    expect(commit.find(".commit-message").exists()).toBe(true);
+    expect(
+      commit.findAll(".commit-message h2").map((heading) => heading.text()),
+    ).toEqual(["问题", "改动", "追溯"]);
+    expect(commit.findAll(".commit-message li")).toHaveLength(3);
+    const link = commit.get(".commit-message a");
+    expect(link.attributes("href")).toBe("https://example.com/run/1");
+    expect(link.attributes("target")).toBe("_blank");
+    expect(link.attributes("rel")).toBe("noopener noreferrer");
+    expect(commit.text()).not.toContain("##");
+    expect(commit.text()).not.toContain("---");
+    expect(commit.get(".commit-toggle").text()).toContain("收起完整 commit message");
+    expect(commit.get(".commit-toggle").attributes("aria-expanded")).toBe("true");
+
+    await commit.get(".commit-toggle").trigger("click");
+
+    expect(commit.find(".commit-message").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Harness-Evaluated-Commit");
+    expect(commit.text()).toContain(finalCommit.slice(0, 12));
+  });
+
+  it("renders one diff block per stored file and colors patch lines", () => {
     const wrapper = mount(DiffView, {
       props: {
         patch: {
-          file: "SKILL.md",
-          lines: ["@@ -1 +1 @@", "-old", "+new", " context"],
+          files: [
+            {
+              file: "SKILL.md",
+              lines: ["@@ -1 +1 @@", "-old", "+new", " context"],
+              overwrite: false,
+            },
+            {
+              file: "config/synthetic-review.json",
+              lines: ["- 10", "+ 60"],
+              overwrite: true,
+            },
+          ],
+          note: "多文件修复",
         },
       },
     });
 
+    expect(wrapper.findAll(".fhead").map((node) => node.text())).toEqual([
+      "SKILL.md",
+      "config/synthetic-review.json",
+    ]);
     const lines = wrapper.findAll(".dline");
+    expect(lines).toHaveLength(6);
     expect(lines[0]?.classes()).toContain("hunk");
     expect(lines[1]?.classes()).toContain("del");
     expect(lines[2]?.classes()).toContain("add");
     expect(lines[3]?.classes()).toContain("ctx");
+    expect(lines[4]?.classes()).toContain("del");
+    expect(lines[5]?.classes()).toContain("add");
   });
 
   it("renders attribution summary rows with cached and fresh sources", () => {
@@ -486,6 +592,7 @@ describe("run detail conformance", () => {
         rows: [
           {
             badCaseId: "case-1",
+            sessionId: "session-1",
             attributionId: "attr-1",
             category: "error",
             description: "读取越界",
@@ -494,6 +601,7 @@ describe("run detail conformance", () => {
           },
           {
             badCaseId: "case-2",
+            sessionId: "session-2",
             attributionId: "attr-2",
             category: null,
             description: "与所选对象无关",
@@ -503,8 +611,12 @@ describe("run detail conformance", () => {
         ],
       },
     } satisfies EvolutionStepAttribution;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { initialData: { items: [] }, staleTime: Infinity } },
+    });
     const wrapper = mount(StepAttribution, {
-      props: { step: attribution, run },
+      global: { plugins: [[VueQueryPlugin, { queryClient }]] },
+      props: { wid: "ws-test", step: attribution, run },
     });
 
     expect(wrapper.text()).toContain("读取越界");
@@ -512,6 +624,32 @@ describe("run detail conformance", () => {
     expect(wrapper.text()).toContain("缓存");
     expect(wrapper.text()).toContain("新增");
     expect(wrapper.text()).toContain("82%");
+
+    const sourceLinks = wrapper.findAll("td.id a");
+    expect(sourceLinks).toHaveLength(2);
+    expect(sourceLinks[0]?.attributes("href")).toBe(
+      "/workspaces/ws-test/sessions/session-1/errors?case=case-1&tab=desc",
+    );
+    expect(sourceLinks[0]?.attributes("target")).toBe("_blank");
+    expect(sourceLinks[0]?.attributes("rel")).toBe("noopener noreferrer");
+    expect(sourceLinks[0]?.attributes("aria-label")).toBe(
+      "来源问题 case-1，在新窗口打开问题描述",
+    );
+
+    const reportLinks = wrapper.findAll("td.report-id a");
+    expect(reportLinks).toHaveLength(2);
+    expect(reportLinks[0]?.attributes("href")).toBe(
+      "/workspaces/ws-test/sessions/session-1/errors?case=case-1&tab=attr&at=attr-1",
+    );
+    expect(reportLinks[1]?.attributes("href")).toBe(
+      "/workspaces/ws-test/sessions/session-2/errors?case=case-2&tab=attr&at=attr-2",
+    );
+    expect(reportLinks[0]?.attributes("target")).toBe("_blank");
+    expect(reportLinks[0]?.attributes("rel")).toBe("noopener noreferrer");
+    expect(reportLinks[0]?.attributes("aria-label")).toBe(
+      "归因报告 attr-1，在新窗口打开归因分析",
+    );
+    expect(reportLinks[0]?.attributes("title")).toBe("归因报告 ID · 打开归因分析");
   });
 
   it("shows the final push status and timestamp", () => {
@@ -526,6 +664,7 @@ describe("run detail conformance", () => {
         bestVersion: "v2.0.1",
         bestScore: 88.9,
         initScore: 84.3,
+        degraded: false,
         metrics: [],
         changes: [],
       },

@@ -38,6 +38,30 @@ def case_input() -> AttributionInput:
     )
 
 
+async def test_runtime_reads_the_commit_that_launch_resolved(
+    tmp_path: Path,
+    attribution_harness: Harness,
+) -> None:
+    """Moving branch tips cannot change attribution inputs or collide in the local source cache."""
+    first_commit, second_commit = "a" * 40, "b" * 40
+    bodies = {first_commit: "first body", second_commit: "updated body"}
+    source = Mock()
+    source.read_file = AsyncMock(side_effect=lambda **kwargs: bodies[kwargs["ref"]])
+    service = LocalAttribution(
+        Mock(attribution_package_dir=tmp_path), Mock(), Mock(), attribution_harness.database, source
+    )
+    first = replace(case_input(), selected_version="main", source_commit=first_commit)
+    second = replace(first, source_commit=second_commit, run_id="another-batch")
+    assert await service._target_prompt(first) == bodies[first_commit]
+    assert await service._target_prompt(second) == bodies[second_commit]
+    assert await service._target_prompt(first) == bodies[first_commit]
+    assert [call.kwargs["ref"] for call in source.read_file.await_args_list] == [
+        first_commit,
+        second_commit,
+    ]
+    assert first.definition_key != second.definition_key
+
+
 async def test_retry_keeps_old_evidence_and_new_batch_sees_trace_backfill(
     tmp_path: Path,
     attribution_harness: Harness,

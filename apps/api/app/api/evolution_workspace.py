@@ -14,6 +14,7 @@ from app.service.evolution.attribution_jobs import (
     AttributionJobService,
     AttributionJobView,
 )
+from app.service.evolution.control import EvolutionControlService, EvolutionRunControl
 from app.service.evolution.events import (
     EvolutionRunEventLevel,
     EvolutionRunEventPage,
@@ -141,7 +142,7 @@ def catalogs_from(request: Request) -> CatalogService:
     return cast(CatalogService, request.app.state.catalogs)
 
 
-def _principal_id(request: Request) -> str | None:
+def _principal_id(request: Request) -> str:
     """Return the authenticated principal's user id."""
     return cast(Principal, request.state.principal).user_id
 
@@ -579,6 +580,42 @@ async def cancel_attribution_job(
     if await runs_from(request).detail(run_id, workspace_ids=(wid,)) is None:
         raise _run_not_found()
     return await attribution_jobs_from(request).cancel(run_id, job_id)
+
+
+@router.post(
+    "/runs/{run_id}/pause",
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        401: LAUNCH_RESPONSES[401],
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+async def pause_run(
+    request: Request, wid: WorkspaceId, run_id: RunId, access: AdminAccess
+) -> EvolutionRunControl:
+    """Request a cooperative pause at the next durable checkpoint."""
+    service = cast(EvolutionControlService, request.app.state.evolution_control)
+    return await service.pause(run_id, wid, _principal_id(request))
+
+
+@router.post(
+    "/runs/{run_id}/resume",
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        401: LAUNCH_RESPONSES[401],
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+async def resume_run(
+    request: Request, wid: WorkspaceId, run_id: RunId, access: AdminAccess
+) -> EvolutionRunControl:
+    """Release a user pause and admit the first unfinished operation."""
+    service = cast(EvolutionControlService, request.app.state.evolution_control)
+    return await service.resume(run_id, wid, _principal_id(request))
 
 
 @catalog_router.get(

@@ -25,12 +25,14 @@ from app.db.models.evolution import (
     ProbeClusterRecord,
 )
 from app.errors import AppError, ErrorCode
+from app.service.evolution.attribution_contracts import AttributionConclusion
 from app.service.evolution.potential import (
     AnchorSource,
     HitReason,
     OrderState,
     PotentialReasonCounts,
 )
+from app.service.evolution.round_patch import stored_bundle
 from app.service.evolution.state import (
     STEP_KEYS,
     STEP_TITLES,
@@ -89,6 +91,7 @@ class StepRangeCondition(IdentityModel):
     window_to: date | None = Field(default=None, alias="to")
     policy: dict[str, Any]
     cache_enabled: bool
+    attribution_package_id: str | None = None
     workspace_id: str
 
 
@@ -179,11 +182,18 @@ class StepAttributionSummary(IdentityModel):
 
 
 class StepAttributionRow(IdentityModel):
-    """One case attribution conclusion of step 4."""
+    """One case attribution conclusion of step 4.
+
+    ``session_id`` is the source Session that owns the bad case. The client
+    needs it to build the canonical error-detail deep link without a second
+    lookup; rows without a Session cannot offer that link.
+    """
 
     bad_case_id: str
+    session_id: str
     attribution_id: str
     category: ClusterType | None
+    conclusion: AttributionConclusion | None = None
     description: str
     source: AttributionSource
     confidence: float | None
@@ -222,9 +232,19 @@ class StepCluster(IdentityModel):
 
 
 class StepClustersPayload(IdentityModel):
-    """Clusters ordered by severity descending."""
+    """Clusters ordered by severity descending plus the AI-mode audit facts.
+
+    ``degraded`` lists the task keys a ``degrade`` policy replaced with
+    deterministic fallbacks, so a degraded result is never presented as model
+    participation. ``failure`` carries the sanitized run error when a strict
+    policy failed the run at this step.
+    """
 
     clusters: list[StepCluster]
+    algorithm: str | None = None
+    failure_policy: Literal["strict", "degrade"] | None = None
+    degraded: list[str] = Field(default_factory=list)
+    failure: str | None = None
 
 
 class StepCandidate(IdentityModel):
@@ -235,17 +255,24 @@ class StepCandidate(IdentityModel):
     message: str
 
 
-class StepRoundPatch(IdentityModel):
-    """Patch preview stored with the round.
-
-    ``note`` carries the patch source's one-line change description (for the
-    minimal-config source it starts with "最小配置变更"). Rounds published
-    before the patch-source seam persist only ``file``/``lines``, so the field
-    stays optional and older snapshots keep rendering unchanged.
-    """
+class StepRoundFilePatch(IdentityModel):
+    """One file inside a round's patch preview."""
 
     file: str
     lines: list[str]
+    overwrite: bool = False
+
+
+class StepRoundPatch(IdentityModel):
+    """Patch preview projected from the round's stored bundle.
+
+    The durable shape carries ``files[]`` plus ``note``/``intent``/``report``,
+    and single-file rounds also keep the legacy ``file``/``lines`` keys. This
+    read model is built from :func:`stored_bundle` instead of validating the
+    raw dictionary, so a later writer field cannot break step 6 again.
+    """
+
+    files: list[StepRoundFilePatch]
     note: str | None = None
 
 
@@ -322,6 +349,7 @@ class StepFinalPayload(IdentityModel):
     init_score: float | None
     metrics: list[dict[str, Any]]
     changes: list[StepFinalChange]
+    degraded: bool = False
 
 
 class EvolutionStepShell(IdentityModel):
@@ -482,6 +510,7 @@ class EvolutionStageService:
                 key,
                 run.mode,
                 attribution_engine=run.attribution_engine,
+                error_stage=run.error_stage,
             )
         except StepNotReady as exc:
             raise AppError(
@@ -563,6 +592,7 @@ class EvolutionStageService:
             len(facts.clusters),
             run.status,
             attribution_engine=run.attribution_engine,
+            error_stage=run.error_stage,
         )[index]
         return {
             "index": index,
@@ -586,6 +616,10 @@ class EvolutionStageService:
                 bad_cases=_int_stat(run.stats, "probes"),
                 potential=_int_stat(run.stats, "usedProbes"),
             )
+        policy = dict(run.potential_policy or {"preset": "default"})
+        package_id = policy.pop("attributionPackageId", None)
+        policy.pop("latestReportsOnly", None)
+        policy.pop("legacyRule", None)
         return EvolutionStepRange(
             **self._shell(facts, "range", detail=f"{stats.bad_cases} 个 bad case"),
             payload=StepRangePayload(
@@ -597,7 +631,8 @@ class EvolutionStageService:
                         "targetRevision": run.target_revision,
                         "from": run.window_from,
                         "to": run.window_to,
-                        "policy": dict(run.potential_policy or {"preset": "default"}),
+                        "policy": policy,
+                        "attributionPackageId": package_id,
                         "cacheEnabled": run.cache_enabled,
                         "workspaceId": run.workspace_id,
                     },
@@ -650,7 +685,9 @@ class EvolutionStageService:
         rows = _legacy_attribution_rows(facts) if facts.legacy else _v2_attribution_rows(facts)
         potential = len(rows) if facts.legacy else sum(case.included for case in facts.candidates)
         reused = sum(1 for row in rows if row.source == "cached")
-        non_target = sum(1 for row in rows if row.category is None)
+        non_target = sum(
+            row.category is None if facts.legacy else row.conclusion == "non_target" for row in rows
+        )
         return EvolutionStepAttribution(
             **self._shell(facts, "attribution", detail=f"{len(rows)} 条"),
             payload=StepAttributionPayload(
@@ -675,10 +712,29 @@ class EvolutionStageService:
                 cluster.seq,
             ),
         )
+        stats = facts.run.stats
+        algorithm = stats.get("clusterAlgorithm")
+        policy = stats.get("clusterFailurePolicy")
+        degraded_raw = stats.get("clusterDegraded")
+        failure = (
+            facts.run.error_message
+            if facts.run.status == "failed" and facts.run.error_stage == "cluster"
+            else None
+        )
         return EvolutionStepClusters(
             **self._shell(facts, "clusters", detail=f"{len(clusters)} 簇"),
             payload=StepClustersPayload(
                 clusters=[_cluster_item(facts, cluster) for cluster in clusters],
+                algorithm=algorithm if isinstance(algorithm, str) else None,
+                failure_policy=(
+                    cast(Literal["strict", "degrade"], policy)
+                    if policy in ("strict", "degrade")
+                    else None
+                ),
+                degraded=(
+                    [str(item) for item in degraded_raw] if isinstance(degraded_raw, list) else []
+                ),
+                failure=failure,
             ),
         )
 
@@ -731,8 +787,15 @@ class EvolutionStageService:
                 init_score=final.init_score if final is not None else None,
                 metrics=final.metrics if final is not None else [],
                 changes=changes,
+                degraded=_has_degraded_clusters(facts.run.stats),
             ),
         )
+
+
+def _has_degraded_clusters(stats: Mapping[str, Any]) -> bool:
+    """Return whether the cluster step recorded any deterministic fallback."""
+    value = stats.get("clusterDegraded")
+    return isinstance(value, list) and any(isinstance(item, str) for item in value)
 
 
 def _int_stat(stats: Mapping[str, Any], key: str) -> int:
@@ -923,8 +986,10 @@ def _v2_attribution_rows(facts: _RunFacts) -> list[StepAttributionRow]:
         rows.append(
             StepAttributionRow(
                 bad_case_id=candidate.bad_case_id,
+                session_id=candidate.session_id,
                 attribution_id=record.probe_id,
                 category=category,
+                conclusion=cast(AttributionConclusion, record.conclusion),
                 description=record.probe_description,
                 source="cached" if candidate.is_cached else "fresh",
                 confidence=record.confidence,
@@ -946,6 +1011,7 @@ def _legacy_attribution_rows(facts: _RunFacts) -> list[StepAttributionRow]:
         rows.append(
             StepAttributionRow(
                 bad_case_id=first.bad_case_id,
+                session_id=first.probe_session_id,
                 attribution_id=probe_id,
                 category=category,
                 description=first.probe_description,
@@ -1020,6 +1086,29 @@ def _cluster_item(facts: _RunFacts, cluster: ProbeClusterRecord) -> StepCluster:
     )
 
 
+def _round_patch(raw: object) -> StepRoundPatch | None:
+    """Project one stored round patch into the read DTO.
+
+    Only the fields this step exposes are read from the restored bundle; the
+    persisted dictionary is never fed to a closed model directly.
+    """
+    bundle = stored_bundle(raw)
+    if bundle is None:
+        return None
+    note = raw.get("note") if isinstance(raw, Mapping) else None
+    return StepRoundPatch(
+        files=[
+            StepRoundFilePatch(
+                file=patch.file,
+                lines=list(patch.lines),
+                overwrite=patch.overwrite,
+            )
+            for patch in bundle.files
+        ],
+        note=note if isinstance(note, str) and note.strip() else None,
+    )
+
+
 def _round_item(
     facts: _RunFacts,
     round_: EvolutionRoundRecord,
@@ -1027,7 +1116,6 @@ def _round_item(
 ) -> StepRound:
     """Render one persisted round with its cluster facts and outcomes."""
     cases = _cluster_cases(facts, round_.probe_cluster_id)
-    patch = round_.patch
     return StepRound(
         round_id=round_.id,
         cluster_id=round_.probe_cluster_id,
@@ -1047,7 +1135,7 @@ def _round_item(
             if round_.candidate_ref is not None
             else None
         ),
-        patch=StepRoundPatch.model_validate(patch) if isinstance(patch, dict) else None,
+        patch=_round_patch(round_.patch),
         push=StepRoundPush(
             status=cast(RoundPushStatus, round_.push_status),
             attempts=round_.push_attempts,

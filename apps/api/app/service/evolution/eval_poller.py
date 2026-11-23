@@ -13,6 +13,7 @@ from typing import Any, Protocol
 from app.db.crud.evolution import EvolutionRepository
 from app.db.models.evolution import EvolutionRoundRecord, EvolutionRunRecord
 from app.errors import AppError, ErrorCode
+from app.service.evolution.control import checkpoint
 from app.service.evolution.engine.contracts import EvalGateway, EvalRequest, RunBlocked
 from app.service.evolution.events import EvolutionRunEventService
 from app.utils.redaction import sanitize_message, sanitize_value
@@ -78,6 +79,7 @@ class EvolutionEvalSubmitter:
             or round_.candidate_commit is None
         ):
             return round_
+        await checkpoint(self._runs, run.id)
         try:
             # Gateway construction resolves the frozen snapshot config (a missing
             # baseUrl or a dangling apiKeyRef raises EvalGatewayConfigError), so it
@@ -89,7 +91,7 @@ class EvolutionEvalSubmitter:
                 EvalRequest(
                     run_id=run.id,
                     evolution_round_id=round_.id,
-                    repo_url=run.repo_url,
+                    repo_url=run.push_repo_url or run.repo_url,
                     ref=round_.candidate_ref,
                     commit=round_.candidate_commit,
                     target_type=run.target_type,
@@ -333,15 +335,6 @@ class EvolutionEvalPoller:
             or round_.eval_external_id is None
         ):
             return False
-        if round_.eval_started_at is not None and current - round_.eval_started_at >= self._timeout:
-            await self._fail(
-                run,
-                round_,
-                status="timeout",
-                message="evaluation timed out",
-                current=current,
-            )
-            return True
         try:
             status = await self._gateway_for_run(run).get_status(
                 round_.eval_external_id,
@@ -361,6 +354,8 @@ class EvolutionEvalPoller:
             )
             return True
         if status.status in {"queued", "running"}:
+            if await self._expire_if_due(run, round_, current):
+                return True
             next_poll = current + self._poll_interval
             await self._runs.mark_eval_waiting(
                 round_.id,
@@ -428,6 +423,26 @@ class EvolutionEvalPoller:
         )
         return True
 
+    async def _expire_if_due(
+        self, run: EvolutionRunRecord, round_: EvolutionRoundRecord, current: datetime
+    ) -> bool:
+        """Charge only active observation time, after querying the original external ID."""
+        observed = await self._runs.get_round(round_.id)
+        if observed is None or observed.eval_started_at is None:
+            return False
+        if current - observed.eval_started_at < self._timeout + timedelta(
+            seconds=observed.eval_paused_seconds
+        ):
+            return False
+        return await self._fail(
+            run,
+            observed,
+            status="timeout",
+            message="evaluation timed out",
+            current=current,
+            expected_paused_seconds=observed.eval_paused_seconds,
+        )
+
     async def _defer_retryable(
         self,
         run: EvolutionRunRecord,
@@ -446,6 +461,8 @@ class EvolutionEvalPoller:
         """
         if not bool(getattr(exc, "retryable", False)):
             return False
+        if await self._expire_if_due(run, round_, current):
+            return True
         next_poll = current + self._poll_interval
         await self._runs.mark_eval_waiting(round_.id, next_poll_at=next_poll)
         await self._record(
@@ -472,7 +489,8 @@ class EvolutionEvalPoller:
         message: str,
         current: datetime,
         error: BaseException | None = None,
-    ) -> None:
+        expected_paused_seconds: float | None = None,
+    ) -> bool:
         """Persist one external failure and its two user-facing events."""
         safe = sanitize_message(message, limit=2_000)
         changed = await self._runs.mark_eval_failed(
@@ -481,9 +499,10 @@ class EvolutionEvalPoller:
             status=status,
             error=safe,
             finished_at=current,
+            expected_paused_seconds=expected_paused_seconds,
         )
         if not changed:
-            return
+            return False
         event_type = "eval_timeout" if status == "timeout" else "eval_failed"
         await self._record(
             run.id,
@@ -494,7 +513,8 @@ class EvolutionEvalPoller:
             payload={"externalId": round_.eval_external_id, "status": status},
             error=error,
         )
-        if self._events is not None:
+        current_run = await self._runs.get_run(run.id)
+        if self._events is not None and current_run and current_run.status == "blocked":
             await self._events.record_blocked(
                 run.id,
                 stage="eval",
@@ -503,6 +523,7 @@ class EvolutionEvalPoller:
                 retry_attempts=0,
                 error=error,
             )
+        return True
 
     async def _ensure_followup(
         self,

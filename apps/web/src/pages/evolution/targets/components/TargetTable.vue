@@ -118,7 +118,7 @@ function toggle(target: EvolutionTarget): void {
               {{ target.objectName }}
             </td>
             <td>
-              {{ target.attributionSkillName || "attribute-badcases" }}
+              {{ target.attributionSkillName || "未绑定" }}
               <p
                 v-if="target.attributionFailure"
                 class="binding-failure"

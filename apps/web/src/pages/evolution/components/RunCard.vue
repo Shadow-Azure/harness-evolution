@@ -3,11 +3,13 @@ import type { EvolutionRunCard } from "@harness/contracts";
 import { computed, ref } from "vue";
 
 import { workspacePath } from "../../../router/workspace";
+import RunControl from "./RunControl.vue";
 
 const props = defineProps<{
   wid: string;
   workspaceName: string;
   run: EvolutionRunCard;
+  canManage?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -21,6 +23,8 @@ const errorOpen = ref(false);
 const errorTooltipId = computed(() => `run-error-${props.run.runId}`);
 
 const statusLabel = computed(() => {
+  if (props.run.controlState === "paused") return "已暂停";
+  if (props.run.controlState === "pause_requested") return "暂停中";
   switch (props.run.status) {
     case "preparing":
       return "准备中";
@@ -29,7 +33,9 @@ const statusLabel = computed(() => {
     case "blocked":
       return "已阻塞";
     case "completed":
+      if (props.run.mode === "cluster_only") return "✓ 已完成 · 仅聚类";
       if (props.run.final === null) return "已完成 · 终评未知";
+      if (props.run.degraded) return "已完成 · 聚类降级";
       return props.run.final.verdict
         ? "✓ 已完成 · 自进化有效"
         : "已完成 · 无收益";
@@ -43,8 +49,12 @@ const statusLabel = computed(() => {
 });
 
 const statusClass = computed(() => {
+  if (props.run.controlState === "paused") return "paused";
+  if (props.run.controlState === "pause_requested") return "blocked";
   if (props.run.status === "completed") {
+    if (props.run.mode === "cluster_only") return "done-ok";
     if (props.run.final === null) return "done-pending";
+    if (props.run.degraded) return "done-pending";
     return props.run.final?.verdict ? "done-ok" : "done-no";
   }
   if (props.run.status === "blocked") return "blocked";
@@ -127,7 +137,7 @@ function closeError(): void {
         :class="statusClass"
       >
         <span
-          v-if="isActive"
+          v-if="isActive && run.controlState !== 'paused'"
           class="pulse"
           aria-hidden="true"
         />
@@ -154,7 +164,7 @@ function closeError(): void {
           @keydown.esc="closeError"
         >
           <span
-            v-if="isActive"
+            v-if="isActive && run.controlState !== 'paused'"
             class="pulse"
             aria-hidden="true"
           />
@@ -170,6 +180,12 @@ function closeError(): void {
         </span>
       </span>
       <span class="time">{{ createdAtLabel }}</span>
+      <RunControl
+        v-if="run.controlState && (run.controlState !== 'running' || (canManage && run.canPause))"
+        :wid="wid"
+        :run="run"
+        :can-manage="canManage ?? false"
+      />
     </div>
 
     <div class="run-meta">
@@ -204,7 +220,16 @@ function closeError(): void {
       <span class="stat"><b>{{ run.stats.potential }}</b>潜在 bad case</span>
       <span class="stat"><b>{{ run.stats.attributed }}</b>可归因</span>
       <span class="stat"><b>{{ run.stats.reused }}</b>复用归因</span>
-      <span class="stat">
+      <span
+        v-if="run.mode === 'cluster_only'"
+        class="stat"
+      >
+        <b>{{ run.stats.clusters }}</b>聚类
+      </span>
+      <span
+        v-else
+        class="stat"
+      >
         <b>{{ run.progress.doneRounds }}/{{ run.stats.clusters }}</b>已跑轮次
       </span>
     </div>
@@ -246,6 +271,12 @@ function closeError(): void {
       <span class="accepted-copy">
         · 接纳 {{ run.progress.accepted }}/{{ run.stats.clusters }} 个 patch
       </span>
+    </div>
+    <div
+      v-else-if="run.mode === 'cluster_only'"
+      class="final-line unavailable"
+    >
+      仅聚类分析 · 未执行 patch 生成与评测迭代
     </div>
     <div
       v-else-if="run.status === 'completed'"
@@ -345,6 +376,7 @@ function closeError(): void {
 }
 
 .badge.blocked,
+.badge.paused,
 .badge.interrupted {
   color: var(--orange);
   background: color-mix(in srgb, var(--orange) 12%, transparent);

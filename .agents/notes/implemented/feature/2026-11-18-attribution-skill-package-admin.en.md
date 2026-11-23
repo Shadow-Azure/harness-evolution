@@ -18,6 +18,8 @@ Record visible agent interactions per attempt and link the original Badcase thro
 
 The report records the actual attribution target in `probe_type`. New reports use `agent` for agents and accept the legacy input `agents`. The platform validates frozen writer output before normalizing the target type and preserves the original reporter type in `from_bad_cases`.
 
+The attribution worker shares the deployed Claude binary and model endpoint with the production AI provider. It projects the allowed model settings into a private per-case CLI environment so snapshot validation, the output script and transcripts remain reproducible. Both attribution and the evolution wizard read the Git definition and commit through the same cache-locked reader.
+
 ## Alternatives considered
 
 Workspace-wide activation changes unrelated targets. Counting every historical report inflates case counts after recomputation. Deduplicate by case and resolved target revision before grouping by Skill.

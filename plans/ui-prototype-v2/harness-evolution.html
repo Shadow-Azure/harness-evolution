@@ -805,6 +805,21 @@
   .evo-app .commit { border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); background: color-mix(in srgb, var(--green) 6%, transparent); border-radius: 8px; padding: 10px 12px; font-family: var(--mono); font-size: 11.5px; }
 .evo-app .commit .hash { color: var(--green); font-weight: 700; }
 .evo-app .commit .cline { color: var(--text-dim); white-space: pre-wrap; word-break: break-all; }
+.evo-app .commit .commit-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.evo-app .commit .commit-subject { color: var(--text); }
+.evo-app .commit .commit-toggle { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; padding: 0; border: 0; background: transparent; color: var(--blue); font: inherit; font-size: 11px; cursor: pointer; }
+.evo-app .commit .commit-toggle:hover { text-decoration: underline; }
+.evo-app .commit .commit-message { margin-top: 9px; padding-top: 9px; border-top: 1px dashed var(--border); color: var(--text-dim); font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 12px; line-height: 1.7; max-height: 520px; overflow: auto; overflow-wrap: anywhere; }
+.evo-app .commit .commit-message p { margin: 0 0 6px; }
+.evo-app .commit .commit-message p:last-child { margin-bottom: 0; }
+.evo-app .commit .commit-message h4, .evo-app .commit .commit-message h5 { margin: 9px 0 4px; color: var(--text); font-size: 12px; font-weight: 700; }
+.evo-app .commit .commit-message h4:first-child, .evo-app .commit .commit-message h5:first-child { margin-top: 0; }
+.evo-app .commit .commit-message ul { margin: 3px 0 8px; padding-left: 18px; }
+.evo-app .commit .commit-message li { margin: 1px 0; }
+.evo-app .commit .commit-message a { color: var(--blue); }
+.evo-app .commit .commit-message code { padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-inset); font-family: var(--mono); font-size: 10.5px; }
+.evo-app .commit .commit-message hr { margin: 9px 0; border: 0; border-top: 1px solid var(--border); }
+.evo-app .commit .commit-message .commit-trailer { margin: 1px 0; color: var(--text-faint); font-family: var(--mono); font-size: 10.5px; }
 .evo-app .reject-note { border: 1px dashed var(--border); border-radius: 8px; padding: 9px 12px; font-size: 12px; color: var(--text-dim); }
 /* 最终结果 */
   .evo-app .verdict { display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-radius: 10px; margin-bottom: 14px; }
@@ -2516,11 +2531,14 @@ function chainOf(events, lines) {
     const e = events[i];
     const gap = Math.max(0, (e.line || 0) - prev - 1);
     if (gap > 0) { const w = gapPillW(gap); items.push({ kind: "gap", n: gap, w }); push(w); }
-    // skill 名称完整展示（节点宽度随文字自适应）；subagent / workflow 的描述过长才省略
+    // skill 名称完整展示（节点宽度随文字自适应）；subagent / workflow 用对象名称，描述进 tooltip
     const text = e.kind === "skill"
       ? (e.name || "skill")
-      : clipName(e.desc || e.name || e.kind);
-    const item = { kind: e.kind, name: text, evIdx: i, line: e.line, w: trigPillW(text) };
+      : clipName(e.name || e.desc || e.kind);
+    const title = e.kind === "skill" || !e.desc || e.desc === e.name
+      ? (e.name || e.kind)
+      : `${e.name || e.kind} · ${e.desc}`;
+    const item = { kind: e.kind, name: text, desc: e.desc || "", title, evIdx: i, line: e.line, w: trigPillW(text) };
     items.push(item);
     offsets[i] = push(item.w);
     prev = Math.max(prev, e.line || 0);
@@ -2536,6 +2554,16 @@ function buildGraph(sid, expanded, findingsBudget, cases) {
   const d = TREE[sid];
   if (!d) return { nodes: [], edges: [], findings: [] };
   const nodes = [], edges = [];
+  // 原型 tree 数据只存了 subagent 描述；从对应子节点补出 subagent 名称，
+  // 让主链与生产一样显示 name，而不是把 desc 当标签。
+  const subByToolUse = new Map((d.subs || [])
+    .filter((sub) => sub.toolUseId)
+    .map((sub) => [sub.toolUseId, sub]));
+  (d.main.events || []).forEach((event) => {
+    if (event.kind === "skill" || event.name) return;
+    const sub = event.toolUseId ? subByToolUse.get(event.toolUseId) : null;
+    event.name = sub?.type || (event.kind === "workflow" ? "workflow" : "");
+  });
   const mainChain = chainOf(d.main.events, d.main.lines);
   const rootW = mainChain.width;
   const mainMarks = (d.main.events || []).map((e, i) => ({
@@ -3087,7 +3115,7 @@ function AgentNode({ data }) {
             ${i > 0 ? html`<span className="rf-link"></span>` : null}
             ${it.kind === "gap"
               ? html`<span className="rf-cnode gap" title=${"压缩合并 " + it.n + " 行 session 日志"}>× ${it.n}</span>`
-              : html`<span className=${"rf-cnode " + it.kind} title=${"L" + it.line + " · " + it.name}><span className="rf-cdot"></span>${it.name}</span>`}
+              : html`<span className=${"rf-cnode " + it.kind} title=${"L" + it.line + " · " + (it.title || it.name)}><span className="rf-cdot"></span>${it.name}</span>`}
           <//>
         `)}
       </div>
@@ -3759,7 +3787,7 @@ function buildLaneDag(sid, selectedNo, cases) {
     }
     const line = it.line != null ? it.line : cursor;
     cursor = Math.max(cursor, line + 1);
-    return { gap: false, kind: it.kind, label: it.name || it.kind || "step", lo: line, hi: line };
+    return { gap: false, kind: it.kind, label: it.desc || it.name || it.kind || "step", lo: line, hi: line };
   });
 
   /* 2) 相邻触发（同一轮并发 dispatch）合并成一个 bar；缺口单独成「×N 无触发」条 */
@@ -5034,6 +5062,7 @@ function evMakeRun(cfg) {
     };
   });
   run.clusters.sort((a, b) => b.sev - a.sev);
+  run.clusters.forEach(c => { c.fullMessage = evCommitMessage(run, c); });
   if (cfg.preparing) run.clusters = [];
   run.final.bestVersion = cfg.target.version + '-best';
   run.progress = cfg.progress ?? 0;
@@ -5089,7 +5118,7 @@ Object.assign(evNoGainRun.final, {
   ],
 });
 
-const EV_STATE = { expanded: new Set(), selStep: null, lastDetailId: null, detailTab: 'steps', logLevel: 'all', wz: null, targetDialog: null };
+const EV_STATE = { expanded: new Set(), commitOpen: new Set(), selStep: null, lastDetailId: null, detailTab: 'steps', logLevel: 'all', wz: null, targetDialog: null };
 
 function evTotal(run) { return 5 + run.clusters.length + 1; }
 function evIsDone(run) { return run.failed || run.progress >= evTotal(run); }
@@ -5142,7 +5171,15 @@ function evCanEdit() { return !window.V2 || !window.V2.canManage || window.V2.ca
 function evRunsOfWs() { return EV_RUNS.filter(r => r.workspace === evCurrentWs()); }
 function evTargetsOfWs() { return (EV_TARGETS[evCurrentWs()] || []).filter(t => t.enabled); }
 
+function evControlActions(run) {
+  if (evIsDone(run) || run.failed) return '';
+  const state = run.controlState || 'running';
+  const copy = state === 'paused' ? '已暂停 · 进度已保留，已提交的外部评测可能继续运行' : state === 'pause_requested' ? '暂停中 · 等待当前操作结束' : '';
+  return `<span style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:8px">${copy ? `<span style="font-size:12px;color:var(--text-faint)">${copy}</span>` : ''}${evCanEdit() ? `<button class="btn ${state === 'paused' ? 'primary' : ''}" data-action="${state === 'paused' ? 'ev-resume' : 'ev-pause'}" data-id="${run.id}" ${state === 'pause_requested' ? 'disabled' : ''}>${state === 'paused' ? '继续执行' : state === 'pause_requested' ? '暂停中…' : '暂停'}</button>` : ''}</span>`;
+}
 function evStatusBadge(run) {
+  if (run.controlState === 'paused') return `<span class="badge" style="background:color-mix(in srgb, var(--orange) 12%, transparent);color:var(--orange)">已暂停</span>`;
+  if (run.controlState === 'pause_requested') return `<span class="badge preparing">暂停中</span>`;
   if (run.preparing) return `<span class="badge preparing"><span class="pulse"></span>准备中</span>`;
   if (run.failed) return `<span class="badge failed">失败</span>`;
   if (!evIsDone(run)) return `<span class="badge running"><span class="pulse"></span>正在执行 · 第 ${evStageIndex(run) + 1}/7 步</span>`;
@@ -5174,7 +5211,7 @@ function evRunCard(run) {
     tail = `<div class="final-line"><span style="color:var(--text-dim)">best <b class="mono">${run.final.bestScore.toFixed(1)}</b> vs 初始 <b class="mono">${run.final.initScore.toFixed(1)}</b></span>${evDelta(run.final.bestScore - run.final.initScore)}<span style="color:var(--text-faint)">· 接纳 ${accepted}/${run.clusters.length} 个 patch</span></div>`;
   }
   return `<div class="card run-card" data-action="ev-open-run" data-id="${run.id}">
-    <div class="r1"><span class="title">${evEsc(run.title)}</span>${evStatusBadge(run)}<span class="time">${run.createdAt}</span></div>
+    <div class="r1"><span class="title">${evEsc(run.title)}</span>${evStatusBadge(run)}<span class="time">${run.createdAt}</span>${evControlActions(run)}</div>
     <div class="r2">
       <span class="chip kind">${run.target.kind}:${evEsc(run.target.name)}@${run.target.version}</span>
       <span class="mono" style="font-size:11px">${run.window[0]} ~ ${run.window[1]}</span>
@@ -5273,7 +5310,7 @@ function evStepper(run, sel) {
   return `<div class="stepper">` + EV_STEPS.map((s, i) => {
     const done = evStageDone(run, i), active = evStageActive(run, i);
     const clickable = done || active;
-    const ico = done ? '✓' : (active ? '<span class="pulse" style="width:8px;height:8px"></span>' : i + 1);
+    const ico = done ? '✓' : (active ? (run.controlState === 'paused' ? 'Ⅱ' : '<span class="pulse" style="width:8px;height:8px"></span>') : i + 1);
     return `${i ? `<div class="conn ${evStageDone(run, i - 1) ? 'done' : ''}"></div>` : ''}<div class="xstep ${done ? 'done' : active ? 'active' : ''}${clickable ? ' clickable' : ''}${sel === i ? ' selected' : ''}"${clickable ? ` data-action="ev-sel-step" data-step="${i}"` : ''}><span class="ico">${ico}</span><span class="lbl">${evEsc(s)}${i === 5 ? `（${run.clusters.length} 轮）` : ''}</span></div>`;
   }).join('') + `</div>`;
 }
@@ -5394,6 +5431,77 @@ function evCaseTable(c) {
     ${rows.map(x => `<tr><td>${evCaseLink(x)}</td><td>${evEsc(x.title)}</td><td class="mono">${evEsc(x.objectName)}</td><td>${evCaseType(x)}</td><td class="mono">L${x.triggerLine}</td><td class="mono">${x.clock}</td></tr>`).join('')}
   </tbody></table>`;
 }
+/* 方案 A：默认紧凑 commit 卡 + 按需展开 Markdown 全文（原型内联渲染，仅演示展示层） */
+function evInline(src) {
+  let out = evEsc(src);
+  out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  return out;
+}
+function evMarkdown(source) {
+  const lines = String(source || '').split('\n');
+  const out = [];
+  let list = null;
+  let para = [];
+  const flushPara = () => { if (para.length) { out.push(`<p>${evInline(para.join(' '))}</p>`); para = []; } };
+  const flushList = () => { if (list) { out.push(`<ul>${list.map(item => `<li>${evInline(item)}</li>`).join('')}</ul>`); list = null; } };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) { flushPara(); flushList(); continue; }
+    if (line === '---') { flushPara(); flushList(); out.push('<hr>'); continue; }
+    if (/^##\s+/.test(line)) { flushPara(); flushList(); out.push(`<h4 class="md-h">${evInline(line.replace(/^##\s+/, ''))}</h4>`); continue; }
+    if (/^###\s+/.test(line)) { flushPara(); flushList(); out.push(`<h5 class="md-h">${evInline(line.replace(/^###\s+/, ''))}</h5>`); continue; }
+    if (/^[-*]\s+/.test(line)) { flushPara(); if (!list) list = []; list.push(line.replace(/^[-*]\s+/, '')); continue; }
+    if (/^Harness-[A-Za-z-]+:/.test(line)) { flushPara(); flushList(); out.push(`<p class="commit-trailer">${evEsc(line)}</p>`); continue; }
+    if (list) flushList();
+    para.push(line);
+  }
+  flushPara(); flushList();
+  return out.join('');
+}
+function evCommitMessage(run, c) {
+  const delta = c.eval.cand - c.eval.cur;
+  const caseIds = (c.caseIds || []).slice(0, 4);
+  return [
+    `evolve(${run.target.name}@${run.target.version}): 修复${c.title}`,
+    '',
+    '## 问题',
+    `${run.target.name}@${run.target.version} 的聚类「${c.title}」包含需要处理的来源问题：${caseIds.join('、')}。`,
+    '',
+    '## 分析',
+    c.phenomenon,
+    '',
+    '## 改动',
+    `- ${c.patch.file}（补充校验与边界处理）`,
+    '',
+    '## 为什么接纳',
+    `评测集得分 ${c.eval.cur.toFixed(1)} → ${c.eval.cand.toFixed(1)}（${delta >= 0 ? '+' : ''}${delta.toFixed(1)}），候选版本有收益。`,
+    '',
+    '## 追溯',
+    `- [自进化运行](#/run/${run.id}?step=iteration)`,
+    `- [问题簇](#/run/${run.id}?step=clusters&cluster=${c.id})`,
+    ...caseIds.map(id => `- 来源问题：${id}`),
+    '',
+    '---',
+    `Harness-Evaluated-Commit: ${c.commit}`,
+    `Harness-Verdict: accepted (${c.eval.cand.toFixed(1)} vs ${c.eval.cur.toFixed(1)}, ${delta >= 0 ? '+' : ''}${delta.toFixed(1)})`,
+    'Harness-Decision-Rule: external-verdict',
+  ].join('\n');
+}
+function evCommitBlock(run, c) {
+  const key = run.id + ':' + c.id;
+  const message = c.fullMessage || evCommitMessage(run, c);
+  const subject = message.split('\n')[0];
+  const body = message.split('\n').slice(1).join('\n').trim();
+  const open = EV_STATE.commitOpen.has(key);
+  return `<div class="commit">
+    <div class="commit-head"><span class="hash">commit ${c.commit}</span>　<span class="commit-subject">${evEsc(subject)}</span></div>
+    ${body ? `<button type="button" class="commit-toggle" data-action="ev-toggle-commit" data-key="${key}" aria-expanded="${open}">${open ? '收起完整 commit message' : '查看完整 commit message'}<span class="caret">${open ? '▾' : '▸'}</span></button>` : ''}
+    ${body && open ? `<div class="commit-message markdown">${evMarkdown(body)}</div>` : ''}
+  </div>`;
+}
+
 function evCluster(run, c, i) {
   const key = run.id + ':' + c.id, open = EV_STATE.expanded.has(key);
   const done = evRoundDone(run, i), active = evRoundActive(run, i);
@@ -5412,7 +5520,7 @@ function evCluster(run, c, i) {
         <div class="attr-line">判定：<b>问题真实存在</b> · 置信度 <b class="mono">${(c.conf * 100).toFixed(0)}%</b> · 严重程度 <b class="mono">${c.sev.toFixed(1)}</b>/10</div></div>
       ${done || active ? `<div class="cb-sec"><div class="cb-label">生成的 edit patch（current → candidate）</div>${evDiff(c.patch)}</div>` : ''}
       ${done ? `<div class="cb-sec"><div class="cb-label">评测对比（验证集）</div>${evEval(c.eval, c.accepted)}</div>
-        <div class="cb-sec">${c.accepted ? `<div class="commit"><div><span class="hash">commit ${c.commit}</span>　evolve(${evEsc(run.target.name)}): ${evEsc(c.title)}</div><div class="cline">cluster: ${c.id} · ${evEsc(c.title)}（${evEsc(c.type)}，置信度 ${(c.conf * 100).toFixed(0)}%，严重程度 ${c.sev.toFixed(1)}）\ncases: ${(c.caseIds || []).join(', ')}\nphenomenon: ${evEsc(c.phenomenon)}</div></div>` : `<div class="reject-note">未接纳：candidate 评测无收益，current 保持 ${c.eval.cur.toFixed(1)}，进入下一轮。</div>`}</div>` : ''}
+        <div class="cb-sec">${c.accepted ? evCommitBlock(run, c) : `<div class="reject-note">未接纳：candidate 评测无收益，current 保持 ${c.eval.cur.toFixed(1)}，进入下一轮。</div>`}</div>` : ''}
       ${active ? `<div class="waiting"><span class="pulse"></span> 正在评测 candidate…（点右上角「模拟推进一轮」查看结果）</div>` : ''}
       ${!done && !active ? `<div class="waiting">等待前面 ${i} 轮迭代完成后执行</div>` : ''}
     </div>` : ''}
@@ -5547,7 +5655,8 @@ function evRenderDetail(id) {
     <a class="back" href="#/runs">← 返回自进化列表</a>
     <div class="detail-head">
       <h1>${evEsc(run.title)}</h1>${evStatusBadge(run)}<span class="v2-badge">${evEsc(wsName)}</span><span class="spacer"></span>
-      ${!run.preparing && !evIsDone(run) ? `<button class="btn primary" data-action="ev-advance" data-id="${run.id}">▶ 模拟推进一轮</button>` : ''}
+      ${evControlActions(run)}
+      ${!run.preparing && !evIsDone(run) && (!run.controlState || run.controlState === 'running') ? `<button class="btn primary" data-action="ev-advance" data-id="${run.id}">▶ 模拟推进一轮</button>` : ''}
     </div>
     <div class="detail-tabs" role="tablist" aria-label="运行详情视图">
       <button type="button" role="tab" data-action="ev-detail-tab" data-tab="steps" aria-selected="${tab === 'steps'}" class="${tab === 'steps' ? 'active' : ''}">七步详情</button>
@@ -5989,8 +6098,9 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]');
   if (!el) return;
   const a = el.dataset.action;
-  if (a === 'ev-open-run') { EV_STATE.expanded.clear(); EV_STATE.lastDetailId = null; location.hash = '#/run/' + el.dataset.id; }
+  if (a === 'ev-open-run') { EV_STATE.expanded.clear(); EV_STATE.commitOpen.clear(); EV_STATE.lastDetailId = null; location.hash = '#/run/' + el.dataset.id; }
   else if (a === 'ev-toggle-cluster') { const k = el.dataset.key; EV_STATE.expanded.has(k) ? EV_STATE.expanded.delete(k) : EV_STATE.expanded.add(k); evRoute(); }
+  else if (a === 'ev-toggle-commit') { const k = el.dataset.key; EV_STATE.commitOpen.has(k) ? EV_STATE.commitOpen.delete(k) : EV_STATE.commitOpen.add(k); evRoute(); }
   else if (a === 'ev-sel-step') { EV_STATE.detailTab = 'steps'; EV_STATE.selStep = +el.dataset.step; evRoute(); }
   else if (a === 'ev-detail-tab') { EV_STATE.detailTab = el.dataset.tab === 'logs' ? 'logs' : 'steps'; evRoute(); }
   else if (a === 'ev-log-level') { EV_STATE.logLevel = el.dataset.level || 'all'; evRoute(); }
@@ -6000,9 +6110,20 @@ document.addEventListener('click', e => {
     if (branch && navigator.clipboard) { navigator.clipboard.writeText(branch).then(() => { el.textContent = branch + ' · 已复制'; }).catch(() => {}); }
   }
   else if (a === 'ev-run-page') { const run = EV_RUNS.find(r => r.id === el.dataset.id); if (!run) return; const key = el.dataset.target === 'assoc' ? 'assocPage' : 'potentialPage'; run[key] = Math.max(1, (run[key] || 1) + Number(el.dataset.delta || 0)); evRenderDetail(run.id); }
+  else if (a === 'ev-pause' || a === 'ev-resume') {
+    const run = EV_RUNS.find(r => r.id === el.dataset.id);
+    if (!run || evIsDone(run) || !evCanEdit()) return;
+    if (a === 'ev-resume' && run.controlState === 'paused') run.controlState = 'running';
+    else if (a === 'ev-pause' && (!run.controlState || run.controlState === 'running')) {
+      run.controlState = 'pause_requested';
+      // Prototype-only safe-checkpoint acknowledgement; production is worker-owned.
+      setTimeout(() => { if (run.controlState === 'pause_requested') { run.controlState = 'paused'; evRoute(); } }, 800);
+    }
+    evRoute();
+  }
   else if (a === 'ev-advance') {
     const run = EV_RUNS.find(r => r.id === el.dataset.id);
-    if (run && !evIsDone(run)) { run.progress++; EV_STATE.expanded.clear(); EV_STATE.selStep = null; evRenderDetail(run.id); }
+    if (run && !evIsDone(run) && (!run.controlState || run.controlState === 'running')) { run.progress++; EV_STATE.expanded.clear(); EV_STATE.selStep = null; evRenderDetail(run.id); }
   }
   else if (a === 'ev-launch') evWizardOpen(null);
   else if (a === 'ev-targets') { evRoute(); }
@@ -6224,6 +6345,13 @@ function v2LoginAs(userId, opts) {
   if (!opts || !opts.keepPage) v2SetPage(V2.page || 'overview');
   else v2RenderPage();
   if (!opts || !opts.silent) v2Toast(`已登录：${u.name} · ${v2RoleLabel(V2.wsId)}`);
+  const controlQuery = new URLSearchParams(location.search);
+  if (controlQuery.has('runcontrol') && window.EV_RUNS) {
+    const state = controlQuery.get('runcontrol');
+    const rm = location.hash.match(/#\/run\/([^/?]+)/);
+    const run = rm ? EV_RUNS.find(r => r.id === rm[1]) : EV_RUNS.find(r => r.workspace === evCurrentWs() && !evIsDone(r));
+    if (run && ['running', 'pause_requested', 'paused'].includes(state)) { run.controlState = state; evRoute(); }
+  }
   if (!opts || !opts.auto) {
     const q = new URLSearchParams(location.search);
     if (q.get('page') === 'session' && q.get('view') === 'errors') {

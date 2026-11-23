@@ -12,6 +12,7 @@ from typing import Any, Protocol
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.probe_query import ProbeHitRow
 from app.db.models.jobs import JobRunRecord
+from app.service.evolution.control import checkpoint
 from app.service.evolution.git_candidate import (
     CandidateSource,
     CandidateTrace,
@@ -89,6 +90,11 @@ class EvolutionAdvanceService:
         run = await self._runs.get_run(run_id)
         if run is None:
             raise LookupError("evolution run not found")
+        if run.status == "interrupted":
+            await self._runs.mark_recovered(run.id)
+            refreshed = await self._runs.get_run(run.id)
+            if refreshed is not None:
+                run = refreshed
         if run.mode != "full" or run.status != "running":
             return {
                 "runId": run.id,
@@ -96,11 +102,59 @@ class EvolutionAdvanceService:
                 "published": False,
                 "reason": "run is not ready for candidate advancement",
             }
+        await checkpoint(self._runs, run.id)
         rounds = await self._runs.list_rounds(run.id)
+        continuation = job.payload.get("continuation") is True
         target = None
         for round_ in rounds:
-            if round_.status in {"accepted", "rejected"}:
+            if round_.status in {"accepted", "rejected", "skipped"}:
                 continue
+            if round_.status in {"patching", "pushing"}:
+                # A process restart re-enters the same durable stage. Reuse the
+                # committed candidate when the checkpoint exists; otherwise
+                # regenerate it from the persisted trace and patch source.
+                trace = await self._trace(run, round_)
+                if round_.candidate_ref and round_.candidate_commit:
+                    current = await self._candidates.repush_existing(
+                        run,
+                        round_,
+                        job_id=job.id,
+                    )
+                else:
+                    current = await self._candidates.publish(
+                        run,
+                        round_,
+                        trace,
+                        job_id=job.id,
+                        resume=True,
+                    )
+                return await self._submit_evaluation(run, current)
+            if round_.status == "evaluating":
+                stale = (
+                    not continuation
+                    and round_.eval_status != "completed"
+                    and (
+                        round_.eval_status in {"failed", "timeout"}
+                        or (
+                            round_.eval_external_id is not None and round_.eval_next_poll_at is None
+                        )
+                    )
+                )
+                current = (
+                    await self._runs.reset_round_for_eval_retry(run.id, round_.id)
+                    if stale
+                    else round_
+                )
+                if self._eval_submitter is not None and current.eval_external_id is None:
+                    current = await self._eval_submitter.submit(run, current)
+                return {
+                    "runId": run.id,
+                    "roundId": current.id,
+                    "status": current.status,
+                    "candidateRef": current.candidate_ref,
+                    "published": True,
+                    "resumed": True,
+                }
             if round_.status != "pending":
                 return {
                     "runId": run.id,
@@ -130,33 +184,21 @@ class EvolutionAdvanceService:
                 "published": False,
                 "reason": "pending round was already claimed",
             }
-        cluster = next(
-            (
-                item
-                for item in await self._runs.list_clusters(run.id)
-                if item.probe_cluster_id == target.probe_cluster_id
-            ),
-            None,
-        )
-        if cluster is None:
-            raise LookupError("round cluster not found")
-        links = tuple(
-            link.probe_id
-            for link in await self._runs.list_cluster_probes(run.id)
-            if link.probe_cluster_id == cluster.probe_cluster_id
-        )
-        rows = await self._probes.list_rows_by_ids(links)
+        trace = await self._trace(run, target)
         current = await self._candidates.publish(
             run,
             target,
-            build_candidate_trace(
-                cluster.probe_cluster_id,
-                cluster.probe_cluster_description,
-                links,
-                rows,
-            ),
+            trace,
             job_id=job.id,
         )
+        return await self._submit_evaluation(run, current)
+
+    async def _submit_evaluation(
+        self,
+        run: Any,
+        current: Any,
+    ) -> Mapping[str, Any]:
+        """Submit the published candidate's evaluation and report the round."""
         if (
             self._eval_submitter is not None
             and current.status == "evaluating"
@@ -170,6 +212,31 @@ class EvolutionAdvanceService:
             "candidateRef": current.candidate_ref,
             "published": True,
         }
+
+    async def _trace(self, run: Any, round_: Any) -> CandidateTrace:
+        """Rebuild the immutable trace for one persisted round."""
+        cluster = next(
+            (
+                item
+                for item in await self._runs.list_clusters(run.id)
+                if item.probe_cluster_id == round_.probe_cluster_id
+            ),
+            None,
+        )
+        if cluster is None:
+            raise LookupError("round cluster not found")
+        links = tuple(
+            link.probe_id
+            for link in await self._runs.list_cluster_probes(run.id)
+            if link.probe_cluster_id == cluster.probe_cluster_id
+        )
+        rows = await self._probes.list_rows_by_ids(links)
+        return build_candidate_trace(
+            cluster.probe_cluster_id,
+            cluster.probe_cluster_description,
+            links,
+            rows,
+        )
 
 
 class EvolutionJobLifecycle:
@@ -201,10 +268,16 @@ class EvolutionJobLifecycle:
             self._schedule_candidate_advance
             and job.kind in {"evolution_prepare", "evolution_advance", "evolution_apply"}
             and job.status == "completed"
+            and not (job.result and job.result.get("yielded"))
             and job.ref_id
         ):
             run = await self._runs.get_run(job.ref_id)
-            if run is not None and run.mode == "full" and run.status == "running":
+            if (
+                run is not None
+                and run.mode == "full"
+                and run.status == "running"
+                and run.control_state == "running"
+            ):
                 rounds = await self._runs.list_rounds(run.id)
                 active = {
                     "patching",
@@ -230,7 +303,7 @@ class EvolutionJobLifecycle:
             active = {
                 summary.run.id
                 for summary in summaries
-                if summary.run.status in {"preparing", "running", "blocked"}
+                if summary.run.status in {"preparing", "running", "blocked", "interrupted"}
             }
             self._workspaces.cleanup_workspaces(
                 active_run_ids=active,

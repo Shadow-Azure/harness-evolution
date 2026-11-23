@@ -1,5 +1,6 @@
 """Launch wizard API contract: probe preview, run creation, cluster previews."""
 
+import asyncio
 import hashlib
 import json
 import os
@@ -7,6 +8,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -28,6 +30,7 @@ from app.db.models.domain import (
 )
 from app.db.models.evolution import evolution_runs
 from app.main import create_app
+from app.service.evolution.attribution import AttributionInput, AttributionResult, RuleBasedEngine
 from app.third_party_api.git.workspace import PreparedWorkspace
 from app.utils.definition import definition_file_hash
 from tests.target_content_support import FakeDefinitionSource, FakeTargetVersionResolver
@@ -398,6 +401,10 @@ async def launch_api(
             jwt_secret=SecretStr("launch-wizard-api-signing-secret-sufficient"),
             admin_username="admin",
             admin_password=SecretStr(ADMIN_TEMP_PASSWORD),
+            # This fixture exercises the launch/prepare plumbing with the
+            # placeholder backend; failing explicitly is covered by the
+            # clustering and strict-policy tests instead.
+            ai_agent_failure_policy="degrade",
         ),
         git_workspaces=_FakeWorkspacePreparer(tmp_path),
         target_version_resolver=FakeTargetVersionResolver(revisions={"v2.0.0": revision}),
@@ -480,15 +487,17 @@ async def test_launch_records_creation_and_prepare_start_events(
     )
 
     assert events.status_code == 200
-    assert [item["eventType"] for item in events.json()["items"]] == [
+    event_types = [item["eventType"] for item in events.json()["items"]]
+    assert event_types[:5] == [
         "run_created",
         "prepare_started",
         "sessions_linked",
         "potential_computed",
         "attribution_created",
-        "clusters_created",
-        "workspace_prepared",
     ]
+    # With explicit degrade, the placeholder provider falls back once per task.
+    assert event_types[5:-2] == ["ai_agent_call", "degraded"] * 3
+    assert event_types[-2:] == ["clusters_created", "workspace_prepared"]
     assert events.json()["hasMore"] is False
 
 
@@ -713,6 +722,119 @@ async def test_start_run_rejects_window_and_empty_hits(
     }
 
 
+async def test_editing_unbound_target_keeps_main_remote_validation(
+    launch_api: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Editing an upgraded target must not require a Git definition file until it binds a Skill."""
+    service = _app_of(launch_api).state.evolution_targets
+    validate = AsyncMock()
+    freeze = AsyncMock(side_effect=AssertionError("legacy edit loaded a definition"))
+    monkeypatch.setattr(service._git_remote, "validate", validate)
+    monkeypatch.setattr(service._definitions, "freeze", freeze)
+    route = "/api/workspaces/ws-default/evolution/targets"
+    response = await launch_api.get(route)
+    target = next(t for t in response.json()["items"] if t["id"] == "target-enabled")
+    body = {
+        key: target[key]
+        for key in (
+            "objectType",
+            "objectName",
+            "repoUrl",
+            "subDir",
+            "defaultRef",
+            "validationProjectId",
+            "testProjectId",
+            "enabled",
+        )
+    }
+    body["testProjectId"] = "edited-project"
+    edited = await launch_api.put(f"{route}/target-enabled", json=body)
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["attributionPackageId"] is None
+    validate.assert_awaited_once()
+    freeze.assert_not_awaited()
+
+
+async def test_unbound_production_target_computes_cache_misses_and_reuses_them(
+    launch_api: httpx.AsyncClient,
+) -> None:
+    """Legacy rule runs keep their production cache identity across the upgrade."""
+    workspace = "/api/workspaces/ws-default/evolution"
+    body = _query_body(mode="cluster_only", cacheEnabled=True)
+    preview_body = {
+        key: body[key]
+        for key in ("targetType", "targetName", "targetVersion", "from", "to", "cacheEnabled")
+    }
+    app = _app_of(launch_api)
+    for pass_index in range(2):
+        preview = await launch_api.post(f"{workspace}/preview/attribution", json=preview_body)
+        assert preview.status_code == 200, preview.text
+        summary = preview.json()["summary"]
+        assert preview.json()["usesBoundSkill"] is False
+        assert summary["potential"] > 0
+        assert summary["reused"] == (summary["potential"] if pass_index else 0)
+        assert summary["fresh"] == (0 if pass_index else summary["potential"])
+        launched = await launch_api.post(f"{workspace}/cluster-previews", json=body)
+        assert launched.status_code == 202, launched.text
+        job = await app.state.jobs.wait(launched.json()["jobId"])
+        assert job.status == "completed", job.error
+        history = await app.state.attribution_jobs.history(launched.json()["runId"])
+        assert history.items[0].observation.reused == summary["reused"]
+        assert history.items[0].observation.created == summary["fresh"]
+
+
+async def test_prepare_joins_paused_attribution_and_resumes_only_missing_cases(
+    launch_api: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pause finishes the in-flight case, prevents new calls, and resumes its missing tail."""
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls: list[str] = []
+
+    class SlowRule(RuleBasedEngine):
+        async def attribute(self, item: AttributionInput) -> AttributionResult:
+            calls.append(item.bad_case_id)
+            started.set()
+            await release.wait()
+            return await super().attribute(item)
+
+    app = _app_of(launch_api)
+    runner = app.state.attribution_jobs._runner
+    monkeypatch.setattr(runner, "_engine_factory", lambda _: SlowRule())
+    monkeypatch.setattr(runner, "_max_concurrency", 1)
+    api = "/api/workspaces/ws-default/evolution"
+    result = await launch_api.post(f"{api}/cluster-previews", json=_query_body(mode="cluster_only"))
+    assert result.status_code == 202, result.text
+    run_id = result.json()["runId"]
+    path = f"{api}/runs/{run_id}"
+    try:
+        await asyncio.wait_for(started.wait(), 5)
+        paused = await launch_api.post(f"{path}/pause")
+        assert paused.status_code == 200, paused.text
+        refused = await launch_api.post(f"{path}/attribution-jobs")
+        assert refused.status_code == 409, refused.text
+        (child,) = (await app.state.attribution_jobs.history(run_id)).items
+        retry = await launch_api.post(f"{path}/attribution-jobs/{child.job_id}/retry")
+        assert retry.status_code == 409, retry.text
+    finally:
+        release.set()
+    yielded = await app.state.jobs.wait(result.json()["jobId"])
+    assert yielded.result["yielded"] is True
+    assert len(calls) == 1
+    resumed = await launch_api.post(f"{path}/resume")
+    assert resumed.status_code == 200, resumed.text
+    async with asyncio.timeout(10):
+        while True:
+            row = (await launch_api.get(f"{path}")).json()
+            if row["status"] == "completed":
+                break
+            await asyncio.sleep(0.05)
+    assert len(calls) > 1
+    assert len(set(calls)) == len(calls)
+
+
 async def test_start_run_accepts_and_snapshots_query(
     launch_api: httpx.AsyncClient,
 ) -> None:
@@ -770,6 +892,7 @@ async def test_start_run_accepts_and_snapshots_query(
         "7e30d5d3721030420842f9e1f1b08e9a1c33644eb7a78eca82bbd06abbca525d"
     )
     assert row["potential_policy"] == {
+        "legacyRule": True,
         "preset": "default",
         "includeSelfReport": True,
         "includeAfterObject": True,
@@ -818,6 +941,7 @@ async def test_start_run_snapshots_custom_policy_and_cache_switch(
         )
     assert row["cache_enabled"] is False
     assert row["potential_policy"] == {
+        "legacyRule": True,
         "preset": "custom",
         "includeSelfReport": True,
         "includeAfterObject": True,
@@ -994,8 +1118,6 @@ async def test_local_attribution_from_wizard_to_cluster(
         files={"file": ("custom.zip", archive.getvalue(), "application/zip")},
     )
     assert uploaded.status_code == 201
-    import asyncio
-    from unittest.mock import AsyncMock
 
     runtime_read = runtime_source.read_file
     offline = AsyncMock(side_effect=AssertionError("bound batch fetched the mutable ref"))
@@ -1089,6 +1211,13 @@ async def test_local_attribution_from_wizard_to_cluster(
     assert accepted.status_code == 202
     job = await app.state.jobs.wait(accepted.json()["jobId"])
     assert job.status == "completed", job.error
+    range_step = await launch_api.get(
+        f"{workspace}/evolution/runs/{accepted.json()['runId']}/steps/range"
+    )
+    assert range_step.status_code == 200, range_step.text
+    assert range_step.json()["payload"]["condition"]["attributionPackageId"] == body.get(
+        "attributionPackageId"
+    )
     async with app.state.database.session() as session:
         reports = (
             (

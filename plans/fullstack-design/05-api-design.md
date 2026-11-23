@@ -280,6 +280,7 @@ erDiagram
 "workspace": {
   "repoUrl": "https://git.example.com/agent-skills.git",
   "subDir": "skills/deep-research",
+  "pushRepoUrl": "https://github.com/acme/agent-skills.git",
   "repoPath": "data/repos/tgt-123", "baseRef": "v2.0.0", "baseCommit": "9f3c2a1…",
   "branchName": "evo/20261023-evo-20261023-01", "workspacePath": "data/workspaces/evo-20261023-01",
   "remote": "origin", "pushStatus": "succeeded", "pushedAt": "2026-10-23T09:40:00+08:00", "pushError": null
@@ -315,7 +316,7 @@ erDiagram
 | 0 选择范围 | `range` | `GET …/evolution/runs/{rid}/steps/range` | `condition`（target/版本/时间窗/policy/cacheEnabled）+ `stats`（sessions/badCases/potential） |
 | 1 Session 关联 | `sessions` | `GET …/steps/sessions` | `summary`（reported/associated/skipped/pending）+ `rows[]`（sessionId/title/short/objectTriggerAt/badCaseCount/potentialCount），4 条/页 |
 | 2 潜在 bad case | `potential` | `GET …/steps/potential` | `summary`（badCases/potential/byReason）+ `rows[]`（badCaseId/objectName/badCaseType/triggerAt/sessionId/hitReason/orderState），5 条/页 |
-| 3 对象归因 | `attribution` | `GET …/steps/attribution` | `summary`（potential/reused/fresh/nonTarget）+ `rows[]`（badCaseId/attributionId/category/description/source/confidence） |
+| 3 对象归因 | `attribution` | `GET …/steps/attribution` | `summary`（potential/reused/fresh/nonTarget）+ `rows[]`（badCaseId/sessionId/attributionId/category/description/source/confidence） |
 | 4 聚类与严重度 | `clusters` | `GET …/steps/clusters` | `clusters[]`：`clusterId/title/description/category/caseCount/confidence/severity/rank/cases[]`（按 severity 降序） |
 | 5 迭代优化 | `iteration` | `GET …/steps/iteration` | `rounds[]`：roundId/clusterId/title/category/caseCount/severity/cases[]/status/candidate/patch/push/eval/accepted/finalCommit |
 | 6 测试集终评 | `final` | `GET …/steps/final` | `verdict/bestVersion/bestScore/initScore/metrics[]/changes[]` |
@@ -385,7 +386,7 @@ erDiagram
   "key": "attribution", "index": 3, "title": "对象归因", "status": "done",
   "payload": {
     "summary": { "potential": 18, "reused": 11, "fresh": 7, "nonTarget": 4 },
-    "rows": [ { "badCaseId": "BC-HC-0007", "attributionId": "AT-01J9…", "category": "error",
+    "rows": [ { "badCaseId": "BC-HC-0007", "sessionId": "01J9…", "attributionId": "AT-01J9…", "category": "error",
       "description": "检索索引读取失败", "source": "cached", "confidence": 0.8 } ] } }
 ```
 
@@ -412,14 +413,19 @@ erDiagram
   "cases": [ { "badCaseId": "BC-HC-0007", "title": "检索索引读取失败",
     "objectName": "deep-research", "badCaseType": "self",
     "triggerAt": "2026-09-06T09:12:00+08:00", "createdAt": "2026-09-06T09:20:00+08:00" } ],
-  "patch": { "file": "SKILL.md", "lines": ["+ 读取索引前校验快照字段"] },
+  "patch": { "files": [ { "file": "SKILL.md", "lines": ["+ 读取索引前校验快照字段"], "overwrite": false } ],
+    "note": "启用快照字段校验" },
   "candidate": { "ref": "evo/20261023-evo-20261023-01/candidate/r1", "commit": "ab12…",
     "message": "evolve(deep-research@v2.0.0): 针对「检索索引读取失败」的候选变更" },
   "push": { "status": "succeeded", "attempts": 1, "error": null },
   "eval": { "status": "completed", "current": 84.6, "candidate": 87.2, "nextPollAt": null },
   "accepted": true,
-  "finalCommit": { "hash": "cd34…", "message": "evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取" } }
+  "finalCommit": { "hash": "cd34…", "message": "evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取\n\n## 问题\n…" } }
 ```
+
+`patch` 从落库 bundle 投影，`files[]` 顺序与 candidate commit 的文件顺序一致；`overwrite` 表示该文件以整文件覆盖写入。单文件轮次的落库字典另外保留 legacy 顶层 `file / lines / overwrite`，以及 `note / intent / report`；读取侧必须先还原 bundle 再显式投影，**禁止把落库字典直接交给 `extra="forbid"` 读模型**。历史轮次只有 `file / lines / note` 时等价于一个 `files` 项，`note` 缺失仍为 `null`。
+
+`finalCommit.message` 是 amend 后的完整 commit message（Markdown）：首行是 `evolve(<target>): <subject>`，其后是 `## 问题`、`## 分析`、`## 改动`、`## 追溯` 等正文段，末尾可带 `---` 与 `Harness-*` trailer。展示层必须把首行当 subject，其余交给 Markdown 渲染；禁止把整段 message 按纯文本插值。旧 run 的单行 message 仍合法，按 subject 展示即可。
 
 `steps/final`：
 
@@ -948,6 +954,17 @@ V1 的 `POST /api/evolution/probes/query` 进入兼容期，V2 页面不调用�
 
 ### 4.10 自进化运行（异步任务）
 
+#### 用户暂停与继续
+
+工作空间运行列表卡片和详情返回 `controlState=running|pause_requested|paused`、`pauseRequestedAt`、`pausedAt`、`pausedBy`、`canPause`、`canResume`；执行 `status`、七步游标和历史分组口径保持独立。历史行迁移默认 `running`。只有 `preparing/running` 的运行可暂停或继续；阻塞、完成、失败、中断不提供控制动作。动作权限为当前空间管理员或全局管理员，成员可读取状态。
+
+- `POST /api/workspaces/{wid}/evolution/runs/{rid}/pause` 返回 `EvolutionRunControl`；有正在执行的 job 时先记录 `pause_requested`，当前不可分操作结束并释放 worker 后确认 `paused`；无执行 job 时可立即确认。重复请求幂等。
+- `POST /api/workspaces/{wid}/evolution/runs/{rid}/resume` 返回 `EvolutionRunControl`；在同一事务恢复 `running` 并按冻结运行与轮次事实续排唯一 job。等待远端评测时无需续排 job，由 poller 继续观测。重复点击不创建重复工作。
+- 跨空间 run 返回 404；权限不足返回 403；不满足执行状态返回 409。客户端使用响应中的可用动作，不推测阶段或重新启动 run。
+- `run_pause_requested`、`run_paused`、`run_continued` 进入持久化日志，并沿现有 `run.event` 通道刷新详情与列表。继续与 blocked 的 `run.resumed` 重试事件分别表达。
+- 暂停不取消已经提交的远端评测。暂停期间可接收结果，禁止 apply、下一轮和终评推进；继续沿用候选 commit 和评测 ID。
+
+
 > 创建 run 的 body 增加 `policy` 与 `cacheEnabled`（见 §4.20）；新 run 的 `steps` 为七步（§3.6），进度公式 `5+M+1`。历史 V1 run 只在服务端映射为同一 DTO，前端不维护第二套步骤 schema。
 
 - `GET /api/evolution/runs` → `{ "running": [RunCard], "history": [RunCard] }`（后端分组；`preparing/running/blocked` 归 running，终态归 history）
@@ -980,7 +997,7 @@ V1 的 `POST /api/evolution/probes/query` 进入兼容期，V2 页面不调用�
 - `GET /api/evolution/runs/{rid}` → `RunDetail`
   - `status`：`preparing | running | blocked | completed | failed | interrupted`
   - 额外字段：`blockedStage`、`retryAttempts`、`nextRetryAt`、`evalStatus`
-  - `workspace`：`repoUrl/repoPath/baseRef/baseCommit/branchName/workspacePath`
+  - `workspace`：`repoUrl/pushRepoUrl/repoPath/baseRef/baseCommit/branchName/workspacePath`；`pushRepoUrl` 是 run 在 prepare 时派生的 push 目标，不是 target 的输入
 - `GET /api/evolution/runs/{rid}/steps/{key}` 七个独立端点（`range` / `sessions` / `potential` / `attribution` / `clusters` / `iteration` / `final`）→ `EvolutionStep`（§3.6；未到达 → `404 STEP_NOT_READY`；`preparing` 时 `range` 可返回准备态）
 - `POST /api/evolution/runs/{rid}/retry` → `202 { "jobId": "job-...", "reused": false }`
   - 需要当前空间的 `space_admin` 或全局管理员；只允许 `status=blocked`
@@ -1036,8 +1053,8 @@ POST /runs（同步校验）
 { "items": [
   { "id": "tgt-123", "objectType": "skill", "objectName": "deep-research",
     "repoUrl": "https://git.example.com/agent-skills.git", "subDir": "skills/deep-research",
-    "defaultRef": "main", "validationProjectId": "val-2026-q3",
-    "testProjectId": "test-2026-q3", "enabled": true }
+    "defaultRef": "main",
+    "validationProjectId": "val-2026-q3", "testProjectId": "test-2026-q3", "enabled": true }
 ] }
 ```
 
@@ -1046,13 +1063,14 @@ POST /runs（同步校验）
 ```json
 { "objectType": "skill", "objectName": "deep-research",
   "repoUrl": "https://git.example.com/agent-skills.git", "subDir": "skills/deep-research",
-  "defaultRef": "main", "validationProjectId": "val-2026-q3",
-  "testProjectId": "test-2026-q3", "enabled": true }
+  "defaultRef": "main",
+  "validationProjectId": "val-2026-q3", "testProjectId": "test-2026-q3", "enabled": true }
 ```
 
 `POST` → `201` 创建后的 target；`PUT` → `200` 更新后的 target；`DELETE` → `204`。
 
 - `repoUrl` 支持 https/ssh；**不要**把 token 写进 URL（用 SSH agent / 凭据助手），错误信息脱敏。
+- target 不接受 push/eval URL 输入：provider 用 `repoUrl` + PAT 用户自动创建/定位 fork；prepare 把派生的 push 目标写入 run 快照，eval 直接复用同一目标，保证同源。凭据由部署级 `HE_GIT_PUSH_PROVIDER` / `HE_GIT_PUSH_TOKEN` 与 `GIT_ASKPASS` 提供，不写进 URL。
 - `subDir` 必须是仓库内相对路径，禁止 `..` 越界；保存时只校验格式，目录存在性在创建 run 的准备阶段校验。
 - `validationProjectId` / `testProjectId` 是不透明字符串，trim 后非空、不含空白或控制字符；超过 128 由请求校验返回 `422 VALIDATION_INVALID`（前端 `maxlength` 拦截），空值与空白/控制字符失败返回 `422 PROJECT_ID_INVALID`，`details` 为 `{ "field": "validationProjectId" | "testProjectId", "reason": "project_id_required" | "project_id_format" }`。本服务不校验工程是否存在。
 - `REPO_INVALID` 的 `details` 只出现在 admin 的 create/update 响应：`{ "field": "objectName" | "repoUrl" | "subDir" | "defaultRef", "reason": "<见下表>", "command"?: { "name": "git ls-remote", "exitCode": 128 }, "output"?: "<有界脱敏输出>" }`。member 可读的 versions 接口继续返回空 `details`，不暴露命令输出。
@@ -1411,7 +1429,7 @@ root-sync 状态表的 `last_error` 直接保存稳定码，per-report source �
 | `ERROR_META[title]`（单结论） | `BadCase.attributionCount` + 归因列表（§4.19） | 一个 bad case × 多对象·版本；`reason` / `reasoning(Markdown)` / `category` / `conclusion` 由归因行承载 |
 | `REPORTS[]` | `bad_case_analysis` 关联的 `probe_reports` 行 | 不再有独立产品实体「问题报告」；物理 `probe_id` 映射为 `attributionId` |
 | `RUNS[]` | `RunCard` / `RunDetail` | V2 映射为 `stats.sessions/versionUnresolvedSessions/potential/attributed/reused/byCategory` |
-| `PATCH.deser` | `patch.file/lines` | diff 行数组原样传给前端着色 |
+| `PATCH.deser` | `patch.files[].file/lines/overwrite` | 多文件逐项渲染，legacy 单文件归一为一个 `files` 项；行数组原样传给前端着色 |
 
 V2 新增映射（2026-11-11）：
 

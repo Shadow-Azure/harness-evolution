@@ -60,7 +60,7 @@ defineEmits<{
   />
   <StepAttribution
     v-else-if="step?.key === 'attribution'"
-    :workspace-id="wid"
+    :wid="wid"
     :can-write="canWrite"
     :step="step"
     :run="run"

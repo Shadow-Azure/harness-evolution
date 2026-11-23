@@ -2,16 +2,24 @@
 
 from collections.abc import Mapping
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import insert, or_, select, update
+from sqlalchemy import and_, insert, or_, select, update
+from sqlalchemy.engine import CursorResult
 
 from app.db.base import Database
+from app.db.crud.evolution_lock import lock_run_row
 from app.db.models.jobs import JobRunRecord, job_runs, record_from_row
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
 
 ACTIVE_JOB_STATUSES = ("queued", "running")
+DEFAULT_LEASE_SECONDS = 90
+_LEASE_CLEARED = {
+    "lease_owner": None,
+    "lease_expires_at": None,
+    "heartbeat_at": None,
+}
 EVOLUTION_JOB_KINDS = (
     "evolution_prepare",
     "evolution_advance",
@@ -40,10 +48,6 @@ def queued_job_values(
         "executor": "local",
         "external_job_id": None,
         "attempt": 0,
-        "lease_owner": None,
-        "lease_expires_at": None,
-        "max_attempts": 3,
-        "cancel_requested": False,
         "payload": dict(payload),
         "result": None,
         "error": None,
@@ -182,38 +186,125 @@ class JobRepository:
         self,
         job_id: str,
         *,
-        owner: str = "local-worker",
-        lease_seconds: int = 60,
-    ) -> JobRunRecord:
-        """Claim queued or lease-expired work and increment its attempt count."""
+        owner: str = "local",
+        lease_seconds: int = DEFAULT_LEASE_SECONDS,
+    ) -> JobRunRecord | None:
+        """Atomically claim a queued or lease-expired running job.
+
+        A queued row is the normal path. Reclaiming an expired running row is
+        the future multi-instance safety valve; startup recovery still marks
+        residual rows interrupted before dispatch in the single-instance
+        deployment.
+        """
+        if lease_seconds <= 0:
+            raise ValueError("job lease must be positive")
+        job = await self.get(job_id)
+        if job is None or job.status not in ACTIVE_JOB_STATUSES:
+            return None
         now = now_shanghai()
         async with self._database.transaction() as session:
-            result = await session.execute(
-                update(job_runs)
-                .where(
-                    job_runs.c.id == job_id,
-                    job_runs.c.cancel_requested.is_(False),
-                    job_runs.c.attempt < job_runs.c.max_attempts,
-                    or_(
-                        job_runs.c.status == "queued",
-                        ((job_runs.c.status == "running") & (job_runs.c.lease_expires_at < now)),
-                    ),
+            if job.ref_id and job.kind in EVOLUTION_JOB_KINDS:
+                await lock_run_row(session, job.ref_id)
+            if job.kind == "attribution_batch" and job.attempt >= job.max_attempts:
+                await session.execute(
+                    update(job_runs)
+                    .where(
+                        job_runs.c.id == job_id,
+                        job_runs.c.status.in_(ACTIVE_JOB_STATUSES),
+                        job_runs.c.attempt >= job_runs.c.max_attempts,
+                        or_(
+                            job_runs.c.lease_expires_at.is_(None), job_runs.c.lease_expires_at < now
+                        ),
+                    )
+                    .values(
+                        status="interrupted",
+                        error="attribution worker lease expired at attempt limit",
+                        finished_at=now,
+                        updated_at=now,
+                        **_LEASE_CLEARED,
+                    )
                 )
-                .values(
-                    status="running",
-                    started_at=now,
-                    attempt=job_runs.c.attempt + 1,
-                    lease_owner=owner,
-                    lease_expires_at=now + timedelta(seconds=lease_seconds),
-                    updated_at=now,
+                return None
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(job_runs)
+                    .where(
+                        job_runs.c.id == job_id,
+                        job_runs.c.cancel_requested.is_(False),
+                        or_(
+                            job_runs.c.kind != "attribution_batch",
+                            job_runs.c.attempt < job_runs.c.max_attempts,
+                        ),
+                        or_(
+                            job_runs.c.status == "queued",
+                            and_(
+                                job_runs.c.status == "running",
+                                or_(
+                                    job_runs.c.lease_expires_at.is_(None),
+                                    job_runs.c.lease_expires_at < now,
+                                ),
+                            ),
+                        ),
+                    )
+                    .values(
+                        status="running",
+                        started_at=now,
+                        attempt=job_runs.c.attempt + 1,
+                        lease_owner=owner,
+                        lease_expires_at=now + timedelta(seconds=lease_seconds),
+                        heartbeat_at=now,
+                        finished_at=None,
+                        error=None,
+                        updated_at=now,
+                    ),
                 ),
             )
-            if int(getattr(result, "rowcount", 0) or 0) != 1:
-                raise RuntimeError("job is not claimable")
-        claimed = await self.get(job_id)
-        if claimed is None:
-            raise RuntimeError("claimed job disappeared before execution")
-        return claimed
+        if result.rowcount != 1:
+            return None
+        return await self.get(job_id)
+
+    async def renew(
+        self,
+        job_id: str,
+        *,
+        owner: str,
+        lease_seconds: int = DEFAULT_LEASE_SECONDS,
+    ) -> bool:
+        """Extend the lease only while this owner still holds the running row."""
+        if lease_seconds <= 0:
+            raise ValueError("job lease must be positive")
+        now = now_shanghai()
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(job_runs)
+                    .where(
+                        job_runs.c.id == job_id,
+                        job_runs.c.status == "running",
+                        job_runs.c.lease_owner == owner,
+                    )
+                    .values(
+                        lease_expires_at=now + timedelta(seconds=lease_seconds),
+                        heartbeat_at=now,
+                        updated_at=now,
+                    ),
+                ),
+            )
+        return result.rowcount == 1
+
+    async def release(self, job_id: str, *, owner: str | None = None) -> None:
+        """Give up the lease while leaving the row's lifecycle status untouched."""
+        conditions = [job_runs.c.id == job_id]
+        if owner is not None:
+            conditions.append(job_runs.c.lease_owner == owner)
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(job_runs)
+                .where(*conditions)
+                .values(**_LEASE_CLEARED, updated_at=now_shanghai()),
+            )
 
     async def update_progress(
         self,
@@ -230,31 +321,6 @@ class JobRepository:
                 update(job_runs).where(job_runs.c.id == job_id).values(**values),
             )
 
-    async def renew_lease(
-        self,
-        job_id: str,
-        owner: str,
-        *,
-        lease_seconds: int = 60,
-    ) -> bool:
-        """Extend one live claim only while its owner and status still match."""
-        now = now_shanghai()
-        async with self._database.transaction() as session:
-            result = await session.execute(
-                update(job_runs)
-                .where(
-                    job_runs.c.id == job_id,
-                    job_runs.c.status == "running",
-                    job_runs.c.lease_owner == owner,
-                    job_runs.c.cancel_requested.is_(False),
-                )
-                .values(
-                    lease_expires_at=now + timedelta(seconds=lease_seconds),
-                    updated_at=now,
-                ),
-            )
-        return int(getattr(result, "rowcount", 0) or 0) == 1
-
     async def complete(
         self,
         job_id: str,
@@ -262,56 +328,46 @@ class JobRepository:
         *,
         owner: str | None = None,
     ) -> bool:
-        """Record completion only if the caller still owns the live claim."""
+        """Record successful completion, final progress, and optional result."""
         now = now_shanghai()
+        conditions = [job_runs.c.id == job_id]
+        if owner is not None:
+            conditions.append(job_runs.c.lease_owner == owner)
         async with self._database.transaction() as session:
-            statement = update(job_runs).where(job_runs.c.id == job_id)
-            if owner is not None:
-                statement = statement.where(
-                    job_runs.c.status == "running",
-                    job_runs.c.lease_owner == owner,
-                )
-            executed = await session.execute(
-                statement.values(
+            changed = await session.execute(
+                update(job_runs)
+                .where(*conditions)
+                .values(
                     status="completed",
                     progress=1.0,
                     result=dict(result) if result is not None else None,
                     error=None,
-                    lease_owner=None,
-                    lease_expires_at=None,
                     finished_at=now,
                     updated_at=now,
+                    **_LEASE_CLEARED,
                 ),
             )
-        return int(getattr(executed, "rowcount", 0) or 0) == 1
+        return cast(CursorResult[Any], changed).rowcount == 1
 
-    async def fail(
-        self,
-        job_id: str,
-        error: str,
-        *,
-        owner: str | None = None,
-    ) -> bool:
-        """Record failure only if the caller still owns the live claim."""
+    async def fail(self, job_id: str, error: str, *, owner: str | None = None) -> bool:
+        """Record a sanitized terminal failure for the owning worker."""
         now = now_shanghai()
+        conditions = [job_runs.c.id == job_id]
+        if owner is not None:
+            conditions.append(job_runs.c.lease_owner == owner)
         async with self._database.transaction() as session:
-            statement = update(job_runs).where(job_runs.c.id == job_id)
-            if owner is not None:
-                statement = statement.where(
-                    job_runs.c.status == "running",
-                    job_runs.c.lease_owner == owner,
-                )
-            executed = await session.execute(
-                statement.values(
+            changed = await session.execute(
+                update(job_runs)
+                .where(*conditions)
+                .values(
                     status="failed",
                     error=error,
-                    lease_owner=None,
-                    lease_expires_at=None,
                     finished_at=now,
                     updated_at=now,
+                    **_LEASE_CLEARED,
                 ),
             )
-        return int(getattr(executed, "rowcount", 0) or 0) == 1
+        return cast(CursorResult[Any], changed).rowcount == 1
 
     async def interrupt(
         self,
@@ -320,39 +376,35 @@ class JobRepository:
         *,
         owner: str | None = None,
     ) -> bool:
-        """Record interruption only while the optional owner holds the claim."""
+        """Record process interruption for one active job and its owner."""
         now = now_shanghai()
+        conditions = [job_runs.c.id == job_id, job_runs.c.status == "running"]
+        if owner is not None:
+            conditions.append(job_runs.c.lease_owner == owner)
         async with self._database.transaction() as session:
-            statement = update(job_runs).where(
-                job_runs.c.id == job_id,
-                job_runs.c.status == "running",
-            )
-            if owner is not None:
-                statement = statement.where(job_runs.c.lease_owner == owner)
-            executed = await session.execute(
-                statement.values(
+            changed = await session.execute(
+                update(job_runs)
+                .where(*conditions)
+                .values(
                     status="interrupted",
                     error=reason,
-                    lease_owner=None,
-                    lease_expires_at=None,
                     finished_at=now,
                     updated_at=now,
+                    **_LEASE_CLEARED,
                 ),
             )
-        return int(getattr(executed, "rowcount", 0) or 0) == 1
+        return cast(CursorResult[Any], changed).rowcount == 1
 
-    async def mark_running_interrupted(
-        self,
-        reason: str,
-        *,
-        exclude_kinds: tuple[str, ...] = (),
-    ) -> list[JobRunRecord]:
+    async def mark_running_interrupted(self, reason: str) -> list[JobRunRecord]:
         """Atomically turn every residual running row into an interrupted audit row."""
         async with self._database.session() as session:
-            statement = select(job_runs.c.id).where(job_runs.c.status == "running")
-            if exclude_kinds:
-                statement = statement.where(job_runs.c.kind.not_in(exclude_kinds))
-            ids: list[str] = list((await session.execute(statement)).scalars())
+            ids: list[str] = list(
+                (
+                    await session.execute(
+                        select(job_runs.c.id).where(job_runs.c.status == "running"),
+                    )
+                ).scalars()
+            )
         for job_id in ids:
             await self.interrupt(job_id, reason)
         recovered: list[JobRunRecord] = []
@@ -376,8 +428,7 @@ class JobRepository:
                 )
                 .values(
                     status="queued",
-                    lease_owner=None,
-                    lease_expires_at=None,
+                    **_LEASE_CLEARED,
                     error="worker restarted; claim released",
                     updated_at=now,
                 ),
@@ -395,8 +446,7 @@ class JobRepository:
                     status="cancelled",
                     cancel_requested=True,
                     error="cancelled by user",
-                    lease_owner=None,
-                    lease_expires_at=None,
+                    **_LEASE_CLEARED,
                     finished_at=now,
                     updated_at=now,
                 ),
@@ -418,8 +468,7 @@ class JobRepository:
                 "error": None,
                 "started_at": None,
                 "finished_at": None,
-                "lease_owner": None,
-                "lease_expires_at": None,
+                **_LEASE_CLEARED,
                 "updated_at": now,
             }
             if payload is not None:

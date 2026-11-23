@@ -279,12 +279,17 @@ class EvolutionTargetRepository:
         workspace_id = str(values.get("workspace_id", DEFAULT_WORKSPACE_ID))
         async with self._database.transaction() as session:
             try:
-                binding = await self._binding(
-                    session,
-                    workspace_id,
-                    str(values.get("attribution_package_id") or "default-attribute-badcases"),
-                    bool(values["enabled"]),
-                    values.get("definition"),
+                package = values.get("attribution_package_id", "default-attribute-badcases")
+                binding = (
+                    await self._binding(
+                        session,
+                        workspace_id,
+                        str(package),
+                        bool(values["enabled"]),
+                        values.get("definition"),
+                    )
+                    if package is not None
+                    else {}
                 )
                 await session.execute(
                     insert(evolution_targets).values(

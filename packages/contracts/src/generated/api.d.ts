@@ -1565,6 +1565,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Run
+         * @description Request a cooperative pause at the next durable checkpoint.
+         */
+        post: operations["pause_run_api_workspaces__wid__evolution_runs__run_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Run
+         * @description Release a user pause and admit the first unfinished operation.
+         */
+        post: operations["resume_run_api_workspaces__wid__evolution_runs__run_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{wid}/evolution/runs/{run_id}/retry": {
         parameters: {
             query?: never;
@@ -2434,6 +2474,8 @@ export interface components {
             summary: components["schemas"]["AttributionPreviewSummary"];
             /** Targetrevision */
             targetRevision?: string | null;
+            /** Usesboundskill */
+            usesBoundSkill: boolean;
         };
         /**
          * AttributionPreviewSummary
@@ -2644,6 +2686,8 @@ export interface components {
         AttributionSkillPackageList: {
             /** Items */
             items: components["schemas"]["AttributionSkillPackage"][];
+            /** Runtimeenabled */
+            runtimeEnabled: boolean;
         };
         /**
          * AttributionSkillRevisionWrite
@@ -3211,7 +3255,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_PENDING" | "BAD_CASE_SESSION_UNAVAILABLE" | "BAD_CASE_SESSION_MISMATCH" | "ATTRIBUTION_NOT_FOUND" | "ATTRIBUTION_SKILL_NOT_FOUND" | "ATTRIBUTION_SKILL_EXISTS" | "ATTRIBUTION_SKILL_INVALID" | "ATTRIBUTION_SKILL_PACKAGE_NOT_FOUND" | "ATTRIBUTION_SKILL_PACKAGE_EXISTS" | "ATTRIBUTION_SKILL_PACKAGE_INVALID" | "ATTRIBUTION_SKILL_PACKAGE_TOO_LARGE" | "ATTRIBUTION_QUALITY_GATE_FAILED" | "ATTRIBUTION_ENGINE_UNAVAILABLE" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "TARGET_CONTENT_UNRESOLVED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "EXTERNAL_SCHEMA_DRIFT" | "EXTERNAL_READ_FORBIDDEN" | "EXTERNAL_READ_FAILED" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_PENDING" | "BAD_CASE_SESSION_UNAVAILABLE" | "BAD_CASE_SESSION_MISMATCH" | "ATTRIBUTION_NOT_FOUND" | "ATTRIBUTION_SKILL_NOT_FOUND" | "ATTRIBUTION_SKILL_EXISTS" | "ATTRIBUTION_SKILL_INVALID" | "ATTRIBUTION_SKILL_PACKAGE_NOT_FOUND" | "ATTRIBUTION_SKILL_PACKAGE_EXISTS" | "ATTRIBUTION_SKILL_PACKAGE_INVALID" | "ATTRIBUTION_SKILL_PACKAGE_TOO_LARGE" | "ATTRIBUTION_QUALITY_GATE_FAILED" | "ATTRIBUTION_ENGINE_UNAVAILABLE" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_CONTROL_CONFLICT" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "TARGET_CONTENT_UNRESOLVED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "EXTERNAL_SCHEMA_DRIFT" | "EXTERNAL_READ_FORBIDDEN" | "EXTERNAL_READ_FAILED" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -3294,12 +3338,33 @@ export interface components {
             /** Cacheenabled */
             cacheEnabled: boolean;
             /**
+             * Canpause
+             * @default false
+             */
+            canPause: boolean;
+            /**
+             * Canresume
+             * @default false
+             */
+            canResume: boolean;
+            /**
+             * Controlstate
+             * @default running
+             * @enum {string}
+             */
+            controlState: "running" | "pause_requested" | "paused";
+            /**
              * Createdat
              * Format: date-time
              */
             createdAt: string;
             /** Createdby */
             createdBy: string | null;
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
             error: components["schemas"]["EvolutionRunError"] | null;
             final: components["schemas"]["EvolutionRunFinal"] | null;
             /**
@@ -3309,6 +3374,12 @@ export interface components {
             mode: "full" | "cluster_only";
             /** Models */
             models: string[];
+            /** Pauserequestedat */
+            pauseRequestedAt?: string | null;
+            /** Pausedat */
+            pausedAt?: string | null;
+            /** Pausedby */
+            pausedBy?: string | null;
             policy: components["schemas"]["EvolutionRunPolicy"];
             progress: components["schemas"]["EvolutionRunProgress"];
             /** Runid */
@@ -3325,6 +3396,36 @@ export interface components {
             window: components["schemas"]["EvolutionRunWindow"];
         };
         /**
+         * EvolutionRunControl
+         * @description Server-authoritative controls shared by mutations, cards and details.
+         */
+        EvolutionRunControl: {
+            /**
+             * Canpause
+             * @default false
+             */
+            canPause: boolean;
+            /**
+             * Canresume
+             * @default false
+             */
+            canResume: boolean;
+            /**
+             * Controlstate
+             * @default running
+             * @enum {string}
+             */
+            controlState: "running" | "pause_requested" | "paused";
+            /** Pauserequestedat */
+            pauseRequestedAt?: string | null;
+            /** Pausedat */
+            pausedAt?: string | null;
+            /** Pausedby */
+            pausedBy?: string | null;
+            /** Runid */
+            runId: string;
+        };
+        /**
          * EvolutionRunDetail
          * @description Complete shell consumed by the seven-step run-detail page.
          */
@@ -3335,12 +3436,33 @@ export interface components {
             /** Cacheenabled */
             cacheEnabled: boolean;
             /**
+             * Canpause
+             * @default false
+             */
+            canPause: boolean;
+            /**
+             * Canresume
+             * @default false
+             */
+            canResume: boolean;
+            /**
+             * Controlstate
+             * @default running
+             * @enum {string}
+             */
+            controlState: "running" | "pause_requested" | "paused";
+            /**
              * Createdat
              * Format: date-time
              */
             createdAt: string;
             /** Createdby */
             createdBy: string | null;
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
             error: components["schemas"]["EvolutionRunError"] | null;
             /**
              * Evalstatus
@@ -3359,6 +3481,12 @@ export interface components {
             models: string[];
             /** Nextretryat */
             nextRetryAt: string | null;
+            /** Pauserequestedat */
+            pauseRequestedAt?: string | null;
+            /** Pausedat */
+            pausedAt?: string | null;
+            /** Pausedby */
+            pausedBy?: string | null;
             policy: components["schemas"]["EvolutionRunPolicy"];
             progress: components["schemas"]["EvolutionRunProgress"];
             /** Retryattempts */
@@ -3411,7 +3539,7 @@ export interface components {
              * Eventtype
              * @enum {string}
              */
-            eventType: "run_created" | "prepare_started" | "sessions_linked" | "potential_computed" | "attribution_created" | "attribution_reused" | "workspace_prepared" | "clusters_created" | "step_advanced" | "run_blocked" | "run_resumed" | "final_completed" | "run_failed" | "run_interrupted" | "candidate_committed" | "candidate_pushed" | "eval_submitted" | "eval_polled" | "eval_completed" | "eval_failed" | "eval_timeout" | "cluster_accepted" | "cluster_rejected" | "push_started" | "push_retry_scheduled" | "push_succeeded" | "push_failed";
+            eventType: "run_created" | "prepare_started" | "sessions_linked" | "potential_computed" | "attribution_created" | "attribution_reused" | "workspace_prepared" | "clusters_created" | "ai_agent_call" | "degraded" | "step_advanced" | "run_pause_requested" | "run_paused" | "run_continued" | "run_blocked" | "run_resumed" | "final_completed" | "run_failed" | "run_interrupted" | "job_recovered" | "candidate_committed" | "candidate_pushed" | "eval_submitted" | "eval_polled" | "eval_completed" | "eval_failed" | "eval_timeout" | "cluster_accepted" | "cluster_rejected" | "push_started" | "push_retry_scheduled" | "push_succeeded" | "push_failed";
             /** Jobid */
             jobId: string | null;
             /**
@@ -3631,6 +3759,8 @@ export interface components {
             branchName: string | null;
             /** Pusherror */
             pushError: string | null;
+            /** Pushrepourl */
+            pushRepoUrl: string;
             /**
              * Pushstatus
              * @enum {string}
@@ -5131,6 +5261,10 @@ export interface components {
         /**
          * StepAttributionRow
          * @description One case attribution conclusion of step 4.
+         *
+         *     ``session_id`` is the source Session that owns the bad case. The client
+         *     needs it to build the canonical error-detail deep link without a second
+         *     lookup; rows without a Session cannot offer that link.
          */
         StepAttributionRow: {
             /** Attributionid */
@@ -5139,10 +5273,14 @@ export interface components {
             badCaseId: string;
             /** Category */
             category: ("model" | "prompt" | "error" | "flow" | "context") | null;
+            /** Conclusion */
+            conclusion?: ("attributed" | "non_target" | "inconclusive") | null;
             /** Confidence */
             confidence: number | null;
             /** Description */
             description: string;
+            /** Sessionid */
+            sessionId: string;
             /**
              * Source
              * @enum {string}
@@ -5234,11 +5372,24 @@ export interface components {
         };
         /**
          * StepClustersPayload
-         * @description Clusters ordered by severity descending.
+         * @description Clusters ordered by severity descending plus the AI-mode audit facts.
+         *
+         *     ``degraded`` lists the task keys a ``degrade`` policy replaced with
+         *     deterministic fallbacks, so a degraded result is never presented as model
+         *     participation. ``failure`` carries the sanitized run error when a strict
+         *     policy failed the run at this step.
          */
         StepClustersPayload: {
+            /** Algorithm */
+            algorithm?: string | null;
             /** Clusters */
             clusters: components["schemas"]["StepCluster"][];
+            /** Degraded */
+            degraded?: string[];
+            /** Failure */
+            failure?: string | null;
+            /** Failurepolicy */
+            failurePolicy?: ("strict" | "degrade") | null;
         };
         /**
          * StepFinalChange
@@ -5283,6 +5434,11 @@ export interface components {
             bestVersion: string | null;
             /** Changes */
             changes: components["schemas"]["StepFinalChange"][];
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
             /** Initscore */
             initScore: number | null;
             /** Metrics */
@@ -5377,6 +5533,8 @@ export interface components {
          * @description Immutable selection snapshot shown on step 1.
          */
         StepRangeCondition: {
+            /** Attributionpackageid */
+            attributionPackageId?: string | null;
             /** Cacheenabled */
             cacheEnabled: boolean;
             /** From */
@@ -5488,19 +5646,32 @@ export interface components {
             status: "pending" | "evaluating" | "completed" | "failed" | "timeout";
         };
         /**
-         * StepRoundPatch
-         * @description Patch preview stored with the round.
-         *
-         *     ``note`` carries the patch source's one-line change description (for the
-         *     minimal-config source it starts with "最小配置变更"). Rounds published
-         *     before the patch-source seam persist only ``file``/``lines``, so the field
-         *     stays optional and older snapshots keep rendering unchanged.
+         * StepRoundFilePatch
+         * @description One file inside a round's patch preview.
          */
-        StepRoundPatch: {
+        StepRoundFilePatch: {
             /** File */
             file: string;
             /** Lines */
             lines: string[];
+            /**
+             * Overwrite
+             * @default false
+             */
+            overwrite: boolean;
+        };
+        /**
+         * StepRoundPatch
+         * @description Patch preview projected from the round's stored bundle.
+         *
+         *     The durable shape carries ``files[]`` plus ``note``/``intent``/``report``,
+         *     and single-file rounds also keep the legacy ``file``/``lines`` keys. This
+         *     read model is built from :func:`stored_bundle` instead of validating the
+         *     raw dictionary, so a later writer field cannot break step 6 again.
+         */
+        StepRoundPatch: {
+            /** Files */
+            files: components["schemas"]["StepRoundFilePatch"][];
             /** Note */
             note?: string | null;
         };
@@ -11647,6 +11818,142 @@ export interface operations {
             };
             /** @description Run is unknown or out of workspace */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_run_api_workspaces__wid__evolution_runs__run_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionRunControl"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_run_api_workspaces__wid__evolution_runs__run_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionRunControl"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

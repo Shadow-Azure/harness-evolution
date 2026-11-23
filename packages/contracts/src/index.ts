@@ -105,6 +105,8 @@ export type ProbeListResponse = components["schemas"]["ProbeListResponse"];
 
 /** One complete run-list card grouped by backend state. */
 export type EvolutionRunCard = components["schemas"]["EvolutionRunCard"];
+/** Durable pause/resume state and server-owned action availability. */
+export type EvolutionRunControl = components["schemas"]["EvolutionRunControl"];
 
 /** Running and history groups already ordered by the backend. */
 export type EvolutionRunList = components["schemas"]["EvolutionRunList"];
@@ -365,8 +367,11 @@ export type StepRound = components["schemas"]["StepRound"];
 /** Pushed candidate ref and commit backing one iteration round. */
 export type StepCandidate = components["schemas"]["StepCandidate"];
 
-/** Placeholder or generated patch preview stored with one round. */
+/** Patch preview projected from the stored bundle of one round. */
 export type StepRoundPatch = components["schemas"]["StepRoundPatch"];
+
+/** One file patch inside a round's projected preview. */
+export type StepRoundFilePatch = components["schemas"]["StepRoundFilePatch"];
 
 /** Candidate push outcome stored with one round. */
 export type StepRoundPush = components["schemas"]["StepRoundPush"];

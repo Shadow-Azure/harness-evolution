@@ -18,6 +18,12 @@ DEFAULT_SKILL_KEY = "platform-default"
 DEFAULT_SKILL_REVISION = "builtin-v1"
 NO_MODEL_FINGERPRINT = "none"
 
+
+def is_platform_rule(skill_key: str, executor_type: str) -> bool:
+    """Identify the built-in rule compatible with the original production cache."""
+    return skill_key == DEFAULT_SKILL_KEY and executor_type == "builtin_rule"
+
+
 AttributionConclusion = Literal["attributed", "non_target", "inconclusive"]
 AttributionCategory = Literal["model", "prompt", "error", "flow", "context"]
 

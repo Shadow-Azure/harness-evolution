@@ -43,6 +43,7 @@ from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
 from app.db.crud.bad_cases import BadCaseRepository
 from app.db.crud.binding_batches import BindingQueue
 from app.db.crud.evolution import EvolutionRepository
+from app.db.crud.evolution_control import EvolutionControlRepository
 from app.db.crud.evolution_targets import EvolutionTargetRepository
 from app.db.crud.jobs import JobRepository
 from app.db.crud.overview import OverviewRepository
@@ -93,10 +94,14 @@ from app.service.evolution.attribution_jobs import (
     ATTRIBUTION_JOB_KIND,
     AttributionJobService,
 )
-from app.service.evolution.attribution_skill_packages import AttributionSkillPackageService
+from app.service.evolution.attribution_skill_packages import (
+    DEFAULT_PACKAGE_ID,
+    AttributionSkillPackageService,
+)
 from app.service.evolution.attribution_skills import AttributionSkillService
 from app.service.evolution.binding_worker import BindingWorker
 from app.service.evolution.blocked_sweeper import EvolutionBlockedSweeper
+from app.service.evolution.control import EvolutionControlService
 from app.service.evolution.engine.contracts import EngineDeps
 from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.eval_poller import (
@@ -119,10 +124,11 @@ from app.service.evolution.retry import EvolutionRetryService
 from app.service.evolution.runs import EvolutionRunService
 from app.service.evolution.stages import EvolutionStageService
 from app.service.evolution.target_content import (
+    CommitContentSource,
     TargetContentResolver,
     TargetVersionResolver,
 )
-from app.service.evolution.target_definition import TargetDefinitions, VersionedFileSource
+from app.service.evolution.target_definition import TargetDefinitions
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.service import IdentityService
 from app.service.jobs import JobRunner
@@ -132,9 +138,12 @@ from app.service.problems.service import ProblemService
 from app.service.sessions.service import SessionService
 from app.service.workspaces.ingest import BadCaseIngestService
 from app.service.workspaces.service import WorkspaceService
+from app.third_party_api.ai_agent.base import AIAgentProvider
+from app.third_party_api.ai_agent.factory import build_agent_provider
 from app.third_party_api.bad_case_query.http import HttpBadCaseCatalogSource
 from app.third_party_api.bad_case_query.models import BadCaseCatalogSource
 from app.third_party_api.git.content import SubprocessGitContent
+from app.third_party_api.git.provider import GitPushProviderFactory
 from app.third_party_api.git.proxy import GitProxyController, ProxyAwareGitRunner
 from app.third_party_api.git.remote import GitRemote, SubprocessGitRemote
 from app.third_party_api.git.workspace import GitWorkspaceManager
@@ -145,6 +154,35 @@ from app.third_party_api.trajectory.http import HttpTrajectorySource
 from app.third_party_api.trajectory.source import TrajectorySource
 
 logger = logging.getLogger(__name__)
+
+
+async def _record_ai_agent_health(provider: AIAgentProvider) -> None:
+    """Probe the configured provider and record one structured startup event."""
+    try:
+        health = await provider.health_check()
+    except Exception as exc:
+        logger.warning(
+            "ai agent provider health check failed",
+            extra={
+                "event": "ai_agent_health",
+                "provider_id": provider.provider_id,
+                "healthy": False,
+                "error_type": type(exc).__name__,
+            },
+        )
+        return
+    level = logging.INFO if health.healthy else logging.WARNING
+    logger.log(
+        level,
+        "ai agent provider health",
+        extra={
+            "event": "ai_agent_health",
+            "provider_id": health.provider_id,
+            "healthy": health.healthy,
+            "detail": health.detail,
+            "latency_ms": health.latency_ms,
+        },
+    )
 
 
 def create_default_app() -> FastAPI:
@@ -163,7 +201,7 @@ def create_app(
     git_remote: GitRemote | None = None,
     git_workspaces: WorkspacePreparer | None = None,
     target_version_resolver: TargetVersionResolver | None = None,
-    definition_source: VersionedFileSource | None = None,
+    definition_source: CommitContentSource | None = None,
 ) -> FastAPI:
     """Compose middleware, exception handling, and routes."""
     resolved_settings = settings or Settings()
@@ -173,7 +211,12 @@ def create_app(
     resolved_settings = resolved_settings.model_copy(update={"data_dir": data_directory.path})
     resolve_attribution_engine(resolved_settings.attribution_engine)
     proxy_controller = GitProxyController.from_settings(resolved_settings)
-    proxy_runner = ProxyAwareGitRunner(proxy_controller)
+    git_push_provider = GitPushProviderFactory.create(resolved_settings)
+    ai_agent_provider = build_agent_provider(resolved_settings)
+    proxy_runner = ProxyAwareGitRunner(
+        proxy_controller,
+        extra_environment=git_push_provider.auth_environment,
+    )
     resolved_database = database or create_database(resolved_settings)
     external_contract = ExternalContractMonitor(
         resolved_database,
@@ -189,7 +232,20 @@ def create_app(
         event_bus,
     )
     job_repository = JobRepository(resolved_database)
-    jobs = JobRunner(job_repository, event_bus, evolution_events)
+    jobs = JobRunner(
+        job_repository,
+        event_bus,
+        evolution_events,
+        lease_seconds=resolved_settings.job_lease_seconds,
+        heartbeat_seconds=resolved_settings.job_heartbeat_seconds,
+        drain_timeout_seconds=resolved_settings.job_drain_timeout_seconds,
+    )
+    evolution_control = EvolutionControlService(
+        EvolutionControlRepository(resolved_database),
+        evolution_events,
+        jobs.schedule,
+    )
+    jobs.set_evolution_control(evolution_control, evolution_repository)
     upstream_client: httpx.AsyncClient | None = None
     resolved_source = trajectory_source
     if resolved_source is None and resolved_settings.upstream_configured:
@@ -315,12 +371,14 @@ def create_app(
         runner=cast(Any, proxy_runner.run),
     )
     resolver = target_version_resolver or TargetContentResolver(git_content)
+    attribution_enabled = bool(resolved_settings.attribution_agent)
     evolution_targets = EvolutionTargetService(
         target_repository,
         resolved_git_remote,
         TargetDefinitions(
             definition_source or git_content, resolved_settings.attribution_package_dir
         ),
+        default_package_id=DEFAULT_PACKAGE_ID if attribution_enabled else None,
     )
     attribution_skills = AttributionSkillService(
         AttributionSkillRepository(resolved_database),
@@ -330,6 +388,7 @@ def create_app(
         AttributionSkillPackageRepository(resolved_database),
         resolved_settings.attribution_package_dir,
         resolved_settings.attribution_default_skill_path,
+        runtime_enabled=attribution_enabled,
     )
     potential_repository = PotentialRepository(resolved_database)
     attribution_repository = AttributionRepository(resolved_database)
@@ -338,7 +397,8 @@ def create_app(
         PotentialMatcher(potential_repository),
         resolver,
         reports=attribution_repository,
-        local_agent=bool(resolved_settings.attribution_agent),
+        rule_skills=attribution_skills,
+        local_agent=attribution_enabled,
     )
     probe_query_repository = ProbeQueryRepository(resolved_database)
     evolution_runs = EvolutionRunService(evolution_repository, run_event_store)
@@ -406,6 +466,7 @@ def create_app(
         runner=cast(Any, proxy_runner.run),
         push_enabled=resolved_settings.git_push,
         push_url=resolved_settings.git_push_url,
+        provider=git_push_provider,
     )
     workspace_manager = git_workspaces or default_workspace_manager
     candidate_workspace_manager = cast(GitWorkspaceManager, workspace_manager)
@@ -420,6 +481,8 @@ def create_app(
         evolution_events,
         resolver,
         attribution_jobs=attribution_jobs,
+        agent=ai_agent_provider,
+        failure_policy=resolved_settings.effective_ai_agent_failure_policy,
     )
     evolution_candidates = EvolutionCandidateService(
         evolution_repository,
@@ -429,6 +492,7 @@ def create_app(
         patch_source_factory=lambda run: default_patch_source_factory(
             run,
             fallback_mode=resolved_settings.patch_source_mode,
+            provider=ai_agent_provider,
         ),
     )
     eval_gateway_factory = build_eval_gateway_factory(resolved_settings)
@@ -538,6 +602,7 @@ def create_app(
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
         """Start storage and migrations without turning outages into crashes."""
         phase = "startup"
+        await _record_ai_agent_health(ai_agent_provider)
         proxy_controller.start()
         try:
             await resolved_database.start()
@@ -633,6 +698,7 @@ def create_app(
     app.state.settings = resolved_settings
     app.state.database = resolved_database
     app.state.data_directory = data_directory
+    app.state.ai_agent = ai_agent_provider
     app.state.identity = identity
     app.state.event_bus = event_bus
     app.state.jobs = jobs
@@ -666,6 +732,7 @@ def create_app(
     app.state.evolution_advance = evolution_advance
     app.state.evolution_apply = evolution_apply
     app.state.evolution_finalize = evolution_finalize
+    app.state.evolution_control = evolution_control
     app.state.evolution_retry = evolution_retry
     app.state.blocked_sweeper = evolution_blocked_sweeper
     app.state.evolution_eval_poller = evolution_eval_poller

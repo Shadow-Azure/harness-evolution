@@ -4,8 +4,8 @@ from alembic.script import ScriptDirectory
 
 from alembic import op
 
-revision = "0026"
-down_revision = "0025"
+revision = "0026a"
+down_revision = "0025a"
 
 
 def upgrade() -> None:

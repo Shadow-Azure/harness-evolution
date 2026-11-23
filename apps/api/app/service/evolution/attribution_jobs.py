@@ -17,8 +17,15 @@ from app.service.evolution.attribution import (
     AttributionRunProgress,
     AttributionRunSummary,
 )
+from app.service.evolution.control import PauseAtCheckpoint, checkpoint
 from app.service.evolution.engine.contracts import RunBlocked
-from app.service.evolution.potential import HitReason, OrderState, PotentialCase, TriggerPoint
+from app.service.evolution.potential import (
+    AnchorSource,
+    HitReason,
+    OrderState,
+    PotentialCase,
+    TriggerPoint,
+)
 from app.service.identity.schemas import IdentityModel
 from app.service.jobs import JobRunner, JobSubmission
 
@@ -90,6 +97,50 @@ def _trigger(
     )
 
 
+async def candidate_snapshot(
+    run: EvolutionRunRecord,
+    candidates: EvolutionRunCandidateRepository,
+    attributions: AttributionRepository,
+) -> tuple[PotentialCase, ...]:
+    """Rebuild included candidates with the original trigger and anchor coordinates."""
+    rows = [item for item in await candidates.list(run.id) if item.included]
+    evidence = await attributions.load_bad_case_evidence(
+        tuple(item.bad_case_id for item in rows),
+    )
+    return tuple(
+        PotentialCase(
+            bad_case_id=item.bad_case_id,
+            session_id=item.session_id,
+            object_name=run.target_name,
+            bad_case_type=(
+                evidence[item.bad_case_id].bad_case_type if item.bad_case_id in evidence else "self"
+            ),
+            trigger_at=item.case_trigger_at or item.created_at,
+            hit_reason=cast(HitReason, item.included_reason),
+            order_state=cast(OrderState, item.order_state),
+            included=True,
+            anchor_source=cast(AnchorSource, item.case_anchor_kind or "unknown"),
+            object_trigger=_trigger(
+                item.object_trigger_agent_id,
+                item.object_trigger_event_index,
+                item.object_trigger_at,
+            ),
+            case_trigger=(
+                _trigger(
+                    item.case_trigger_agent_id,
+                    item.case_trigger_event_index,
+                    item.case_trigger_at,
+                )
+                if item.case_trigger_agent_id is not None
+                or item.case_trigger_event_index is not None
+                or item.case_trigger_at is not None
+                else None
+            ),
+        )
+        for item in rows
+    )
+
+
 class AttributionJobService:
     """Coordinate durable attribution work on an isolated bounded-concurrency lane."""
 
@@ -116,9 +167,29 @@ class AttributionJobService:
         source: AttributionJobSource,
     ) -> JobSubmission:
         """Admit one idempotent batch after the candidate snapshot exists."""
+        run = await self._admissible_run(run_id, source)
+        return await self._jobs.submit(
+            kind=ATTRIBUTION_JOB_KIND,
+            payload={"runId": run.id, "source": source},
+            ref_id=run.id,
+            created_by=created_by,
+        )
+
+    async def _admissible_run(
+        self, run_id: str, source: AttributionJobSource
+    ) -> EvolutionRunRecord:
         run = await self._runs.get_run(run_id)
         if run is None:
             raise AppError(status_code=404, code=ErrorCode.RUN_NOT_FOUND, message="run not found")
+        if run.control_state != "running":
+            if source == "prepare":
+                raise PauseAtCheckpoint
+            raise AppError(
+                status_code=409,
+                code=ErrorCode.RUN_CONTROL_CONFLICT,
+                message="attribution requires a running control state",
+                details={"controlState": run.control_state},
+            )
         if run.progress_unit != 3:
             raise AppError(
                 status_code=409,
@@ -126,12 +197,7 @@ class AttributionJobService:
                 message="run is not waiting at the attribution stage",
                 details={"progressUnit": run.progress_unit},
             )
-        return await self._jobs.submit(
-            kind=ATTRIBUTION_JOB_KIND,
-            payload={"runId": run.id, "source": source},
-            ref_id=run.id,
-            created_by=created_by,
-        )
+        return run
 
     async def run_for_prepare(self, run: EvolutionRunRecord) -> AttributionRunSummary:
         """Submit or join the same durable batch used by every other entrypoint."""
@@ -148,6 +214,8 @@ class AttributionJobService:
                 error_stage="prepare",
                 retryable=terminal.status != "cancelled",
             )
+        if terminal.result.get("yielded"):
+            raise PauseAtCheckpoint
         return AttributionRunSummary(
             processed=int(terminal.result.get("processed", 0)),
             created=int(terminal.result.get("created", 0)),
@@ -179,7 +247,7 @@ class AttributionJobService:
         run = await self._runs.get_run(run_id)
         if run is None:
             raise LookupError("attribution run not found")
-        candidates = await self._snapshot_candidates(run)
+        candidates = await candidate_snapshot(run, self._candidates, self._attributions)
 
         async def observe(progress: AttributionRunProgress) -> None:
             observation = self._observation(run, progress).model_dump(mode="json", by_alias=True)
@@ -189,12 +257,20 @@ class AttributionJobService:
                 observation=observation,
             )
 
-        summary = await self._runner.run(
-            run,
-            candidates,
-            run.cache_enabled,
-            on_progress=observe,
-        )
+        async def before_case() -> None:
+            await checkpoint(self._runs, run.id)
+
+        try:
+            await before_case()
+            summary = await self._runner.run(
+                run,
+                candidates,
+                run.cache_enabled,
+                on_progress=observe,
+                before_case=before_case,
+            )
+        except PauseAtCheckpoint:
+            return {"runId": run.id, "yielded": True}
         return {
             "processed": summary.processed,
             "created": summary.created,
@@ -240,6 +316,7 @@ class AttributionJobService:
     async def retry(self, run_id: str, job_id: str) -> AttributionJobView:
         """Retry only missing cases through the shared cache and candidate pointers."""
         job = await self._owned_job(run_id, job_id)
+        await self._admissible_run(run_id, "retry")
         retried = await self._jobs.retry(
             job.id,
             payload={**job.payload, "source": "retry"},
@@ -251,48 +328,6 @@ class AttributionJobService:
         if job.kind != ATTRIBUTION_JOB_KIND or job.ref_id != run_id:
             raise AppError(status_code=404, code=ErrorCode.JOB_NOT_FOUND, message="job not found")
         return job
-
-    async def _snapshot_candidates(
-        self,
-        run: EvolutionRunRecord,
-    ) -> tuple[PotentialCase, ...]:
-        rows = [item for item in await self._candidates.list(run.id) if item.included]
-        evidence = await self._attributions.load_bad_case_evidence(
-            tuple(item.bad_case_id for item in rows),
-        )
-        return tuple(
-            PotentialCase(
-                bad_case_id=item.bad_case_id,
-                session_id=item.session_id,
-                object_name=run.target_name,
-                bad_case_type=(
-                    evidence[item.bad_case_id].bad_case_type
-                    if item.bad_case_id in evidence
-                    else "self"
-                ),
-                trigger_at=item.case_trigger_at or item.created_at,
-                hit_reason=cast(HitReason, item.included_reason),
-                order_state=cast(OrderState, item.order_state),
-                included=True,
-                object_trigger=_trigger(
-                    item.object_trigger_agent_id,
-                    item.object_trigger_event_index,
-                    item.object_trigger_at,
-                ),
-                case_trigger=(
-                    _trigger(
-                        item.case_trigger_agent_id,
-                        item.case_trigger_event_index,
-                        item.case_trigger_at,
-                    )
-                    if item.case_trigger_agent_id is not None
-                    or item.case_trigger_event_index is not None
-                    or item.case_trigger_at is not None
-                    else None
-                ),
-            )
-            for item in rows
-        )
 
     def _observation(
         self,

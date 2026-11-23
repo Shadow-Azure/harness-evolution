@@ -541,12 +541,15 @@ const potentialPageCount = computed(() =>
       )
     : 1,
 );
-const canRecompute = computed(() => attributionPreview.value?.canRecompute === true);
+const agentAvailable = computed(() => attributionPreview.value?.canRecompute === true);
+const usesBoundSkill = computed(() => attributionPreview.value?.usesBoundSkill === true);
+const canRecompute = computed(() => agentAvailable.value || !usesBoundSkill.value);
 const attributionSummary = computed(() => attributionPreview.value?.summary ?? null);
 const canLaunch = computed(() => {
-  if (!hasPotential.value || isBusy.value || requestError.value) return false;
-  if (cacheEnabled.value) return (attributionSummary.value?.reused ?? 0) > 0;
-  return canRecompute.value && Boolean(selectedPackage.value);
+  const summary = attributionSummary.value;
+  if (!hasPotential.value || isBusy.value || requestError.value || !summary) return false;
+  if (cacheEnabled.value) return usesBoundSkill.value ? (summary.reused ?? 0) > 0 : summary.potential > 0;
+  return agentAvailable.value ? Boolean(selectedPackage.value) : !usesBoundSkill.value;
 });
 const previewTargetRevision = computed<string | null | undefined>(() => {
   const revisions = [
@@ -1120,7 +1123,7 @@ async function launch(mode: "full" | "cluster_only"): Promise<void> {
       mode,
       policy: currentPolicy(),
       cacheEnabled: cacheEnabled.value,
-      ...(!cacheEnabled.value && { attributionPackageId: selectedPackage.value }),
+      ...(!cacheEnabled.value && agentAvailable.value && { attributionPackageId: selectedPackage.value }),
       page: 1,
       pageSize: POTENTIAL_PAGE_SIZE,
     };
@@ -2088,11 +2091,11 @@ const reasonEntries = computed(() => {
                   <span>潜在 bad case</span>
                 </div>
                 <div class="preview-stat">
-                  <strong>{{ attributionSummary?.reused ?? 0 }}</strong>
+                  <strong>{{ attributionSummary?.reused ?? "待执行" }}</strong>
                   <span>复用缓存</span>
                 </div>
                 <div class="preview-stat">
-                  <strong>{{ attributionSummary?.fresh ?? 0 }}</strong>
+                  <strong>{{ attributionSummary?.fresh ?? "待执行" }}</strong>
                   <span>本次新增归因</span>
                 </div>
                 <div class="preview-stat">
@@ -2102,6 +2105,7 @@ const reasonEntries = computed(() => {
               </div>
 
               <div
+                v-if="usesBoundSkill"
                 class="notice"
                 data-testid="wizard-effective-skill"
               >
@@ -2112,10 +2116,10 @@ const reasonEntries = computed(() => {
                 >
                   {{ skill }} · {{ count }} 份
                 </p>
-                <p>尚无报告 {{ attributionSummary?.missing ?? 0 }} 个 Badcase<span v-if="cacheEnabled">，本次跳过</span>。</p>
+                <p>尚无报告 {{ attributionSummary?.missing ?? 0 }} 个 Badcase<span v-if="cacheEnabled && usesBoundSkill">，本次跳过</span>。</p>
               </div>
               <label
-                v-if="!cacheEnabled && canRecompute"
+                v-if="!cacheEnabled && agentAvailable"
                 class="cache-option"
               >
                 本次重算使用的归因 Skill

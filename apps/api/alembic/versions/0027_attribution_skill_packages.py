@@ -1,7 +1,7 @@
 """Add workspace attribution Skill package assets and active bindings.
 
 Revision ID: 0027
-Revises: 0026
+Revises: 0026a
 Create Date: 2026-11-18
 """
 
@@ -14,7 +14,7 @@ from sqlalchemy.dialects.mysql import LONGTEXT
 from alembic import op
 
 revision: str = "0027"
-down_revision: str | None = "0026"
+down_revision: str | None = "0026a"
 branch_labels: str | None = None
 depends_on: str | None = None
 
