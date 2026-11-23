@@ -19,7 +19,7 @@
 |---|---|
 | `/opt/harness/releases/<sha>/` | 单次发布（`api/` 源码 + `web/` 静态产物） |
 | `/opt/harness/current` | 软链指向当前 release，nginx 与 systemd 的工作目录 |
-| `/opt/harness/shared/.env` | 生产 `HE_*` 配置（模板：[deploy/env.production.example](../deploy/env.production.example)） |
+| `/opt/harness/shared/.env` | 生产 `HE_*` 配置（模板：[.env.example](../.env.example)） |
 | `/opt/harness/shared/venv/` | 共享 Python 虚拟环境 |
 | `/opt/harness/shared/config/` | 流水线推送的部署配置（systemd/nginx/release.sh） |
 | `/var/lib/harness-evolution/` | 服务端数据目录，systemd `StateDirectory=` 创建并授权给 `harness`；`HE_DATA_DIR` 指向其下 |
@@ -44,11 +44,11 @@
 
 ## 配置注入
 
-数据目录与评测配置经同一通道写入服务器 `.env`：`Deploy` 从 GitHub Environment `vars.HE_DATA_DIR` 取绝对路径（空值用默认），评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入；`apiKeyRef` 只存环境变量名，未配置时跳过。Git 推送凭据同通道注入：`HE_GIT_PUSH_PROVIDER` 总是写入，`HE_GIT_PUSH_TOKEN` 为空时移除旧键，`GIT_ASKPASS` 指向 `/opt/harness/shared/git-askpass.sh`。值经 base64 传输、`inject-config.py` 原子写入并保持 `.env` 0600，注入前备份 `.env.bak.<sha>`；解码失败告警跳过并保留旧值，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [deploy/env.production.example](../deploy/env.production.example)。
+数据目录与评测配置经同一通道写入服务器 `.env`：`Deploy` 从 GitHub Environment `vars.HE_DATA_DIR` 取绝对路径（空值用默认），评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入；`apiKeyRef` 只存环境变量名，未配置时跳过。Git 推送凭据同通道注入：`HE_GIT_PUSH_PROVIDER` 总是写入，`HE_GIT_PUSH_TOKEN` 为空时移除旧键，`GIT_ASKPASS` 指向 `/opt/harness/shared/git-askpass.sh`。值经 base64 传输、`inject-config.py` 原子写入并保持 `.env` 0600，注入前备份 `.env.bak.<sha>`；解码失败告警跳过并保留旧值，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [.env.example](../.env.example)。
 
 ### AI Agent 配置
 
-模型审查与 patch 生成经 Secrets 注入 `AI_AGENT_PROVIDER`、`HE_AI_AGENT_FAILURE_POLICY`、`HE_PATCH_SOURCE_MODE`：非空写入 `.env`，缺失或空显式 `--unset`。`HE_AI_AGENT_FAILURE_POLICY` 留空按 provider 推导（`fake` → `degrade`，其余 → `strict`）；`strict` 下聚类 AI 失败让 run 在聚类阶段显式失败。值含换行/回车时注入前失败，其余解码失败告警跳过并保留旧值（默认值与合法值见[模板](../deploy/env.production.example)）。
+模型审查与 patch 生成经 Secrets 注入 `AI_AGENT_PROVIDER`、`HE_AI_AGENT_FAILURE_POLICY`、`HE_PATCH_SOURCE_MODE`：非空写入 `.env`，缺失或空显式 `--unset`。`HE_AI_AGENT_FAILURE_POLICY` 留空按 provider 推导（`fake` → `degrade`，其余 → `strict`）；`strict` 下聚类 AI 失败让 run 在聚类阶段显式失败。值含换行/回车时注入前失败，其余解码失败告警跳过并保留旧值（默认值与合法值见[模板](../.env.example)）。
 
 API 以 `harness` 运行且无 home：Deploy 安装 Claude Code 时注入稳定 `current` 路径、共享 settings、`CLAUDE_CONFIG_DIR` 与 0600 `.env` 中的 `ANTHROPIC_API_KEY`（见下节），CLI/settings 不再放在 `deploy` home。`HE_AI_AGENT_CLAUDE_BIN` Secret 仅在安装步骤跳过时作手工覆盖；`agent-edit` 需已配置 provider。
 
