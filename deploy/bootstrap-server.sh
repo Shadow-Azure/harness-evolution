@@ -128,7 +128,7 @@ EOF
 chmod 440 "$SUDOERS"
 visudo -c
 
-echo "[bootstrap] 完成。下一步: 填 /opt/harness/shared/.env（参考 deploy/env.production.example，"
+echo "[bootstrap] 完成。下一步: 填 /opt/harness/shared/.env（参考仓库根 .env.example，"
 echo "           HE_DATA_DIR 用绝对路径，默认 /var/lib/harness-evolution/data），"
 echo "           然后配置 GitHub Secrets 并触发首次发布。"
 echo "           启用 Git 出网代理时，发布后需以 root 重跑本脚本以安装 harness-proxy 单元。"

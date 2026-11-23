@@ -24,7 +24,7 @@
 1. 上传配置与脚本：`ssh root@<IP> mkdir -p /opt/harness/shared/config`，然后 `scp deploy/* root@<IP>:/opt/harness/shared/config/`。
 2. 执行初始化：`ssh root@<IP> "bash /opt/harness/shared/config/bootstrap-server.sh"`。脚本会幂等安装/更新带 `StateDirectory=harness-evolution` 的 systemd unit，并创建 `/var/lib/harness-evolution`（属主 `harness:harness`）。
 3. 记下脚本输出里的 MySQL 密码位置（`/root/harness-mysql-password.txt`）。
-4. 填 `.env`：取回密码 `ssh root@<IP> cat /root/harness-mysql-password.txt`，本地生成 `HE_JWT_SECRET`（`openssl rand -hex 32`）与管理员密码，按 [deploy/env.production.example](../deploy/env.production.example) 组装 `HE_DB_URL`（`mysql+asyncmy://harness:<密码>@127.0.0.1:3306/harness_evolution?charset=utf8mb4`）与 `HE_DATA_DIR=/var/lib/harness-evolution/data`，scp 到 `/opt/harness/shared/.env`（root：`chown deploy:deploy` + `chmod 600`）。
+4. 填 `.env`：取回密码 `ssh root@<IP> cat /root/harness-mysql-password.txt`，本地生成 `HE_JWT_SECRET`（`openssl rand -hex 32`）与管理员密码，按 [.env.example](../.env.example) 组装 `HE_DB_URL`（`mysql+asyncmy://harness:<密码>@127.0.0.1:3306/harness_evolution?charset=utf8mb4`）与 `HE_DATA_DIR=/var/lib/harness-evolution/data`，scp 到 `/opt/harness/shared/.env`（root：`chown deploy:deploy` + `chmod 600`）。
 5. 确认系统状态：`systemctl show -p StateDirectory harness-api` 输出 `StateDirectory=harness-evolution`；`ls -ld /var/lib/harness-evolution` 属主/属组为 `harness:harness`。
 6. 2核2G 机型加 swap：`fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab`。
 
