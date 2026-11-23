@@ -1,6 +1,7 @@
 """Production runtime contracts for a deployed CLI, private transcripts and report receipts."""
 
 import json
+import shutil
 import sys
 from pathlib import Path
 from uuid import uuid4
@@ -33,10 +34,10 @@ def test_sandbox_uses_case_directory_and_installed_binary(
     binary = str(tmp_path / "shared" / "claude")
     work = tmp_path / "attempt"
     if platform == "linux":
-        monkeypatch.setattr(claude_backend.shutil, "which", lambda _: None)
+        monkeypatch.setattr(shutil, "which", lambda _: None)
         with pytest.raises(RuntimeError, match="bubblewrap"):
             claude_backend._sandbox(work, binary)
-        monkeypatch.setattr(claude_backend.shutil, "which", lambda _: "/usr/bin/bwrap")
+        monkeypatch.setattr(shutil, "which", lambda _: "/usr/bin/bwrap")
     argv = claude_backend._sandbox(work, binary)
     if platform == "darwin":
         assert argv[0] == "/usr/bin/sandbox-exec"

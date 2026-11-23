@@ -131,3 +131,68 @@ def test_shared_snapshot_and_safe_path_under_concurrent_writes(tmp_path: Path) -
     (next(first.sessions.iterdir()) / "traces.json").write_text("changed")
     with pytest.raises(ValueError, match="evidence checksum"):
         first.load()
+
+
+async def test_target_source_failure_never_caches_partial_or_moved_content(
+    tmp_path: Path,
+    attribution_harness: Harness,
+) -> None:
+    """An unavailable commit is retryable; agent.md fallback still verifies the selected digest."""
+    from app.third_party_api.git.content import GitContentUnavailable
+    from app.utils.definition import definition_file_hash
+
+    source = Mock()
+    service = LocalAttribution(
+        Mock(attribution_package_dir=tmp_path), Mock(), Mock(), attribution_harness.database, source
+    )
+    body = "# Agent\nUse the fixed input."
+    item = replace(
+        case_input(),
+        probe_type="agent",
+        repo_url="upstream",
+        sub_dir="agents/example",
+        selected_version="main",
+        source_commit="f" * 40,
+        object_version=f"digest:{definition_file_hash(body)}",
+    )
+    source.read_file = AsyncMock(side_effect=GitContentUnavailable())
+    with pytest.raises(GitContentUnavailable, match="content_unavailable"):
+        await service._target_prompt(item)
+    source.read_file = AsyncMock(side_effect=GitContentUnavailable("file_not_found"))
+    with pytest.raises(ValueError, match="unavailable"):
+        await service._target_prompt(item)
+    source.read_file = AsyncMock(return_value="# Agent\nDifferent definition.")
+    with pytest.raises(ValueError, match="changed since launch"):
+        await service._target_prompt(item)
+    source.read_file = AsyncMock(side_effect=[GitContentUnavailable("file_not_found"), body])
+    assert await service._target_prompt(item) == body
+    assert [call.kwargs["file_name"] for call in source.read_file.await_args_list] == [
+        "AGENT.md",
+        "agent.md",
+    ]
+    assert {call.kwargs["ref"] for call in source.read_file.await_args_list} == {item.source_commit}
+
+
+@pytest.mark.parametrize("change", ["skill", "target_commit", "prompt", "input"])
+def test_retry_refuses_mixed_batch_identity_and_partial_inputs(tmp_path: Path, change: str) -> None:
+    """A retried case cannot run from another Skill/commit or a partially restored source file."""
+    item = replace(case_input(), source_commit="a" * 40)
+    archive = CaseInputArchive(tmp_path, item)
+    data = {
+        "session_tree.json": "{}",
+        "trace_coverage.json": "{}",
+        "traces.json": "{}",
+        "input_badcase.json": '{"case":"one"}',
+        "attribute_source.md": "fixed definition",
+    }
+    archive.publish(data)
+    if change == "skill":
+        archive = CaseInputArchive(tmp_path, replace(item, attribution_skill_content_hash="b" * 64))
+    elif change == "target_commit":
+        archive = CaseInputArchive(tmp_path, replace(item, source_commit="b" * 40))
+    elif change == "prompt":
+        next(archive.sources.glob("*/attribute_source.md")).write_text("partial")
+    else:
+        (archive.case_path / "input_badcase.json").write_text("partial")
+    with pytest.raises(ValueError, match=r"identity mismatch|checksum mismatch"):
+        archive.load()

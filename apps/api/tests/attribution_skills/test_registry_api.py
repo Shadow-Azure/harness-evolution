@@ -15,11 +15,15 @@ from sqlalchemy import func, inspect, select, update
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
+from app.db.crud.attribution_skills import AttributionSkillRepository
 from app.db.crud.evolution_targets import EvolutionTargetRepository
 from app.db.models.domain import attribution_skill_quality_events
 from app.db.models.evolution import evolution_run_candidates, evolution_runs, probe_clusters
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
+from app.errors import AppError
 from app.main import create_app
+from app.service.evolution.attribution_skills import AttributionSkillService
+from tests.workspaces.helpers import insert_workspace
 
 ADMIN_TEMP_PASSWORD = "attribution-skill-temporary-password"  # noqa: S105
 ADMIN_PASSWORD = "attribution-skill-replacement-password"  # noqa: S105
@@ -461,3 +465,83 @@ async def test_package_mode_keeps_one_explicit_target_binding(
         assert response.status_code == 409
         assert response.json()["error"]["code"] == "ATTRIBUTION_SKILL_INVALID"
     assert (await skill_api.client.get(target)).json() == bound.json()
+
+
+@pytest.mark.asyncio
+async def test_registry_revision_api_isolates_workspaces_and_pins_exact_content(
+    skill_api: SkillApiEnvironment,
+) -> None:
+    client = skill_api.client
+    first = await _create_skill(skill_api, "workspace-analysis")
+    other = await insert_workspace(skill_api.database, name="foreign-registry")
+    other_base = f"/api/workspaces/{other}/evolution"
+    version_path = f"attribution-skills/revisions/{first['id']}"
+    body = {
+        "content": {"instructions": "other workspace revision"},
+        "executorType": "agent_stub",
+        "outputSchemaVersion": "probe-report/v2",
+    }
+    operations = [
+        ("post", f"attribution-skills/{first['skillId']}/revisions", body),
+        ("patch", f"attribution-skills/{first['skillId']}", {"enabled": False}),
+        ("post", f"{version_path}/shadow-evaluations", None),
+        ("get", f"{version_path}/quality-events", None),
+        ("put", "attribution-skill-bindings/default", {"skillRevisionId": first["id"]}),
+    ]
+    for method, path, request in operations:
+        denied = await client.request(method, f"{other_base}/{path}", json=request)
+        assert denied.status_code == 404, path
+        assert denied.json()["error"]["code"] == "ATTRIBUTION_SKILL_NOT_FOUND"
+    unchanged = await client.get(_base("attribution-skills"))
+    assert any(item["id"] == first["id"] and item["enabled"] for item in unchanged.json()["items"])
+
+    disabled = await client.patch(
+        _base(f"attribution-skills/{first['skillId']}"), json={"enabled": False}
+    )
+    assert disabled.status_code == 204
+    registry = AttributionSkillService(AttributionSkillRepository(skill_api.database))
+    key = str(first["skillKey"])
+    digest = str(first["contentHash"])
+    original = await registry.resolve_snapshot(DEFAULT_WORKSPACE_ID, key, 1, digest)
+    assert original.content == first["content"] and original.executor_type == "agent_stub"
+    for wid, revision, identity in [
+        (other, 1, digest),
+        (DEFAULT_WORKSPACE_ID, 2, digest),
+        (DEFAULT_WORKSPACE_ID, 1, "f" * 64),
+    ]:
+        with pytest.raises(AppError) as err:
+            await registry.resolve_snapshot(wid, key, revision, identity)
+        assert err.value.status_code == 409
+        assert err.value.code.value == "ATTRIBUTION_SKILL_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_registry_rejects_unusable_names_content_and_duplicate_skill_keys(
+    skill_api: SkillApiEnvironment,
+) -> None:
+    path = _base("attribution-skills")
+    base = {
+        "skillKey": "unique-analysis",
+        "displayName": "team rules",
+        "description": "",
+        "content": {"instructions": "inspect"},
+        "executorType": "agent_stub",
+        "outputSchemaVersion": "probe-report/v2",
+    }
+    invalid_fields: list[dict[str, object]] = [{"skillKey": "platform-default"}, {"content": {}}]
+    for changed in invalid_fields:
+        rejected = await skill_api.client.post(path, json={**base, **changed})
+        assert rejected.status_code == 422
+        assert rejected.json()["error"]["code"] == "ATTRIBUTION_SKILL_INVALID"
+    first = await skill_api.client.post(path, json=base)
+    assert first.status_code == 201
+    again = await skill_api.client.post(path, json={**base, "displayName": "replacement"})
+    assert again.status_code == 409
+    assert again.json()["error"]["code"] == "ATTRIBUTION_SKILL_EXISTS"
+    rollback = await skill_api.client.post(
+        _base("attribution-skill-bindings/default/rollback"), json={"reason": "restore default"}
+    )
+    assert rollback.status_code == 409
+    assert rollback.json()["error"]["code"] == "ATTRIBUTION_QUALITY_GATE_FAILED"
+    items = (await skill_api.client.get(path)).json()["items"]
+    assert [s["displayName"] for s in items if s["skillKey"] == "unique-analysis"] == ["team rules"]

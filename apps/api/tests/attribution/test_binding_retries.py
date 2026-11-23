@@ -8,7 +8,7 @@ import pytest
 
 from app.db.crud.binding_batches import BindingClaim, BindingQueue
 from app.db.crud.evolution_targets import EvolutionTargetRepository
-from app.errors import AppError
+from app.errors import AppError, ErrorCode
 from app.service.evolution.binding_worker import BindingWorker
 from app.service.evolution.local_attribution import FrozenSkill, LocalAttribution
 from app.service.evolution.targets import EvolutionTargetService
@@ -204,3 +204,99 @@ async def test_recovered_worker_preserves_snapshot_and_skips_reports_from_same_g
     assert [case.bad_case_id for case in second.args[1]] == [OTHER_CASE_ID]
     freeze.assert_awaited_once_with(target.workspace_id, target.attribution_package_id)
     assert not await worker.tick()
+
+
+async def test_shutdown_releases_binding_without_spending_an_attempt(
+    attribution_harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = EvolutionTargetRepository(attribution_harness.database)
+    target = await repo.insert(TARGET)
+    runtime = Mock()
+    runtime.settings.attribution_timeout_seconds = 60
+    queue = BindingQueue(attribution_harness.database)
+    worker = BindingWorker(queue, Mock(), runtime, Mock(), Mock(), Mock(), Mock())
+    entered = asyncio.Event()
+
+    async def holding(_claim: BindingClaim) -> bool:
+        entered.set()
+        await asyncio.Event().wait()
+        return False
+
+    monkeypatch.setattr(worker, "analyze", holding)
+    task = asyncio.create_task(worker.tick())
+    await asyncio.wait_for(entered.wait(), 2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    released = await repo.get(target.id)
+    assert released is not None and released.attribution_will_retry
+    assert released.attribution_failures == 0 and released.attribution_error is None
+    next_claim = await queue.claim(60)
+    assert next_claim is not None and next_claim.generation == target.attribution_generation
+
+
+@pytest.mark.parametrize(
+    ("failure", "reason"),
+    [
+        (
+            AppError(
+                code=ErrorCode.TARGET_CONTENT_UNRESOLVED, message="git temporarily unavailable"
+            ),
+            "target_unavailable",
+        ),
+        (TimeoutError("remote timeout"), "analysis_failed"),
+    ],
+)
+async def test_target_and_executor_failures_have_distinct_retry_reasons(
+    attribution_harness: Harness, monkeypatch: pytest.MonkeyPatch, failure: Exception, reason: str
+) -> None:
+    repo = EvolutionTargetRepository(attribution_harness.database)
+    target = await repo.insert(TARGET)
+    queue = BindingQueue(attribution_harness.database)
+    worker = BindingWorker(
+        queue,
+        Mock(),
+        Mock(settings=Mock(attribution_timeout_seconds=60)),
+        Mock(),
+        Mock(),
+        Mock(),
+        Mock(),
+    )
+    monkeypatch.setattr(worker, "analyze", AsyncMock(side_effect=failure))
+    assert await worker.tick()
+    readback = await repo.get(target.id)
+    assert readback is not None and readback.attribution_generation == target.attribution_generation
+    assert readback.attribution_error == reason
+    assert readback.attribution_failures == 1 and readback.attribution_will_retry
+    assert not await worker.tick()
+
+
+async def test_binding_polls_missing_session_without_reanalyzing_completed_cases(
+    attribution_harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = EvolutionTargetRepository(attribution_harness.database)
+    target = await repo.insert(TARGET)
+    queue = BindingQueue(attribution_harness.database)
+    runtime = LocalAttribution(
+        Mock(attribution_timeout_seconds=60), Mock(), Mock(), attribution_harness.database, Mock()
+    )
+    freeze = AsyncMock(return_value=FrozenSkill("attribute-badcases", 1, "f" * 64))
+    monkeypatch.setattr(runtime, "resolve_package", freeze)
+    resolver = AsyncMock()
+    resolver.resolve.return_value = Mock(target_version="v1", target_revision="fixed")
+    matcher, reports, acquisition, runner = (AsyncMock() for _ in range(4))
+    matcher.associated_sessions.return_value = Mock(pending=1)
+    matcher.potential_cases.return_value = Mock(cases=(potential_case(),))
+    reports.latest_reports.return_value = {CASE_ID: ("report", "bound", "attributed")}
+    worker = BindingWorker(queue, acquisition, runtime, resolver, matcher, reports, runner)
+    assert await worker.tick()
+    acquisition.trigger.assert_awaited_once_with("target_binding")
+    runner.run.assert_not_awaited()
+    current = await repo.get(target.id)
+    assert (
+        current is not None and current.attribution_will_retry and current.attribution_failures == 0
+    )
+    assert (
+        current.attribution_snapshot is not None
+        and current.attribution_snapshot["hash"] == "f" * 64
+    )

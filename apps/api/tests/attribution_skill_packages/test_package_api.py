@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import io
+import shutil
 import zipfile
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import IO, Any
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -14,8 +17,11 @@ from fastapi import FastAPI
 from pydantic import SecretStr
 
 from app.config import DatabaseDialect, Settings
+from app.db.crud.evolution_targets import EvolutionTargetRepository
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
+from app.errors import AppError
 from app.main import create_app
+from app.service.evolution import attribution_skill_packages as packages
 from tests.workspaces.helpers import (
     access_token,
     bearer,
@@ -28,10 +34,10 @@ ADMIN_TEMP_PASSWORD = "skill-package-temporary-password"  # noqa: S105
 ADMIN_PASSWORD = "skill-package-replacement-password"  # noqa: S105
 
 
-def _zip(files: dict[str, str]) -> bytes:
+def _zip(files: dict[str, str | bytes], *, method: int = zipfile.ZIP_DEFLATED) -> bytes:
     """Build a small in-memory ZIP fixture."""
     output = io.BytesIO()
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    with zipfile.ZipFile(output, "w", compression=method) as archive:
         for name, value in files.items():
             archive.writestr(name, value)
     return output.getvalue()
@@ -283,3 +289,186 @@ async def test_viewer_can_read_and_download_but_cannot_mutate(
     )
     assert denied.status_code == 403
     assert denied.json()["error"]["code"] == "WORKSPACE_FORBIDDEN"
+
+
+@pytest.mark.asyncio
+async def test_upload_rejects_incomplete_archives_before_allocating_package(
+    package_client: tuple[FastAPI, httpx.AsyncClient, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Malformed input, naming collisions and size limits leave no asset or metadata."""
+    _, client, root = package_client
+    prompt = "---\nname: compact\n---\n"
+    # Simulate transport damage to one otherwise valid stored entry.
+    damaged = _zip({"SKILL.md": prompt}, method=zipfile.ZIP_STORED).replace(
+        b"name: compact", b"name: corRupt"
+    )
+    monkeypatch.setattr(packages, "MAX_FILE_COUNT", 3)
+    monkeypatch.setattr(packages, "MAX_EXPANDED_BYTES", 512)
+    examples = [
+        (b"incomplete archive", 422, "valid ZIP"),
+        (damaged, 422, "unreadable"),
+        (_zip({"compact/": b""}), 422, "does not contain files"),
+        (_zip({"SKILL.md": b"\xff"}), 422, "UTF-8"),
+        (_zip({"SKILL.md": "# missing name"}), 422, "frontmatter"),
+        (_zip({"SKILL.md": prompt}, method=zipfile.ZIP_BZIP2), 422, "stored or deflate"),
+        (_zip({"SKILL.md": prompt, "Refs.txt": "A", "refs.txt": "B"}), 422, "duplicate"),
+        (_zip({"SKILL.md": prompt, "refs": "one", "refs/notes": "two"}), 422, "directory"),
+        (_zip({"SKILL.md": prompt, "a": "", "b": "", "c": ""}), 413, "files"),
+        (_zip({"SKILL.md": prompt, "manual.txt": "a" * 512}), 413, "expanded"),
+    ]
+    for archive, status, reason in examples:
+        response = await client.post(_base(), files={"file": ("source.zip", archive)})
+        assert response.status_code == status, reason
+        assert reason in response.json()["error"]["message"]
+
+    monkeypatch.setattr(packages, "MAX_ARCHIVE_BYTES", 16)
+    oversized = await client.post(_base(), files={"file": ("big.zip", _zip({"SKILL.md": prompt}))})
+    assert oversized.status_code == 413
+    assert "compressed" in oversized.json()["error"]["message"]
+    assert not (root / DEFAULT_WORKSPACE_ID).exists()
+    assert len((await client.get(_base())).json()["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_duplicate_uploads_and_partial_writes_clean_up_only_the_new_asset(
+    package_client: tuple[FastAPI, httpx.AsyncClient, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app, client, root = package_client
+    prompt = "---\nname: repeatable\n---\n"
+    archive = _zip({"SKILL.md": prompt, "reference.md": "original"})
+    endpoint = _base()
+    first = await client.post(endpoint, files={"file": ("original", archive)})
+    assert first.status_code == 201
+    assert first.json()["archiveName"] == "repeatable.zip"
+    package_id = first.json()["id"]
+    other = await insert_workspace(app.state.database, name="independent")
+    there = await client.post(
+        f"/api/workspaces/{other}/attribution-skill-packages", files={"file": ("same.zip", archive)}
+    )
+    assert there.status_code == 201
+    assert there.json()["id"] != package_id
+    duplicate = await client.post(endpoint, files={"file": ("retry.zip", archive)})
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["details"]["skillName"] == "repeatable"
+
+    service = app.state.attribution_skill_packages
+    uploads = root / DEFAULT_WORKSPACE_ID / "attribute_skill" / "uploads"
+    assert {p.name for p in uploads.iterdir()} == {package_id}
+    original_open = Path.open
+
+    def out_of_space(path: Path, mode: str = "r", *args: Any, **kwargs: Any) -> IO[Any]:
+        if mode == "xb" and path.name == "reference.md":
+            raise OSError("volume full")
+        return original_open(path, mode, *args, **kwargs)
+
+    kwargs = dict(
+        workspace_id=DEFAULT_WORKSPACE_ID,
+        uploader_id="admin",
+        uploader_name="test",
+        archive_name="new.zip",
+        archive=archive,
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", out_of_space)
+        with pytest.raises(OSError, match="volume full"):
+            await service.upload(**kwargs)
+    assert {p.name for p in uploads.iterdir()} == {package_id}
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            service._repository, "create", AsyncMock(side_effect=RuntimeError("db offline"))
+        )
+        with pytest.raises(RuntimeError, match="db offline"):
+            await service.upload(**kwargs)
+    assert {p.name for p in uploads.iterdir()} == {package_id}
+    assert (await client.get(f"{endpoint}/{package_id}")).json()["prompt"] == prompt
+
+
+@pytest.mark.asyncio
+async def test_runtime_reads_verified_layout_and_platform_writer_after_upload(
+    package_client: tuple[FastAPI, httpx.AsyncClient, Path],
+) -> None:
+    app, client, root = package_client
+    service = app.state.attribution_skill_packages
+    prompt = "---\nname: portable\n---\n"
+    archive = _zip(
+        {
+            "portable/": b"",
+            "portable/SKILL.md": prompt,
+            "portable/make_probe_report.py": "custom unused writer",
+            "portable/refs/guide.md": "guide",
+            "notes.txt": "loose resource",
+        }
+    )
+    result = await client.post(_base(), files={"file": ("portable.zip", archive)})
+    assert result.status_code == 201
+    pk = result.json()["id"]
+    name, files = await service.runtime_files(DEFAULT_WORKSPACE_ID, pk)
+    assert name == "portable"
+    assert files == {
+        "SKILL.md": prompt.encode(),
+        "make_probe_report.py": b"# fixture writer\n",
+        "refs/guide.md": b"guide",
+        "notes.txt": b"loose resource",
+    }
+
+    # An older package can acquire a conflicting loose resource when restored from disk.
+    storage = root / DEFAULT_WORKSPACE_ID / "attribute_skill" / "uploads" / pk
+    (storage / "refs").mkdir()
+    (storage / "refs" / "guide.md").write_text("different")
+    with pytest.raises(AppError, match="ambiguous runtime file path"):
+        await service.runtime_files(DEFAULT_WORKSPACE_ID, pk)
+    shutil.rmtree(storage)
+    with pytest.raises(RuntimeError, match="files are unavailable"):
+        await service.download(DEFAULT_WORKSPACE_ID, pk)
+    assert (await client.delete(f"{_base()}/{pk}")).status_code == 204
+    assert (await client.get(f"{_base()}/{pk}")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_disabled_targets_protect_their_package_until_reassigned(
+    package_client: tuple[FastAPI, httpx.AsyncClient, Path],
+) -> None:
+    app, client, _ = package_client
+    database = app.state.database
+    owner = DEFAULT_WORKSPACE_ID
+    other = await insert_workspace(database, name="second-owner")
+    prompt = "---\nname: review-guide\n---\n"
+    upload = await client.post(_base(), files={"file": ("guide.zip", _zip({"SKILL.md": prompt}))})
+    assert upload.status_code == 201
+    package_id = upload.json()["id"]
+    targets = EvolutionTargetRepository(database)
+    target = await targets.insert(
+        dict(
+            workspace_id=owner,
+            object_type="skill",
+            object_name="parked",
+            repo_url="https://example.test/skill.git",
+            sub_dir="skill",
+            default_ref="main",
+            validation_project_id="validation",
+            test_project_id="test",
+            enabled=False,
+            attribution_package_id=package_id,
+        )
+    )
+    detail = f"{_base()}/{package_id}"
+    assert (await client.get(detail)).json()["targets"] == ["parked"]
+    assert (await client.delete(detail)).status_code == 409
+    with pytest.raises(AppError) as foreign:
+        await targets.bind_package(other, target.id, package_id)
+    assert foreign.value.status_code == 404
+    with pytest.raises(AppError) as absent:
+        await targets.bind_package(owner, target.id, "missing-resource")
+    assert absent.value.status_code == 422
+    assert (await client.get(detail)).json()["targets"] == ["parked"]
+    await targets.bind_package(owner, target.id, packages.DEFAULT_PACKAGE_ID)
+    rebound = await targets.get(target.id)
+    assert rebound is not None and rebound.attribution_generation != target.attribution_generation
+    assert not rebound.attribution_will_retry
+    await targets.bind_package(owner, target.id, packages.DEFAULT_PACKAGE_ID)
+    assert (await targets.get(target.id)) == rebound
+    assert (await client.get(detail)).json()["targets"] == []
+    assert (await client.delete(detail)).status_code == 204
+    assert (await client.get(f"{_base()}/{packages.DEFAULT_PACKAGE_ID}")).json()["targets"] == [
+        "parked"
+    ]
