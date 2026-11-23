@@ -59,7 +59,7 @@ Claude runs `/<skill_name> input_badcase.json，请分析并生成归因报告` 
 
 1. Take the batch and case path segments from `attribute_output/<batch_id>/<case_key>/probe_report.json`. Open `attribute_input/batches/<batch_id>/<case_key>/manifest.json` and its sibling `input_badcase.json`.
 2. Read `sessionId` and `evidenceHash` from the manifest. Use the Session directory naming rule above to open `attribute_input/sessions/<session_key>/<evidenceHash>/` and inspect the tree, transcripts and coverage used at execution time.
-3. For pinned bindings, `gitSource` identifies the repository, commit and file path. When launch resolves a Git commit, the Run reads the definition at that commit and records the repository, commit and target subdirectory in `gitSource`. Use `definitionKey` to locate the target definition and `sourceHash` to locate the prompt supplied to the model. Use `skill.snapshotHash` under `attribute_skill/snapshots/` to inspect the Skill files and model identity.
+3. `gitSource` records the repository and commit. Binding batches include the file path. Runs include the target subdirectory and read the definition at the commit resolved at launch. Use `definitionKey` to locate the target definition and `sourceHash` to locate the prompt supplied to the model. Use `skill.snapshotHash` under `attribute_skill/snapshots/` to inspect the Skill files and model identity.
 4. Compare the report’s `execution_manifest.contextSnapshotHash` with the input manifest’s `inputHash` and `execution_manifest.skill.contentHash` with `skill.snapshotHash`. In SQLite, look up the originating batch by database report ID.
 
 ```sql

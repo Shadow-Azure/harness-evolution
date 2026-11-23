@@ -59,7 +59,7 @@ Claude 在临时目录运行 `/<skill_name> input_badcase.json，请分析并生
 
 1. 从 `attribute_output/<batch_id>/<case_key>/probe_report.json` 取相同的两个路径段，打开 `attribute_input/batches/<batch_id>/<case_key>/manifest.json` 及同目录的 `input_badcase.json`。
 2. 取清单的 `sessionId`（按上述规则转换为目录名）和 `evidenceHash`，到 `attribute_input/sessions/<session_key>/<evidenceHash>/` 查看当时的树、轨迹和覆盖清单。
-3. 绑定批次的 `gitSource` 记录仓库、提交与文件路径。Run 在启动时解析出 Git 提交后，以该提交读取原文，并在 `gitSource` 记录仓库、提交与对象子目录。`definitionKey` 定位定义原文；`sourceHash` 定位当次模型看到的提示词副本。用 `skill.snapshotHash` 到 `attribute_skill/snapshots/` 查看实际使用的 Skill 文件和模型身份。
+3. `gitSource` 记录仓库和提交。绑定批次另存文件路径；Run 另存对象子目录，并按启动时解析的提交读取原文。`definitionKey` 定位定义原文；`sourceHash` 定位当次模型看到的提示词副本。用 `skill.snapshotHash` 到 `attribute_skill/snapshots/` 查看实际使用的 Skill 文件和模型身份。
 4. 用数据库报告的 `execution_manifest.contextSnapshotHash` 对照输入清单的 `inputHash`，用 `execution_manifest.skill.contentHash` 对照 `skill.snapshotHash`。SQLite 可按数据库报告 ID 查询批次来源：
 
 ```sql
