@@ -439,8 +439,47 @@ jobs:
           echo "已注入 ${#ENTRIES[@]} 个配置变量（数据目录：$DATA_DIR，Git 代理：${GIT_PROXY_URL:-直连}，Git 推送：$GIT_PUSH_PROVIDER，token $TOKEN_STATE，AI Agent 配置：$AI_AGENT_COUNT/4 已写入、其余已移除；Claude Code 共享资产：${CLAUDE_CODE_INSTALLED:-false}）"
 
       - name: 执行发布（迁移 + 切换 + 重启 + 探活）
+        id: release
         env:
           SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
+          set -uo pipefail
+          LOG="$RUNNER_TEMP/release.log"
+          set +e
           ssh -i ~/deploy_key -p "$SSH_PORT" -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \
-            "$SSH_USER@$SSH_HOST" "/opt/harness/shared/config/release.sh /opt/harness/releases/$SHA"
+            "$SSH_USER@$SSH_HOST" "/opt/harness/shared/config/release.sh /opt/harness/releases/$SHA" 2>&1 | tee "$LOG"
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          exit "$STATUS"
+
+      - name: 发布失败摘要（归因前置 → Provision 入口）
+        if: failure() && steps.release.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/release.log"
+          CODES="$(grep -Eo 'ATTRIBUTION_(BWRAP_MISSING|BWRAP_UNUSABLE|PROVIDER_UNSUPPORTED|CONFIG_INVALID)' "$LOG" 2>/dev/null | sort -u | tr '\n' ' ' || true)"
+          {
+            echo "## Deploy 失败"
+            echo
+            echo "错误码：\`${CODES:-未识别}\`。release.sh 在迁移、切换 \`current\` 和重启之前退出，旧 release 继续服务。"
+            echo
+            case "$CODES" in
+              *ATTRIBUTION_BWRAP_MISSING*)
+                echo "主机缺少 \`bubblewrap\`。运行 [Provision workflow](https://github.com/${{ github.repository }}/actions/workflows/provision.yml) 并选择 \`install\`，完成后重跑 Deploy。"
+                ;;
+              *ATTRIBUTION_BWRAP_UNUSABLE*)
+                echo "\`bubblewrap\` 存在但以 \`harness\` 身份运行命名空间探针失败。检查主机命名空间/seccomp 策略；Provision 的 \`check\` 会给出同一错误码。"
+                ;;
+              *ATTRIBUTION_PROVIDER_UNSUPPORTED*)
+                echo "公共 Provider 缺少 Skill 能力；检查 \`AI_AGENT_PROVIDER\` 与 Provider 配置。"
+                ;;
+              *ATTRIBUTION_CONFIG_INVALID*)
+                echo "归因配置非法；检查 \`AI_AGENT_PROVIDER\` 与相关 Secrets，日志不会输出具体值。"
+                ;;
+              *)
+                echo "查看上方 release 日志；归因前置的排查入口见 [部署文档](https://github.com/${{ github.repository }}/blob/main/docs/deployment.md#provision-入口)。"
+                ;;
+            esac
+            echo
+            echo "Runbook：[部署文档 › Provision 入口](https://github.com/${{ github.repository }}/blob/main/docs/deployment.md#provision-入口)。"
+          } >> "$GITHUB_STEP_SUMMARY"

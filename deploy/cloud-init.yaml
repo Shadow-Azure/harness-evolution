@@ -1,0 +1,12 @@
+#cloud-config
+# 新机一次性 provisioning：在机器创建阶段安装归因 Skill 的 bubblewrap 前置。
+# 用法：购买 ECS 时把本文件作为「用户数据 / cloud-init」传入（或等价 Ansible base role）。
+# 边界：bootstrap-server.sh 仍是全部基础包的 source of truth，本文件只提前保证
+#       bubblewrap 存在，避免首次 Deploy 被 attribution.preflight 拦下。
+#       创建后仍需以 root 执行 bootstrap-server.sh 完成用户/MySQL/nginx/systemd。
+package_update: true
+package_upgrade: false
+packages:
+  - bubblewrap
+runcmd:
+  - [bash, -lc, "command -v bwrap && bwrap --version"]

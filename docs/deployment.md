@@ -28,6 +28,14 @@
 
 初始化由 [deploy/bootstrap-server.sh](../deploy/bootstrap-server.sh) 完成（基础包、Python 3.12、用户、MySQL、nginx、systemd），逐步操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)。
 
+## Provision 入口
+
+归因 Skill 的 `bubblewrap` 是系统包，`deploy` 用户没有 apt/dpkg 权限，日常发布只以 `attribution.preflight` 为门禁。存量机用独立 [Provision workflow](../.github/workflows/provision.yml)：`workflow_dispatch` + `environment: production`（可配 required reviewers），只允许从 `main` 触发，模式为 `check` / `install` / `dry-run`。它调用 [provision-bubblewrap.sh](../deploy/provision-bubblewrap.sh)：已安装时只验证、缺失才安装，并以 `harness` 身份跑最小命名空间探针；Ubuntu 24.04 的 AppArmor userns 限制由脚本安装的 `/etc/apparmor.d/bwrap-userns-restrict` 放行（只针对 `/usr/bin/bwrap`，不改主机级 sysctl）；`ATTRIBUTION_BWRAP_MISSING` / `ATTRIBUTION_BWRAP_UNUSABLE` 与 preflight 同码。凭据 `PROVISION_SSH_KEY`（专用 root 私钥）与 `PROVISION_SSH_USER`（默认 `root`）只用于 Provision；配置、轮换与首次启用见[部署手册](../plans/deploy-aliyun-playbook.md#4-github-仓库配置网页粘贴)。
+
+## 新机 cloud-init
+
+新建 ECS 时用 [deploy/cloud-init.yaml](../deploy/cloud-init.yaml) 在创建阶段安装 `bubblewrap`；`bootstrap-server.sh` 仍是基础包清单的 source of truth，创建后仍需 root 执行一次 bootstrap。Provision 入口可复核与补救。
+
 ## GitHub 配置
 
 | 名称 | 类型 | 内容 |
@@ -36,6 +44,8 @@
 | `ALIYUN_USER` | Secret | SSH 用户（`deploy`） |
 | `ALIYUN_SSH_KEY` | Secret | deploy 用户 ed25519 私钥 |
 | `ALIYUN_SSH_PORT` | Variable | SSH 端口（默认 22） |
+| `PROVISION_SSH_KEY` | Secret | 仅 Provision 使用的专用 root 私钥 |
+| `PROVISION_SSH_USER` | Secret | 可选，Provision 的 SSH 用户（默认 `root`） |
 | `HE_DATA_DIR` | Variable | 数据目录绝对路径；留空用 `/var/lib/harness-evolution/data` |
 | `XRAY_CONFIG` | Environment Secret | 可选：完整 Xray JSON（VLESS 出站 + 回环 mixed 入站），见 [Git 出网代理](git-proxy.md) |
 | `production` | Environment | 发布 job 的保护环境，可配人工审批 |
@@ -54,7 +64,7 @@ Deploy 将 `vars.HE_DATA_DIR` 和评测 Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_U
 
 ### 归因运行时
 
-绑定归因与向导重算沿用公共 Provider 和模型。Linux Claude 需安装 `sudo apt-get install bubblewrap`。发布在迁移前检查，API 启动复检。用 `journalctl -u harness-api -g attribution.preflight` 查原因。恢复后重启，原绑定自动续跑。服务账号探针、报告核对见[归因验收](../plans/deploy-aliyun-playbook.md#验证-skill-归因)。
+绑定归因与向导重算沿用公共 Provider 和模型。Linux Claude 需要 `bubblewrap`：存量机用 [Provision 入口](deployment.md#provision-入口) 安装，新机由 cloud-init 带上。发布在迁移前检查，API 启动复检。用 `journalctl -u harness-api -g attribution.preflight` 查原因。恢复后重启，原绑定自动续跑。服务账号探针、报告核对见[归因验收](../plans/deploy-aliyun-playbook.md#验证-skill-归因)。
 
 ## Claude Code
 
