@@ -438,7 +438,9 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
         const overview = document.querySelector("[data-testid='session-overview']");
         const flow = document.querySelector("[data-testid='lane-dag']");
         const list = document.querySelector("[data-testid='problem-list']");
-        if (!selected || !overview || !flow || !list) return null;
+        const sessionId = "10000000-0000-4000-8000-000000000004";
+        const renderedId = overview?.querySelector("[data-testid='session-overview-root-session-id'] .mono")?.textContent;
+        if (selected?.dataset.sessionId !== sessionId || renderedId !== sessionId || !flow || !list) return null;
         const rect = (element) => element.getBoundingClientRect();
         return {
           innerHeight,
@@ -504,26 +506,31 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
       expression: `document.querySelectorAll("[data-session-id^='layout-clone-']").forEach((node) => node.remove())`,
     });
 
-    await page.session.send("Runtime.evaluate", {
-      expression: `document.querySelector("[data-testid='session-overview']").scrollTop = 1e6`,
-    });
-    const lowContentBottom = await waitForDocument(
-      page.session,
-      `(() => {
-        const overview = document.querySelector("[data-testid='session-overview']");
-        const list = document.querySelector("[data-testid='problem-list']");
-        if (!overview || !list) return null;
-        return {
-          scrollTop: overview.scrollTop,
-          gap: innerHeight - list.getBoundingClientRect().bottom,
-        };
-      })()`,
-      "right column scrolled to the last problem",
-    );
-    assert.ok(
-      lowContentBottom.gap >= 0 && lowContentBottom.gap <= 24,
-      `1500x837 bottom gap: ${JSON.stringify(lowContentBottom)}`,
-    );
+    // The selected Session restores its own scroll position as the DAG mounts.
+    // Sample the bottom gap only after a painted frame confirms the column
+    // reached the end. The shorter viewport also exercises overflow on macOS.
+    for (const height of [837, 610]) {
+      await page.session.send("Emulation.setDeviceMetricsOverride", {
+        width: 1500, height, deviceScaleFactor: 2, mobile: false,
+      });
+      const bottom = await waitForDocument(
+        page.session,
+        `(async () => {
+          await document.fonts.ready;
+          const overview = document.querySelector("[data-testid='session-overview']");
+          const list = overview?.querySelector("[data-testid='problem-list']");
+          if (innerHeight !== ${height} || !list) return null;
+          overview.scrollTop = overview.scrollHeight;
+          await new Promise(requestAnimationFrame);
+          const maxScroll = overview.scrollHeight - overview.clientHeight;
+          if (Math.abs(overview.scrollTop - maxScroll) > 1) return null;
+          return { scrollTop: overview.scrollTop, gap: innerHeight - list.getBoundingClientRect().bottom };
+        })()`,
+        `right column reaches its bottom at 1500x${height}`,
+      );
+      if (height === 610) assert.ok(bottom.scrollTop > 0, JSON.stringify(bottom));
+      assert.ok(bottom.gap >= 0 && bottom.gap <= 24, `1500x${height} bottom gap: ${JSON.stringify(bottom)}`);
+    }
 
     await page.session.send("Emulation.setDeviceMetricsOverride", {
       width: 1500,
