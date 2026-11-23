@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/process/2026-11-23-ignore-image-files.md
+2026-11-23-ignore-image-files.md: c7f4690563ba357b28bd815df1fef7bb24a95497
+2026-11-23-ignore-image-files.en.md: 3fe4d36f2578edd88710d4607fc07f594bdca95b
