@@ -19,7 +19,7 @@
 
 一句话：**方向可以理解，但 PR 没有把“旧口径”清理干净；这不是回退本身的问题，而是回退后的单一事实源没有建立。**
 
-> 后续：本检视的 D1–D6 已由 [#554](https://github.com/Shadow-Azure/harness-evolution/issues/554) 处理，修复内容是把 presence 定为唯一关联口径、补齐绑定字段/Skill 包/迁移契约，并修正原型数据流与 Run 详情计数。
+> 后续：本检视的 D1–D6 已由 [#554](https://github.com/Shadow-Azure/harness-evolution/issues/554) / [PR #555](https://github.com/Shadow-Azure/harness-evolution/pull/555) 处理，修复内容是把 presence 定为唯一关联口径、补齐绑定字段/Skill 包/迁移契约，并修正原型数据流与 Run 详情计数。
 
 ## §1 变更树与一页速览
 
