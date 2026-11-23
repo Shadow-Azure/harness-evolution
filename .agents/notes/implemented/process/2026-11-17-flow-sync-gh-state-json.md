@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-CLI 适配器解码 GitHub JSON。里程碑读取状态，issue 读取状态与可为空的里程碑编号。`runSync` 在状态或归属有差异时用一次 PATCH 同时写入两个字段，正文独立同步。编号过滤在远端写入前校验，限定 issue 的同步跳过所有里程碑写入。
+CLI 适配器解码 GitHub JSON。里程碑读取状态，issue 读取状态与可为空的里程碑编号。`runSync` 在状态或归属有差异时用一次 PATCH 同时写入两个字段，正文独立同步。同步前先校验明确选择的 issue 和里程碑编号。仅指定 issue 时，同步只更新这些 issue；可单独指定要结项的里程碑。历史 issue 结项时，限定范围的元数据同步保留 GitHub 上的验收说明。
 
 ## Alternatives considered
 

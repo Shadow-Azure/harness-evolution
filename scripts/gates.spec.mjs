@@ -841,10 +841,17 @@ test("issue adapter reads nullable milestone numbers and PATCHes state with its 
 });
 
 test("flow sync CLI rejects invalid scope arguments before any remote operation", () => {
-  for (const args of [["--issues", ""], ["--issues", "0"], ["--issues", "12,"], ["--issues", "12", "--retire-missing"]]) {
+  for (const flag of ["--issues", "--milestones"]) {
+    for (const args of [[""], ["0"], ["12,"], ["12", "--retire-missing"]]) {
+      const result = spawnSync(process.execPath, ["scripts/flow-sync.mjs", "--", flag, ...args], { encoding: "utf8" });
+      assert.notEqual(result.status, 0);
+      assert.ok(result.stderr.includes(`${flag} 需要逗号分隔`), result.stderr);
+    }
+  }
+  for (const args of [["--metadata-only"], ["--metadata-only", "--retire-missing"]]) {
     const result = spawnSync(process.execPath, ["scripts/flow-sync.mjs", "--", ...args], { encoding: "utf8" });
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /--issues 需要逗号分隔/);
+    assert.match(result.stderr, /--metadata-only 需要通过 --issues 或 --milestones/);
   }
 });
 
@@ -930,4 +937,47 @@ test("scoped sync repairs only the selected issue's state and milestone", async 
   await assert.rejects(runSync(current, io, [20, 99]), /未登记/);
   await runSync(current, io, [20]);
   assert.deepEqual(updates, [[20, "CLOSED", 2]]);
+});
+
+test("milestone scope touches only its named objects and validates both lists before writing", async () => {
+  const current = tree();
+  current.milestones[0].data.github = { number: 2 };
+  current.issues[0].data.github = { number: 20 };
+  const updates = [];
+  const io = {
+    readMilestoneState(milestone) {
+      assert.equal(milestone.data.github.number, 2);
+      return "open";
+    },
+    updateMilestoneState: (milestone, state) => updates.push([milestone.data.github.number, state]),
+    readIssue: () => ({ state: "open", milestone: null }),
+    updateIssue: (issue, state, milestone) => updates.push([issue.data.github.number, state, milestone]),
+  };
+  await assert.rejects(runSync(current, io, undefined, []), /milestone 编号为空/);
+  await assert.rejects(runSync(current, io, [20], [2, 99]), /milestone 编号为空或未登记/);
+  await assert.rejects(runSync(current, io, [99], [2]), /issue 编号为空或未登记/);
+  assert.deepEqual(updates, []);
+  await runSync(current, io, undefined, [2]);
+  assert.deepEqual(updates, [[2, "closed"]]);
+  updates.length = 0;
+  await runSync(current, io, [20], [2]);
+  assert.deepEqual(updates, [[2, "closed"], [20, "CLOSED", 2]]);
+});
+
+test("metadata-only sync preserves issue bodies and skips unselected drafts", async () => {
+  const current = tree();
+  current.milestones[0].data.github = { number: 2 };
+  current.issues[0].data.github = { number: 20 };
+  current.issues.push({ data: { github: { number: null } } });
+  const updates = [];
+  const io = {
+    readIssue: () => ({ state: "open", milestone: null }),
+    updateIssue: (issue, state, milestone) => updates.push([issue.data.github.number, state, milestone]),
+    issueBody: () => assert.fail("unexpected body render"),
+    readIssueBody: () => assert.fail("unexpected body read"),
+    updateIssueBody: () => assert.fail("unexpected body write"),
+  };
+  const result = await runSync(current, io, [20], undefined, { metadataOnly: true });
+  assert.deepEqual(updates, [[20, "CLOSED", 2]]);
+  assert.deepEqual(result, { milestones: 0, issues: 0, stateUpdates: 1, bodyUpdates: 0 });
 });

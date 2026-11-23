@@ -108,6 +108,15 @@ function titleOf(content) {
   return m[1].trim();
 }
 
+function selectExisting(items, numbers, kind) {
+  if (numbers === undefined) return [];
+  const selected = new Set(numbers);
+  const matches = items.filter((item) => selected.has(item.data.github?.number));
+  if (!selected.size || selected.size !== matches.length)
+    throw new Error(`指定的 ${kind} 编号为空或未登记在本地流程树中`);
+  return matches;
+}
+
 /**
  * 执行同步计划：milestone 先行、issue 随后。milestone 的编号必须回填到内存树
  * 上——issue 归属校验读的是内存字段，只写文件的话首次同步一轮跑不完。创建与
@@ -116,15 +125,16 @@ function titleOf(content) {
  * @param {{createMilestone: Function, createIssue: Function, backfill: Function,
  *   readMilestoneState: Function, updateMilestoneState: Function,
  *   readIssue: Function, updateIssue: Function}} io 远端与文件副作用
- * @param {number[] | undefined} issueNumbers 只发布这些已有编号的 issue，保留所有 milestone 和其他 issue。
+ * @param {number[] | undefined} issueNumbers 限定同步的已有 GitHub issue 编号。
+ * @param {number[] | undefined} milestoneNumbers 限定同步的已有 GitHub milestone 编号。
+ * @param {{metadataOnly?: boolean}} options 限定范围时可只同步状态与归属。
  * @returns {Promise<{milestones: number, issues: number, stateUpdates: number}>} 新建与状态更新数量
  */
-export async function runSync(tree, io, issueNumbers) {
-  const selected = issueNumbers && new Set(issueNumbers);
-  const issues = selected ? tree.issues.filter((i) => selected.has(i.data.github?.number)) : tree.issues;
-  if (selected && (!selected.size || selected.size !== issues.length))
-    throw new Error("指定的 issue 编号为空或未登记在本地流程树中");
-  const milestones = selected ? [] : tree.milestones;
+export async function runSync(tree, io, issueNumbers, milestoneNumbers, { metadataOnly = false } = {}) {
+  const scoped = issueNumbers !== undefined || milestoneNumbers !== undefined;
+  if (metadataOnly && !scoped) throw new Error("--metadata-only 需要通过 --issues 或 --milestones 指定已有编号");
+  const issues = scoped ? selectExisting(tree.issues, issueNumbers, "issue") : tree.issues;
+  const milestones = scoped ? selectExisting(tree.milestones, milestoneNumbers, "milestone") : tree.milestones;
   const plan = planSync({ milestones, issues });
   for (const milestone of plan.milestones) {
     const { number, url } = await io.createMilestone(milestone);
@@ -164,7 +174,7 @@ export async function runSync(tree, io, issueNumbers) {
     console.log(`flow:sync: issue ${issue.name} → #${number} ${desired}`);
   }
   let bodyUpdates = 0;
-  if (io.issueBody) {
+  if (!metadataOnly && io.issueBody) {
     for (const issue of issues) {
       const desired = io.issueBody(issue);
       if ((await io.readIssueBody(issue)) === desired) continue;
@@ -231,6 +241,14 @@ export function githubSyncAdapter(repo, gh) {
   };
 }
 
+function scopeNumbers(values, key) {
+  const value = values[key];
+  if (value === undefined) return undefined;
+  if (values["retire-missing"] || !/^[1-9]\d*(,[1-9]\d*)*$/.test(value))
+    throw new Error(`--${key} 需要逗号分隔的 GitHub 编号，且不能与 --retire-missing 同时使用`);
+  return value.split(",").map(Number);
+}
+
 async function main() {
   const repoUrl = execFileSync("git", ["remote", "get-url", "origin"], { encoding: "utf8" }).trim();
   const repo = /github\.com(?::\d+)?[:/]([^/]+\/[^/]+?)(?:\.git)?$/.exec(repoUrl)?.[1];
@@ -242,12 +260,16 @@ async function main() {
   }
   const { values } = parseArgs({
     args: process.argv.slice(2).filter((arg) => arg !== "--"),
-    options: { issues: { type: "string" }, "retire-missing": { type: "boolean" } },
+    options: {
+      issues: { type: "string" }, milestones: { type: "string" },
+      "metadata-only": { type: "boolean" }, "retire-missing": { type: "boolean" },
+    },
   });
-  if (values.issues !== undefined && (values["retire-missing"] || !/^[1-9]\d*(,[1-9]\d*)*$/.test(values.issues)))
-    throw new Error("--issues 需要逗号分隔的 GitHub 编号，且不能与 --retire-missing 同时使用");
-  const issueNumbers = values.issues?.split(",").map(Number);
-  const created = await runSync(tree, githubSyncAdapter(repo, gh), issueNumbers);
+  const issueNumbers = scopeNumbers(values, "issues");
+  const milestoneNumbers = scopeNumbers(values, "milestones");
+  const created = await runSync(tree, githubSyncAdapter(repo, gh), issueNumbers, milestoneNumbers, {
+    metadataOnly: values["metadata-only"],
+  });
   if (values["retire-missing"]) {
     const remote = {
       milestones: JSON.parse(gh(["api", `repos/${repo}/milestones?state=open&per_page=100`])),

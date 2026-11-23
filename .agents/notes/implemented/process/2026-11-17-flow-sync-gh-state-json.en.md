@@ -10,7 +10,7 @@ The `flow:sync` core orchestration accepts parsed states, but its production CLI
 
 ## Decision
 
-The CLI adapter decodes GitHub JSON. It reads state for milestones and both state and nullable milestone number for issues. When either issue field differs, `runSync` updates both in one PATCH. It reconciles the body separately. Scoped sync validates the issue selection before writes and skips all milestone writes.
+The CLI adapter decodes GitHub JSON. It reads state for milestones and both state and nullable milestone number for issues. When either issue field differs, `runSync` updates both in one PATCH. It reconciles the body separately. Scoped sync validates the selected issue and milestone numbers before writing. An issue-only selection updates those issues. A milestone can be selected on its own. Metadata-only synchronization preserves the original GitHub acceptance notes when closing historical issues.
 
 ## Alternatives considered
 
