@@ -356,13 +356,11 @@ class ClaudeCodeProvider(AIAgentProvider):
         )
 
     async def edit_workspace(self, request: EditRequest) -> EditResult:
-        """Collect one EditPlan, resuming the kept session when asked.
+        """Collect one EditPlan for the workspace.
 
         The plan is not applied here: the agent-edit patch source applies it
         deterministically against a scratch mirror and turns the result into a
-        PatchBundle. A caller that supplies ``session_id`` resumes the same
-        edit conversation and appends ``feedback`` to the prompt, which is how
-        a rejected round hands the delta and the rejected-edit buffer back.
+        PatchBundle.
         """
         started = self._clock()
         prep = self._submission.prepare(
@@ -372,14 +370,7 @@ class ClaudeCodeProvider(AIAgentProvider):
             filename=EDIT_PLAN_FILENAME,
         )
         prompt = _compose_prompt(request.prompt, prep.prompt_addendum)
-        if request.feedback is not None:
-            prompt = _compose_prompt(prompt, request.feedback)
-        argv = self._edit_argv(
-            prompt,
-            prep,
-            settings_file=self._settings_file(),
-            session_id=request.session_id,
-        )
+        argv = self._edit_argv(prompt, prep, settings_file=self._settings_file())
         _, parsed = await self._call(
             "edit",
             argv,
@@ -550,13 +541,11 @@ class ClaudeCodeProvider(AIAgentProvider):
         prep: SubmissionPrep,
         *,
         settings_file: Path,
-        session_id: str | None = None,
     ) -> tuple[str, ...]:
         """Build one edit argv; exploration is read-only and the session is kept.
 
         ``--max-turns`` bounds one call's spend; the timeout constant bounds its
-        wall clock. A resumed iteration adds ``--resume <session_id>`` so the
-        backend continues the same conversation instead of starting over.
+        wall clock.
         """
         argv = [
             self._binary(),
@@ -572,8 +561,6 @@ class ClaudeCodeProvider(AIAgentProvider):
             "--allowed-tools",
             ",".join((*READ_ONLY_TOOLS, *prep.allowed_tools)),
         ]
-        if session_id is not None:
-            argv.extend(("--resume", session_id))
         if settings_file.is_file():
             argv.extend(("--settings", str(settings_file)))
         return tuple(argv)

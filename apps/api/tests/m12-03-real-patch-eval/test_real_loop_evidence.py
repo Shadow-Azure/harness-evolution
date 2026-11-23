@@ -676,7 +676,6 @@ async def test_real_loop_agent_edit_commits_a_multi_file_candidate(
             "skills/deep-research/SKILL.md",
             "skills/deep-research/config/deep-research.json",
         }
-        assert round_.patch["sessionId"] == "fake-session"
         assert round_.patch["intent"]["summary"] == "提高重试上限并补充说明"
         assert {item["status"] for item in round_.patch["report"]} == {"applied"}
 
@@ -693,7 +692,6 @@ async def test_real_loop_agent_edit_commits_a_multi_file_candidate(
         assert "Retry budget: 3 attempts." in pushed_skill
         assert git(bare, "rev-parse", f"refs/tags/{round_.candidate_ref}") == commit
         assert "skills/deep-research/SKILL.md" in (round_.candidate_message or "")
-        assert agent.requests[0].session_id is None
         assert agent.requests[0].allowed_paths == ("skills/deep-research/**",)
 
         page = await events.list(RUN_ID, after_seq=0, limit=50, level=None)
@@ -707,78 +705,7 @@ async def test_real_loop_agent_edit_commits_a_multi_file_candidate(
         ]
         assert payload["intent"]["summary"] == "提高重试上限并补充说明"
         assert {item["status"] for item in payload["report"]} == {"applied"}
-        assert payload["sessionId"] == "fake-session"
         assert "SKILL.md" in payload["unifiedDiff"]
         assert "config/deep-research.json" in payload["unifiedDiff"]
-    finally:
-        server.shutdown()
-
-
-async def test_real_loop_agent_edit_resumes_a_rejected_round_with_feedback(
-    tmp_path: Path,
-    loop_state: tuple[Any, ...],
-) -> None:
-    """A same-cluster retry resumes the session with the rejection and buffer."""
-    database, repository, _probes, _bare, _seed, _base = loop_state
-    platform = StubEvalPlatform(status_sequence=["completed"])
-    server, stub_url = platform.build()
-    try:
-        prior_patch = {
-            "files": [
-                {
-                    "file": "skills/deep-research/SKILL.md",
-                    "lines": ["# Deep Research"],
-                    "overwrite": True,
-                },
-            ],
-            "note": "缩短超时",
-            "intent": {
-                "summary": "缩短超时",
-                "edits": [
-                    {
-                        "op": "replace",
-                        "file": "skills/deep-research/SKILL.md",
-                        "target": "# Deep Research",
-                        "content": "# Deep Research (fast)",
-                        "rationale": "被拒绝的旧方案",
-                    },
-                ],
-            },
-            "report": [],
-            "sessionId": "prior-session",
-        }
-        advance, _events, agent = await _agent_edit_environment(
-            tmp_path,
-            loop_state,
-            stub_url,
-        )
-        async with database.transaction() as session:
-            await session.execute(
-                insert(evolution_rounds).values(
-                    id="e2e-round-prior",
-                    run_id=RUN_ID,
-                    probe_cluster_id=CLUSTER_ID,
-                    seq=0,
-                    status="rejected",
-                    push_status="succeeded",
-                    eval_status="completed",
-                    patch=prior_patch,
-                    eval_result={
-                        "currentScore": 82.0,
-                        "candidateScore": 70.0,
-                        "externalVerdict": "reject",
-                        "metrics": [],
-                    },
-                    finished_at=NOW,
-                ),
-            )
-        await advance.handle(_job("evolution_advance", {"runId": RUN_ID}))
-        request = agent.requests[0]
-        assert request.session_id == "prior-session"
-        assert request.feedback is not None
-        assert "候选分 70.0 对比基线 82.0" in request.feedback
-        assert "被拒绝的旧方案" in request.feedback
-        round_ = await repository.get_round(ROUND_ID)
-        assert round_ is not None and round_.status == "evaluating"
     finally:
         server.shutdown()

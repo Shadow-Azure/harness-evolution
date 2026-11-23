@@ -1,5 +1,5 @@
 # ruff: noqa: RUF001
-"""agent-edit patch source: scratch application, feedback, and resume wiring."""
+"""agent-edit patch source: scratch application, scope, and failure behavior."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import pytest
 from app.db.models.evolution import EvolutionRunRecord
 from app.service.evolution.engine.contracts import ConfigError
 from app.service.evolution.git_candidate import CandidateSource, CandidateTrace
-from app.service.evolution.patch_source import AgentEditPatchSource, PatchFeedback
+from app.service.evolution.patch_source import AgentEditPatchSource
 from app.third_party_api.ai_agent.base import AIAgentProvider
 from app.third_party_api.ai_agent.contracts import (
     AgentUsage,
@@ -102,7 +102,7 @@ def _workspace(tmp_path: Path) -> Path:
 
 
 def _plan(*edits: Mapping[str, Any], summary: str = "raise the fetch timeout") -> dict[str, Any]:
-    """Build one raw plan document for the fake or scripted provider."""
+    """Build one raw plan document for the scripted provider."""
     return {"summary": summary, "edits": list(edits)}
 
 
@@ -190,7 +190,6 @@ async def test_agent_edit_applies_a_multi_file_plan_on_a_scratch_mirror(
     assert bundle.intent is not None
     assert len(bundle.intent.edits) == 2
     assert {status.status for status in bundle.report} == {"applied"}
-    assert bundle.session_id == "session-1"
     by_file = {patch.file: patch for patch in bundle.files}
     assert by_file[f"{SUB_DIR}/skill.json"].lines == ('{"timeoutSeconds": 120}',)
     assert "Fetch timeout is 120 seconds." in by_file[f"{SUB_DIR}/SKILL.md"].lines
@@ -201,78 +200,22 @@ async def test_agent_edit_applies_a_multi_file_plan_on_a_scratch_mirror(
     assert provider.requests[0].allowed_paths == (f"{SUB_DIR}/**",)
 
 
-async def test_agent_edit_retries_once_with_feedback_when_no_anchor_matches(
+async def test_agent_edit_fails_once_when_the_plan_cannot_apply(
     tmp_path: Path,
 ) -> None:
-    """A plan that cannot apply resumes the session with the concrete reasons."""
+    """A missing anchor is a hard failure for the turn: no second model call."""
     workspace = _workspace(tmp_path)
     provider = ScriptedProvider(
-        [
-            _plan(_replace(f"{SUB_DIR}/SKILL.md", "missing anchor", "unused")),
-            _plan(
-                _replace(
-                    f"{SUB_DIR}/skill.json",
-                    '"timeoutSeconds": 30',
-                    '"timeoutSeconds": 120',
-                ),
-            ),
-        ],
-    )
-    source = AgentEditPatchSource(provider)
-
-    bundle = await source.build_bundle(_run(workspace), 1, _trace())
-
-    assert len(provider.requests) == 2
-    first, second = provider.requests
-    assert first.session_id is None
-    assert second.session_id == "session-1"
-    assert second.feedback is not None
-    assert "未能全部应用" in second.feedback
-    assert "anchor" in second.feedback
-    assert [patch.file for patch in bundle.files] == [f"{SUB_DIR}/skill.json"]
-    assert bundle.session_id == "session-2"
-
-
-async def test_agent_edit_injects_rejected_round_feedback_and_buffer(
-    tmp_path: Path,
-) -> None:
-    """A rejected round's delta, reason, buffer, and session reach the request."""
-    workspace = _workspace(tmp_path)
-    provider = ScriptedProvider(
-        [
-            _plan(
-                _replace(
-                    f"{SUB_DIR}/skill.json",
-                    '"timeoutSeconds": 30',
-                    '"timeoutSeconds": 120',
-                ),
-            ),
-        ],
-    )
-    feedback = PatchFeedback(
-        attempt=2,
-        failure_reason="候选分低于基线",
-        current_score=82.0,
-        candidate_score=70.0,
-        rejected_edits=("- 上一轮计划：缩短超时", "    - replace skill.json: 又被拒绝"),
-        session_id="session-prior",
+        [_plan(_replace(f"{SUB_DIR}/SKILL.md", "missing anchor", "unused"))],
     )
 
-    await AgentEditPatchSource(provider).build_bundle(
-        _run(workspace),
-        2,
-        _trace(),
-        feedback=feedback,
-    )
+    with pytest.raises(ConfigError, match="no applicable change"):
+        await AgentEditPatchSource(provider).build_bundle(_run(workspace), 1, _trace())
 
-    request = provider.requests[0]
-    assert request.session_id == "session-prior"
-    assert request.feedback is not None
-    assert "候选分 70.0 对比基线 82.0" in request.feedback
-    assert "Δ=-12.0" in request.feedback
-    assert "候选分低于基线" in request.feedback
-    assert "已被拒绝的编辑" in request.feedback
-    assert "又被拒绝" in request.feedback
+    assert len(provider.requests) == 1
+    assert (workspace / SUB_DIR / "skill.json").read_text(
+        encoding="utf-8"
+    ) == '{"timeoutSeconds": 30}\n'
 
 
 async def test_agent_edit_rejects_an_out_of_scope_plan_without_writing(
@@ -304,9 +247,3 @@ async def test_agent_edit_requires_a_prepared_workspace(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="prepared workspace"):
         await AgentEditPatchSource(provider).build_bundle(run, 1, _trace())
     assert provider.requests == []
-
-
-def test_patch_feedback_rejects_a_non_positive_attempt() -> None:
-    """The retry ordinal is validated before it becomes prompt text."""
-    with pytest.raises(ValueError, match="attempt"):
-        PatchFeedback(attempt=0)

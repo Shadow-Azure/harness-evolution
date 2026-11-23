@@ -44,33 +44,7 @@ _CONFIG_FILENAME = "config/{}.json"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 _MAX_NAME_LENGTH = 64
 _MAX_PROMPT_EVIDENCE_CHARS = 1_800
-_MAX_REJECTED_EDITS_CHARS = 4_000
-_EDIT_ATTEMPTS = 2
-
-
-@dataclass(frozen=True, slots=True)
-class PatchFeedback:
-    """One rejected round's continuation context for a resumed edit session.
-
-    ``attempt`` is the retry ordinal within one cluster. ``failure_reason`` and
-    the score pair describe why the evaluation rejected the prior candidate.
-    ``rejected_edits`` is the bounded rejected-edit buffer: the previous plan's
-    summary plus the concrete edits and per-edit statuses, so the next attempt
-    neither repeats nor re-skins them. ``session_id`` is the prior provider
-    conversation to resume; ``None`` starts a fresh call with the same context.
-    """
-
-    attempt: int = 1
-    failure_reason: str = ""
-    current_score: float | None = None
-    candidate_score: float | None = None
-    rejected_edits: tuple[str, ...] = ()
-    session_id: str | None = None
-
-    def __post_init__(self) -> None:
-        """Reject a nonsensical retry ordinal before it reaches a prompt."""
-        if self.attempt < 1:
-            raise ValueError("PatchFeedback.attempt must be positive")
+_MAX_EDIT_ERROR_CHARS = 4_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,9 +58,7 @@ class PatchBundle:
     drift apart. ``unified_diff`` is reserved for the real ``git diff`` that
     the agent-edit source collects before committing (bugfix-21); the default
     legacy wrapper leaves it empty, and ``CandidateWorkspace.unified_diff``
-    always carries the git-produced diff after the commit. ``session_id`` is
-    the provider conversation that produced the intent, persisted with the
-    round so a later attempt can resume it.
+    always carries the git-produced diff after the commit.
 
     Hash compatibility is a hard requirement: a single-file bundle returns
     :attr:`Patch.sha256` byte-for-byte, so ``Harness-Patch-Hash`` trailers from
@@ -99,7 +71,6 @@ class PatchBundle:
     intent: EditPlan | None = None
     report: tuple[EditStatus, ...] = ()
     unified_diff: str = ""
-    session_id: str | None = None
 
     def __post_init__(self) -> None:
         """Reject an empty bundle, a blank note, or a repeated file path."""
@@ -156,15 +127,8 @@ class PatchSource(Protocol):
         run: EvolutionRunRecord,
         round_seq: int,
         trace: object,
-        *,
-        feedback: PatchFeedback | None = None,
     ) -> PatchBundle:
-        """Return the candidate change bundle for one round.
-
-        ``feedback`` carries the rejected round's continuation context. Legacy
-        single-file sources accept and ignore it; the agent-edit source resumes
-        the prior conversation and injects the rejected-edit buffer.
-        """
+        """Return the candidate change bundle for one round."""
         ...
 
     async def change_note(
@@ -200,11 +164,8 @@ async def build_default_bundle(
     run: EvolutionRunRecord,
     round_seq: int,
     trace: object,
-    *,
-    feedback: PatchFeedback | None = None,
 ) -> PatchBundle:
     """Wrap the legacy ``build()``/``change_note()`` pair as a single-file bundle."""
-    del feedback
     patch = await source.build(run, round_seq, trace)
     note = await source.change_note(run, round_seq, trace)
     return PatchBundle(files=(patch,), note=note)
@@ -218,17 +179,9 @@ class _DefaultBundleSource:
         run: EvolutionRunRecord,
         round_seq: int,
         trace: object,
-        *,
-        feedback: PatchFeedback | None = None,
     ) -> PatchBundle:
         """Return a one-file bundle without changing the legacy methods."""
-        return await build_default_bundle(
-            cast("_PatchBuilder", self),
-            run,
-            round_seq,
-            trace,
-            feedback=feedback,
-        )
+        return await build_default_bundle(cast("_PatchBuilder", self), run, round_seq, trace)
 
 
 class PlaceholderPatchSource(_DefaultBundleSource):
@@ -397,17 +350,13 @@ class AgentEditPatchSource:
     mutated before the candidate commit: an out-of-scope or failed edit cannot
     leak into the run branch, so no ``git checkout -- .`` rollback is needed.
 
-    A plan that does not apply cleanly (missing or ambiguous anchors, an
-    out-of-scope file) gets exactly one resumed feedback call; the best
-    attempt's report and session id are kept for audit and for a later round.
+    A plan that does not apply cleanly is a hard failure for this turn; it is
+    never retried with a second model call.
     """
 
-    def __init__(self, provider: AIAgentProvider, *, attempts: int = _EDIT_ATTEMPTS) -> None:
-        """Bind the AI agent backend and the bounded edit-attempt count."""
-        if attempts < 1:
-            raise ValueError("agent-edit attempts must be positive")
+    def __init__(self, provider: AIAgentProvider) -> None:
+        """Bind the AI agent backend."""
         self._provider = provider
-        self._attempts = attempts
 
     async def build(
         self,
@@ -438,42 +387,22 @@ class AgentEditPatchSource:
         run: EvolutionRunRecord,
         round_seq: int,
         trace: object,
-        *,
-        feedback: PatchFeedback | None = None,
     ) -> PatchBundle:
-        """Ask the agent for a plan, apply it on a mirror, and bundle the diff."""
+        """Ask the agent for one plan, apply it on a mirror, and bundle the files."""
         del round_seq
         workspace = _agent_workspace(run)
         allowed = _allowed_paths(run.sub_dir)
-        prompt = _edit_prompt(run, trace, allowed=allowed)
-        continuation = _feedback_prompt(feedback)
-        session_id = feedback.session_id if feedback is not None else None
-        best: tuple[EditPlan, EditApplication, dict[str, str], str | None] | None = None
-        for attempt in range(1, self._attempts + 1):
-            result = await self._provider.edit_workspace(
-                EditRequest(
-                    workspace=workspace,
-                    prompt=prompt,
-                    allowed_paths=allowed,
-                    session_id=session_id,
-                    feedback=continuation or None,
-                ),
-            )
-            plan = result.plan
-            if plan is None:
-                raise ConfigError("agent provider returned no EditPlan for the edit request")
-            session_id = result.session_id or session_id
-            application, contents = _apply_on_scratch(workspace, plan, allowed=allowed)
-            if best is None or _application_rank(application) > _application_rank(best[1]):
-                best = (plan, application, contents, session_id)
-            if application.files and not application.skipped:
-                break
-            if not application.skipped or attempt >= self._attempts:
-                break
-            continuation = _application_feedback(application)
-        if best is None:
-            raise ConfigError("agent edit produced no editable plan")
-        plan, application, contents, session_id = best
+        result = await self._provider.edit_workspace(
+            EditRequest(
+                workspace=workspace,
+                prompt=_edit_prompt(run, trace, allowed=allowed),
+                allowed_paths=allowed,
+            ),
+        )
+        plan = result.plan
+        if plan is None:
+            raise ConfigError("agent provider returned no EditPlan for the edit request")
+        application, contents = _apply_on_scratch(workspace, plan, allowed=allowed)
         if not application.files:
             detail = _application_detail(application)
             raise ConfigError(f"agent edit produced no applicable change: {detail}")
@@ -483,14 +412,7 @@ class AgentEditPatchSource:
             note=plan.summary,
             intent=plan,
             report=application.report,
-            session_id=session_id,
         )
-
-
-def _application_rank(application: EditApplication) -> tuple[int, int]:
-    """Prefer a fully applied plan, then the larger applicable change."""
-    clean = 1 if application.files and not application.skipped else 0
-    return (clean, len(application.files))
 
 
 def _agent_workspace(run: EvolutionRunRecord) -> Path:
@@ -602,49 +524,13 @@ def _edit_prompt(
     return "\n\n".join(lines)
 
 
-def _feedback_prompt(feedback: PatchFeedback | None) -> str:
-    """Render the rejected round's feedback and rejected-edit buffer."""
-    if feedback is None:
-        return ""
-    lines = [
-        f"## 上一轮反馈（同一问题簇第 {feedback.attempt} 次尝试被评测拒绝，本次必须修正）",
-    ]
-    if feedback.current_score is not None and feedback.candidate_score is not None:
-        delta = feedback.candidate_score - feedback.current_score
-        lines.append(
-            f"- 候选分 {feedback.candidate_score:.1f} 对比基线 "
-            f"{feedback.current_score:.1f}（Δ={delta:+.1f}），评测结论：拒绝。",
-        )
-    if feedback.failure_reason.strip():
-        lines.append(f"- 失败原因：{feedback.failure_reason.strip()}")
-    if feedback.rejected_edits:
-        lines.extend(
-            (
-                "## 已被拒绝的编辑（不要重复，也不要换皮重试）",
-                *feedback.rejected_edits,
-            ),
-        )
-    lines.append("- 请给出新的完整 EditPlan；若确需改同一文件，锚和内容必须不同并说明理由。")
-    return _bounded("\n".join(lines), _MAX_REJECTED_EDITS_CHARS + _MAX_PROMPT_EVIDENCE_CHARS)
-
-
-def _application_feedback(application: EditApplication) -> str:
-    """Render the per-edit reasons the mirror application could not apply."""
-    detail = _application_detail(application)
-    return (
-        "## 上一份 EditPlan 未能全部应用\n"
-        f"{detail}\n"
-        "- 请修正缺失/多义的锚文本或越界文件，重新提交完整 EditPlan。"
-    )
-
-
 def _application_detail(application: EditApplication) -> str:
-    """Join the bounded non-applied statuses for feedback or an error message."""
+    """Join the bounded non-applied statuses for an error message."""
     parts = [
         status.message or f"edits[{status.index}] {status.op} {status.file}"
         for status in application.skipped
     ]
-    return _bounded("; ".join(parts), _MAX_REJECTED_EDITS_CHARS) or "no edit applied"
+    return _bounded("; ".join(parts), _MAX_EDIT_ERROR_CHARS) or "no edit applied"
 
 
 def _bounded(text: str, limit: int) -> str:
@@ -684,7 +570,6 @@ __all__ = [
     "AgentEditPatchSource",
     "MinimalConfigPatchSource",
     "PatchBundle",
-    "PatchFeedback",
     "PatchSource",
     "PlaceholderPatchSource",
     "build_default_bundle",

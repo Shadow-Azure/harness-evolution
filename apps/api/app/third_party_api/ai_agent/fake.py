@@ -112,12 +112,7 @@ class FakeAIAgentProvider(AIAgentProvider):
         )
 
     async def edit_workspace(self, request: EditRequest) -> EditResult:
-        """Return a fixed plan (or no change) without touching the workspace.
-
-        ``request.session_id`` and ``request.feedback`` are accepted for the
-        iteration seam but never change the deterministic answer, so a caller
-        that resumes a rejected round gets byte-identical behavior in CI.
-        """
+        """Return a fixed plan (or no change) without touching the workspace."""
         if self._edit_plan is None:
             return EditResult(
                 summary="fake edit: no changes",

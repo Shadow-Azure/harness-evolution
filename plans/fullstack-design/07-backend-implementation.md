@@ -849,7 +849,7 @@ patch 生成采用 SkillOpt 式编辑指令（对齐 [microsoft/SkillOpt](https:
 ```
 
 - **执行流**：agent 以只读工具（Read/Grep/Glob）探索 → 写 `edits.json5`（submission 通道收货）→ 语义校验（`file ∈ allowed_paths`；锚**存在且唯一**，多义回喂要求补上下文；`len(edits) ≤ edit_budget`（默认 8，SkillOpt learning-rate 等价物：prompt 约束 + 硬截断））→ `edits.py` 确定性应用（replace 首个匹配 / insert_after 行边界 / append 追加，逐条 status 报告、后续编辑的锚实时复查）→ `git diff` 收真实改动 → `PatchBundle{files, unified_diff, note=intent.summary, intent=EditPlan, report=逐条状态}` → candidate 提交（`Harness-Patch-Hash` trailer）→ push → eval。
-- **迭代闭环**：同一问题簇存在下一轮时，round 被 reject 后 `--resume` 同一会话，反馈注入 delta/失败原因 + **rejected-edit buffer**（上轮 EditPlan 摘要：已被拒绝的编辑勿重复或换皮重试）；accept → 并入 run 分支。当前 run 状态机每簇只建一个 round，reject 后自动开下一轮的调度由后续 issue 交付；patch source 侧的 resume 与缓冲在下一轮存在时即生效。
+- **拒绝处理**：评测 reject 沿用既有状态机结束该轮并清理候选，不自动开启下一轮，也不注入 `--resume` 反馈或 rejected-edit buffer（2026-11-23 决定：失败即拒绝，避免 round 生命周期改造）；accept → 并入 run 分支。
 - **安全闸**：agent 工具面 = 只读 + 写一个 json5 文件（`dontAsk` 模式，无文件编辑权限）；`.harness-evolution/` 排除在 diff scope 外；应用器只在临时镜像上写入，越界/失败编辑不会触达仓库，因此无需 `git checkout -- .` 回滚；diff + intent + report 落 run events（diff 为候选 commit 的真实 git diff，超长时按事件载荷上限截断）。声明（intent）与实际（diff）的对照本身是审计信号。
 - **patch source 接入**：新增第三种模式 `agent-edit` 注册进 `PATCH_SOURCE_MODES` 与工厂，沿用「run 冻结配置优先、env 兜底」的选择语义；`PatchSource` 增加 `build_bundle()`（默认实现包装旧 `build()` 为单文件 bundle，旧实现零改动）。
 

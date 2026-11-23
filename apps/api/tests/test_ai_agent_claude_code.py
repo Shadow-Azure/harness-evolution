@@ -1,4 +1,3 @@
-# ruff: noqa: RUF001
 """Mock-runner matrix for the real Claude Code provider (#492).
 
 Every test here scripts the CLI transport; none spawns a process or touches the
@@ -769,37 +768,6 @@ async def test_edit_workspace_collects_the_plan_without_applying_it(
     assert argv[argv.index("--settings") + 1] == str(settings_file)
     assert "--no-session-persistence" not in argv
     assert "--resume" not in argv
-
-
-async def test_edit_resumes_the_same_session_with_rejected_round_feedback(
-    tmp_path: Path,
-) -> None:
-    """A resumed edit carries the session id and the continuation feedback."""
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    runner = MockRunner(
-        _edit_step(
-            {"summary": "second attempt", "edits": []},
-            session_id="edit-session-2",
-        ),
-    )
-    provider = ClaudeCodeProvider(_settings(tmp_path), runner=runner)
-
-    result = await provider.edit_workspace(
-        EditRequest(
-            workspace=workspace,
-            prompt="make the skill tolerate slow hosts",
-            session_id="edit-session-1",
-            feedback="候选分 70 对比基线 82（Δ=-12.0），评测结论：拒绝。",
-        ),
-    )
-
-    argv = runner.calls[0].argv
-    assert argv[argv.index("--resume") + 1] == "edit-session-1"
-    prompt = argv[argv.index("-p") + 1]
-    assert "候选分 70 对比基线 82" in prompt
-    assert result.session_id == "edit-session-2"
-    assert result.plan is not None
 
 
 async def test_edit_omits_settings_when_the_deployment_file_is_absent(

@@ -19,7 +19,7 @@ from app.db.crud.evolution import EvolutionRepository
 from app.db.models.evolution import EvolutionRoundRecord, EvolutionRunRecord
 from app.service.evolution.backoff import next_retry_at
 from app.service.evolution.control import checkpoint
-from app.service.evolution.engine.contracts import ConfigError, EvalResult, RunBlocked
+from app.service.evolution.engine.contracts import ConfigError, RunBlocked
 from app.service.evolution.events import (
     EvolutionRunEventLevel,
     EvolutionRunEventService,
@@ -30,7 +30,6 @@ from app.service.evolution.git_failures import classify_git_failure
 from app.service.evolution.patch_source import (
     PLACEHOLDER_PATCH_NOTE,
     PatchBundle,
-    PatchFeedback,
     PatchSource,
     default_patch_source_factory,
 )
@@ -230,14 +229,8 @@ class EvolutionCandidateService:
         bundle = _stored_bundle(saved)
         if bundle is None:
             patch_source = self._patch_source_factory(run)
-            feedback = await self._patch_feedback(current)
             try:
-                bundle = await patch_source.build_bundle(
-                    run,
-                    current.seq,
-                    trace,
-                    feedback=feedback,
-                )
+                bundle = await patch_source.build_bundle(run, current.seq, trace)
             except AgentProviderError as exc:
                 await self._handle_provider_failure(run, current.id, exc, job_id=job_id)
             except ConfigError as exc:
@@ -720,53 +713,6 @@ class EvolutionCandidateService:
                 extra={"run_id": run_id, "event_type": event_type},
             )
 
-    async def _patch_feedback(
-        self,
-        round_: EvolutionRoundRecord,
-    ) -> PatchFeedback | None:
-        """Build the rejected-round context for a same-cluster retry attempt.
-
-        The run state machine currently creates one round per cluster, so this
-        is ``None`` on a first attempt. When a later round for the same cluster
-        exists (the retry scheduler's job), the latest rejected round supplies
-        the score delta, the failure reason, the rejected-edit buffer, and the
-        provider session id to resume.
-        """
-        rounds = await self._runs.list_rounds(round_.run_id)
-        prior = sorted(
-            (
-                item
-                for item in rounds
-                if item.probe_cluster_id == round_.probe_cluster_id
-                and item.seq < round_.seq
-                and item.status == "rejected"
-            ),
-            key=lambda item: item.seq,
-        )
-        if not prior:
-            return None
-        latest = prior[-1]
-        current_score: float | None = None
-        candidate_score: float | None = None
-        if latest.eval_result is not None:
-            result: EvalResult | None = None
-            try:
-                result = EvalResult.from_payload(latest.eval_result)
-            except ValueError:
-                result = None
-            if result is not None:
-                current_score = result.current_score
-                candidate_score = result.candidate_score
-        stored = _stored_bundle(latest.patch)
-        return PatchFeedback(
-            attempt=len(prior) + 1,
-            failure_reason=latest.eval_error or "",
-            current_score=current_score,
-            candidate_score=candidate_score,
-            rejected_edits=_rejected_edit_buffer(stored),
-            session_id=stored.session_id if stored is not None else None,
-        )
-
     async def _handle_provider_failure(
         self,
         run: EvolutionRunRecord,
@@ -1073,8 +1019,6 @@ def _stored_bundle(raw: object) -> PatchBundle | None:
     note = raw.get("note")
     if not isinstance(note, str) or not note.strip():
         note = PLACEHOLDER_PATCH_NOTE
-    session_id = raw.get("sessionId")
-    session = session_id if isinstance(session_id, str) and session_id else None
     intent = _stored_intent(raw.get("intent"))
     report = _stored_report(raw.get("report"))
     files: list[Patch] = []
@@ -1096,7 +1040,6 @@ def _stored_bundle(raw: object) -> PatchBundle | None:
             note=note,
             intent=intent,
             report=report,
-            session_id=session,
         )
     except ValueError:
         return None
@@ -1164,40 +1107,12 @@ def _stored_patch(bundle: PatchBundle) -> dict[str, object]:
         "note": bundle.note,
         "intent": bundle.intent.model_dump(mode="json") if bundle.intent is not None else None,
         "report": [asdict(status) for status in bundle.report],
-        "sessionId": bundle.session_id,
     }
     if len(bundle.files) == 1:
         # Keep the legacy single-file keys so old readers and existing runs
         # resolve the same file, lines, and note without a migration.
         saved.update(files[0])
     return saved
-
-
-def _rejected_edit_buffer(bundle: PatchBundle | None) -> tuple[str, ...]:
-    """Render the prior plan and its non-applied statuses for a resumed prompt."""
-    if bundle is None or bundle.intent is None:
-        return ()
-    lines = [f"- 上一轮计划：{bundle.intent.summary}"]
-    for edit in bundle.intent.edits:
-        lines.append(
-            f"    - {edit.op} {edit.file}: "
-            f"target={_clip(edit.target, 160)!r} content={_clip(edit.content, 160)!r} "
-            f"rationale={_clip(edit.rationale, 120)}",
-        )
-    for status in bundle.report:
-        if status.status == "applied":
-            continue
-        lines.append(
-            f"    - 未应用 edits[{status.index}] {status.op} {status.file}: "
-            f"{_clip(status.message, 200)}",
-        )
-    return tuple(lines)
-
-
-def _clip(value: str | None, limit: int) -> str:
-    """Trim one rejected-edit fragment to a bounded single line."""
-    text = " ".join((value or "").split())
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
 _MAX_EVENT_DIFF_CHARS = 20_000
@@ -1223,7 +1138,6 @@ def _audit_payload(
         {
             "intent": bundle.intent.model_dump(mode="json"),
             "report": [asdict(status) for status in bundle.report],
-            "sessionId": bundle.session_id,
             "unifiedDiff": diff,
         },
     )
