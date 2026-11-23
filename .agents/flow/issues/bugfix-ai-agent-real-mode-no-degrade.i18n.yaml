@@ -2,4 +2,4 @@
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-ai-agent-real-mode-no-degrade.md
 bugfix-ai-agent-real-mode-no-degrade.md: a43784d2403879659c41dccf125169adedf40d99
-bugfix-ai-agent-real-mode-no-degrade.en.md: 02dd1f0abaccfbf0b65cdaffe4c6757e8a2105e3
+bugfix-ai-agent-real-mode-no-degrade.en.md: 82b7b71739f8de40709ffd84fe15660b39225ba8

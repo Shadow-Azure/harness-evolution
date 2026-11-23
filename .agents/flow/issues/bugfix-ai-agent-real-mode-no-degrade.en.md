@@ -69,7 +69,7 @@ In production run `01M834EBAY3C9BB3TM8V85VHQN` (2026-11-23 10:40, target `codesp
 
 - **Configuration and policy resolution**: add `ai_agent_failure_policy: Literal["strict", "degrade"]` to `Settings` (environment key `HE_AI_AGENT_FAILURE_POLICY`), defaulting by provider (`fake` → `degrade`, anything else → `strict`); unknown values fail startup; update `deploy/env.production.example` and `docs/deployment.md`.
 - **Propagate clustering failures**: in strict mode, `cluster_llm.enhance_clusters` must raise a `ClusterAIFailure` carrying the task and a sanitized reason instead of catching and returning fallbacks; `prepare._enhance_clusters` lets it propagate; `prepare` must not call `replace_prepared_clusters` to persist fallback clusters and must not emit a successful `clusters_created`.
-- **Run/stage semantics**: the engine maps the clustering failure to `failed` (or the existing `blocked` state when the failure needs a human or retry), records the stage error, and keeps the already-recorded `ai_agent_call` events. Do not use the misleading `degraded` success wording. Retries continue to use the existing run retry, with no new round-level loop.
+- **Run/stage semantics**: the engine maps the clustering failure to `failed` (or the existing `blocked` state when the failure needs a human or retry), records the stage error, and keeps the already-recorded `ai_agent_call` events. Do not use the misleading `degraded` success wording. Retries continue to use the existing run retry, with no new turn-level loop.
 - **API/UI**: `/steps/clusters` gains failure/degradation information (at least algorithm, failurePolicy, degraded/failure reason); the clustering step and run verdict no longer show "self-evolution effective" for failed results; regenerate `packages/contracts` and generated types.
 - **Deployment prerequisite**: produce a stable `/opt/harness/shared/claude-code/current/usr/bin/claude` symlink; write settings/credentials to a harness-readable shared path (or support `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL` environment authentication); inject `HE_AI_AGENT_CLAUDE_BIN` (and optionally `HE_AI_AGENT_CLAUDE_SETTINGS`); before switching `current`, run `claude --version` and a settings-readability check as harness, and abort the release on failure instead of going live and degrading silently.
 - **Tests**: in strict mode any task failure → run fails and no fallback clusters are persisted; fake/degrade mode keeps the existing fallback; CLI ENOENT/EACCES/non-zero exit/timeout map to diagnosable failures; the deployment preflight failure branch is asserted; API/UI failure states are covered.
@@ -86,7 +86,7 @@ In production run `01M834EBAY3C9BB3TM8V85VHQN` (2026-11-23 10:40, target `codesp
 ## Dependencies and boundary
 
 - Depends on bugfix-15 (provider skeleton and Settings), bugfix-17 (real Claude Code subclass), bugfix-19 (three-layer clustering and existing degradation), and bugfix-23 (three-key Secret injection).
-- Delivery boundary: this issue owns the "no silent degradation in real mode" contract, API/UI visibility, and the deployment prerequisite code/configuration. It does not change patch generation (agent-edit), the evaluation gateway, or the round lifecycle.
+- Delivery boundary: this issue owns the "no silent degradation in real mode" contract, API/UI visibility, and the deployment prerequisite code/configuration. It does not change patch generation (agent-edit), the evaluation gateway, or the turn lifecycle.
 - Production Secret values (model API key, CLI absolute path) never enter the repository; documentation only names keys, semantics, and verification commands.
 
 ## Verification
@@ -119,5 +119,5 @@ pnpm verify:flow
 
 - Do not keep a "silent degradation + normal result" compatibility path in real mode; do not treat `degraded` as a success signal.
 - Do not change the deterministic behavior of the `fake` provider, and do not remove the `degrade` capability (it is the explicit offline/test choice).
-- Do not implement the `agent-edit` Settings enum expansion, the switch from fake to real evaluation, or round-level automatic retries in this issue.
+- Do not implement the `agent-edit` Settings enum expansion, the switch from fake to real evaluation, or turn-level automatic retries in this issue.
 - Do not write production Secret values into the repository, documentation, or the issue; do not add a root workaround that bypasses harness permissions.
