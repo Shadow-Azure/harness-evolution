@@ -157,11 +157,17 @@ def build_shared_settings(model: str, base_url: str | None) -> dict[str, object]
 
 
 def write_atomic(
-    path: Path, content: str, mode: int, *, parent_mode: int = 0o700
+    path: Path, content: str, mode: int, *, parent_mode: int | None = None
 ) -> None:
-    """Write ``content`` to ``path`` through a same-directory temporary file."""
-    path.parent.mkdir(parents=True, exist_ok=True, mode=parent_mode)
-    os.chmod(path.parent, parent_mode)
+    """Write ``content`` to ``path`` through a same-directory temporary file.
+
+    ``parent_mode`` is only used for the shared settings directory, where the
+    service user needs traverse permission. Ordinary writes (the deploy user's
+    home and ``~/.claude``) must not chmod an existing home directory.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True, mode=parent_mode or 0o700)
+    if parent_mode is not None:
+        os.chmod(path.parent, parent_mode)
     descriptor, temporary = tempfile.mkstemp(
         prefix=f".{path.name}.", dir=str(path.parent), text=True
     )

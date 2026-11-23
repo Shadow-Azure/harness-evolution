@@ -306,3 +306,13 @@ def test_preflight_rejects_non_executable_binary(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="not executable"):
         install_claude_code.preflight_shared_access(binary, settings, prefix)
+
+
+def test_write_atomic_does_not_chmod_an_existing_home(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir(mode=0o755)
+    home.chmod(0o755)
+
+    install_claude_code.write_atomic(home / ".claude.json", "{}\n", 0o600)
+
+    assert stat.S_IMODE(home.stat().st_mode) == 0o755
