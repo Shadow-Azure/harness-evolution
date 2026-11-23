@@ -23,18 +23,23 @@ from sqlalchemy import insert
 from app.config import DatabaseDialect, Settings
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.probe_query import ProbeQueryRepository
+from app.db.crud.run_events import SqlRunEventStore
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.models.domain import bad_case_analysis, bad_cases, probe_reports
 from app.db.models.evolution import evolution_rounds, probe_cluster_probes, probe_clusters
 from app.db.models.jobs import JobRunRecord
+from app.service.events import EventBus
 from app.service.evolution.advance import EvolutionAdvanceService
 from app.service.evolution.apply_final import EvolutionApplyService, EvolutionFinalizeService
 from app.service.evolution.engine.contracts import EvalGatewayConfig
 from app.service.evolution.eval_poller import EvolutionEvalPoller, EvolutionEvalSubmitter
+from app.service.evolution.events import EvolutionRunEventService
 from app.service.evolution.gateway_factory import build_eval_gateway_factory
 from app.service.evolution.git_candidate import EvolutionCandidateService
-from app.service.evolution.patch_source import default_patch_source_factory
+from app.service.evolution.patch_source import AgentEditPatchSource, default_patch_source_factory
+from app.third_party_api.ai_agent.contracts import EditRequest, EditResult
+from app.third_party_api.ai_agent.fake import FakeAIAgentProvider
 from app.third_party_api.git.workspace import GitWorkspaceManager
 
 SH = ZoneInfo("Asia/Shanghai")
@@ -566,3 +571,214 @@ class _NoJobs:
     async def submit(self, **kwargs: Any) -> None:
         """Absorb one follow-up submission."""
         return None
+
+
+class _RecordingAgent(FakeAIAgentProvider):
+    """Fake provider that records the edit requests it receives."""
+
+    def __init__(self, edit_plan: Mapping[str, Any]) -> None:
+        """Bind the deterministic plan and an empty request log."""
+        super().__init__(edit_plan=edit_plan)
+        self.requests: list[EditRequest] = []
+
+    async def edit_workspace(self, request: EditRequest) -> EditResult:
+        """Record the request and delegate to the deterministic fake."""
+        self.requests.append(request)
+        return await super().edit_workspace(request)
+
+
+def _agent_plan() -> dict[str, Any]:
+    """Build one two-file plan against the seeded target repository."""
+    return {
+        "summary": "提高重试上限并补充说明",
+        "edits": [
+            {
+                "op": "replace",
+                "file": "skills/deep-research/config/deep-research.json",
+                "target": '"maxRetries": 2',
+                "content": '"maxRetries": 3',
+                "rationale": "同簇 case 均在第 2 次重试后仍失败",
+            },
+            {
+                "op": "append",
+                "file": "skills/deep-research/SKILL.md",
+                "content": "Retry budget: 3 attempts.",
+                "rationale": "让技能说明与配置一致",
+            },
+        ],
+    }
+
+
+async def _agent_edit_environment(
+    tmp_path: Path,
+    loop_state: tuple[Any, ...],
+    stub_url: str,
+) -> tuple[EvolutionAdvanceService, EvolutionRunEventService, _RecordingAgent]:
+    """Prepare the real workspace, services, and advance handler for agent-edit."""
+    _database, repository, probes, bare, _seed, base_commit = loop_state
+    env = {API_KEY_REF: "stub-secret-value"}
+    eval_config = {
+        "mode": "http",
+        "baseUrl": stub_url,
+        "apiKeyRef": API_KEY_REF,
+        "patchMode": "agent-edit",
+    }
+    workspaces = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+        push_enabled=True,
+    )
+    await _seed_run_and_round(_database, repository, eval_config, str(bare))
+    await _prepare_workspace(repository, workspaces, base_commit)
+    agent = _RecordingAgent(_agent_plan())
+    events = EvolutionRunEventService(
+        SqlRunEventStore(_database),
+        repository,
+        EventBus(queue_capacity=32),
+    )
+    candidates = EvolutionCandidateService(
+        repository,
+        workspaces,
+        events=events,
+        patch_source_factory=lambda run: AgentEditPatchSource(agent),
+    )
+    gateway_for_run = _gateway_for_run(tmp_path, stub_url, env)
+    submitter = EvolutionEvalSubmitter(
+        repository,
+        gateway_for_run,
+        events=None,
+        now=lambda: datetime.now(SH),
+        poll_interval=timedelta(seconds=1),
+    )
+    advance = EvolutionAdvanceService(repository, candidates, probes, submitter)
+    return advance, events, agent
+
+
+async def test_real_loop_agent_edit_commits_a_multi_file_candidate(
+    tmp_path: Path,
+    loop_state: tuple[Any, ...],
+) -> None:
+    """One EditPlan becomes a real two-file candidate with intent and diff events."""
+    _database, repository, _probes, bare, _seed, _base = loop_state
+    platform = StubEvalPlatform(status_sequence=["completed"])
+    server, stub_url = platform.build()
+    try:
+        advance, events, agent = await _agent_edit_environment(tmp_path, loop_state, stub_url)
+        await advance.handle(_job("evolution_advance", {"runId": RUN_ID}))
+        round_ = await repository.get_round(ROUND_ID)
+        assert round_ is not None
+        assert round_.push_status == "succeeded"
+        assert round_.candidate_ref is not None
+        assert round_.candidate_commit is not None
+        assert isinstance(round_.patch, dict)
+        stored_files = {item["file"] for item in round_.patch["files"]}
+        assert stored_files == {
+            "skills/deep-research/SKILL.md",
+            "skills/deep-research/config/deep-research.json",
+        }
+        assert round_.patch["sessionId"] == "fake-session"
+        assert round_.patch["intent"]["summary"] == "提高重试上限并补充说明"
+        assert {item["status"] for item in round_.patch["report"]} == {"applied"}
+
+        commit = round_.candidate_commit
+        pushed_config = json.loads(
+            git(
+                bare,
+                "show",
+                f"{commit}:skills/deep-research/config/deep-research.json",
+            ),
+        )
+        assert pushed_config == {"maxRetries": 3}
+        pushed_skill = git(bare, "show", f"{commit}:skills/deep-research/SKILL.md")
+        assert "Retry budget: 3 attempts." in pushed_skill
+        assert git(bare, "rev-parse", f"refs/tags/{round_.candidate_ref}") == commit
+        assert "skills/deep-research/SKILL.md" in (round_.candidate_message or "")
+        assert agent.requests[0].session_id is None
+        assert agent.requests[0].allowed_paths == ("skills/deep-research/**",)
+
+        page = await events.list(RUN_ID, after_seq=0, limit=50, level=None)
+        committed = [item for item in page.items if item.event_type == "candidate_committed"]
+        assert len(committed) == 1
+        payload = committed[0].payload
+        assert payload is not None
+        assert sorted(payload["files"]) == [
+            "skills/deep-research/SKILL.md",
+            "skills/deep-research/config/deep-research.json",
+        ]
+        assert payload["intent"]["summary"] == "提高重试上限并补充说明"
+        assert {item["status"] for item in payload["report"]} == {"applied"}
+        assert payload["sessionId"] == "fake-session"
+        assert "SKILL.md" in payload["unifiedDiff"]
+        assert "config/deep-research.json" in payload["unifiedDiff"]
+    finally:
+        server.shutdown()
+
+
+async def test_real_loop_agent_edit_resumes_a_rejected_round_with_feedback(
+    tmp_path: Path,
+    loop_state: tuple[Any, ...],
+) -> None:
+    """A same-cluster retry resumes the session with the rejection and buffer."""
+    database, repository, _probes, _bare, _seed, _base = loop_state
+    platform = StubEvalPlatform(status_sequence=["completed"])
+    server, stub_url = platform.build()
+    try:
+        prior_patch = {
+            "files": [
+                {
+                    "file": "skills/deep-research/SKILL.md",
+                    "lines": ["# Deep Research"],
+                    "overwrite": True,
+                },
+            ],
+            "note": "缩短超时",
+            "intent": {
+                "summary": "缩短超时",
+                "edits": [
+                    {
+                        "op": "replace",
+                        "file": "skills/deep-research/SKILL.md",
+                        "target": "# Deep Research",
+                        "content": "# Deep Research (fast)",
+                        "rationale": "被拒绝的旧方案",
+                    },
+                ],
+            },
+            "report": [],
+            "sessionId": "prior-session",
+        }
+        advance, _events, agent = await _agent_edit_environment(
+            tmp_path,
+            loop_state,
+            stub_url,
+        )
+        async with database.transaction() as session:
+            await session.execute(
+                insert(evolution_rounds).values(
+                    id="e2e-round-prior",
+                    run_id=RUN_ID,
+                    probe_cluster_id=CLUSTER_ID,
+                    seq=0,
+                    status="rejected",
+                    push_status="succeeded",
+                    eval_status="completed",
+                    patch=prior_patch,
+                    eval_result={
+                        "currentScore": 82.0,
+                        "candidateScore": 70.0,
+                        "externalVerdict": "reject",
+                        "metrics": [],
+                    },
+                    finished_at=NOW,
+                ),
+            )
+        await advance.handle(_job("evolution_advance", {"runId": RUN_ID}))
+        request = agent.requests[0]
+        assert request.session_id == "prior-session"
+        assert request.feedback is not None
+        assert "候选分 70.0 对比基线 82.0" in request.feedback
+        assert "被拒绝的旧方案" in request.feedback
+        round_ = await repository.get_round(ROUND_ID)
+        assert round_ is not None and round_.status == "evaluating"
+    finally:
+        server.shutdown()

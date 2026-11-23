@@ -10,8 +10,9 @@ depends:
   - bugfix-17
   - bugfix-20
 priority: P2
-status: backlog
+status: in-progress
 scope:
+  - apps/api/app/main.py
   - apps/api/app/service/evolution/**
   - apps/api/app/third_party_api/ai_agent/**
   - apps/api/tests/**

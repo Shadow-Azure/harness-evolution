@@ -78,6 +78,9 @@ EDIT_PLAN_FILENAME: Final = ".harness-evolution/edits.json5"
 READ_ONLY_TOOLS: Final = ("Read", "Grep", "Glob")
 """Tools the edit phase may use to explore before it submits one plan (07 §5.5.4)."""
 
+EDIT_MAX_TURNS: Final = 40
+"""Turn cap for one edit call; the process timeout is the other spend guard."""
+
 HEALTH_TIMEOUT_SECONDS: Final = 10.0
 """Upper bound for the ``--version`` health probe."""
 
@@ -353,7 +356,14 @@ class ClaudeCodeProvider(AIAgentProvider):
         )
 
     async def edit_workspace(self, request: EditRequest) -> EditResult:
-        """Collect one EditPlan for the workspace without applying it."""
+        """Collect one EditPlan, resuming the kept session when asked.
+
+        The plan is not applied here: the agent-edit patch source applies it
+        deterministically against a scratch mirror and turns the result into a
+        PatchBundle. A caller that supplies ``session_id`` resumes the same
+        edit conversation and appends ``feedback`` to the prompt, which is how
+        a rejected round hands the delta and the rejected-edit buffer back.
+        """
         started = self._clock()
         prep = self._submission.prepare(
             "agent.edit",
@@ -362,7 +372,14 @@ class ClaudeCodeProvider(AIAgentProvider):
             filename=EDIT_PLAN_FILENAME,
         )
         prompt = _compose_prompt(request.prompt, prep.prompt_addendum)
-        argv = self._edit_argv(prompt, prep, settings_file=self._settings_file())
+        if request.feedback is not None:
+            prompt = _compose_prompt(prompt, request.feedback)
+        argv = self._edit_argv(
+            prompt,
+            prep,
+            settings_file=self._settings_file(),
+            session_id=request.session_id,
+        )
         _, parsed = await self._call(
             "edit",
             argv,
@@ -387,6 +404,7 @@ class ClaudeCodeProvider(AIAgentProvider):
             session_id=parsed.session_id,
             latency_ms=_elapsed_ms(started, self._clock),
             retryable=False,
+            plan=validated,
         )
 
     async def health_check(self) -> ProviderHealth:
@@ -532,8 +550,14 @@ class ClaudeCodeProvider(AIAgentProvider):
         prep: SubmissionPrep,
         *,
         settings_file: Path,
+        session_id: str | None = None,
     ) -> tuple[str, ...]:
-        """Build one edit argv; exploration is read-only and the session is kept."""
+        """Build one edit argv; exploration is read-only and the session is kept.
+
+        ``--max-turns`` bounds one call's spend; the timeout constant bounds its
+        wall clock. A resumed iteration adds ``--resume <session_id>`` so the
+        backend continues the same conversation instead of starting over.
+        """
         argv = [
             self._binary(),
             "--bare",
@@ -543,9 +567,13 @@ class ClaudeCodeProvider(AIAgentProvider):
             "json",
             "--permission-mode",
             PERMISSION_MODE,
+            "--max-turns",
+            str(EDIT_MAX_TURNS),
             "--allowed-tools",
             ",".join((*READ_ONLY_TOOLS, *prep.allowed_tools)),
         ]
+        if session_id is not None:
+            argv.extend(("--resume", session_id))
         if settings_file.is_file():
             argv.extend(("--settings", str(settings_file)))
         return tuple(argv)

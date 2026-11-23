@@ -3,10 +3,13 @@
 
 The placeholder source keeps the V1 documentation-only patch. The minimal-config
 source derives one deterministic configuration key from the bad-case evidence
-and merges it into the target repository's config file. Selection is factory
-driven: the run's frozen ``eval_config["patchMode"]`` wins, otherwise the
-process-wide ``HE_PATCH_SOURCE_MODE`` fallback applies. New generation
-strategies only add a subclass plus configuration — business code stays put.
+and merges it into the target repository's config file. The agent-edit source
+collects a structured EditPlan from the AI agent provider, applies it
+deterministically against a scratch mirror of the target files, and turns the
+changed bytes into a multi-file PatchBundle. Selection is factory driven: the
+run's frozen ``eval_config["patchMode"]`` wins, otherwise the process-wide
+``HE_PATCH_SOURCE_MODE`` fallback applies. New generation strategies only add a
+subclass plus configuration — business code stays put.
 """
 
 from __future__ import annotations
@@ -14,13 +17,24 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Protocol, cast, runtime_checkable
 
 from app.db.models.evolution import EvolutionRunRecord
 from app.service.evolution.engine.contracts import ConfigError
-from app.third_party_api.ai_agent.edits import EditPlan, EditStatus
+from app.third_party_api.ai_agent.base import AIAgentProvider
+from app.third_party_api.ai_agent.contracts import EditRequest
+from app.third_party_api.ai_agent.edits import (
+    EDIT_BUDGET,
+    MAX_CONTENT_LINES,
+    EditApplication,
+    EditPlan,
+    EditStatus,
+    apply_edit_plan,
+)
 from app.third_party_api.git.workspace import Patch
 
 PATCH_SOURCE_MODES = ("placeholder", "minimal-config", "agent-edit")
@@ -29,6 +43,34 @@ PLACEHOLDER_PATCH_NOTE = "V1 占位 patch；真实文件已写入 isolated works
 _CONFIG_FILENAME = "config/{}.json"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 _MAX_NAME_LENGTH = 64
+_MAX_PROMPT_EVIDENCE_CHARS = 1_800
+_MAX_REJECTED_EDITS_CHARS = 4_000
+_EDIT_ATTEMPTS = 2
+
+
+@dataclass(frozen=True, slots=True)
+class PatchFeedback:
+    """One rejected round's continuation context for a resumed edit session.
+
+    ``attempt`` is the retry ordinal within one cluster. ``failure_reason`` and
+    the score pair describe why the evaluation rejected the prior candidate.
+    ``rejected_edits`` is the bounded rejected-edit buffer: the previous plan's
+    summary plus the concrete edits and per-edit statuses, so the next attempt
+    neither repeats nor re-skins them. ``session_id`` is the prior provider
+    conversation to resume; ``None`` starts a fresh call with the same context.
+    """
+
+    attempt: int = 1
+    failure_reason: str = ""
+    current_score: float | None = None
+    candidate_score: float | None = None
+    rejected_edits: tuple[str, ...] = ()
+    session_id: str | None = None
+
+    def __post_init__(self) -> None:
+        """Reject a nonsensical retry ordinal before it reaches a prompt."""
+        if self.attempt < 1:
+            raise ValueError("PatchFeedback.attempt must be positive")
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +84,9 @@ class PatchBundle:
     drift apart. ``unified_diff`` is reserved for the real ``git diff`` that
     the agent-edit source collects before committing (bugfix-21); the default
     legacy wrapper leaves it empty, and ``CandidateWorkspace.unified_diff``
-    always carries the git-produced diff after the commit.
+    always carries the git-produced diff after the commit. ``session_id`` is
+    the provider conversation that produced the intent, persisted with the
+    round so a later attempt can resume it.
 
     Hash compatibility is a hard requirement: a single-file bundle returns
     :attr:`Patch.sha256` byte-for-byte, so ``Harness-Patch-Hash`` trailers from
@@ -55,6 +99,7 @@ class PatchBundle:
     intent: EditPlan | None = None
     report: tuple[EditStatus, ...] = ()
     unified_diff: str = ""
+    session_id: str | None = None
 
     def __post_init__(self) -> None:
         """Reject an empty bundle, a blank note, or a repeated file path."""
@@ -111,8 +156,15 @@ class PatchSource(Protocol):
         run: EvolutionRunRecord,
         round_seq: int,
         trace: object,
+        *,
+        feedback: PatchFeedback | None = None,
     ) -> PatchBundle:
-        """Return the candidate change bundle for one round."""
+        """Return the candidate change bundle for one round.
+
+        ``feedback`` carries the rejected round's continuation context. Legacy
+        single-file sources accept and ignore it; the agent-edit source resumes
+        the prior conversation and injects the rejected-edit buffer.
+        """
         ...
 
     async def change_note(
@@ -148,8 +200,11 @@ async def build_default_bundle(
     run: EvolutionRunRecord,
     round_seq: int,
     trace: object,
+    *,
+    feedback: PatchFeedback | None = None,
 ) -> PatchBundle:
     """Wrap the legacy ``build()``/``change_note()`` pair as a single-file bundle."""
+    del feedback
     patch = await source.build(run, round_seq, trace)
     note = await source.change_note(run, round_seq, trace)
     return PatchBundle(files=(patch,), note=note)
@@ -163,9 +218,17 @@ class _DefaultBundleSource:
         run: EvolutionRunRecord,
         round_seq: int,
         trace: object,
+        *,
+        feedback: PatchFeedback | None = None,
     ) -> PatchBundle:
         """Return a one-file bundle without changing the legacy methods."""
-        return await build_default_bundle(cast("_PatchBuilder", self), run, round_seq, trace)
+        return await build_default_bundle(
+            cast("_PatchBuilder", self),
+            run,
+            round_seq,
+            trace,
+            feedback=feedback,
+        )
 
 
 class PlaceholderPatchSource(_DefaultBundleSource):
@@ -324,10 +387,277 @@ def _trace_text(trace: object) -> str:
     return " ".join(parts)
 
 
+class AgentEditPatchSource:
+    """Collect an agent EditPlan and apply it deterministically on a scratch mirror.
+
+    The provider explores the prepared workspace read-only and writes one
+    ``edits.json5``; this source mirrors only the plan's target files into a
+    throwaway directory, runs :func:`apply_edit_plan` there, and turns the
+    changed bytes into full-file patches. Repository bytes are therefore never
+    mutated before the candidate commit: an out-of-scope or failed edit cannot
+    leak into the run branch, so no ``git checkout -- .`` rollback is needed.
+
+    A plan that does not apply cleanly (missing or ambiguous anchors, an
+    out-of-scope file) gets exactly one resumed feedback call; the best
+    attempt's report and session id are kept for audit and for a later round.
+    """
+
+    def __init__(self, provider: AIAgentProvider, *, attempts: int = _EDIT_ATTEMPTS) -> None:
+        """Bind the AI agent backend and the bounded edit-attempt count."""
+        if attempts < 1:
+            raise ValueError("agent-edit attempts must be positive")
+        self._provider = provider
+        self._attempts = attempts
+
+    async def build(
+        self,
+        run: EvolutionRunRecord,
+        round_seq: int,
+        trace: object,
+    ) -> Patch:
+        """Return the single-file projection; multi-file plans must use the bundle."""
+        bundle = await self.build_bundle(run, round_seq, trace)
+        if len(bundle.files) != 1:
+            raise ConfigError(
+                "agent-edit produced multiple files; the candidate must use build_bundle()",
+            )
+        return bundle.files[0]
+
+    async def change_note(
+        self,
+        run: EvolutionRunRecord,
+        round_seq: int,
+        trace: object,
+    ) -> str:
+        """Reject the legacy note hook: the note is the plan summary."""
+        del run, round_seq, trace
+        raise ConfigError("agent-edit change notes come from the EditPlan summary")
+
+    async def build_bundle(
+        self,
+        run: EvolutionRunRecord,
+        round_seq: int,
+        trace: object,
+        *,
+        feedback: PatchFeedback | None = None,
+    ) -> PatchBundle:
+        """Ask the agent for a plan, apply it on a mirror, and bundle the diff."""
+        del round_seq
+        workspace = _agent_workspace(run)
+        allowed = _allowed_paths(run.sub_dir)
+        prompt = _edit_prompt(run, trace, allowed=allowed)
+        continuation = _feedback_prompt(feedback)
+        session_id = feedback.session_id if feedback is not None else None
+        best: tuple[EditPlan, EditApplication, dict[str, str], str | None] | None = None
+        for attempt in range(1, self._attempts + 1):
+            result = await self._provider.edit_workspace(
+                EditRequest(
+                    workspace=workspace,
+                    prompt=prompt,
+                    allowed_paths=allowed,
+                    session_id=session_id,
+                    feedback=continuation or None,
+                ),
+            )
+            plan = result.plan
+            if plan is None:
+                raise ConfigError("agent provider returned no EditPlan for the edit request")
+            session_id = result.session_id or session_id
+            application, contents = _apply_on_scratch(workspace, plan, allowed=allowed)
+            if best is None or _application_rank(application) > _application_rank(best[1]):
+                best = (plan, application, contents, session_id)
+            if application.files and not application.skipped:
+                break
+            if not application.skipped or attempt >= self._attempts:
+                break
+            continuation = _application_feedback(application)
+        if best is None:
+            raise ConfigError("agent edit produced no editable plan")
+        plan, application, contents, session_id = best
+        if not application.files:
+            detail = _application_detail(application)
+            raise ConfigError(f"agent edit produced no applicable change: {detail}")
+        files = tuple(_patch_from_content(name, contents[name]) for name in application.files)
+        return PatchBundle(
+            files=files,
+            note=plan.summary,
+            intent=plan,
+            report=application.report,
+            session_id=session_id,
+        )
+
+
+def _application_rank(application: EditApplication) -> tuple[int, int]:
+    """Prefer a fully applied plan, then the larger applicable change."""
+    clean = 1 if application.files and not application.skipped else 0
+    return (clean, len(application.files))
+
+
+def _agent_workspace(run: EvolutionRunRecord) -> Path:
+    """Return the prepared workspace or fail before any provider call."""
+    if run.workspace_path is None:
+        raise ConfigError("agent-edit patch generation requires a prepared workspace")
+    workspace = Path(run.workspace_path)
+    if not workspace.is_dir():
+        raise ConfigError("agent-edit workspace does not exist")
+    return workspace
+
+
+def _allowed_paths(sub_dir: str) -> tuple[str, ...]:
+    """Return the applier glob that confines edits to the target sub-directory."""
+    normalized = sub_dir.strip().strip("/")
+    if not normalized or normalized == ".":
+        return ("**",)
+    return (f"{normalized}/**",)
+
+
+def _apply_on_scratch(
+    workspace: Path,
+    plan: EditPlan,
+    *,
+    allowed: tuple[str, ...],
+) -> tuple[EditApplication, dict[str, str]]:
+    """Apply the plan to a mirrored file set and return the changed file text."""
+    with tempfile.TemporaryDirectory(prefix="he-agent-edit-") as raw:
+        scratch = Path(raw)
+        _mirror_plan_files(workspace, scratch, plan)
+        application = apply_edit_plan(plan, workspace=scratch, allowed_paths=allowed)
+        contents = {
+            name: _read_text(scratch.joinpath(*PurePosixPath(name).parts))
+            for name in application.files
+        }
+    return application, contents
+
+
+def _mirror_plan_files(workspace: Path, scratch: Path, plan: EditPlan) -> None:
+    """Copy each plan target from the workspace into the scratch mirror."""
+    root = workspace.resolve()
+    for edit in plan.edits:
+        relative = PurePosixPath(edit.file)
+        source = workspace.joinpath(*relative.parts)
+        try:
+            resolved = source.resolve()
+            resolved.relative_to(root)
+        except (OSError, ValueError):
+            continue
+        try:
+            if not resolved.is_file():
+                continue
+        except OSError:
+            continue
+        destination = scratch.joinpath(*relative.parts)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(resolved, destination)
+
+
+def _read_text(path: Path) -> str:
+    """Read one UTF-8 file without newline translation."""
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
+def _patch_from_content(relative: str, text: str) -> Patch:
+    """Turn one full file's text into an overwrite patch with stable lines."""
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return Patch(file=relative, lines=tuple(lines), overwrite=True)
+
+
+def _edit_prompt(
+    run: EvolutionRunRecord,
+    trace: object,
+    *,
+    allowed: tuple[str, ...],
+) -> str:
+    """Build the bounded goal prompt for one edit session."""
+    title = _bounded(str(getattr(trace, "cluster_title", "") or ""), 300) or "未命名问题簇"
+    analysis = _bounded(str(getattr(trace, "analysis", "") or ""), _MAX_PROMPT_EVIDENCE_CHARS)
+    evidence: list[str] = []
+    for source in getattr(trace, "sources", ()) or ():
+        description = _bounded(str(getattr(source, "description", "") or ""), 240)
+        source_analysis = _bounded(str(getattr(source, "analysis", "") or ""), 360)
+        line = description or source_analysis
+        if line:
+            evidence.append(f"- {line}")
+    lines = [
+        "你在受控工作区里为自进化候选生成编辑计划：先只读探索，再把结构化 EditPlan 写入 "
+        ".harness-evolution/edits.json5，不要直接编辑任何其他文件。",
+        f"对象：{run.target_name}@{run.target_version}（{run.target_type}）",
+        f"问题簇：{title}",
+    ]
+    if analysis:
+        lines.extend(("## 归因分析", analysis))
+    if evidence:
+        lines.extend(("## 代表证据", "\n".join(evidence[:5])))
+    lines.extend(
+        (
+            "## 修复要求",
+            f"- file 必须落在允许范围 {list(allowed)!r} 内；锚文本必须存在且唯一。",
+            f"- 最多 {EDIT_BUDGET} 条编辑，单条内容最多 {MAX_CONTENT_LINES} 行；"
+            "优先最小、可回退的真实修复。",
+            "- 提交格式：{summary, edits:[{op,file,target,content,rationale}]}。",
+        ),
+    )
+    return "\n\n".join(lines)
+
+
+def _feedback_prompt(feedback: PatchFeedback | None) -> str:
+    """Render the rejected round's feedback and rejected-edit buffer."""
+    if feedback is None:
+        return ""
+    lines = ["## 上一轮反馈（同一问题簇的候选被评测拒绝，本次必须修正）"]
+    if feedback.current_score is not None and feedback.candidate_score is not None:
+        delta = feedback.candidate_score - feedback.current_score
+        lines.append(
+            f"- 候选分 {feedback.candidate_score:.1f} 对比基线 "
+            f"{feedback.current_score:.1f}（Δ={delta:+.1f}），评测结论：拒绝。",
+        )
+    if feedback.failure_reason.strip():
+        lines.append(f"- 失败原因：{feedback.failure_reason.strip()}")
+    if feedback.rejected_edits:
+        lines.extend(
+            (
+                "## 已被拒绝的编辑（不要重复，也不要换皮重试）",
+                *feedback.rejected_edits,
+            ),
+        )
+    lines.append("- 请给出新的完整 EditPlan；若确需改同一文件，锚和内容必须不同并说明理由。")
+    return _bounded("\n".join(lines), _MAX_REJECTED_EDITS_CHARS + _MAX_PROMPT_EVIDENCE_CHARS)
+
+
+def _application_feedback(application: EditApplication) -> str:
+    """Render the per-edit reasons the mirror application could not apply."""
+    detail = _application_detail(application)
+    return (
+        "## 上一份 EditPlan 未能全部应用\n"
+        f"{detail}\n"
+        "- 请修正缺失/多义的锚文本或越界文件，重新提交完整 EditPlan。"
+    )
+
+
+def _application_detail(application: EditApplication) -> str:
+    """Join the bounded non-applied statuses for feedback or an error message."""
+    parts = [
+        status.message or f"edits[{status.index}] {status.op} {status.file}"
+        for status in application.skipped
+    ]
+    return _bounded("; ".join(parts), _MAX_REJECTED_EDITS_CHARS) or "no edit applied"
+
+
+def _bounded(text: str, limit: int) -> str:
+    """Trim one prompt or diagnostic fragment to a character budget."""
+    normalized = text.strip()
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: max(0, limit - 1)].rstrip() + "…"
+
+
 def default_patch_source_factory(
     run: EvolutionRunRecord,
     *,
     fallback_mode: str = DEFAULT_PATCH_SOURCE_MODE,
+    provider: AIAgentProvider | None = None,
 ) -> PatchSource:
     """Resolve one patch source from the run snapshot with an env fallback."""
     configured = run.eval_config.get("patchMode")
@@ -337,9 +667,11 @@ def default_patch_source_factory(
     if mode == "minimal-config":
         return MinimalConfigPatchSource()
     if mode == "agent-edit":
-        raise ConfigError(
-            "patch source mode 'agent-edit' is reserved for bugfix-21 and not implemented yet",
-        )
+        if provider is None:
+            raise ConfigError(
+                "patch source mode 'agent-edit' requires a configured AI agent provider",
+            )
+        return AgentEditPatchSource(provider)
     raise ConfigError(f"unknown patch source mode: {mode}")
 
 
@@ -347,8 +679,10 @@ __all__ = [
     "DEFAULT_PATCH_SOURCE_MODE",
     "PATCH_SOURCE_MODES",
     "PLACEHOLDER_PATCH_NOTE",
+    "AgentEditPatchSource",
     "MinimalConfigPatchSource",
     "PatchBundle",
+    "PatchFeedback",
     "PatchSource",
     "PlaceholderPatchSource",
     "build_default_bundle",

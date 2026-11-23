@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 """Mock-runner matrix for the real Claude Code provider (#492).
 
 Every test here scripts the CLI transport; none spawns a process or touches the
@@ -34,6 +35,7 @@ from app.third_party_api.ai_agent.base import (
     PERMISSION_MODE,
 )
 from app.third_party_api.ai_agent.claude_code import (
+    EDIT_MAX_TURNS,
     EDIT_PLAN_FILENAME,
     HEALTH_TIMEOUT_SECONDS,
     READ_ONLY_TOOLS,
@@ -750,6 +752,9 @@ async def test_edit_workspace_collects_the_plan_without_applying_it(
     assert result.usage.input_tokens == 20
     assert result.usage.cost_usd == pytest.approx(0.04)
     assert result.latency_ms >= 0
+    assert result.plan is not None
+    assert result.plan.summary == "raise the fetch timeout"
+    assert result.plan.edits[0].file == "skill.json"
     assert sentinel.read_text(encoding="utf-8") == '{"timeoutSeconds": 30}\n'
     assert (workspace / EDIT_PLAN_FILENAME).exists()
 
@@ -760,9 +765,41 @@ async def test_edit_workspace_collects_the_plan_without_applying_it(
     expected_tools = ",".join((*READ_ONLY_TOOLS, f"Write(./{EDIT_PLAN_FILENAME})"))
     assert argv[argv.index("--allowed-tools") + 1] == expected_tools
     assert "make the skill tolerate slow hosts" in argv[argv.index("-p") + 1]
+    assert argv[argv.index("--max-turns") + 1] == str(EDIT_MAX_TURNS)
     assert argv[argv.index("--settings") + 1] == str(settings_file)
     assert "--no-session-persistence" not in argv
     assert "--resume" not in argv
+
+
+async def test_edit_resumes_the_same_session_with_rejected_round_feedback(
+    tmp_path: Path,
+) -> None:
+    """A resumed edit carries the session id and the continuation feedback."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    runner = MockRunner(
+        _edit_step(
+            {"summary": "second attempt", "edits": []},
+            session_id="edit-session-2",
+        ),
+    )
+    provider = ClaudeCodeProvider(_settings(tmp_path), runner=runner)
+
+    result = await provider.edit_workspace(
+        EditRequest(
+            workspace=workspace,
+            prompt="make the skill tolerate slow hosts",
+            session_id="edit-session-1",
+            feedback="候选分 70 对比基线 82（Δ=-12.0），评测结论：拒绝。",
+        ),
+    )
+
+    argv = runner.calls[0].argv
+    assert argv[argv.index("--resume") + 1] == "edit-session-1"
+    prompt = argv[argv.index("-p") + 1]
+    assert "候选分 70 对比基线 82" in prompt
+    assert result.session_id == "edit-session-2"
+    assert result.plan is not None
 
 
 async def test_edit_omits_settings_when_the_deployment_file_is_absent(

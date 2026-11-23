@@ -51,7 +51,7 @@ class AIAgentProvider(ABC):
 
     @abstractmethod
     async def edit_workspace(self, request: EditRequest) -> EditResult:
-        """Produce and apply an edit plan for one workspace."""
+        """Return the structured EditPlan the caller applies deterministically."""
 
     @abstractmethod
     async def health_check(self) -> ProviderHealth:

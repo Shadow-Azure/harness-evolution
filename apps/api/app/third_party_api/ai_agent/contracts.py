@@ -18,6 +18,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.third_party_api.ai_agent.edits import EditPlan, EditStatus
+
 
 def _require_non_empty(value: str, name: str) -> None:
     """Reject a blank identifier before it reaches logs or a provider."""
@@ -106,17 +108,30 @@ class EditRequest:
     ``workspace`` is the prepared git workspace the provider may inspect.
     ``allowed_paths`` bounds the files the caller will accept in the resulting
     diff; an empty tuple means the caller has not narrowed the scope yet.
+
+    ``session_id`` resumes the same backend conversation for an iteration (for
+    example after a rejected round) and is ``None`` on a fresh edit.
+    ``feedback`` carries the caller-authored continuation text for a resumed
+    session: an evaluation rejection reason, a score delta, and the rejected
+    edit buffer that must not be retried. Both are optional so a first edit and
+    every existing caller stay unchanged.
     """
 
     workspace: Path
     prompt: str
     allowed_paths: tuple[str, ...] = ()
+    session_id: str | None = None
+    feedback: str | None = None
 
     def __post_init__(self) -> None:
-        """Keep the workspace absolute enough to be unambiguous."""
+        """Keep the workspace absolute and reject blank session fields."""
         if not self.workspace.is_absolute():
             raise ValueError("EditRequest.workspace must be an absolute path")
         _require_non_empty(self.prompt, "EditRequest.prompt")
+        if self.session_id is not None:
+            _require_non_empty(self.session_id, "EditRequest.session_id")
+        if self.feedback is not None:
+            _require_non_empty(self.feedback, "EditRequest.feedback")
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +140,10 @@ class EditResult:
 
     ``changed_files`` holds workspace-relative paths and ``unified_diff`` is the
     git diff the provider observed; git remains the single source of truth.
+    ``plan`` is the structured EditPlan the backend returned, kept for the
+    deterministic applier and for the auditable candidate intent. ``report`` is
+    the per-edit outcome after the plan is applied; the applier owns it, so a
+    provider that only collects a plan leaves it empty.
     """
 
     summary: str
@@ -135,12 +154,16 @@ class EditResult:
     session_id: str | None = None
     latency_ms: int = 0
     retryable: bool = False
+    plan: EditPlan | None = None
+    report: tuple[EditStatus, ...] = ()
 
     def __post_init__(self) -> None:
-        """Reject blank identifiers and negative latency."""
+        """Reject blank identifiers, negative latency, and a drifting summary."""
         _require_non_empty(self.summary, "EditResult.summary")
         _require_non_empty(self.provider_id, "EditResult.provider_id")
         _require_non_negative(self.latency_ms, "EditResult.latency_ms")
+        if self.plan is not None and self.summary != self.plan.summary:
+            raise ValueError("EditResult.summary must equal plan.summary")
 
 
 @dataclass(frozen=True, slots=True)

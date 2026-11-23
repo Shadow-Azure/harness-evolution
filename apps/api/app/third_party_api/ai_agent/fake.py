@@ -25,6 +25,7 @@ from app.third_party_api.ai_agent.contracts import (
     EditResult,
     ProviderHealth,
 )
+from app.third_party_api.ai_agent.edits import EditPlan
 
 if TYPE_CHECKING:
     from app.config import Settings
@@ -71,16 +72,18 @@ class FakeAIAgentProvider(AIAgentProvider):
         settings: Settings | None = None,
         *,
         outputs: Mapping[str, Mapping[str, Any]] | None = None,
+        edit_plan: Mapping[str, Any] | None = None,
         session_id: str = "fake-session",
         latency_ms: int = 0,
     ) -> None:
-        """Bind optional per-task outputs and fixed observability values."""
+        """Bind optional per-task outputs, an edit plan, and fixed observability values."""
         super().__init__(settings)
         if latency_ms < 0:
             raise ValueError("fake latency_ms must not be negative")
         if not session_id.strip():
             raise ValueError("fake session_id must not be empty")
         self._outputs = {task: deepcopy(dict(output)) for task, output in (outputs or {}).items()}
+        self._edit_plan = deepcopy(dict(edit_plan)) if edit_plan is not None else None
         self._session_id = session_id
         self._latency_ms = latency_ms
 
@@ -109,15 +112,30 @@ class FakeAIAgentProvider(AIAgentProvider):
         )
 
     async def edit_workspace(self, request: EditRequest) -> EditResult:
-        """Return a fixed edit result without touching the workspace."""
+        """Return a fixed plan (or no change) without touching the workspace.
+
+        ``request.session_id`` and ``request.feedback`` are accepted for the
+        iteration seam but never change the deterministic answer, so a caller
+        that resumes a rejected round gets byte-identical behavior in CI.
+        """
+        if self._edit_plan is None:
+            return EditResult(
+                summary="fake edit: no changes",
+                provider_id=self.provider_id,
+                changed_files=(),
+                unified_diff="",
+                usage=AgentUsage(model=self.provider_id),
+                session_id=self._session_id,
+                latency_ms=self._latency_ms,
+            )
+        plan = EditPlan.model_validate(deepcopy(self._edit_plan))
         return EditResult(
-            summary="fake edit: no changes",
+            summary=plan.summary,
             provider_id=self.provider_id,
-            changed_files=(),
-            unified_diff="",
             usage=AgentUsage(model=self.provider_id),
             session_id=self._session_id,
             latency_ms=self._latency_ms,
+            plan=plan,
         )
 
     async def health_check(self) -> ProviderHealth:
