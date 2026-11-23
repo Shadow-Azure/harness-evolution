@@ -53,7 +53,7 @@ The current prototype (baseline `main@d33b2c45`) has only two native date inputs
 ## Design authority
 
 - [08 §9 Launch wizard Step 1](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/fullstack-design/08-frontend-implementation.md#L669): the `from/to` range is required and validates `from <= to`; this issue adds the shortcut contract to that line.
-- [V2 design §7.4.1 Time-range presets](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/ui-prototype-v2/design-v2.md#L232): records the calculation, fill-only behavior, unchanged validation, and accessibility.
+- [V2 design §7.4.1 Time-range presets](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/ui-prototype-v2/design-v2.md#L223): records the calculation, fill-only behavior, unchanged validation, and accessibility.
 - [Four-step launch wizard and condition snapshot](https://github.com/Shadow-Azure/harness-evolution/blob/main/.agents/notes/implemented/feature/2026-11-17-four-step-launch-wizard.md): step 1 is the only condition-editing surface; changing the object, version, range, or policy invalidates later previews.
 - [V2 prototype entry](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/ui-prototype-v2/index.html): `harness-evolution.html?u=admin&page=evo&demo=wizard1` opens step 1 directly, which keeps screenshots on the same scenario.
 - [AppSignal Date and time filter](https://appsignal.design/patterns/date-time-filter.html): presets are single-choice relative ranges with a clear selected state, separate from the custom range; this issue keeps that information structure and uses light pills with a tinted selected state.

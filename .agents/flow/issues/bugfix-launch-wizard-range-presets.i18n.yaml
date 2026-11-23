@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-launch-wizard-range-presets.md
-bugfix-launch-wizard-range-presets.md: 3bb3a6aec5168db8e5e786058ffa286641ac9c0a
-bugfix-launch-wizard-range-presets.en.md: 18e409b95ab25ce6ed56ab0843496aada5c0fffb
+bugfix-launch-wizard-range-presets.md: 9a6c1c0a81d08304cb8505c29cc64bfb05064c43
+bugfix-launch-wizard-range-presets.en.md: dfe163218f3acec303792e4940dba1f68156d16a

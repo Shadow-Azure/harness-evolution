@@ -53,7 +53,7 @@ github:
 ## 设计依据
 
 - [08 §9 启动向导 Step 1](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/fullstack-design/08-frontend-implementation.md#L669)：时间段 `from/to` 必填、校验 `from <= to`，本 issue 在该行补充快捷预设口径。
-- [V2 设计说明 §7.4.1 时间段快捷预设](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/ui-prototype-v2/design-v2.md#L232)：记录计算、只填值不锁定、校验不变和可访问性。
+- [V2 设计说明 §7.4.1 时间段快捷预设](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/ui-prototype-v2/design-v2.md#L223)：记录计算、只填值不锁定、校验不变和可访问性。
 - [四步启动向导与启动条件快照](https://github.com/Shadow-Azure/harness-evolution/blob/main/.agents/notes/implemented/feature/2026-11-17-four-step-launch-wizard.md)：第 1 步是唯一条件编辑面，对象/版本/时间段/策略变化都会清空后续预览。
 - [V2 原型演示入口](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/ui-prototype-v2/index.html)：`harness-evolution.html?u=admin&page=evo&demo=wizard1` 直接打开第 1 步，便于同一场景截图。
 - [AppSignal Date and time filter](https://appsignal.design/patterns/date-time-filter.html)：预设相对区间单选、当前项有明确选中态、自定义区间与预设分区；本 issue 采用同一信息结构，视觉改为轻量胶囊 + 浅蓝选中态。
