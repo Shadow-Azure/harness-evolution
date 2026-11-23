@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 
 from app.db.crud.evolution import EvolutionRepository
 from app.db.models.evolution import EvolutionRoundRecord, EvolutionRunRecord
+from app.service.evolution.ai_observability import AiAgentCall
 from app.service.evolution.backoff import next_retry_at
 from app.service.evolution.control import checkpoint
 from app.service.evolution.engine.contracts import ConfigError, RunBlocked
@@ -232,9 +233,28 @@ class EvolutionCandidateService:
             try:
                 bundle = await patch_source.build_bundle(run, current.seq, trace)
             except AgentProviderError as exc:
+                await self._record_ai_call(
+                    run.id,
+                    current.id,
+                    _last_ai_call(patch_source),
+                    job_id=job_id,
+                )
                 await self._handle_provider_failure(run, current.id, exc, job_id=job_id)
             except ConfigError as exc:
+                await self._record_ai_call(
+                    run.id,
+                    current.id,
+                    _last_ai_call(patch_source),
+                    job_id=job_id,
+                )
                 await self._fail_patch_generation(run, current.id, exc, job_id=job_id)
+            else:
+                await self._record_ai_call(
+                    run.id,
+                    current.id,
+                    _last_ai_call(patch_source),
+                    job_id=job_id,
+                )
             saved = _stored_patch(bundle)
             await self._runs.save_round_patch(current.id, saved)
         if bundle is None:
@@ -687,6 +707,7 @@ class EvolutionCandidateService:
         round_id: str,
         job_id: str | None,
         cluster_id: str | None = None,
+        step_index: int | None = None,
         level: EvolutionRunEventLevel = "info",
         payload: Mapping[str, object] | None = None,
         error: BaseException | None = None,
@@ -701,6 +722,7 @@ class EvolutionCandidateService:
                 level=level,
                 stage=stage,
                 cluster_id=cluster_id,
+                step_index=step_index,
                 round_id=round_id,
                 job_id=job_id,
                 message=message,
@@ -712,6 +734,28 @@ class EvolutionCandidateService:
                 "failed to record candidate event",
                 extra={"run_id": run_id, "event_type": event_type},
             )
+
+    async def _record_ai_call(
+        self,
+        run_id: str,
+        round_id: str,
+        call: AiAgentCall | None,
+        *,
+        job_id: str | None,
+    ) -> None:
+        """Record one provider call in the iteration step, when one happened."""
+        if call is None:
+            return
+        await self._record(
+            run_id,
+            "ai_agent_call",
+            stage="candidate",
+            step_index=5,
+            round_id=round_id,
+            job_id=job_id,
+            message=f"AI 调用：{call.task}（{call.outcome}）",
+            payload=call.payload(),
+        )
 
     async def _handle_provider_failure(
         self,
@@ -1010,6 +1054,18 @@ def _patch_hash(round_: EvolutionRoundRecord) -> str:
     if bundle is None:
         return Patch(file=_patch_file(round_), lines=()).sha256
     return bundle.sha256
+
+
+def _last_ai_call(source: PatchSource) -> AiAgentCall | None:
+    """Return the optional call record a patch source attached to its last build.
+
+    Only the agent-edit source performs a provider call, so the absence of the
+    attribute means the patch generation was deterministic and no AI event is
+    owed. ``isinstance`` keeps duck-typed test sources from smuggling a wrong
+    shape into the event payload.
+    """
+    call = getattr(source, "last_ai_call", None)
+    return call if isinstance(call, AiAgentCall) else None
 
 
 def _stored_bundle(raw: object) -> PatchBundle | None:

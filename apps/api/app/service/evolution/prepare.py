@@ -26,6 +26,7 @@ from app.db.models.evolution import (
 )
 from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
+from app.service.evolution.ai_observability import AiAgentCall
 from app.service.evolution.attribution import AttributionRunner, AttributionRunSummary
 from app.service.evolution.cluster import (
     HYBRID_ALGORITHM,
@@ -593,17 +594,18 @@ class EvolutionPrepareService:
                 stage="cluster",
                 step_index=4,
                 message=f"AI 调用：{call.task}（{call.outcome}）",  # noqa: RUF001
-                payload={
-                    "task": call.task,
-                    "provider": call.provider_id,
-                    "model": call.model,
-                    "inputTokens": call.input_tokens,
-                    "outputTokens": call.output_tokens,
-                    "costUsd": call.cost_usd,
-                    "latencyMs": call.latency_ms,
-                    "outcome": call.outcome,
-                    "sessionId": call.session_id,
-                },
+                payload=AiAgentCall(
+                    task=call.task,
+                    provider=call.provider_id,
+                    model=call.model,
+                    input_tokens=call.input_tokens,
+                    output_tokens=call.output_tokens,
+                    cost_usd=call.cost_usd,
+                    latency_ms=call.latency_ms,
+                    outcome=call.outcome,
+                    session_id=call.session_id,
+                    trace=call.trace,
+                ).payload(),
             )
 
         async def record_degraded(item: DegradedCall) -> None:

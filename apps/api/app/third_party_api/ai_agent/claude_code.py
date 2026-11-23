@@ -36,7 +36,7 @@ import signal
 import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
@@ -47,6 +47,7 @@ from app.third_party_api.ai_agent.base import (
     AIAgentProvider,
 )
 from app.third_party_api.ai_agent.contracts import (
+    AgentCallTrace,
     AgentProviderError,
     AgentUsage,
     AnalysisRequest,
@@ -321,23 +322,35 @@ class ClaudeCodeProvider(AIAgentProvider):
             timeout_seconds=ANALYZE_TIMEOUT_SECONDS,
         )
 
-        outcome = self._submission.collect(prep, request.output_model.model_validate)
-        if not outcome.is_ok:
+        outcomes: list[SubmissionOutcome] = [
+            self._submission.collect(prep, request.output_model.model_validate),
+        ]
+        if not outcomes[-1].is_ok:
             # Analyze is stateless, so the retry cannot continue the first CLI
             # session; it repeats the original prompt plus the concrete
             # validation feedback as a fresh call. The budget stays exactly one,
             # and a session id is not needed because nothing is resumed.
-            feedback = self._submission.feedback_prompt(outcome)
+            feedback = self._submission.feedback_prompt(outcomes[-1])
             retry_prompt = _compose_prompt(prompt, feedback)
             retry_argv = self._analyze_argv(retry_prompt, prep, settings_file=settings_file)
-            _, parsed = await self._call(
-                "analysis",
-                retry_argv,
-                cwd=prep.directory,
-                timeout_seconds=ANALYZE_TIMEOUT_SECONDS,
+            try:
+                _, parsed = await self._call(
+                    "analysis",
+                    retry_argv,
+                    cwd=prep.directory,
+                    timeout_seconds=ANALYZE_TIMEOUT_SECONDS,
+                )
+            except AgentProviderError as exc:
+                # The retry process failed before it could submit anything, so
+                # keep the first attempt's parse provenance and count both calls.
+                exc.trace = replace(_call_trace(outcomes), attempts=len(outcomes) + 1)
+                raise
+            outcomes.append(
+                self._submission.collect(prep, request.output_model.model_validate),
             )
-            outcome = self._submission.collect(prep, request.output_model.model_validate)
 
+        outcome = outcomes[-1]
+        trace = _call_trace(outcomes)
         validated = outcome.validated
         if not outcome.is_ok or validated is None:
             raise AgentProviderError(
@@ -345,6 +358,7 @@ class ClaudeCodeProvider(AIAgentProvider):
                 retryable=False,
                 provider_id=self.provider_id,
                 detail=_submission_detail(outcome),
+                trace=trace,
             )
         return AnalysisResult(
             output=validated.model_dump(mode="json"),
@@ -353,6 +367,7 @@ class ClaudeCodeProvider(AIAgentProvider):
             session_id=parsed.session_id,
             latency_ms=_elapsed_ms(started, self._clock),
             retryable=False,
+            trace=trace,
         )
 
     async def edit_workspace(self, request: EditRequest) -> EditResult:
@@ -378,6 +393,7 @@ class ClaudeCodeProvider(AIAgentProvider):
             timeout_seconds=EDIT_TIMEOUT_SECONDS,
         )
         outcome = self._submission.collect(prep, EditPlan.model_validate)
+        trace = _call_trace((outcome,))
         validated = outcome.validated
         if not outcome.is_ok or not isinstance(validated, EditPlan):
             raise AgentProviderError(
@@ -385,6 +401,7 @@ class ClaudeCodeProvider(AIAgentProvider):
                 retryable=False,
                 provider_id=self.provider_id,
                 detail=_submission_detail(outcome),
+                trace=trace,
             )
         return EditResult(
             summary=validated.summary,
@@ -396,6 +413,7 @@ class ClaudeCodeProvider(AIAgentProvider):
             latency_ms=_elapsed_ms(started, self._clock),
             retryable=False,
             plan=validated,
+            trace=trace,
         )
 
     async def health_check(self) -> ProviderHealth:
@@ -870,6 +888,29 @@ def _submission_detail(outcome: SubmissionOutcome) -> str:
     if outcome.parse_error is not None:
         return _bounded_detail(f"submission {outcome.status}: {outcome.parse_error}")
     return _bounded_detail(f"submission {outcome.status}")
+
+
+def _call_trace(outcomes: Sequence[SubmissionOutcome]) -> AgentCallTrace:
+    """Summarize the collection rounds into bounded layer-5 provenance.
+
+    One round runs per model call, so ``attempts`` equals the number of
+    outcomes; a parse failure is a round whose read/parse ladder produced no
+    document, and a validation failure is a parsed document the caller's model
+    rejected. The last round owns ``parsed_by`` because that is the document the
+    caller actually consumed.
+    """
+    if not outcomes:
+        return AgentCallTrace()
+    last = outcomes[-1]
+    return AgentCallTrace(
+        attempts=len(outcomes),
+        submission_parse_failures=sum(1 for outcome in outcomes if outcome.parse_error is not None),
+        submission_validation_failures=sum(
+            1 for outcome in outcomes if outcome.validation_error is not None
+        ),
+        parsed_by=last.parsed_by,
+        repaired=last.parsed_by == "repair",
+    )
 
 
 def _bounded_detail(text: str) -> str:

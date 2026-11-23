@@ -707,5 +707,24 @@ async def test_real_loop_agent_edit_commits_a_multi_file_candidate(
         assert {item["status"] for item in payload["report"]} == {"applied"}
         assert "SKILL.md" in payload["unifiedDiff"]
         assert "config/deep-research.json" in payload["unifiedDiff"]
+
+        calls = [item for item in page.items if item.event_type == "ai_agent_call"]
+        assert len(calls) == 1
+        call = calls[0]
+        assert call.step_index == 5
+        assert call.stage == "candidate"
+        call_payload = call.payload
+        assert call_payload is not None
+        assert call_payload["task"] == "agent.edit"
+        assert call_payload["provider"] == "fake"
+        assert call_payload["outcome"] == "ok"
+        assert call_payload["attempts"] == 1
+        assert call_payload["feedbackRetries"] == 0
+        assert call_payload["submissionParsedBy"] is None
+        assert call_payload["totalTokens"] == 0
+        assert call_payload["inputTokens"] == 0
+        assert call_payload["outputTokens"] == 0
+        assert call_payload["costUsd"] == 0
+        assert call_payload["latencyMs"] == 0
     finally:
         server.shutdown()

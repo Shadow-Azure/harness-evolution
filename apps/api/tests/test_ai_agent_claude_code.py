@@ -392,6 +392,12 @@ async def test_invalid_submission_retries_once_with_feedback(tmp_path: Path) -> 
 
     assert result.output["confidence"] == 0.5
     assert result.session_id == "session-2"
+    assert result.trace.attempts == 2
+    assert result.trace.feedback_retries == 1
+    assert result.trace.submission_validation_failures == 1
+    assert result.trace.submission_parse_failures == 0
+    assert result.trace.parsed_by == "strict"
+    assert result.trace.repaired is False
     assert len(runner.calls) == 2
     for call in runner.calls:
         assert "--resume" not in call.argv
@@ -402,6 +408,31 @@ async def test_invalid_submission_retries_once_with_feedback(tmp_path: Path) -> 
     assert "confidence" in retry_prompt
     assert "重新写入" in retry_prompt
     assert retry_argv[retry_argv.index("--allowed-tools") + 1] == ("Write(./result.json5)")
+
+
+async def test_missing_submission_keeps_parse_failure_provenance(tmp_path: Path) -> None:
+    """Two rounds without a literal stay attributable as parse failures."""
+    document = json.dumps({"type": "result"})
+    runner = MockRunner(
+        lambda _cwd: ClaudeCliResult(returncode=0, stdout=document, stderr=""),
+        lambda _cwd: ClaudeCliResult(returncode=0, stdout=document, stderr=""),
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    with pytest.raises(AgentProviderError) as caught:
+        await provider.analyze(_request())
+
+    error = caught.value
+    assert error.trace.attempts == 2
+    assert error.trace.feedback_retries == 1
+    assert error.trace.submission_parse_failures == 2
+    assert error.trace.submission_validation_failures == 0
+    assert error.trace.parsed_by is None
+    assert error.trace.repaired is False
 
 
 async def test_second_invalid_submission_fails_with_bounded_detail(tmp_path: Path) -> None:
@@ -425,6 +456,10 @@ async def test_second_invalid_submission_fails_with_bounded_detail(tmp_path: Pat
     assert error.detail is not None
     assert "confidence" in error.detail
     assert len(error.detail) <= 1_000
+    assert error.trace.attempts == 2
+    assert error.trace.feedback_retries == 1
+    assert error.trace.submission_validation_failures == 2
+    assert error.trace.submission_parse_failures == 0
     assert len(runner.calls) == 2
     assert "--resume" not in runner.calls[1].argv
 
@@ -807,6 +842,8 @@ async def test_edit_invalid_plan_raises_without_retry(tmp_path: Path) -> None:
     assert error.retryable is False
     assert error.detail is not None
     assert "summary" in error.detail
+    assert error.trace.attempts == 1
+    assert error.trace.submission_validation_failures == 1
     assert len(runner.calls) == 1
 
 

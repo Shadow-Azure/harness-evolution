@@ -58,6 +58,7 @@ from app.service.evolution.events import EvolutionRunEventStage, EvolutionRunEve
 from app.service.evolution.prepare import EvolutionPrepareService
 from app.third_party_api.ai_agent.base import AIAgentProvider
 from app.third_party_api.ai_agent.contracts import (
+    AgentCallTrace,
     AgentProviderError,
     AgentUsage,
     AnalysisRequest,
@@ -677,6 +678,7 @@ async def test_review_provider_failure_degrades_the_whole_batch() -> None:
                 "review backend unavailable",
                 retryable=True,
                 provider_id="raw",
+                trace=AgentCallTrace(attempts=2, submission_parse_failures=1),
             ),
         },
     )
@@ -689,7 +691,10 @@ async def test_review_provider_failure_degrades_the_whole_batch() -> None:
     ]
     assert [call.outcome for call in result.calls] == ["error", "ok", "ok"]
     assert calls[0].task == REVIEW_TASK
+    assert calls[0].provider_id == "raw"
     assert calls[0].model == "unknown"
+    assert calls[0].trace.feedback_retries == 1
+    assert calls[0].trace.submission_parse_failures == 1
     assert degraded[0].task == REVIEW_TASK
     assert "AgentProviderError" in degraded[0].reason
     assert result.calls == tuple(calls)
@@ -1213,6 +1218,13 @@ async def test_prepare_hybrid_persists_llm_values_and_records_calls(
     assert payload["outcome"] == "ok"
     assert payload["sessionId"] == "fake-session"
     assert {"inputTokens", "outputTokens", "costUsd", "latencyMs"} <= set(payload)
+    assert payload["totalTokens"] == 0
+    assert payload["attempts"] == 1
+    assert payload["feedbackRetries"] == 0
+    assert payload["submissionParsedBy"] is None
+    assert payload["submissionRepaired"] is False
+    assert payload["submissionParseFailures"] == 0
+    assert payload["submissionValidationFailures"] == 0
     assert [event for event in events.records if event.event_type == "degraded"] == []
     assert all(event.level == "info" for event in events.records)
 

@@ -8,6 +8,7 @@ from app.third_party_api.ai_agent.claude_code import (
     ClaudeCodeProvider,
 )
 from app.third_party_api.ai_agent.contracts import (
+    AgentCallTrace,
     AgentProviderError,
     AgentUsage,
     AnalysisRequest,
@@ -48,6 +49,7 @@ __all__ = [
     "SCHEMA_FILENAME",
     "SUBMISSION_TOOLS",
     "AIAgentProvider",
+    "AgentCallTrace",
     "AgentProviderError",
     "AgentUsage",
     "AnalysisRequest",

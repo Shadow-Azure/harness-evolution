@@ -318,9 +318,12 @@ class Settings(BaseSettings):
     @field_validator("patch_source_mode")
     @classmethod
     def validate_patch_source_mode(cls, value: str) -> str:
-        """Accept only registered patch source modes."""
-        if value not in {"placeholder", "minimal-config"}:
-            raise ValueError("HE_PATCH_SOURCE_MODE must be placeholder or minimal-config")
+        """Accept only modes registered by the patch source factory."""
+        from app.service.evolution.patch_source import PATCH_SOURCE_MODES
+
+        if value not in PATCH_SOURCE_MODES:
+            choices = ", ".join(PATCH_SOURCE_MODES)
+            raise ValueError(f"HE_PATCH_SOURCE_MODE must be one of: {choices}")
         return value
 
     @field_validator("ai_agent_provider")

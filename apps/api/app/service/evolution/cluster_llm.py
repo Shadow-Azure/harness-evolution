@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from types import MappingProxyType
 from typing import Annotated, Any, Literal
@@ -38,6 +38,7 @@ from app.service.evolution.cluster import (
 )
 from app.third_party_api.ai_agent.base import AIAgentProvider
 from app.third_party_api.ai_agent.contracts import (
+    AgentCallTrace,
     AgentProviderError,
     AnalysisRequest,
     AnalysisResult,
@@ -313,6 +314,7 @@ class CallRecord:
     latency_ms: int
     outcome: Literal["ok", "degraded", "error"]
     session_id: str | None = None
+    trace: AgentCallTrace = field(default_factory=AgentCallTrace)
 
 
 @dataclass(frozen=True, slots=True)
@@ -968,7 +970,7 @@ async def _review(
     try:
         result = await agent.analyze(request)
     except Exception as exc:
-        await note_call(_failure_record(REVIEW_TASK, agent, _elapsed_ms(started)))
+        await note_call(_failure_record(REVIEW_TASK, agent, _elapsed_ms(started), exc))
         await note_degraded(DegradedCall(REVIEW_TASK, _provider_reason(exc)))
         return _fallback_groups(drafts)
     elapsed = _elapsed_ms(started)
@@ -1000,7 +1002,7 @@ async def _score_confidences(
     try:
         result = await agent.analyze(request)
     except Exception as exc:
-        await note_call(_failure_record(CLUSTER_SCORE_TASK, agent, _elapsed_ms(started)))
+        await note_call(_failure_record(CLUSTER_SCORE_TASK, agent, _elapsed_ms(started), exc))
         await note_degraded(DegradedCall(CLUSTER_SCORE_TASK, _provider_reason(exc)))
         return fallback
     elapsed = _elapsed_ms(started)
@@ -1037,7 +1039,7 @@ async def _score_severities(
     try:
         result = await agent.analyze(request)
     except Exception as exc:
-        await note_call(_failure_record(SEVERITY_SCORE_TASK, agent, _elapsed_ms(started)))
+        await note_call(_failure_record(SEVERITY_SCORE_TASK, agent, _elapsed_ms(started), exc))
         await note_degraded(DegradedCall(SEVERITY_SCORE_TASK, _provider_reason(exc)))
         return fallback
     elapsed = _elapsed_ms(started)
@@ -1248,11 +1250,22 @@ def _elapsed_ms(started: float) -> int:
     return max(0, round((time.perf_counter() - started) * 1_000))
 
 
-def _failure_record(task: str, agent: AIAgentProvider, elapsed_ms: int) -> CallRecord:
-    """Build the observability record for a call that raised before returning."""
+def _failure_record(
+    task: str,
+    agent: AIAgentProvider,
+    elapsed_ms: int,
+    error: BaseException,
+) -> CallRecord:
+    """Build the observability record for a call that raised before returning.
+
+    A provider error may still carry the single-attempt trace of its submission
+    round; a non-provider failure means the provider raised after one call.
+    """
+    provider_error = error if isinstance(error, AgentProviderError) else None
+    trace = provider_error.trace if provider_error is not None else AgentCallTrace()
     return CallRecord(
         task=task,
-        provider_id=agent.provider_id,
+        provider_id=provider_error.provider_id if provider_error is not None else agent.provider_id,
         model="unknown",
         input_tokens=0,
         output_tokens=0,
@@ -1260,6 +1273,7 @@ def _failure_record(task: str, agent: AIAgentProvider, elapsed_ms: int) -> CallR
         latency_ms=elapsed_ms,
         outcome="error",
         session_id=None,
+        trace=trace,
     )
 
 
@@ -1280,6 +1294,7 @@ def _result_record(
         latency_ms=result.latency_ms or elapsed_ms,
         outcome=outcome,
         session_id=result.session_id,
+        trace=result.trace,
     )
 
 
