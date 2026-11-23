@@ -152,8 +152,14 @@ class ScriptedProvider(AIAgentProvider):
         return EditResult(
             summary=plan.summary,
             provider_id=self.provider_id,
-            usage=AgentUsage(model=self.provider_id),
+            usage=AgentUsage(
+                model=self.provider_id,
+                input_tokens=11,
+                output_tokens=5,
+                cost_usd=0.003,
+            ),
             session_id=f"session-{index + 1}",
+            latency_ms=13,
             plan=plan,
         )
 
@@ -272,7 +278,11 @@ async def test_agent_edit_exposes_the_call_for_the_candidate_event(tmp_path: Pat
     assert call.trace.attempts == 1
     payload = call.payload()
     assert payload["sessionId"] == "session-1"
-    assert payload["totalTokens"] == 0
+    assert payload["totalTokens"] == 16
+    assert payload["inputTokens"] == 11
+    assert payload["costUsd"] == pytest.approx(0.003)
+    assert payload["latencyMs"] == 13
+    assert payload["submissionRounds"] == 0
 
 
 class FailingEditProvider(ScriptedProvider):
@@ -285,7 +295,9 @@ class FailingEditProvider(ScriptedProvider):
             "scripted edit failed",
             retryable=False,
             provider_id=self.provider_id,
-            trace=AgentCallTrace(attempts=1, submission_validation_failures=1),
+            trace=AgentCallTrace(attempts=1, submission_rounds=1, submission_validation_failures=1),
+            usage=AgentUsage(model="scripted", input_tokens=7, output_tokens=3, cost_usd=0.001),
+            latency_ms=21,
         )
 
 
@@ -305,3 +317,7 @@ async def test_agent_edit_exposes_a_failed_call_as_an_error_record(tmp_path: Pat
     payload = call.payload()
     assert payload["outcome"] == "error"
     assert payload["feedbackRetries"] == 0
+    assert payload["model"] == "scripted"
+    assert payload["totalTokens"] == 10
+    assert payload["costUsd"] == pytest.approx(0.001)
+    assert payload["latencyMs"] == 21

@@ -44,6 +44,7 @@ After the implementation chain (bugfix-15→21) lands, this issue wraps up: comp
 ## Implementation
 
 - Verify event-field coverage and fill gaps; optionally one stats helper or query example.
+- `HE_PATCH_SOURCE_MODE=agent-edit` passes configuration validation (otherwise the documented enum value cannot start).
 - The three document changes + `pnpm record:i18n` + budget registration.
 - Note status migration with fact sync.
 
@@ -57,7 +58,7 @@ After the implementation chain (bugfix-15→21) lands, this issue wraps up: comp
 ## Dependencies and delivery boundary
 
 - Dependencies: bugfix-19 (clustering integration) and bugfix-21 (patch loop) — the observability and documents describe their final shape.
-- Delivery boundary: observability events and documents/Note; no business-behavior changes.
+- Delivery boundary: observability events and documents/Note; no business-rule change, only minimal observability wiring and configuration validation.
 
 ## Independent verification
 

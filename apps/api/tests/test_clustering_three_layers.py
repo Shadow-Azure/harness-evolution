@@ -153,11 +153,13 @@ class _RawProvider(AIAgentProvider):
         outputs: Mapping[str, Any],
         *,
         failures: Mapping[str, BaseException] | None = None,
+        trace: AgentCallTrace | None = None,
     ) -> None:
-        """Bind fixed outputs and optional per-task exceptions."""
+        """Bind fixed outputs, optional per-task exceptions, and a call trace."""
         super().__init__(None)
         self._outputs = dict(outputs)
         self._failures = dict(failures or {})
+        self._trace = trace if trace is not None else AgentCallTrace()
         self.requests: list[AnalysisRequest] = []
 
     async def analyze(self, request: AnalysisRequest) -> AnalysisResult:
@@ -177,6 +179,7 @@ class _RawProvider(AIAgentProvider):
             ),
             session_id="raw-session",
             latency_ms=13,
+            trace=self._trace,
         )
 
     async def edit_workspace(self, request: EditRequest) -> EditResult:
@@ -678,7 +681,14 @@ async def test_review_provider_failure_degrades_the_whole_batch() -> None:
                 "review backend unavailable",
                 retryable=True,
                 provider_id="raw",
-                trace=AgentCallTrace(attempts=2, submission_parse_failures=1),
+                trace=AgentCallTrace(attempts=2, submission_rounds=1, submission_parse_failures=1),
+                usage=AgentUsage(
+                    model="raw-model",
+                    input_tokens=21,
+                    output_tokens=9,
+                    cost_usd=0.004,
+                ),
+                latency_ms=34,
             ),
         },
     )
@@ -692,9 +702,14 @@ async def test_review_provider_failure_degrades_the_whole_batch() -> None:
     assert [call.outcome for call in result.calls] == ["error", "ok", "ok"]
     assert calls[0].task == REVIEW_TASK
     assert calls[0].provider_id == "raw"
-    assert calls[0].model == "unknown"
+    assert calls[0].model == "raw-model"
     assert calls[0].trace.feedback_retries == 1
     assert calls[0].trace.submission_parse_failures == 1
+    assert calls[0].model == "raw-model"
+    assert calls[0].input_tokens == 21
+    assert calls[0].output_tokens == 9
+    assert calls[0].cost_usd == pytest.approx(0.004)
+    assert calls[0].latency_ms == 34
     assert degraded[0].task == REVIEW_TASK
     assert "AgentProviderError" in degraded[0].reason
     assert result.calls == tuple(calls)
@@ -1221,12 +1236,53 @@ async def test_prepare_hybrid_persists_llm_values_and_records_calls(
     assert payload["totalTokens"] == 0
     assert payload["attempts"] == 1
     assert payload["feedbackRetries"] == 0
+    assert payload["submissionRounds"] == 0
     assert payload["submissionParsedBy"] is None
     assert payload["submissionRepaired"] is False
     assert payload["submissionParseFailures"] == 0
     assert payload["submissionValidationFailures"] == 0
     assert [event for event in events.records if event.event_type == "degraded"] == []
     assert all(event.level == "info" for event in events.records)
+
+
+async def test_prepare_maps_non_zero_usage_and_trace_into_the_event(
+    harness: Harness,
+) -> None:
+    """The persisted event carries the provider usage and submission trace."""
+    await _seed_titled_cases(harness)
+    await _create_cluster_only_run(harness)
+    events = RecordingEvents()
+    provider = _RawProvider(
+        {
+            REVIEW_TASK: _REVIEW_MERGED,
+            CLUSTER_SCORE_TASK: _CLUSTER_SCORE_MERGED,
+            SEVERITY_SCORE_TASK: _SEVERITY_OK,
+        },
+        trace=AgentCallTrace(
+            attempts=2,
+            submission_rounds=2,
+            submission_validation_failures=1,
+            parsed_by="json5",
+        ),
+    )
+
+    await _service(harness, events, provider).handle(_job())
+
+    calls = [event for event in events.records if event.event_type == "ai_agent_call"]
+    assert len(calls) == 3
+    payload = calls[0].payload
+    assert payload is not None
+    assert payload["inputTokens"] == 11
+    assert payload["outputTokens"] == 7
+    assert payload["totalTokens"] == 18
+    assert payload["costUsd"] == pytest.approx(0.002)
+    assert payload["latencyMs"] == 13
+    assert payload["sessionId"] == "raw-session"
+    assert payload["attempts"] == 2
+    assert payload["feedbackRetries"] == 1
+    assert payload["submissionRounds"] == 2
+    assert payload["submissionParsedBy"] == "json5"
+    assert payload["submissionValidationFailures"] == 1
 
 
 async def test_prepare_without_agent_keeps_the_lexical_path(harness: Harness) -> None:

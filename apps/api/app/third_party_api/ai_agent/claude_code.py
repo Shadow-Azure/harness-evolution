@@ -359,6 +359,8 @@ class ClaudeCodeProvider(AIAgentProvider):
                 provider_id=self.provider_id,
                 detail=_submission_detail(outcome),
                 trace=trace,
+                usage=parsed.usage,
+                latency_ms=_elapsed_ms(started, self._clock),
             )
         return AnalysisResult(
             output=validated.model_dump(mode="json"),
@@ -402,6 +404,8 @@ class ClaudeCodeProvider(AIAgentProvider):
                 provider_id=self.provider_id,
                 detail=_submission_detail(outcome),
                 trace=trace,
+                usage=parsed.usage,
+                latency_ms=_elapsed_ms(started, self._clock),
             )
         return EditResult(
             summary=validated.summary,
@@ -904,6 +908,7 @@ def _call_trace(outcomes: Sequence[SubmissionOutcome]) -> AgentCallTrace:
     last = outcomes[-1]
     return AgentCallTrace(
         attempts=len(outcomes),
+        submission_rounds=len(outcomes),
         submission_parse_failures=sum(1 for outcome in outcomes if outcome.parse_error is not None),
         submission_validation_failures=sum(
             1 for outcome in outcomes if outcome.validation_error is not None

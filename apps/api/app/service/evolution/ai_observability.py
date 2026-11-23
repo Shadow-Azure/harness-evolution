@@ -55,15 +55,20 @@ class AiAgentCall:
 
     @classmethod
     def failed(cls, task: str, error: AgentProviderError) -> AiAgentCall:
-        """Build the error record for a provider call that raised."""
+        """Build the error record for a provider call that raised.
+
+        Usage and latency stay available when the provider had already parsed a
+        CLI result before the failure; failures before that point report zero.
+        """
+        usage = error.usage
         return cls(
             task=task,
             provider=error.provider_id,
-            model="unknown",
-            input_tokens=0,
-            output_tokens=0,
-            cost_usd=0.0,
-            latency_ms=0,
+            model=usage.model if usage is not None else "unknown",
+            input_tokens=usage.input_tokens if usage is not None else 0,
+            output_tokens=usage.output_tokens if usage is not None else 0,
+            cost_usd=usage.cost_usd if usage is not None else 0.0,
+            latency_ms=error.latency_ms,
             outcome="error",
             trace=error.trace,
         )
@@ -75,8 +80,8 @@ class AiAgentCall:
         cost accounting. The key deliberately avoids ``tokens`` because the
         event sanitizer treats any key starting with ``token`` as a credential.
         The submission counters let a query derive the parse failure rate
-        (``submissionParseFailures`` over ``attempts``) and the repair rate
-        (``submissionRepaired``) without raw model output.
+        (``submissionParseFailures`` over ``submissionRounds``) and the repair
+        rate (``submissionRepaired``) without raw model output.
         """
         return {
             "task": self.task,
@@ -91,6 +96,7 @@ class AiAgentCall:
             "sessionId": self.session_id,
             "attempts": self.trace.attempts,
             "feedbackRetries": self.trace.feedback_retries,
+            "submissionRounds": self.trace.submission_rounds,
             "submissionParsedBy": self.trace.parsed_by,
             "submissionRepaired": self.trace.repaired,
             "submissionParseFailures": self.trace.submission_parse_failures,

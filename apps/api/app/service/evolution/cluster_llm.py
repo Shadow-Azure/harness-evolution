@@ -1263,14 +1263,16 @@ def _failure_record(
     """
     provider_error = error if isinstance(error, AgentProviderError) else None
     trace = provider_error.trace if provider_error is not None else AgentCallTrace()
+    usage = provider_error.usage if provider_error is not None else None
+    latency_ms = provider_error.latency_ms if provider_error is not None else 0
     return CallRecord(
         task=task,
         provider_id=provider_error.provider_id if provider_error is not None else agent.provider_id,
-        model="unknown",
-        input_tokens=0,
-        output_tokens=0,
-        cost_usd=0.0,
-        latency_ms=elapsed_ms,
+        model=usage.model if usage is not None else "unknown",
+        input_tokens=usage.input_tokens if usage is not None else 0,
+        output_tokens=usage.output_tokens if usage is not None else 0,
+        cost_usd=usage.cost_usd if usage is not None else 0.0,
+        latency_ms=latency_ms or elapsed_ms,
         outcome="error",
         session_id=None,
         trace=trace,

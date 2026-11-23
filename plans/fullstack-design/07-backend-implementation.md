@@ -826,7 +826,7 @@ class AIAgentProvider(ABC):
 
 `analyze` 的结构化收货不依赖任何 CLI 的内部机制（如 Claude Code 的 `--json-schema`）：provider 层公共组件 `third_party_api/ai_agent/submission.py` 实现「agent 写宽松字面量文件、确定性解析器收货」的通道，所有 CLI 后端共享。
 
-- **机制**：`prepare()` 在任务目录预置 `schema.json` 与指令片段，工具白名单只有 `Write(./result.json5)`；agent 把结论写进 `result.json5`（JSON5 宽松格式：注释、尾逗号、单引号、裸键）——「用 JS 生成 JSON」的真实价值是字面量容错 + 确定性序列化，且不执行任何模型代码。`collect()` 读文件 → JSON5 解析（失败走 json-repair 抢救）→ 规范化 → 任务模型 `model_validate`（语义 validator 在此执行）；失败则 `feedback_prompt()` 生成「哪个字段、违反什么约束」的回喂文案，子类 `--resume` 重试 ≤1 轮。
+- **机制**：`prepare()` 在任务目录预置 `schema.json` 与指令片段，工具白名单只有 `Write(./result.json5)`；agent 把结论写进 `result.json5`（JSON5 宽松格式：注释、尾逗号、单引号、裸键）——「用 JS 生成 JSON」的真实价值是字面量容错 + 确定性序列化，且不执行任何模型代码。`collect()` 读文件 → JSON5 解析（失败走 json-repair 抢救）→ 规范化 → 任务模型 `model_validate`（语义 validator 在此执行）；失败则 `feedback_prompt()` 生成「哪个字段、违反什么约束」的回喂文案，子类重试 ≤1 轮；Claude Code 以无状态新调用回喂，不复用 `--resume`（`--no-session-persistence` 使会话不可 resume）。
 - **六层防线**：0 契约设计（Pydantic 单一事实源，跨字段语义规则放 validator 不塞 schema）→ 1 提交通道（自建字面量通道，默认）→ 2 服务端校验 → 3 json-repair 兜底（仅回退路径）→ 4 有限重试与降级（不静默落库半成品）→ 5 可观测（提交文件解析失败率、回喂重试次数入 `ai_agent_call` 事件）。
 - **`--json-schema` 仅为可选快路径**：`HE_AI_AGENT_NATIVE_SCHEMA=true` 且 capability 探测支持时 ClaudeCodeProvider 可改用 CLI 原生通道（`structured_output` 字段 + 内部回喂重试）；默认关闭，统一走自建通道保证行为一致、测试一套。`model` 子类直连 API 时，API 级结构化输出是公开契约，直接使用。
 

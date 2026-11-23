@@ -12,6 +12,7 @@ def test_agent_call_trace_derives_retries_and_rejects_impossible_counters() -> N
     """The trace derives feedback retries and refuses impossible provenance."""
     trace = AgentCallTrace(
         attempts=2,
+        submission_rounds=2,
         submission_parse_failures=1,
         submission_validation_failures=0,
         parsed_by="json5",
@@ -25,12 +26,21 @@ def test_agent_call_trace_derives_retries_and_rejects_impossible_counters() -> N
         AgentCallTrace(attempts=0)
     with pytest.raises(ValueError, match="attempts"):
         AgentCallTrace(attempts=-1)
+    with pytest.raises(ValueError, match="submission_rounds"):
+        AgentCallTrace(submission_rounds=-1)
+    with pytest.raises(ValueError, match="cannot exceed attempts"):
+        AgentCallTrace(attempts=1, submission_rounds=2)
     with pytest.raises(ValueError, match="parse_failures"):
         AgentCallTrace(submission_parse_failures=-1)
     with pytest.raises(ValueError, match="validation_failures"):
         AgentCallTrace(submission_validation_failures=-1)
-    with pytest.raises(ValueError, match="cannot exceed"):
-        AgentCallTrace(attempts=1, submission_parse_failures=1, submission_validation_failures=1)
+    with pytest.raises(ValueError, match="cannot exceed submission rounds"):
+        AgentCallTrace(
+            attempts=1,
+            submission_rounds=1,
+            submission_parse_failures=1,
+            submission_validation_failures=1,
+        )
     with pytest.raises(ValueError, match="repaired"):
         AgentCallTrace(repaired=True)
 
@@ -49,6 +59,7 @@ def test_payload_carries_every_operational_field() -> None:
         session_id="session-1",
         trace=AgentCallTrace(
             attempts=2,
+            submission_rounds=2,
             submission_validation_failures=1,
             parsed_by="strict",
         ),
@@ -67,6 +78,7 @@ def test_payload_carries_every_operational_field() -> None:
         "sessionId": "session-1",
         "attempts": 2,
         "feedbackRetries": 1,
+        "submissionRounds": 2,
         "submissionParsedBy": "strict",
         "submissionRepaired": False,
         "submissionParseFailures": 0,
@@ -80,7 +92,7 @@ def test_failed_call_keeps_the_provider_error_trace() -> None:
         "submission missing",
         retryable=False,
         provider_id="claude-code",
-        trace=AgentCallTrace(attempts=2, submission_parse_failures=2),
+        trace=AgentCallTrace(attempts=2, submission_rounds=2, submission_parse_failures=2),
     )
 
     payload = AiAgentCall.failed("agent.edit", error).payload()
@@ -91,4 +103,5 @@ def test_failed_call_keeps_the_provider_error_trace() -> None:
     assert payload["outcome"] == "error"
     assert payload["attempts"] == 2
     assert payload["feedbackRetries"] == 1
+    assert payload["submissionRounds"] == 2
     assert payload["submissionParseFailures"] == 2

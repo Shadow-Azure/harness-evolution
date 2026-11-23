@@ -2,19 +2,18 @@
 
 [English](ai-agent.en.md) | 中文
 
-自进化的审查、评分与 patch 生成经统一出站层调用模型。本页讲分层、提交通道、观测事件与配置；安装与模型配置见 [claude-code.md](claude-code.md)。
+自进化的审查、评分与 patch 生成经统一出站层调用模型；安装与模型配置见 [claude-code.md](claude-code.md)。
 
 ## 分层
 
 - `apps/api/app/third_party_api/ai_agent/` 是唯一出站缝：业务服务只调 `build_agent_provider`，不 import 厂商模块，也不按后端名分支。
 - `AIAgentProvider` 只定契约，两个能力面是 `analyze`（结构化分析）与 `edit_workspace`（提交编辑计划）。
-- 工厂按 `AI_AGENT_PROVIDER` 选注册表里的子类：`claude-code` 是默认项，`fake` 给单测与 CI 确定性结果。
-- 新增后端 = 一个子类 + 一条注册项，业务代码不动。
+- 工厂按 `AI_AGENT_PROVIDER` 选注册表里的子类：`claude-code` 是默认项，`fake` 给单测与 CI 确定性结果；新增后端只加一个子类与注册项。
 
 ## Analyze 任务
 
 - 任务键恰好三个：`cluster.review` 合并草稿并命名，`cluster.score` 给簇置信度，`severity.score` 给严重度。
-- 每次运行恰好 3 次有界调用；输入是草稿摘要与代表样本，成员列表由代码持有，调用量与归因报告总量 N 解耦。
+- 有草稿时每次运行恰好 3 次有界调用（无草稿时 0 次）；输入是草稿摘要与代表样本，成员列表由代码持有，调用量与归因报告总量 N 解耦。
 - 任一调用失败或输出违反契约时，该任务降级为确定性词法值或公式值，并另记一条 `degraded` warn 事件（`task` 与 `reason`）。
 
 ## 提交通道
@@ -27,24 +26,24 @@ Agent 每轮只写一个 `result.json5`；收货走确定性阶梯 strict JSON �
 
 ## 观测事件
 
-每次出站调用恰好记一条 `ai_agent_call` run 事件，payload 字段固定为：
+每次出站调用记一条 `ai_agent_call` run 事件，payload 字段为：
 
 ```text
 task provider model inputTokens outputTokens totalTokens costUsd latencyMs outcome
-sessionId attempts feedbackRetries submissionParsedBy submissionRepaired
+sessionId attempts feedbackRetries submissionRounds submissionParsedBy submissionRepaired
 submissionParseFailures submissionValidationFailures
 ```
 
-- `outcome` 取 `ok`、`degraded` 或 `error`；`submissionParsedBy` 取 `strict`、`json5` 或 `repair`，无提交时为 null。
-- 解析失败率由 `submissionParseFailures` 除以 `attempts` 得出；`feedbackRetries` 是回喂重试次数。
-- analyze 事件落 stage `cluster` 第 4 步，agent-edit 事件落 stage `candidate` 第 6 步（`step_index=5`）。
-- 降级事件是 `degraded` warn 事件，payload 为 `task` 与 `reason`。
+- `outcome` 取 `ok`、`degraded` 或 `error`；`submissionParsedBy` 是最后一批解析档位（即使文档随后校验失败），无提交时为 null；`submissionRepaired` 表示最后一批经 repair 档，成功与否看 `outcome`。
+- 解析失败率 = `submissionParseFailures` / `submissionRounds`（`submissionRounds=0` 时比率不适用）；`feedbackRetries` 是回喂重试次数。
+- analyze 事件落 stage `cluster` 第 5 步（`step_index=4`），agent-edit 事件落 stage `candidate` 第 6 步（`step_index=5`）。
+- 失败调用在已解析 CLI 结果后保留 usage 与 latency；解析前的进程级失败记 0 与 unknown。
 
 ## 配置
 
 | 设置 | 默认 | 说明 |
 |---|---|---|
-| `AI_AGENT_PROVIDER` | `claude-code` | 选择注册子类；`fake` 供确定性测试；别名 `HE_AI_AGENT_PROVIDER` |
+| `AI_AGENT_PROVIDER` | `claude-code` | 选择注册子类；`fake` 供确定性测试 |
 | `HE_AI_AGENT_CLAUDE_BIN` | `~/.local/bin/claude` | Claude Code CLI 路径 |
 | `HE_PATCH_SOURCE_MODE` | `placeholder` | 可选 `minimal-config`、`agent-edit`；`agent-edit` 需已配置的 provider |
 

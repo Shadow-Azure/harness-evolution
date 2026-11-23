@@ -637,9 +637,15 @@ async def test_saved_patch_bypasses_model_generation(state: State) -> None:
     def forbidden(_: Any) -> Any:
         raise AssertionError("resuming a durable patch called the model twice")
 
+    events = EvolutionRunEventService(
+        SqlRunEventStore(state.database),
+        state.repository,
+        EventBus(queue_capacity=8),
+    )
     service = EvolutionCandidateService(
         state.repository,
         state.workspace,  # type: ignore[arg-type]
+        events=events,
         patch_source_factory=forbidden,
     )
     published = await service.publish(
@@ -647,6 +653,8 @@ async def test_saved_patch_bypasses_model_generation(state: State) -> None:
     )
     assert published.patch == patch
     assert published.status == "evaluating"
+    page = await events.list(RUN_ID, after_seq=0, limit=50, level=None)
+    assert [event for event in page.items if event.event_type == "ai_agent_call"] == []
 
 
 async def test_initial_transient_push_failure_carries_one_minute_backoff(
