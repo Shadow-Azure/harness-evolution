@@ -12,7 +12,7 @@ depends:
   - bugfix-19
   - bugfix-23
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/app/service/evolution/**
   - apps/api/app/third_party_api/ai_agent/**
