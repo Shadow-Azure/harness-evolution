@@ -38,6 +38,7 @@
 | [12 bad_cases 目录数据定时同步](12-bad-case-catalog-sync.md) | 上游分页查询契约、游标翻页、upsert、状态表与前端统计 | 做 m6-16 前 |
 | [13 根会话 ID 的展示与检索](13-root-session-id.md) | 错误页两处展示、会话搜索匹配 `id`、契约与性能边界 | 做 m6-18 前 |
 | [15 V1/V2 差距与前端差异](15-v1-v2-gap-analysis.md) | 当前实现相对 V1、V2 相对 V1 的功能与界面差异，以及 V2 改动地图 | 做 V2 前 |
+| [16 bad case 同步源工厂化](16-bad-case-sync-source-factory.md) | global 源线的父类 / 子类 / 工厂、`HE_BAD_CASE_SYNC_PROVIDER` 开关矩阵、已上报 bad case 的写者归属、`_sync_root` 单循环收敛，以及目录 / root 两条数据流的逐步 JSON 对照 | 做同步源工厂化实现 issue 前（#548） |
 
 ## 系统一句话说明
 
