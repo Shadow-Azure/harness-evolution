@@ -40,8 +40,8 @@
 4. 存量机首次 Provision（一次性 root 授权，之后由 workflow 执行）：
    - 生成专用密钥：`ssh-keygen -t ed25519 -f ~/.ssh/harness-provision -N "" -C harness-provision`；
    - 把公钥追加到生产机 root：`ssh root@<IP> "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys" < ~/.ssh/harness-provision.pub`（也可在阿里云 Cloud Assistant / VNC 执行同样内容）；
-   - `gh secret set PROVISION_SSH_KEY < ~/.ssh/harness-provision`；`PROVISION_SSH_USER` 默认 `root`，无需设置；
-   - Actions → `Provision` → `check`（缺包时应输出 `ATTRIBUTION_BWRAP_MISSING`）→ `install`，直到 `state=ready`。该密钥只用于 Provision，不用于 Deploy；轮换时替换 Secret 并删除主机旧公钥。
+   - `gh secret set PROVISION_SSH_KEY --env production < ~/.ssh/harness-provision`（Environment Secret，只有带 `production` 环境的 job 能读）；`PROVISION_SSH_USER` 默认 `root`，无需设置；
+   - Actions → `Provision` → `check`（缺包时应输出 `ATTRIBUTION_BWRAP_MISSING`）→ `install`，直到 `state=ready`。该密钥只用于 Provision，不用于 Deploy；轮换时替换 `production` 环境 Secret 并删除主机旧公钥。
 
 5. （可选）接真实评测平台时（#244）：`gh secret set HE_EVAL_MODE`（填 `http`）、`gh secret set HE_EVAL_BASE_URL`、`gh secret set HE_EVAL_API_KEY`；`Deploy` 流水线会把它们注入 `/opt/harness/shared/.env`，未配置时跳过、不影响发布。注入细节：值 base64 传输，服务器侧 `deploy/inject-config.py` 解码后整文件临时文件+替换原子重写（无半写入、重跑幂等），`&`/`$`/反引号/`|`/引号等特殊字符均安全；单键解码失败（含解码结果含换行）告警跳过、不阻塞发布，SSH 或写盘失败则中止发布，重跑部署幂等修复。`HE_EVAL_API_KEY` 走 `gh secret set HE_EVAL_API_KEY --body "<密钥>"` 直推，不在聊天或截图出现。
 

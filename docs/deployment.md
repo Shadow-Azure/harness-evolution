@@ -30,7 +30,7 @@
 
 ## Provision 入口
 
-归因 Skill 的 `bubblewrap` 是系统包，`deploy` 用户没有 apt/dpkg 权限，日常发布只以 `attribution.preflight` 为门禁。存量机用独立 [Provision workflow](../.github/workflows/provision.yml)：`workflow_dispatch` + `environment: production`（可配 required reviewers），只允许从 `main` 触发，模式为 `check` / `install` / `dry-run`。它调用 [provision-bubblewrap.sh](../deploy/provision-bubblewrap.sh)：已安装时只验证、缺失才安装，并以 `harness` 身份跑最小命名空间探针；Ubuntu 24.04 的 AppArmor userns 限制由脚本安装的 `/etc/apparmor.d/bwrap-userns-restrict` 放行（只针对 `/usr/bin/bwrap`，不改主机级 sysctl）；`ATTRIBUTION_BWRAP_MISSING` / `ATTRIBUTION_BWRAP_UNUSABLE` 与 preflight 同码。凭据 `PROVISION_SSH_KEY`（专用 root 私钥）与 `PROVISION_SSH_USER`（默认 `root`）只用于 Provision；配置、轮换与首次启用见[部署手册](../plans/deploy-aliyun-playbook.md#4-github-仓库配置网页粘贴)。
+归因 Skill 的 `bubblewrap` 是系统包，`deploy` 用户没有 apt/dpkg 权限，日常发布只以 `attribution.preflight` 为门禁。存量机用独立 [Provision workflow](../.github/workflows/provision.yml)：`workflow_dispatch` + `environment: production`（可配 required reviewers），只允许从 `main` 触发，模式为 `check` / `install` / `dry-run`。它调用 [provision-bubblewrap.sh](../deploy/provision-bubblewrap.sh)：已安装时只验证、缺失才安装，并以 `harness` 身份跑最小命名空间探针；Ubuntu 24.04 的 AppArmor userns 限制由脚本安装的 `/etc/apparmor.d/bwrap-userns-restrict` 放行（只针对 `/usr/bin/bwrap`，不改主机级 sysctl）；`ATTRIBUTION_BWRAP_MISSING` / `ATTRIBUTION_BWRAP_UNUSABLE` 与 preflight 同码。凭据是 `production` 环境的 `PROVISION_SSH_KEY`（专用 root 私钥）与可选的 `PROVISION_SSH_USER`（默认 `root`），只用于 Provision；配置、轮换与首次启用见[部署手册](../plans/deploy-aliyun-playbook.md#4-github-仓库配置网页粘贴)。
 
 ## 新机 cloud-init
 
@@ -44,8 +44,8 @@
 | `ALIYUN_USER` | Secret | SSH 用户（`deploy`） |
 | `ALIYUN_SSH_KEY` | Secret | deploy 用户 ed25519 私钥 |
 | `ALIYUN_SSH_PORT` | Variable | SSH 端口（默认 22） |
-| `PROVISION_SSH_KEY` | Secret | 仅 Provision 使用的专用 root 私钥 |
-| `PROVISION_SSH_USER` | Secret | 可选，Provision 的 SSH 用户（默认 `root`） |
+| `PROVISION_SSH_KEY` | Environment Secret | `production` 环境专用 root 私钥，仅 Provision job 可读 |
+| `PROVISION_SSH_USER` | Environment Secret | 可选，Provision 的 SSH 用户（默认 `root`） |
 | `HE_DATA_DIR` | Variable | 数据目录绝对路径；留空用 `/var/lib/harness-evolution/data` |
 | `XRAY_CONFIG` | Environment Secret | 可选：完整 Xray JSON（VLESS 出站 + 回环 mixed 入站），见 [Git 出网代理](git-proxy.md) |
 | `production` | Environment | 发布 job 的保护环境，可配人工审批 |

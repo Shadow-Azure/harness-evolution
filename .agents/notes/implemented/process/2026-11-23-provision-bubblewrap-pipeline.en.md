@@ -12,7 +12,7 @@ On Linux the attribution Skill depends on `bubblewrap`, but that is an OS packag
 
 Provisioning of OS packages goes through a standalone `Provision` workflow, decoupled from release:
 
-- `.github/workflows/provision.yml` is triggered only by `workflow_dispatch`, binds the `production` environment, and runs only from `main`; it uses the dedicated root credentials `PROVISION_SSH_KEY` / `PROVISION_SSH_USER` and reuses `ALIYUN_HOST` and `ALIYUN_SSH_PORT`.
+- `.github/workflows/provision.yml` is triggered only by `workflow_dispatch`, binds the `production` environment, and runs only from `main`; it uses the `production` environment's dedicated root credentials `PROVISION_SSH_KEY` / `PROVISION_SSH_USER` and reuses `ALIYUN_HOST` and `ALIYUN_SSH_PORT`.
 - `deploy/provision-bubblewrap.sh` runs idempotently as root: it checks first, only verifies when the package is installed, and runs `apt-get update` plus install only when missing; finally it runs a minimal namespace probe as `harness`. Ubuntu 24.04 restricts unprivileged userns through AppArmor by default; when the probe fails, the script installs `/etc/apparmor.d/bwrap-userns-restrict` to allow only `/usr/bin/bwrap` and retries, without changing the host-wide `kernel.apparmor_restrict_unprivileged_userns`. `--check` is read-only and `--dry-run` only prints the plan; error codes align with `attribution.preflight`'s `ATTRIBUTION_BWRAP_MISSING` / `ATTRIBUTION_BWRAP_UNUSABLE`.
 - New hosts get `bubblewrap` at creation from `deploy/cloud-init.yaml`; `bootstrap-server.sh` remains the source of truth for the base package list.
 - The preflight in `release.sh` stays as the gate; the Deploy failure summary maps error codes to the Provision entry and runbook. Deploy's sudoers are unchanged.
@@ -27,7 +27,7 @@ Provisioning of OS packages goes through a standalone `Provision` workflow, deco
 
 ## Consequences
 
-- Existing hosts need a one-time root authorization: add the dedicated public key to `authorized_keys` and store the private key in `PROVISION_SSH_KEY`; the workflow then runs it, the key can rotate, and logs contain no credentials.
+- Existing hosts need a one-time root authorization: add the dedicated public key to `authorized_keys` and store the private key in the `production` environment's `PROVISION_SSH_KEY`; the workflow then runs it, the key can rotate, and logs contain no credentials.
 - The `production` environment currently has no required reviewers; approval strength depends on repository settings. Once enabled, both Provision and Deploy need human approval, which is operations configuration rather than code behavior.
 - `--check` exits non-zero with `ATTRIBUTION_BWRAP_MISSING` when the package is absent, so the check itself can make the workflow red; that is the intended observable signal, and the same command turns green after installation. The AppArmor profile is installed by Provision and persists in `/etc/apparmor.d`, where apparmor.service reloads it on boot.
 - New system prerequisites follow the same pattern: the script offers a read-only check and an idempotent install, CI verifies the contract on a clean host (see #552), and Deploy stays fail-closed.

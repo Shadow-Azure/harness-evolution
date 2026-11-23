@@ -1,7 +1,8 @@
 # 生产机 OS 包 provisioning：安装/验证归因 Skill 的 bubblewrap 前置。
 # 独立手动入口，避免把 apt 权限交给 deploy，也避免每次发布携带 root。
-# 前置：Secrets ALIYUN_HOST / PROVISION_SSH_KEY（专用 root 私钥），可选
-#       Secret PROVISION_SSH_USER（默认 root）；Variable ALIYUN_SSH_PORT（默认 22）。
+# 前置：Secret ALIYUN_HOST / production Environment Secret PROVISION_SSH_KEY
+#       （专用 root 私钥），可选 Environment Secret PROVISION_SSH_USER（默认 root）；
+#       Variable ALIYUN_SSH_PORT（默认 22）。
 #       production environment 可配置 required reviewers 作为人工审批。
 # 安全：只允许从 main 触发（脚本以 root 执行，必须来自已合并代码）；私钥只写
 #       runner 上的 0600 文件；脚本经 stdin 执行，不在主机落临时文件；日志不含凭据。

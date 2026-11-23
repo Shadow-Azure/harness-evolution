@@ -12,7 +12,7 @@ Status: implemented
 
 系统包 provisioning 走独立的 `Provision` workflow，与发布解耦：
 
-- `.github/workflows/provision.yml` 只由 `workflow_dispatch` 触发，绑定 `production` 环境，只允许从 `main` 运行；使用专用 root 凭据 `PROVISION_SSH_KEY` / `PROVISION_SSH_USER`，复用 `ALIYUN_HOST`、`ALIYUN_SSH_PORT`。
+- `.github/workflows/provision.yml` 只由 `workflow_dispatch` 触发，绑定 `production` 环境，只允许从 `main` 运行；使用 `production` 环境的专用 root 凭据 `PROVISION_SSH_KEY` / `PROVISION_SSH_USER`，复用 `ALIYUN_HOST`、`ALIYUN_SSH_PORT`。
 - `deploy/provision-bubblewrap.sh` 以 root 幂等执行：先检测，已安装时只验证，缺失时才 `apt-get update` + 安装；最后以 `harness` 身份运行最小命名空间探针。Ubuntu 24.04 的 AppArmor 默认限制 unprivileged userns，探针失败时脚本安装只放行 `/usr/bin/bwrap` 的 `/etc/apparmor.d/bwrap-userns-restrict` 并重试，不改主机级 `kernel.apparmor_restrict_unprivileged_userns`。`--check` 只读，`--dry-run` 只打印计划；错误码与 `attribution.preflight` 的 `ATTRIBUTION_BWRAP_MISSING` / `ATTRIBUTION_BWRAP_UNUSABLE` 对齐。
 - 新机由 `deploy/cloud-init.yaml` 在创建阶段安装 `bubblewrap`；`bootstrap-server.sh` 仍是基础包清单的 source of truth。
 - `release.sh` 的 preflight 保留为门禁；Deploy 失败摘要把错误码映射到 Provision 入口与 runbook。deploy 的 sudoers 不变。
@@ -27,7 +27,7 @@ Status: implemented
 
 ## Consequences
 
-- 存量机需要一次性 root 授权：把专用公钥加入 `authorized_keys` 并写入 `PROVISION_SSH_KEY`；之后由 workflow 执行，密钥可轮换，日志不含凭据。
+- 存量机需要一次性 root 授权：把专用公钥加入 `authorized_keys` 并写入 `production` 环境的 `PROVISION_SSH_KEY`；之后由 workflow 执行，密钥可轮换，日志不含凭据。
 - `production` 环境目前没有 required reviewers；审批强度取决于仓库设置。启用后 Provision 与 Deploy 都需要人工批准，这是运维配置而不是代码行为。
 - `--check` 在缺包时会非零退出并给出 `ATTRIBUTION_BWRAP_MISSING`，因此“检查”本身可能让 workflow 变红；这是有意的可观测信号，安装后同一条命令应变绿。AppArmor profile 随 Provision 安装并持久化在 `/etc/apparmor.d`，重启后由 apparmor.service 重新加载。
 - 新增系统前置时沿用同一模式：脚本提供只读检查与幂等安装，CI 负责在干净主机上验证契约（见 #552），Deploy 继续 fail-closed。
