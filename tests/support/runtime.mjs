@@ -195,7 +195,10 @@ class CdpSession {
       const opened = () => finish();
       const failed = () => finish(new Error("CDP websocket failed"));
       const closed = () => finish(new Error("CDP websocket closed before opening"));
-      const timer = setTimeout(() => finish(new Error(`CDP websocket opening timed out after ${timeoutMs}ms`)), timeoutMs);
+      const timer = setTimeout(
+        () => finish(new Error(`CDP websocket did not open within ${timeoutMs}ms`)),
+        timeoutMs,
+      );
       this.socket.addEventListener("open", opened);
       this.socket.addEventListener("error", failed);
       this.socket.addEventListener("close", closed);
