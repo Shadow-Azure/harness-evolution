@@ -4,7 +4,7 @@ English | [中文](bugfix-cluster-review-file-submission.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-30
+id: bugfix-31
 milestone: bugfix
 depends:
   - bugfix-17
@@ -13,12 +13,9 @@ depends:
 priority: P2
 status: ready
 scope:
-  - apps/api/app/third_party_api/ai_agent/**
-  - apps/api/app/config.py
+  - apps/api/app/third_party_api/ai_agent/claude_code.py
   - apps/api/tests/**
   - tests/e2e/**
-  - deploy/**
-  - .github/workflows/**
   - docs/**
   - plans/**
   - .agents/**
@@ -62,11 +59,11 @@ Why the file channel must stay: `submission.py` is the provider-independent cont
 - Direct cause: the `cluster.review` analyze call never produces a parseable submission; the single feedback retry after the first failure runs into `ANALYZE_TIMEOUT_SECONDS = 300`, is terminated by a process-group SIGINT→SIGKILL, normalized to `cancelled`, and strict policy turns `ClusterAIFailure` into a failed run.
 - There are two root causes and both must be fixed: (1) `--bare` removes `Write` from the CLI tool set, so the file channel cannot work; (2) relative rules such as `Write(./result.json5)` do not match the per-call task directory's absolute path, and `Read` is not allowlisted, so the schema is invisible too.
 - #533 is a necessary fix, not the culprit; #526 turned the same failure from a silent degradation into an explicit failure; #514 introduced the latent defect “the file channel depends on Write but the tool face was never verified”.
-- The chosen solution: keep the file channel; fix the tool face and the permission rule in the provider layer; make “tool unavailable” fail fast and diagnosably instead of burning 300s. `--json-schema` is not used.
+- The chosen solution: keep the file channel; fix the tool face and the permission rule only inside the `ClaudeCodeProvider` subclass; make “tool unavailable” fail fast and diagnosably instead of burning 300s. `--json-schema` is not used.
 
 ## Goals
 
-- Make the file submission channel actually work on the deployed CLI `2.1.323`: the model can see and call the write tool, and the permission rule matches the task directory of the current call.
+- Make the file submission channel actually work on the deployed CLI `2.1.323`: the model can see and call the write tool, and the permission rule matches the task directory of the current call; **production changes are confined to the `ClaudeCodeProvider` subclass**.
 - Keep the submission semantics provider-independent: the `schema.json`, `result.json5`, collect, and one-feedback-retry contract stays; only the provider adaptation layer may adjust argv and tool/permission rules per CLI.
 - When the submission tool is missing or denied, emit a diagnosable failure within seconds (naming the missing tool or the denied path) instead of entering the 300s retry; preserve bounded stdout/stderr and `permission_denials` on timeout/cancellation.
 - Production acceptance: a real run's `cluster.review` is `outcome=ok`, tokens>0, and model is not `unknown`; `cluster.score` and `severity.score` are also ok; the run reaches step 6/7.
@@ -82,27 +79,29 @@ Why the file channel must stay: `submission.py` is the provider-independent cont
 
 ## Implementation
 
+**Hard constraint (requested 2026-11-23)**: production changes are confined to the `ClaudeCodeProvider` subclass (`apps/api/app/third_party_api/ai_agent/claude_code.py`). Do not modify the `AIAgentProvider` base class, the `submission.py` channel, the `claude_cli.py` shared transport, `Settings` / `config.py`, `deploy.yml`, or any workflow. The launch mode is fixed inside the subclass argv and adds no deployment configuration; switching environments or AI agents uses the existing `AI_AGENT_PROVIDER` to select a different subclass, with CLI details encapsulated in each subclass. Tests, e2e, and docs may change as required by acceptance. If the subclass cannot complete the fix independently (for example, a shared-layer change becomes necessary), stop and report instead of widening the change.
+
 - **Tool face (first fix)**: on the pinned CLI `2.1.323`, establish a launch mode that both keeps `Write` and preserves the minimal context/permissions. Candidates:
-  - Drop `--bare` and preserve the hardening it provided with explicit flags/environment variables (disable hooks/plugins/CLAUDE.md auto-discovery, disable the auto-updater, and so on), then verify that the init tool list contains `Write`;
+  - Drop `--bare` inside the subclass argv and preserve the hardening it provided with explicit flags/environment variables (disable hooks/plugins/CLAUDE.md auto-discovery, disable the auto-updater, and so on), then verify that the init tool list contains `Write`; add no deployment configuration;
   - If the CLI offers no equivalent “minimal mode with Write”, record that CLI limitation in the provider adaptation layer and switch to a file-write path that pre-creates an empty `result.json5` and allows `Read/Edit`, provided the Edit creation semantics are verified on the same real CLI version;
   - Do not globally allow `Write` and do not use Bash to write the submission file.
 - **Permission rule (second fix)**: build rules from the current call's absolute `prep.directory`; at minimum allow `Read(<abs>/schema.json)` and `Write(<abs>/result.json5)` (or a directory glob), keep `dontAsk`, and continue to deny Bash, Edit (unless it becomes the verified creation path), and writes outside the task directory. The exact absolute-path / `//` prefix / glob syntax must come from a real-CLI verification recorded in the PR.
-- **Fast failure and evidence**: parse `permission_denials`, `stop_reason`, and `num_turns` from the CLI result; when the submission tool is absent from the tool set or the write is denied, raise an `AgentProviderError` with the concrete reason immediately (no retry, no 300s wait). On timeout/cancellation, keep a bounded tail of stdout/stderr so `detail` is no longer just `cancelled`.
-- **Tests**: unit tests for argv/rule construction, fast failure when the tool is missing, and diagnostics for a denied write; a real-CLI e2e for both “write succeeds and is collected” and “out-of-scope write is denied”; the e2e must run in CI or a post-deploy check, not only as an opt-in.
+- **Fast failure and evidence (all inside the subclass)**: parse `permission_denials`, `stop_reason`, and `num_turns` from the CLI result; when the submission tool is absent from the tool set or the write is denied, raise an `AgentProviderError` with the concrete reason immediately (no retry, no 300s wait). On timeout/cancellation, keep a bounded tail of stdout/stderr so `detail` is no longer just `cancelled`; the shared transport already retains stderr, and the subclass only writes it into the diagnosis without touching the transport.
+- **Tests**: unit tests for argv/rule construction, fast failure when the tool is missing, and diagnosis details for a denied write; a real-CLI e2e for both “write succeeds and is collected” and “out-of-scope write is denied”; the e2e stays opt-in and runs on the deployment host, with no CI workflow change.
 - **Docs and note**: update `docs/claude-code.md` with the analyze tool face/permission rules and verification commands; the implementation PR adds the owning Agent Note and backfills this issue's `adr`.
 
 ## Implementation steps
 
 1. Reproduce on `2.1.323` and pin the evidence: init tool list, tool list without bare (or an equivalent mode), and permission-rule matching results; paste the commands and output into the PR.
-2. Change `claude_code._analyze_argv()` and the tool/rule construction (add a `Settings` entry if a mode/rule needs configuring) while keeping the `submission.py` schema/collect/retry contract unchanged.
+2. Change `claude_code._analyze_argv()` and the tool/rule construction (add no setting; the launch mode is fixed inside the subclass) while keeping the `submission.py` schema/collect/retry contract unchanged.
 3. Add the tool-face preflight and fast failure; add `permission_denials`/timeout evidence capture.
-4. Add or update unit tests and the real-CLI e2e; wire the e2e into CI or a post-deploy check; update the docs and Agent Note.
+4. Add or update unit tests and the real-CLI e2e; run the e2e on the deployment host as an opt-in check (no CI workflow change); update the docs and Agent Note.
 5. After deployment, verify with a real run: `cluster.review`, `cluster.score`, and `severity.score` are all `outcome=ok`, tokens>0, model not `unknown`, and the run reaches step 6/7.
 
 ## Dependencies and boundary
 
 - Depends on: bugfix-17 (real provider and submission channel), bugfix-26 (strict failure semantics for real providers), bugfix-28 (harness can execute the CLI).
-- Boundary: `apps/api/app/third_party_api/ai_agent/**` (provider, tool/permission construction, diagnostics), `apps/api/app/config.py` (if a mode/rule setting is added), `apps/api/tests/**`, `tests/e2e/**`, `deploy/**`, `.github/workflows/**`, `docs/**`, `plans/**`, `.agents/**`.
+- Boundary: production code is limited to `apps/api/app/third_party_api/ai_agent/claude_code.py` (the `ClaudeCodeProvider` subclass); tests are `apps/api/tests/**` and `tests/e2e/**`; docs are `docs/**`, `plans/**`, and `.agents/**`. Do not change the base class, `submission.py`, `claude_cli.py`, `Settings`/`config.py`, `deploy/**`, or `.github/workflows/**`.
 - This issue only defines the implementation contract; implementation and verification happen in a follow-up PR. That PR's title and commits must contain this issue's number.
 
 ## Verification
@@ -135,13 +134,13 @@ pnpm verify:flow
 - When the submission tool is missing or denied, the call fails within seconds and the error detail names the missing tool or the denied path; a 300s `cancelled` is no longer the only information.
 - Permissions stay minimal: Bash, Edit (unless it becomes the verified creation path), out-of-task-directory writes, and undeclared tools are all denied.
 - The file channel stays provider-independent: no `--json-schema` dependency, and the `submission.py` schema/collect/retry contract is unchanged.
-- The real-CLI e2e is repeatable in CI or a post-deploy check.
+- The real-CLI e2e is repeatable on the deployment host as an opt-in check (no CI workflow change).
 
 ## Gates and CI
 
 - `pnpm test:api` (including provider unit tests), `pnpm lint:api`, `pnpm typecheck:api`, `pnpm verify:docs`, `pnpm verify:flow`, `pnpm verify:flow-online`.
 - If `Settings` or an API contract changes, add `pnpm contract:check` and `pnpm test:gates`.
-- CI lanes: `api-static`, `unit-tests-api`, `docs-flow`, `flow-online`; the real-CLI e2e needs either a model/CLI lane or a post-deploy smoke, and at least one of the two must land.
+- CI lanes: `api-static`, `unit-tests-api`, `docs-flow`, `flow-online`; no CI workflow is added, and the real-CLI e2e runs on the deployment host through an opt-in environment variable.
 
 ## Non-goals
 
@@ -149,4 +148,5 @@ pnpm verify:flow
 - Do not revert strict, restore silent degradation, or change `cluster_llm`'s failure semantics.
 - Do not widen permissions (no global `Write`, no Bash writes for the submission file, no running the service as the deploy user).
 - Do not change the clustering prompts, scoring algorithms, UI, or unrelated providers.
+- Do not change the `AIAgentProvider` base class, the `submission.py` contract, the `claude_cli.py` shared transport, `Settings`/`config.py`, or the deployment workflow; do not add a launch-mode setting.
 - Do not write production credentials, Session content, or private data into the repository; do not open a new milestone for a single problem.

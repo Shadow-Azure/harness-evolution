@@ -4,7 +4,7 @@
 
 ```yaml flow
 kind: issue
-id: bugfix-30
+id: bugfix-31
 milestone: bugfix
 depends:
   - bugfix-17
@@ -13,12 +13,9 @@ depends:
 priority: P2
 status: ready
 scope:
-  - apps/api/app/third_party_api/ai_agent/**
-  - apps/api/app/config.py
+  - apps/api/app/third_party_api/ai_agent/claude_code.py
   - apps/api/tests/**
   - tests/e2e/**
-  - deploy/**
-  - .github/workflows/**
   - docs/**
   - plans/**
   - .agents/**
@@ -62,11 +59,11 @@ github:
 - 直接原因：`cluster.review` 的 analyze 调用没有产生可解析的提交文件；首次失败后的反馈重试跑满 `ANALYZE_TIMEOUT_SECONDS=300`，被进程组 SIGINT→SIGKILL，归一为 `cancelled`，strict 策略再把 `ClusterAIFailure` 传播成 run failed。
 - 根因有两处，必须同时修：① `--bare` 让 CLI 的工具集没有 `Write`，文件通道无法工作；② `Write(./result.json5)` 这类相对路径规则没有匹配调用时的任务目录绝对路径，且 `Read` 不在 allowlist，schema 也不可见。
 - #533 是必要修复，不是元凶；#526 让同一失败从静默降级变成显式失败；#514 引入了“文件通道依赖 Write、但没有真实验证工具面”的潜在缺陷。
-- 方案：保留文件通道；在 provider 层修好工具面与权限规则，并让“工具不可用”快速、可诊断地失败，而不是烧满 300s。不采用 `--json-schema`。
+- 方案：保留文件通道；只在 `ClaudeCodeProvider` 子类修好工具面与权限规则，并让“工具不可用”快速、可诊断地失败，而不是烧满 300s。不采用 `--json-schema`。
 
 ## 目标
 
-- 让文件提交通道在生产 CLI `2.1.323` 上真正可用：模型能在工具集中看到并调用写工具，权限规则能匹配本次调用的任务目录。
+- 让文件提交通道在生产 CLI `2.1.323` 上真正可用：模型能在工具集中看到并调用写工具，权限规则能匹配本次调用的任务目录；**生产代码只改 `ClaudeCodeProvider` 子类**。
 - 提交语义保持 provider 无关：`schema.json`、`result.json5`、collect、一次反馈重试的契约不变；只允许 provider 适配层按 CLI 调整 argv 与工具/权限规则。
 - 当提交工具缺失或被拒时，`ai_agent_call` 在数秒内给出可诊断失败（指出缺失工具/被拒路径），不进入 300s 重试；超时/取消时保留有界的 stdout/stderr 与 `permission_denials`。
 - 生产验收：真实 run 的 `cluster.review` 为 `outcome=ok`、tokens>0、model 非 `unknown`；`cluster.score` 与 `severity.score` 同样 ok；run 能进入第 6/7 步。
@@ -82,27 +79,29 @@ github:
 
 ## 实现内容
 
+**硬约束（2026-11-23 提出人要求）**：生产代码只改 `ClaudeCodeProvider` 子类（`apps/api/app/third_party_api/ai_agent/claude_code.py`）；不得改 `AIAgentProvider` 基类、`submission.py` 提交通道、`claude_cli.py` 共享 transport、`Settings` / `config.py`、`deploy.yml` 或其它 workflow。启动模式固定在子类 argv 内，不新增部署配置；换环境/换 AI agent 由既有的 `AI_AGENT_PROVIDER` 选择不同子类，CLI 细节封装在各子类。测试、e2e 与文档可按验收需要更新。若发现子类无法独立完成（例如必须改共享层），实现者应停止并报告，不得扩大改动面。
+
 - **工具面（第一件事）**：在固定 CLI `2.1.323` 上确认一种同时满足“有 `Write`”与“最小上下文/最小权限”的启动方式。候选：
-  - 去掉 `--bare`，用显式参数/环境变量保留 bare 原本提供的硬化（禁用 hooks/plugins/CLAUDE.md 自动发现、关闭自动更新等），并验证 init 工具列表包含 `Write`；
+  - 在子类 argv 内去掉 `--bare`，用显式参数/环境变量保留 bare 原本提供的硬化（禁用 hooks/plugins/CLAUDE.md 自动发现、关闭自动更新等），并验证 init 工具列表包含 `Write`；不新增部署配置；
   - 若 CLI 没有等价的“保留 Write 的最小模式”，则在 provider 适配层记录该 CLI 的限制，改用“预创建空 `result.json5` + 允许 `Read/Edit`”的文件写入路径，前提是 Edit 的创建语义在同版本真实 CLI 上验证通过；
   - 不允许直接把 `Write` 全局放开或改用 Bash 写文件。
 - **权限规则（第二件事）**：按本次调用的 `prep.directory` 绝对路径构造规则；至少允许 `Read(<abs>/schema.json)` 与 `Write(<abs>/result.json5)`（或目录 glob），保持 `dontAsk`，Bash、Edit、任务目录外的写入仍必须被拒。CLI 的绝对路径/`//` 前缀/glob 语法以真实 CLI 验证结果为准，并在 PR 中记录验证输出。
-- **快速失败与证据**：解析 CLI result 的 `permission_denials`、`stop_reason`、`num_turns`；如果提交工具不在工具集中或写被拒，直接抛带具体原因的 `AgentProviderError`（不重试、不等待 300s）。超时/取消时保留有界的 stdout/stderr 尾部，`detail` 不再只有 `cancelled`。
-- **测试**：单测覆盖 argv/规则构造、工具缺失时的快速失败、被拒写入的诊断；真实 CLI e2e 覆盖“写成功并被 collect”与“越界写入被拒”两个方向；e2e 必须能在 CI 或部署后检查中执行，而不是仅 opt-in。
+- **快速失败与证据（全部在子类内）**：解析 CLI result 的 `permission_denials`、`stop_reason`、`num_turns`；如果提交工具不在工具集中或写被拒，直接抛带具体原因的 `AgentProviderError`（不重试、不等待 300s）。超时/取消时保留有界的 stdout/stderr 尾部，`detail` 不再只有 `cancelled`；共享 transport 已保留 stderr，子类只负责把它写进诊断，不改 transport。
+- **测试**：单测覆盖 argv/规则构造、工具缺失时的快速失败、被拒写入的诊断；真实 CLI e2e 覆盖“写成功并被 collect”与“越界写入被拒”两个方向；e2e 保持 opt-in，在部署机手动执行，不新增 CI workflow。
 - **文档与 Note**：更新 `docs/claude-code.md` 的 analyze 工具面/权限说明与验收命令；实现 PR 新增 owning Agent Note，并回填本 issue 的 `adr`。
 
 ## 实施步骤
 
 1. 在 `2.1.323` 上复现并固定证据：init 工具列表、无 bare / 等价模式下的工具列表、不同权限规则的匹配结果；把命令与输出贴进 PR。
-2. 修改 `claude_code._analyze_argv()` 与工具/规则构造（如需配置项，加到 `Settings`），保持 `submission.py` 的 schema/collect/retry 契约不变。
+2. 修改 `claude_code._analyze_argv()` 与工具/规则构造（不新增配置项，启动模式固定在子类），保持 `submission.py` 的 schema/collect/retry 契约不变。
 3. 增加工具面预检与快速失败；补 `permission_denials`/超时证据采集。
-4. 新增/更新单测与真实 CLI e2e；把 e2e 接到 CI 或部署后检查；更新文档与 Agent Note。
+4. 新增/更新单测与真实 CLI e2e；在部署机以 opt-in 方式执行 e2e（不改 CI workflow）；更新文档与 Agent Note。
 5. 部署后用一次真实 run 验收：`cluster.review`、`cluster.score`、`severity.score` 均为 `outcome=ok`，tokens>0，model 非 `unknown`，run 进入第 6/7 步。
 
 ## 依赖与交付边界
 
 - 依赖：bugfix-17（真实 provider 与提交通道）、bugfix-26（真实 provider 的 strict 失败语义）、bugfix-28（harness 可执行 CLI）。
-- 交付边界：`apps/api/app/third_party_api/ai_agent/**`（provider、工具/权限构造、诊断）、`apps/api/app/config.py`（如新增模式/规则配置）、`apps/api/tests/**`、`tests/e2e/**`、`deploy/**`、`.github/workflows/**`、`docs/**`、`plans/**`、`.agents/**`。
+- 交付边界：生产代码只允许 `apps/api/app/third_party_api/ai_agent/claude_code.py`（`ClaudeCodeProvider` 子类）；测试 `apps/api/tests/**`、`tests/e2e/**`；文档 `docs/**`、`plans/**`、`.agents/**`。不改基类、`submission.py`、`claude_cli.py`、`Settings`/`config.py`、`deploy/**`、`.github/workflows/**`。
 - 本 issue 只描述实现契约；实现与验证在后续 PR 完成。实现 PR 的标题与提交必须含本 issue 编号。
 
 ## 独立验证
@@ -135,13 +134,13 @@ pnpm verify:flow
 - 提交工具缺失或被拒时，调用在数秒内失败，错误 detail 指明缺失的工具或被拒的路径；不再以 300s `cancelled` 作为唯一信息。
 - 权限仍是最小面：Bash、Edit（除非作为经验证的创建路径）、任务目录外写入、未声明工具都被拒。
 - 文件通道保持 provider 无关：不依赖 `--json-schema`，`submission.py` 的 schema/collect/retry 契约不变。
-- 真实 CLI e2e 在 CI 或部署后检查中可重复执行。
+- 真实 CLI e2e 可在部署机以 opt-in 方式重复执行（不新增 CI workflow）。
 
 ## 门禁与 CI
 
 - `pnpm test:api`（含 provider 单测）、`pnpm lint:api`、`pnpm typecheck:api`、`pnpm verify:docs`、`pnpm verify:flow`、`pnpm verify:flow-online`。
 - 若 `Settings` 或 API 契约有变化，追加 `pnpm contract:check` 与 `pnpm test:gates`。
-- CI lane：`api-static`、`unit-tests-api`、`docs-flow`、`flow-online`；真实 CLI e2e 需要模型/CLI 的 lane 或部署后 smoke，二者至少落地一个。
+- CI lane：`api-static`、`unit-tests-api`、`docs-flow`、`flow-online`；不新增 CI workflow，真实 CLI e2e 通过 opt-in 环境变量在部署机执行。
 
 ## 非目标
 
@@ -149,4 +148,5 @@ pnpm verify:flow
 - 不回退 strict，不恢复静默降级，不改 `cluster_llm` 的失败语义。
 - 不放宽权限（不允许全局 `Write`、不允许用 Bash 写提交文件、不允许服务以 deploy 用户运行）。
 - 不改聚类 prompt、评分算法、UI 或无关 provider。
+- 不改 `AIAgentProvider` 基类、`submission.py` 提交契约、`claude_cli.py` 共享 transport、`Settings`/`config.py` 或部署工作流；不新增启动模式配置项。
 - 不在仓库写入生产凭据、Session 内容或私有数据；不按单个问题新开 milestone。
