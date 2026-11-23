@@ -36,7 +36,7 @@ The current prototype (baseline `main@6d473733`) has only two native date inputs
 - The range filters bad cases by `created_at`, and the end date is usually today; every common window can be derived from "today" plus a fixed number of days or months.
 - The range is a closed interval and the existing validation requires `from <= to`; a shortcut may only reduce typing, not change the filter semantics, request fields, or later Session association.
 - The prototype fixes its demo date at `V2_TODAY = 2026-11-10` and all demo data is built around that day; the shortcut's "today" must match this demo date, or the concrete dates in screenshots will not line up with the page data.
-- The V2 overview page already uses a segmented "last 7 / 30 / 90 days" control; the `.seg` button style can be reused, but the wizard uses exact closed dates and must not copy the overview's grain linkage.
+- The V2 overview page already uses a segmented "last 7 / 30 / 90 days" control; the wizard borrows only the "single-choice common range" information structure. Visually it uses light pills with a tinted selected state, so the shortcuts do not become a second toolbar, and it does not copy the overview's grain linkage.
 
 ### Impact
 
@@ -45,9 +45,9 @@ The current prototype (baseline `main@6d473733`) has only two native date inputs
 
 ## Goals
 
-- Add "Last 7 days / Last 30 days / Last half year" shortcut buttons above the date inputs in step 1 of the launch wizard.
+- Add "Last 7 days / Last 30 days / Last half year" pills on the same row as the date inputs in step 1 of the launch wizard.
 - On click, write concrete `from/to` values into the date inputs: the end date is today (inclusive), last 7 days starts 6 days ago, last 30 days starts 29 days ago, and last half year starts 6 calendar months ago.
-- Highlight the matching shortcut while the current range equals its computed values; clear the highlight when the user manually changes either date. Do not add an extra "custom" state.
+- Highlight the matching pill with a light blue fill and blue text while the current range equals its computed values; clear the highlight when the user manually changes either date. Do not add an extra "custom" state.
 - Keep the existing required and `from <= to` validation and request fields unchanged; record the interaction in the V2 design doc and the 08 frontend design doc as the production authority.
 
 ## Design authority
@@ -56,12 +56,14 @@ The current prototype (baseline `main@6d473733`) has only two native date inputs
 - [V2 design §7.4.1 Time-range presets](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/ui-prototype-v2/design-v2.md#L232): records the calculation, fill-only behavior, unchanged validation, and accessibility.
 - [Four-step launch wizard and condition snapshot](https://github.com/Shadow-Azure/harness-evolution/blob/main/.agents/notes/implemented/feature/2026-11-17-four-step-launch-wizard.md): step 1 is the only condition-editing surface; changing the object, version, range, or policy invalidates later previews.
 - [V2 prototype entry](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/ui-prototype-v2/index.html): `harness-evolution.html?u=admin&page=evo&demo=wizard1` opens step 1 directly, which keeps screenshots on the same scenario.
+- [AppSignal Date and time filter](https://appsignal.design/patterns/date-time-filter.html): presets are single-choice relative ranges with a clear selected state, separate from the custom range; this issue keeps that information structure and uses light pills with a tinted selected state.
+- [Grafana quick time ranges](https://grafana.com/whats-new/2025-06-17-server-configurable-quick-time-ranges-for-dashboards/): common ranges come first and stay lightweight; this issue does not add a relative-range protocol.
 
 ## Implementation
 
 ### Prototype interaction
 
-- Add a "Shortcut" row with three `.seg` buttons above the "bad case time range" field in step 1 of `plans/ui-prototype-v2/harness-evolution.html`; the group uses `role=group` and the current button sets `aria-pressed`.
+- Put three pills on the same row as the date inputs in step 1 of `plans/ui-prototype-v2/harness-evolution.html`, separated from the dates by a thin vertical rule; the group uses `role=group`, the current pill sets `aria-pressed`, and the selected state is a light blue fill with blue text and a border.
 - Add `EV_WZ_RANGE_PRESETS` and date helpers that compute concrete ranges from the prototype demo date `V2_TODAY`:
 
 | Preset | Calculation | Prototype example (V2_TODAY = 2026-11-10) |
@@ -70,7 +72,7 @@ The current prototype (baseline `main@6d473733`) has only two native date inputs
 | Last 30 days | `today - 29` ~ `today` | `2026-10-12 ~ 2026-11-10` |
 | Last half year | `today - 6 calendar months` ~ `today` | `2026-05-10 ~ 2026-11-10` |
 
-- A click only updates `wz.from` / `wz.to`, the two input values, and the button highlight; it does not rebuild the form, so focus stays on the clicked button. A manual date change recomputes the match and clears all highlights when no preset matches.
+- A click only updates `wz.from` / `wz.to`, the two input values, and the pill state; it does not rebuild the form, so focus stays on the clicked pill. A manual date change recomputes the match and clears all highlights when no preset matches.
 - For last half year, month-end dates clamp to the last day of the target month (for example, 6 months before August 31 lands on the last day of February); both ends participate as a closed interval.
 - The change is client-side only: no new request field, no change to `from <= to` validation, Session association, potential-matching semantics, or cache keys.
 
@@ -96,7 +98,7 @@ After the prototype change (same scenario, 1500×900 viewport, light theme, `u=a
 
 ## Implementation steps
 
-1. Add the shortcut buttons, date helpers, active highlight, and click handler to prototype step 1.
+1. Add the pill shortcuts, date helpers, active highlight, and click handler to prototype step 1.
 2. Update `design-v2.md` §7.4.1 and `08-frontend-implementation.md` §9 Step 1.
 3. Add the bilingual Agent Note and rerun `pnpm record:i18n -- <pair>`.
 4. Capture before/after screenshots in the same browser scenario, upload them to an evidence Release, and keep them out of the repository.
@@ -131,15 +133,15 @@ pnpm lint:docs
 ```
 
 - Open `plans/ui-prototype-v2/harness-evolution.html?u=admin&page=evo&demo=wizard1` in Chrome at 1500×900 in the light theme.
-- The initial dates are `2026-10-01 ~ 2026-11-09` and no shortcut is highlighted. Clicking "Last 30 days" changes the inputs to `2026-10-12 ~ 2026-11-10` with only that button highlighted; "Last 7 days" and "Last half year" produce `2026-11-04 ~ 2026-11-10` and `2026-05-10 ~ 2026-11-10`.
+- The initial dates are `2026-10-01 ~ 2026-11-09` and no shortcut is highlighted. Clicking "Last 30 days" changes the inputs to `2026-10-12 ~ 2026-11-10` with only that pill highlighted; "Last 7 days" and "Last half year" produce `2026-11-04 ~ 2026-11-10` and `2026-05-10 ~ 2026-11-10`.
 - After manually changing the end date to `2026-11-09`, no shortcut is highlighted; clicking "Next: associate Sessions" still runs the original required and `from <= to` validation.
 - See the evidence above; the before image is baseline `main@6d473733`, and the after images come from this issue's branch.
 
 ## Acceptance
 
-- Step 1 shows three shortcut buttons ("Last 7 days / Last 30 days / Last half year") above the date inputs, with none selected by default.
+- Step 1 shows three pills ("Last 7 days / Last 30 days / Last half year") on the same row as the date inputs, with none selected by default.
 - Clicking a shortcut immediately fills both dates, ending today (inclusive); the three example ranges match the table, and last half year clamps at month ends.
-- The matching button is highlighted with `aria-pressed=true`; manually changing a date clears the highlight; there is no extra "custom" button.
+- The matching pill is highlighted with `aria-pressed=true`; manually changing a date clears the highlight; there is no extra "custom" button.
 - Existing required and `from <= to` validation, next-step previews, and request fields are unchanged; the page has no horizontal scroll and the modal height and button positions stay usable.
 - `design-v2.md` and `08-frontend-implementation.md` state the same contract, and the Agent Note is bilingual with a refreshed pairing record.
 - The issue contains the before screenshot, after screenshots, and the solution; the PR description contains same-scenario, same-viewport, same-theme Before / After evidence.
