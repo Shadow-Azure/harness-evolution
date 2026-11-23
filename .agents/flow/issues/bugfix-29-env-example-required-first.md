@@ -1,10 +1,10 @@
 # 生产 .env.example 逐行标注必填/选填并收敛单一模板
 
-[English](bugfix-env-example-required-first.en.md) | 中文
+[English](bugfix-29-env-example-required-first.en.md) | 中文
 
 ```yaml flow
 kind: issue
-id: bugfix-28
+id: bugfix-29
 milestone: bugfix
 depends: []
 priority: P2

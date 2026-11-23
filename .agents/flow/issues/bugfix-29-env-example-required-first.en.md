@@ -1,10 +1,10 @@
 # Annotate the production .env.example with required/optional and keep one template
 
-English | [中文](bugfix-env-example-required-first.md)
+English | [中文](bugfix-29-env-example-required-first.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-28
+id: bugfix-29
 milestone: bugfix
 depends: []
 priority: P2
