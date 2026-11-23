@@ -455,6 +455,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "stats",
         "progress",
         "final",
+        "degraded",
     }
     assert run_card["properties"]["controlState"]["enum"] == [
         "running",

@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
-from typing import Literal, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 from pydantic import Field
 
@@ -165,6 +165,7 @@ class EvolutionRunCard(EvolutionRunControl):
     stats: EvolutionRunStats
     progress: EvolutionRunProgress
     final: EvolutionRunFinal | None
+    degraded: bool = False
 
 
 class EvolutionRunWorkspace(IdentityModel):
@@ -253,6 +254,12 @@ def _non_negative_int(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         return 0
     return max(value, 0)
+
+
+def _has_degraded_clusters(stats: Mapping[str, Any]) -> bool:
+    """Return whether the cluster step recorded any deterministic fallback."""
+    value = stats.get("clusterDegraded")
+    return isinstance(value, list) and any(isinstance(item, str) for item in value)
 
 
 def _stats(summary: EvolutionRunSummaryRecord) -> EvolutionRunStats:
@@ -402,6 +409,7 @@ def _card(summary: EvolutionRunSummaryRecord) -> EvolutionRunCard:
         stats=_stats(summary),
         progress=_progress(summary),
         final=_final(summary),
+        degraded=_has_degraded_clusters(summary.run.stats),
     )
 
 
@@ -415,6 +423,7 @@ def _detail_steps(
         summary.cluster_count,
         run.status,
         attribution_engine=run.attribution_engine,
+        error_stage=run.error_stage,
     )
     unit = effective_unit(
         run.progress_unit,

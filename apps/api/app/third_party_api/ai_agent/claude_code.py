@@ -564,10 +564,12 @@ class ClaudeCodeProvider(AIAgentProvider):
         *,
         settings_file: Path,
     ) -> tuple[str, ...]:
-        """Build one edit argv; exploration is read-only and the session is kept.
+        """Build one edit argv; exploration is read-only and stateless.
 
         ``--max-turns`` bounds one call's spend; the timeout constant bounds its
-        wall clock.
+        wall clock. ``--no-session-persistence`` matches analyze (#488): an edit
+        call is a single request, so the shared settings directory never needs
+        to be writable by the service user.
         """
         argv = [
             self._binary(),
@@ -582,6 +584,7 @@ class ClaudeCodeProvider(AIAgentProvider):
             str(EDIT_MAX_TURNS),
             "--allowed-tools",
             ",".join((*READ_ONLY_TOOLS, *prep.allowed_tools)),
+            "--no-session-persistence",
         ]
         if settings_file.is_file():
             argv.extend(("--settings", str(settings_file)))
@@ -594,9 +597,28 @@ class ClaudeCodeProvider(AIAgentProvider):
         return str(Path(configured).expanduser())
 
     def _settings_file(self) -> Path:
-        """Return the deployment settings file path (override or ``~/.claude``)."""
+        """Return the deployment settings file path.
+
+        Precedence is the test override, the explicit
+        ``HE_AI_AGENT_CLAUDE_SETTINGS`` deployment path, ``CLAUDE_CONFIG_DIR``
+        (the directory the CLI itself reads), then the legacy ``~/.claude``.
+        The explicit path is what makes the service account independent of the
+        deploy user's home; the config directory covers CLI-side auxiliary
+        files such as plugins and session caches.
+        """
         if self._settings_path_override is not None:
             return self._settings_path_override
+        settings = self.settings
+        configured = (
+            settings.ai_agent_claude_settings.strip()
+            if settings is not None and settings.ai_agent_claude_settings
+            else ""
+        )
+        if configured:
+            return Path(configured).expanduser()
+        config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
+        if config_dir:
+            return Path(config_dir).expanduser() / CLAUDE_SETTINGS_FILENAME
         return Path.home() / ".claude" / CLAUDE_SETTINGS_FILENAME
 
     def _bare_mode_auth_hint(self) -> str:

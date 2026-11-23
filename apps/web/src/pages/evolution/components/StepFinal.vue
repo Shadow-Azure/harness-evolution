@@ -73,6 +73,8 @@ const pushLabel = computed(() => {
 const pushedAtLabel = computed(() =>
   props.pushedAt ? props.pushedAt.replace("T", " ").slice(0, 16) : "尚未推送",
 );
+
+const degraded = computed(() => props.step.payload.degraded === true);
 </script>
 
 <template>
@@ -84,9 +86,15 @@ const pushedAtLabel = computed(() =>
     <template v-if="step.payload.verdict !== null">
       <div
         class="verdict"
-        :class="step.payload.verdict ? 'ok' : 'no'"
+        :class="step.payload.verdict && !degraded ? 'ok' : 'no'"
       >
-        <span class="big">{{ step.payload.verdict ? "✓ 自进化有效" : "✗ 未产生收益" }}</span>
+        <span class="big">{{
+          degraded
+            ? "聚类降级 · 结果不代表真实模型参与"
+            : step.payload.verdict
+              ? "✓ 自进化有效"
+              : "✗ 未产生收益"
+        }}</span>
         <span class="desc">
           best skill <b class="mono">{{ step.payload.bestVersion ?? "—" }}</b>
           测试集得分 <b class="mono">{{ score(step.payload.bestScore) }}</b>
@@ -97,6 +105,13 @@ const pushedAtLabel = computed(() =>
         </span>
         <span class="final-push mono">{{ pushLabel }} · {{ pushedAtLabel }}</span>
       </div>
+      <p
+        v-if="degraded"
+        class="degraded-note"
+        role="status"
+      >
+        聚类 AI 在本 run 中使用了确定性回退，终评分数不能作为真实模型参与的证据。
+      </p>
 
       <section class="cb-sec">
         <p class="cb-label">
@@ -222,6 +237,17 @@ const pushedAtLabel = computed(() =>
 .verdict.ok {
   border: 1px solid color-mix(in srgb, var(--green) 35%, transparent);
   background: color-mix(in srgb, var(--green) 10%, transparent);
+}
+
+.degraded-note {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--orange) 45%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--orange) 9%, transparent);
+  color: var(--orange);
+  font-size: 11.5px;
+  line-height: 1.5;
 }
 
 .verdict.no {

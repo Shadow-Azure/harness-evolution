@@ -1907,6 +1907,11 @@
             ],
             "title": "Createdby"
           },
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
+          },
           "error": {
             "anyOf": [
               {
@@ -2163,6 +2168,11 @@
               }
             ],
             "title": "Createdby"
+          },
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
           },
           "error": {
             "anyOf": [
@@ -6358,14 +6368,58 @@
       },
       "StepClustersPayload": {
         "additionalProperties": false,
-        "description": "Clusters ordered by severity descending.",
+        "description": "Clusters ordered by severity descending plus the AI-mode audit facts.\n\n``degraded`` lists the task keys a ``degrade`` policy replaced with\ndeterministic fallbacks, so a degraded result is never presented as model\nparticipation. ``failure`` carries the sanitized run error when a strict\npolicy failed the run at this step.",
         "properties": {
+          "algorithm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Algorithm"
+          },
           "clusters": {
             "items": {
               "$ref": "#/components/schemas/StepCluster"
             },
             "title": "Clusters",
             "type": "array"
+          },
+          "degraded": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Degraded",
+            "type": "array"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure"
+          },
+          "failurePolicy": {
+            "anyOf": [
+              {
+                "enum": [
+                  "strict",
+                  "degrade"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failurepolicy"
           }
         },
         "required": [
@@ -6466,6 +6520,11 @@
             },
             "title": "Changes",
             "type": "array"
+          },
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
           },
           "initScore": {
             "anyOf": [

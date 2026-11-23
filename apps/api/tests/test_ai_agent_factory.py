@@ -68,6 +68,8 @@ def isolated_ai_agent_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "AI_AGENT_PROVIDER",
         "HE_AI_AGENT_PROVIDER",
         "HE_AI_AGENT_CLAUDE_BIN",
+        "HE_AI_AGENT_CLAUDE_SETTINGS",
+        "HE_AI_AGENT_FAILURE_POLICY",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -136,6 +138,63 @@ def test_both_environment_aliases_select_the_provider(
     monkeypatch.delenv("HE_AI_AGENT_PROVIDER", raising=False)
     monkeypatch.setenv("AI_AGENT_PROVIDER", "fake")
     assert Settings(_env_file=None).ai_agent_provider == "fake"  # type: ignore[call-arg]
+
+
+def test_failure_policy_defaults_from_the_provider() -> None:
+    """A real provider is strict; fake keeps the documented offline fallback."""
+    assert settings(ai_agent_provider="claude-code").effective_ai_agent_failure_policy == "strict"
+    assert settings(ai_agent_provider="fake").effective_ai_agent_failure_policy == "degrade"
+
+
+def test_explicit_failure_policy_wins_over_the_provider_default() -> None:
+    """An explicit policy is the only way to degrade a real provider."""
+    assert (
+        settings(
+            ai_agent_provider="claude-code", ai_agent_failure_policy="degrade"
+        ).effective_ai_agent_failure_policy
+        == "degrade"
+    )
+    assert (
+        settings(
+            ai_agent_provider="fake", ai_agent_failure_policy="strict"
+        ).effective_ai_agent_failure_policy
+        == "strict"
+    )
+
+
+def test_failure_policy_reads_the_he_environment_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HE_AI_AGENT_FAILURE_POLICY is the documented deployment key."""
+    monkeypatch.setenv("HE_AI_AGENT_FAILURE_POLICY", "degrade")
+    assert Settings(_env_file=None).effective_ai_agent_failure_policy == "degrade"  # type: ignore[call-arg]
+
+
+def test_blank_failure_policy_uses_the_provider_default() -> None:
+    """The env template's empty value must not fail startup."""
+    assert (
+        settings(
+            ai_agent_provider="claude-code", ai_agent_failure_policy=""
+        ).effective_ai_agent_failure_policy
+        == "strict"
+    )
+
+
+def test_unknown_failure_policy_fails_startup() -> None:
+    """An unknown policy is a configuration error, never a silent default."""
+    with pytest.raises(ValidationError, match="ai_agent_failure_policy"):
+        settings(ai_agent_failure_policy="lenient")
+
+
+def test_blank_claude_settings_path_is_unset() -> None:
+    """A blank optional path must not beat the config-dir/home fallbacks."""
+    assert settings(ai_agent_claude_settings="   ").ai_agent_claude_settings is None
+    assert (
+        settings(
+            ai_agent_claude_settings="/opt/harness/shared/claude-code/config/settings.json"
+        ).ai_agent_claude_settings
+        == "/opt/harness/shared/claude-code/config/settings.json"
+    )
 
 
 def test_blank_claude_bin_fails_startup() -> None:

@@ -27,6 +27,7 @@ const run = (overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard => ({
   createdBy: "Ada",
   createdAt: "2026-10-19T18:42:00+08:00",
   status: "running",
+  degraded: false,
   error: null,
   stats: {
     sessions: 128,
@@ -217,6 +218,30 @@ describe("RunCard", () => {
     expect(wrapper.get(".final-line").text()).toContain("+4.6");
     expect(wrapper.get(".final-line").text()).toContain("接纳 1/2 个 patch");
     expect(wrapper.find("[role='progressbar']").exists()).toBe(false);
+  });
+
+  it("marks a completed degraded run without claiming model-backed success", () => {
+    const wrapper = mount(RunCard, {
+      props: {
+        wid: "ws-test",
+        workspaceName: "测试空间",
+        run: run({
+          status: "completed",
+          degraded: true,
+          final: {
+            bestVersion: "v2.0.1-best",
+            branchName: "evo/run-1",
+            pushStatus: "succeeded",
+            verdict: true,
+            bestScore: 88.9,
+            initScore: 84.3,
+          },
+        }),
+      },
+    });
+
+    expect(wrapper.get(".badge").text()).toBe("已完成 · 聚类降级");
+    expect(wrapper.get(".badge").classes()).toContain("done-pending");
   });
 
   it("marks completed runs without improvement without claiming success", () => {

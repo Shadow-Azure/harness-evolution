@@ -5,17 +5,20 @@ from __future__ import annotations
 from typing import cast
 
 import pytest
+from sqlalchemy import update
 
 from app.db.base import Database
 from app.db.crud.attributions import AttributionRepository, EvolutionRunCandidateRepository
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.probe_query import ProbeQueryRepository
+from app.db.models.evolution import evolution_runs
 from app.errors import AppError
 from app.service.evolution.attribution import AttributionRunner, RuleBasedEngine
 from app.service.evolution.prepare import EvolutionPrepareService
 from app.service.evolution.stages import (
     EvolutionStageService,
     StepAttributionPayload,
+    StepClustersPayload,
     StepSessionRow,
 )
 from app.service.evolution.state import STEP_KEYS
@@ -181,3 +184,30 @@ async def test_pending_step_is_not_readable(harness: Harness) -> None:
         with pytest.raises(AppError) as pending:
             await service.step("run-preparing", key)
         assert pending.value.code.value == "STEP_NOT_READY"
+
+
+async def test_failed_cluster_step_reports_the_strict_failure(harness: Harness) -> None:
+    """The clusters step exposes a strict failure and its policy instead of a 404."""
+    await _create_run(harness.database)
+    async with harness.database.transaction() as session:
+        await session.execute(
+            update(evolution_runs)
+            .where(evolution_runs.c.id == "run-m10-04")
+            .values(
+                status="failed",
+                error_stage="cluster",
+                error_message="cluster.review failed: AgentProviderError: could not start",
+                stats={"clusterFailurePolicy": "strict"},
+            ),
+        )
+    service = _stage_service(harness.database)
+
+    step = await service.step("run-m10-04", "clusters")
+    payload = cast(StepClustersPayload, step.payload)
+
+    assert step.status == "active"
+    assert payload.failure_policy == "strict"
+    assert payload.failure == ("cluster.review failed: AgentProviderError: could not start")
+    assert payload.clusters == []
+    assert payload.degraded == []
+    assert payload.algorithm is None

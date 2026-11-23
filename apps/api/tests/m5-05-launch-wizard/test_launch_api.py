@@ -385,6 +385,10 @@ async def launch_api(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
             jwt_secret=SecretStr("launch-wizard-api-signing-secret-sufficient"),
             admin_username="admin",
             admin_password=SecretStr(ADMIN_TEMP_PASSWORD),
+            # This fixture exercises the launch/prepare plumbing with the
+            # placeholder backend; failing explicitly is covered by the
+            # clustering and strict-policy tests instead.
+            ai_agent_failure_policy="degrade",
         ),
         git_workspaces=_FakeWorkspacePreparer(tmp_path),
         target_version_resolver=FakeTargetVersionResolver(),
@@ -473,8 +477,7 @@ async def test_launch_records_creation_and_prepare_start_events(
         "potential_computed",
         "attribution_created",
     ]
-    # The default placeholder provider fails every bounded analysis, so the
-    # cluster phase is exactly one call plus one fallback per task, in order.
+    # With explicit degrade, the placeholder provider falls back once per task.
     assert event_types[5:-2] == ["ai_agent_call", "degraded"] * 3
     assert event_types[-2:] == ["clusters_created", "workspace_prepared"]
     assert events.json()["hasMore"] is False

@@ -385,6 +385,10 @@ before(async () => {
     HE_JWT_SECRET: secret,
     HE_LOGIN_RATE_LIMIT: "100",
     HE_PHASE: "demo",
+    // The cross-stack smoke exercises the placeholder cluster pipeline; this
+    // prefix keeps the deterministic fallback instead of strict real-provider
+    // failure. Strict behavior is covered by the API tests.
+    HE_AI_AGENT_FAILURE_POLICY: "degrade",
     PYTHONPATH: apiDir,
     GIT_CONFIG_GLOBAL: gitConfigPath,
   };

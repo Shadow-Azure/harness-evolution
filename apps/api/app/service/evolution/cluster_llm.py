@@ -162,6 +162,25 @@ class ClusterContractError(ValueError):
         super().__init__(self.reason)
 
 
+class ClusterAIFailure(RuntimeError):
+    """A strict-mode cluster AI failure that must fail the run explicitly.
+
+    The policy lives at the provider boundary (07 §5.5.1): a configured real
+    provider must not be replaced by deterministic fallbacks. The message keeps
+    the task key and the already-redacted reason so the run failure and the
+    step projection can point at the failing stage and the CLI/settings cause.
+    """
+
+    stage = "cluster"
+    """Job stage consumed by the run-failure recorder."""
+
+    def __init__(self, task: str, reason: str) -> None:
+        """Store the task key and bounded reason, then build the safe message."""
+        self.task = task
+        self.reason = _bounded(reason, MAX_REASON_CHARS)
+        super().__init__(f"{task} failed: {self.reason}")
+
+
 class ClusterReviewItem(BaseModel):
     """One final cluster declared by the draft keys it merges.
 
@@ -825,8 +844,9 @@ async def enhance_clusters(
     stats_by_draft: Mapping[int, ClusterDraftStats],
     record_call: RecordCall | None = None,
     record_degraded: RecordDegraded | None = None,
+    failure_policy: Literal["strict", "degrade"] = "degrade",
 ) -> EnhancedClusters:
-    """Run the review and scoring layers over lexical drafts with degradation.
+    """Run the review and scoring layers over lexical drafts with the chosen policy.
 
     Order of operations is deterministic and costs exactly three bounded
     ``analyze`` calls for every non-empty run: one ``cluster.review`` call over
@@ -843,10 +863,16 @@ async def enhance_clusters(
         stats_by_draft: Deterministic statistics keyed by 0-based draft index.
         record_call: Optional sink receiving one record per provider call.
         record_degraded: Optional sink receiving one record per fallback.
+        failure_policy: ``strict`` fails the run on the first failed task;
+            ``degrade`` keeps the documented deterministic fallbacks.
 
     Returns:
         The final clusters, the ``hybrid-lexical-llm-v1`` identity, every
         degradation, and every call record, in evaluation order.
+
+    Raises:
+        ClusterAIFailure: When ``failure_policy`` is ``strict`` and any of the
+            three tasks fails, after its ``ai_agent_call`` record is emitted.
     """
     calls: list[CallRecord] = []
     degraded: list[DegradedCall] = []
@@ -867,10 +893,22 @@ async def enhance_clusters(
             calls=(),
         )
 
-    groups = await _review(agent, drafts, evidence, stats_by_draft, note_call, note_degraded)
+    groups = await _review(
+        agent,
+        drafts,
+        evidence,
+        stats_by_draft,
+        note_call,
+        note_degraded,
+        failure_policy,
+    )
     plans = _build_plans(groups, drafts, evidence, stats_by_draft)
-    confidence_by_key = await _score_confidences(agent, plans, note_call, note_degraded)
-    severity_by_key = await _score_severities(agent, plans, note_call, note_degraded)
+    confidence_by_key = await _score_confidences(
+        agent, plans, note_call, note_degraded, failure_policy
+    )
+    severity_by_key = await _score_severities(
+        agent, plans, note_call, note_degraded, failure_policy
+    )
     clusters: list[EnhancedCluster] = []
     for group, plan in zip(groups, plans, strict=True):
         confidence, evidence_refs = confidence_by_key[plan.key]
@@ -959,27 +997,39 @@ async def _review(
     stats_by_draft: Mapping[int, ClusterDraftStats],
     note_call: _CallSink,
     note_degraded: _DegradedSink,
+    failure_policy: Literal["strict", "degrade"] = "degrade",
 ) -> tuple[_Group, ...]:
     """Run one review call and return the final cluster groups.
 
     Any provider failure or contract violation degrades the whole review batch
-    to the original drafts: partial acceptance would break the partition.
+    to the original drafts: partial acceptance would break the partition. In
+    strict mode the failure is recorded and raised instead.
     """
     request = build_review_request(drafts, evidence, stats_by_draft=stats_by_draft)
     started = time.perf_counter()
     try:
         result = await agent.analyze(request)
     except Exception as exc:
+        reason = _provider_reason(exc)
         await note_call(_failure_record(REVIEW_TASK, agent, _elapsed_ms(started), exc))
-        await note_degraded(DegradedCall(REVIEW_TASK, _provider_reason(exc)))
+        if failure_policy == "strict":
+            raise ClusterAIFailure(REVIEW_TASK, reason) from exc
+        await note_degraded(DegradedCall(REVIEW_TASK, reason))
         return _fallback_groups(drafts)
     elapsed = _elapsed_ms(started)
     try:
         output = ClusterReviewOutput.model_validate(dict(_output_mapping(result)))
         items = validate_review_partition(output, drafts)
     except (ValidationError, TypeError, ValueError, ClusterContractError) as exc:
-        await note_call(_result_record(REVIEW_TASK, result, "degraded", elapsed))
-        await note_degraded(DegradedCall(REVIEW_TASK, _contract_reason(exc)))
+        reason = _contract_reason(exc)
+        await note_call(
+            _result_record(
+                REVIEW_TASK, result, "error" if failure_policy == "strict" else "degraded", elapsed
+            )
+        )
+        if failure_policy == "strict":
+            raise ClusterAIFailure(REVIEW_TASK, reason) from exc
+        await note_degraded(DegradedCall(REVIEW_TASK, reason))
         return _fallback_groups(drafts)
     await note_call(_result_record(REVIEW_TASK, result, "ok", elapsed))
     return _groups_from_review(items, drafts)
@@ -990,6 +1040,7 @@ async def _score_confidences(
     plans: Sequence[ClusterPlan],
     note_call: _CallSink,
     note_degraded: _DegradedSink,
+    failure_policy: Literal["strict", "degrade"] = "degrade",
 ) -> dict[str, tuple[float, tuple[str, ...]]]:
     """Run the single batch confidence call, degrading every cluster on failure."""
     fallback: dict[str, tuple[float, tuple[str, ...]]] = {
@@ -1002,16 +1053,29 @@ async def _score_confidences(
     try:
         result = await agent.analyze(request)
     except Exception as exc:
+        reason = _provider_reason(exc)
         await note_call(_failure_record(CLUSTER_SCORE_TASK, agent, _elapsed_ms(started), exc))
-        await note_degraded(DegradedCall(CLUSTER_SCORE_TASK, _provider_reason(exc)))
+        if failure_policy == "strict":
+            raise ClusterAIFailure(CLUSTER_SCORE_TASK, reason) from exc
+        await note_degraded(DegradedCall(CLUSTER_SCORE_TASK, reason))
         return fallback
     elapsed = _elapsed_ms(started)
     try:
         output = ClusterScoresOutput.model_validate(dict(_output_mapping(result)))
         scores = validate_cluster_scores(output, plans)
     except (ValidationError, TypeError, ValueError, ClusterContractError) as exc:
-        await note_call(_result_record(CLUSTER_SCORE_TASK, result, "degraded", elapsed))
-        await note_degraded(DegradedCall(CLUSTER_SCORE_TASK, _contract_reason(exc)))
+        reason = _contract_reason(exc)
+        await note_call(
+            _result_record(
+                CLUSTER_SCORE_TASK,
+                result,
+                "error" if failure_policy == "strict" else "degraded",
+                elapsed,
+            )
+        )
+        if failure_policy == "strict":
+            raise ClusterAIFailure(CLUSTER_SCORE_TASK, reason) from exc
+        await note_degraded(DegradedCall(CLUSTER_SCORE_TASK, reason))
         return fallback
     await note_call(_result_record(CLUSTER_SCORE_TASK, result, "ok", elapsed))
     return scores
@@ -1022,6 +1086,7 @@ async def _score_severities(
     plans: Sequence[ClusterPlan],
     note_call: _CallSink,
     note_degraded: _DegradedSink,
+    failure_policy: Literal["strict", "degrade"] = "degrade",
 ) -> dict[str, tuple[float, Mapping[str, float], str | None]]:
     """Run the single batch severity call, degrading every cluster on failure."""
     fallback: dict[str, tuple[float, Mapping[str, float], str | None]] = {
@@ -1039,16 +1104,29 @@ async def _score_severities(
     try:
         result = await agent.analyze(request)
     except Exception as exc:
+        reason = _provider_reason(exc)
         await note_call(_failure_record(SEVERITY_SCORE_TASK, agent, _elapsed_ms(started), exc))
-        await note_degraded(DegradedCall(SEVERITY_SCORE_TASK, _provider_reason(exc)))
+        if failure_policy == "strict":
+            raise ClusterAIFailure(SEVERITY_SCORE_TASK, reason) from exc
+        await note_degraded(DegradedCall(SEVERITY_SCORE_TASK, reason))
         return fallback
     elapsed = _elapsed_ms(started)
     try:
         output = SeverityScoresOutput.model_validate(dict(_output_mapping(result)))
         severities = validate_severity_scores(output, plans)
     except (ValidationError, TypeError, ValueError, ClusterContractError) as exc:
-        await note_call(_result_record(SEVERITY_SCORE_TASK, result, "degraded", elapsed))
-        await note_degraded(DegradedCall(SEVERITY_SCORE_TASK, _contract_reason(exc)))
+        reason = _contract_reason(exc)
+        await note_call(
+            _result_record(
+                SEVERITY_SCORE_TASK,
+                result,
+                "error" if failure_policy == "strict" else "degraded",
+                elapsed,
+            )
+        )
+        if failure_policy == "strict":
+            raise ClusterAIFailure(SEVERITY_SCORE_TASK, reason) from exc
+        await note_degraded(DegradedCall(SEVERITY_SCORE_TASK, reason))
         return fallback
     await note_call(_result_record(SEVERITY_SCORE_TASK, result, "ok", elapsed))
     return severities
@@ -1282,7 +1360,7 @@ def _failure_record(
 def _result_record(
     task: str,
     result: AnalysisResult,
-    outcome: Literal["ok", "degraded"],
+    outcome: Literal["ok", "degraded", "error"],
     elapsed_ms: int,
 ) -> CallRecord:
     """Build the observability record for a call that returned a result."""
@@ -1363,6 +1441,7 @@ __all__ = [
     "SEVERITY_DIMENSIONS",
     "SEVERITY_SCORE_TASK",
     "CallRecord",
+    "ClusterAIFailure",
     "ClusterCaseEvidence",
     "ClusterContractError",
     "ClusterDraftStats",

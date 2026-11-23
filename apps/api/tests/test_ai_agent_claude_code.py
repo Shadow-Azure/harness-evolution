@@ -847,8 +847,77 @@ async def test_edit_workspace_collects_the_plan_without_applying_it(
     assert "make the skill tolerate slow hosts" in argv[argv.index("-p") + 1]
     assert argv[argv.index("--max-turns") + 1] == str(EDIT_MAX_TURNS)
     assert argv[argv.index("--settings") + 1] == str(settings_file)
-    assert "--no-session-persistence" not in argv
+    assert "--no-session-persistence" in argv
     assert "--resume" not in argv
+
+
+def test_settings_file_prefers_the_explicit_deployment_path(tmp_path: Path) -> None:
+    """HE_AI_AGENT_CLAUDE_SETTINGS wins over the legacy home lookup."""
+    configured = tmp_path / "shared" / "settings.json"
+    provider = ClaudeCodeProvider(
+        Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            ai_agent_provider="claude-code",
+            ai_agent_claude_settings=str(configured),
+        ),
+        runner=MockRunner(),
+    )
+
+    assert provider._settings_file() == configured
+
+
+def test_settings_file_falls_back_to_claude_config_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CLAUDE_CONFIG_DIR keeps the provider and the CLI on the same directory."""
+    config_dir = tmp_path / "claude-config"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+    provider = ClaudeCodeProvider(
+        Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            ai_agent_provider="claude-code",
+        ),
+        runner=MockRunner(),
+    )
+
+    assert provider._settings_file() == config_dir / "settings.json"
+
+
+def test_settings_file_falls_back_to_the_legacy_home(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without deployment overrides the original ``~/.claude`` path is kept."""
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    provider = ClaudeCodeProvider(
+        Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            ai_agent_provider="claude-code",
+        ),
+        runner=MockRunner(),
+    )
+
+    assert provider._settings_file() == Path.home() / ".claude" / "settings.json"
+
+
+async def test_analyze_passes_the_explicit_settings_file(tmp_path: Path) -> None:
+    """The service points the CLI at the shared settings path explicitly."""
+    binary = _binary(tmp_path)
+    settings_file = tmp_path / "shared-settings.json"
+    settings_file.write_text("{}\n", encoding="utf-8")
+    runner = MockRunner(_analyze_step({"confidence": 0.5, "summary": "ok"}))
+    provider = ClaudeCodeProvider(
+        Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            ai_agent_provider="claude-code",
+            ai_agent_claude_bin=str(binary),
+            ai_agent_claude_settings=str(settings_file),
+        ),
+        runner=runner,
+    )
+
+    await provider.analyze(_request())
+
+    argv = runner.calls[0].argv
+    assert argv[argv.index("--settings") + 1] == str(settings_file)
 
 
 async def test_edit_omits_settings_when_the_deployment_file_is_absent(

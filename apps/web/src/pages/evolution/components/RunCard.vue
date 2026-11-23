@@ -35,6 +35,7 @@ const statusLabel = computed(() => {
     case "completed":
       if (props.run.mode === "cluster_only") return "✓ 已完成 · 仅聚类";
       if (props.run.final === null) return "已完成 · 终评未知";
+      if (props.run.degraded) return "已完成 · 聚类降级";
       return props.run.final.verdict
         ? "✓ 已完成 · 自进化有效"
         : "已完成 · 无收益";
@@ -53,6 +54,7 @@ const statusClass = computed(() => {
   if (props.run.status === "completed") {
     if (props.run.mode === "cluster_only") return "done-ok";
     if (props.run.final === null) return "done-pending";
+    if (props.run.degraded) return "done-pending";
     return props.run.final?.verdict ? "done-ok" : "done-no";
   }
   if (props.run.status === "blocked") return "blocked";

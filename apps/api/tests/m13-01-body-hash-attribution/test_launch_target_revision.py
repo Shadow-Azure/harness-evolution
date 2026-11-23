@@ -145,7 +145,7 @@ class DigestTargetResolver:
 @pytest_asyncio.fixture
 async def launch_client(tmp_path: Path) -> AsyncIterator[Any]:
     """Provide an authenticated space administrator and one associated Session."""
-    settings: Settings = identity_settings(tmp_path)
+    settings: Settings = identity_settings(tmp_path, ai_agent_failure_policy="degrade")
     app = create_app(
         settings,
         git_remote=FakeGitRemote(),

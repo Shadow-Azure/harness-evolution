@@ -20,6 +20,7 @@ const card: EvolutionRunCard = {
   createdBy: null,
   createdAt: "2026-10-19T18:42:00+08:00",
   status: "running",
+  degraded: false,
   error: null,
   stats: {
     sessions: 0,

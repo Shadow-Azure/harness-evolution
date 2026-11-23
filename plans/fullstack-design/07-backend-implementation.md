@@ -808,7 +808,7 @@ class AIAgentProvider(ABC):
 
 - **接口按能力而非厂商划分**：`analyze`（结构化分析）与 `edit_workspace`（受控工作区编辑）是两个稳定能力面；聚类审查、簇置信度、严重度都是 `analyze` 的不同任务键（`cluster.review` / `cluster.score` / `severity.score`），接口数量不随环节膨胀。主接口不含 `embed`：向量化是分组层（§5.5.2）的升级能力，以可选能力接口 `SupportsEmbedding` 扩展。
 - **归一化返回**：用量（model、tokens、cost_usd）、会话 id、latency、可重试标志是结果对象的固定字段；错误折叠为 `AgentProviderError(retryable, provider_id, detail)`。
-- **工厂与配置**：注册表 + `build_agent_provider(settings)`；选择键 `AI_AGENT_PROVIDER`（`AliasChoices` 兼收 `HE_AI_AGENT_PROVIDER`，校验器限定注册表内的值，未知值启动即红）。子配置段 `HE_AI_AGENT_*`（CLI 路径、超时、预算、`HE_AI_AGENT_NATIVE_SCHEMA` 可选快路径开关）。装配点在 `main.py`，与 `patch_source_factory` 同款姿势。
+- **工厂与配置**：注册表 + `build_agent_provider(settings)`；选择键 `AI_AGENT_PROVIDER`（`AliasChoices` 兼收 `HE_AI_AGENT_PROVIDER`，校验器限定注册表内的值，未知值启动即红）。子配置段 `HE_AI_AGENT_*`（CLI 路径、CLI settings 显式路径、失败策略、超时、预算、`HE_AI_AGENT_NATIVE_SCHEMA` 可选快路径开关）。装配点在 `main.py`，与 `patch_source_factory` 同款姿势。
 - **fake 先行**：确定性 `FakeAIAgentProvider` 注册 `"fake"`，全部单测与 CI 走 fake；真实 CLI 只在 e2e 冒烟触碰。子类进程管理复用 git workspace 的姿势：`create_subprocess_exec` + `start_new_session=True` + `wait_for`，SIGINT 优雅终止后 `killpg(SIGKILL)`，退出码 143 识别为「已取消」。
 - **凭据零感知**：模型端点与 key 在 `~/.claude` 由部署管道管理（M15），服务进程不读取任何生产凭据。
 
@@ -821,6 +821,7 @@ class AIAgentProvider(ABC):
 - **③ 评分层（O(K×s)，两次调用失败隔离）**：输入 = 最终簇摘要 + 代表样本 + 确定性统计量（成员数、签名重合度、时间跨度、可选紧密度）。`cluster.score`（簇置信度直评 0–1，rubric 锚定 + `evidence_refs ⊆ 输入` 引用校验，写 `probe_clusters.confidence`，降级回类目常量）与 `severity.score`（维度 0–10 + CoT grader，`overall` 为决策分、公式分对照进 metrics、CVSS 式向量串可审计，降级回 `cluster_severity()` 公式）分开执行。
 - **归因置信度不上模型**：归因行 `probe_reports.confidence`（case 级归因置信度）改为证据完整度规则分（时间序可比 / 错误签名匹配 / 版本直证三信号计票映射区间），零模型调用；逐条模型分留作预算开关，不进默认路径。
 - 落库：算法标识升级 `hybrid-lexical-llm-v1`（embedding 上线后 `hybrid-embed-llm-v1`）随 run 快照可回放。成本形态：每 run 恰好 3 次有界 analyze + patch 阶段 edit 调用，与 N 无关。
+- 失败策略：`HE_AI_AGENT_FAILURE_POLICY` 默认按 provider 推导（`fake` → `degrade`，其余 → `strict`）。`strict` 下任一任务失败在记录 `ai_agent_call(outcome=error)` 后抛 `ClusterAIFailure`，run 在聚类阶段显式失败，不写兜底 confidence/severity、不写成功口径的 `clusters_created`；`degrade` 仅用于 `fake` 或显式配置，回退仍写 `degraded` 事件。`/steps/clusters` 暴露 `algorithm`/`failurePolicy`/`degraded`/`failure`，失败 run 的聚类步骤保持可读；run 卡片与终评按 `degraded` 标“聚类降级”，不显示“自进化有效”。
 
 ### 5.5.3 结构化提交通道（`submission.py`）与 JSON 可靠性防线
 

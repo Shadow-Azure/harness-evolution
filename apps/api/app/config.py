@@ -160,6 +160,8 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AI_AGENT_PROVIDER", "HE_AI_AGENT_PROVIDER"),
     )
     ai_agent_claude_bin: str = "~/.local/bin/claude"
+    ai_agent_claude_settings: str | None = None
+    ai_agent_failure_policy: Literal["strict", "degrade"] | None = None
     blocked_sweep_seconds: float = Field(default=30.0, ge=1)
     web_base_url: str | None = None
     auth_provider: AuthProviderName = AuthProviderName.PASSWORD
@@ -349,6 +351,39 @@ class Settings(BaseSettings):
         if not normalized:
             raise ValueError("AI_AGENT_CLAUDE_BIN must not be empty")
         return normalized
+
+    @field_validator("ai_agent_failure_policy", mode="before")
+    @classmethod
+    def treat_blank_failure_policy_as_unset(cls, value: object) -> object:
+        """Treat an empty template value as unset so the provider default applies."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("ai_agent_claude_settings")
+    @classmethod
+    def validate_ai_agent_claude_settings(cls, value: str | None) -> str | None:
+        """Treat a blank settings path as unset; otherwise keep the explicit path."""
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def derive_ai_agent_failure_policy(self) -> "Settings":
+        """Default the policy from the provider: fake degrades, real providers are strict."""
+        if self.ai_agent_failure_policy is None:
+            self.ai_agent_failure_policy = (
+                "degrade" if self.ai_agent_provider == "fake" else "strict"
+            )
+        return self
+
+    @property
+    def effective_ai_agent_failure_policy(self) -> Literal["strict", "degrade"]:
+        """Return the resolved policy, failing loudly on an unresolved settings object."""
+        if self.ai_agent_failure_policy is None:
+            raise RuntimeError("ai_agent_failure_policy was not resolved")
+        return self.ai_agent_failure_policy
 
     @field_validator("oidc_client_secret_env")
     @classmethod
