@@ -736,9 +736,16 @@
             "title": "Skillrevision"
           },
           "tokenCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "default": 0,
-            "title": "Tokencount",
-            "type": "integer"
+            "title": "Tokencount"
           },
           "total": {
             "default": 0,

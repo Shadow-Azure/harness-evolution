@@ -114,6 +114,7 @@ async function cancelJob(jobId: string): Promise<void> {
     </h3>
     <div class="wz-stats">
       <span class="st"><b>{{ summary.potential }}</b><span>潜在 bad case</span></span>
+      <span class="st"><b>{{ step.payload.rows.length }}</b><span>已出报告</span></span>
       <span class="st"><b>{{ summary.reused }}</b><span>复用缓存</span></span>
       <span class="st accent"><b>{{ summary.fresh }}</b><span>本次新增</span></span>
       <span class="st"><b>{{ summary.nonTarget }}</b><span>非该对象问题</span></span>
@@ -162,7 +163,7 @@ async function cancelJob(jobId: string): Promise<void> {
         <span>缓存 {{ latestJob.observation.reused }}</span>
         <span>失败 {{ latestJob.observation.failed }}</span>
         <span>P95 {{ latestJob.observation.p95LatencyMs.toFixed(0) }}ms</span>
-        <span>Token {{ latestJob.observation.tokenCount }}</span>
+        <span>Token {{ latestJob.observation.tokenCount ?? "—" }}</span>
         <span>证据覆盖 {{ (latestJob.observation.evidenceCoverageRate * 100).toFixed(0) }}%</span>
         <span>warning {{ latestJob.observation.warningCount }}</span>
         <span>上下文 {{ latestJob.observation.contextHash?.slice(0, 12) ?? "—" }}</span>
@@ -174,8 +175,15 @@ async function cancelJob(jobId: string): Promise<void> {
         {{ latestJob.error }}
       </p>
     </section>
+    <p
+      v-if="attributionJobs?.jobs.isError.value"
+      class="runtime-error"
+      role="alert"
+    >
+      归因任务进度读取失败，正在重试。
+    </p>
     <div
-      v-else-if="canWrite && run.status === 'blocked'"
+      v-else-if="canWrite && attributionJobs?.jobs.isSuccess.value && !latestJob && run.status === 'blocked' && step.status === 'active'"
       class="runtime-empty"
     >
       <span>当前没有归因执行记录。</span>
@@ -253,7 +261,7 @@ async function cancelJob(jobId: string): Promise<void> {
       v-else
       class="waiting"
     >
-      没有需要归因的潜在 bad case
+      {{ summary.potential ? "当前还没有归因报告" : "没有需要归因的潜在 bad case" }}
     </p>
   </article>
 </template>

@@ -47,6 +47,7 @@ const canWriteAttribution = computed(() =>
 const runId = computed(() => String(route.params.runId ?? ""));
 const {
   data: run,
+  dataUpdatedAt: runUpdatedAt,
   error: runError,
   isPending: runPending,
   refetch: refetchRun,
@@ -196,7 +197,7 @@ const { data: rangeData } = useEvolutionRunStep(
   "range",
   computed(() => activeTab.value === "steps" && rangeStep.value?.clickable === true),
 );
-const { data: attributionData } = useEvolutionRunStep(
+const { data: attributionData, refetch: refetchAttribution } = useEvolutionRunStep(
   workspaceId,
   runId,
   "attribution",
@@ -204,6 +205,16 @@ const { data: attributionData } = useEvolutionRunStep(
     () => activeTab.value === "steps" && attributionStep.value?.clickable === true,
   ),
 );
+
+// The run's REST fallback also refreshes partial reports when SSE is disconnected.
+watch(runUpdatedAt, () => {
+  if (
+    activeTab.value === "steps" && attributionData.value?.status === "active" &&
+    attributionStep.value?.clickable
+  ) {
+    void refetchAttribution({ cancelRefetch: false });
+  }
+});
 
 const {
   data: stepData,
@@ -283,72 +294,48 @@ const rangeCondition = computed(() => {
   return step?.key === "range" ? step.payload.condition : null;
 });
 
-const attributionRows = computed(() => {
-  const step = attributionData.value;
-  return step?.key === "attribution" ? step.payload.rows : null;
-});
-
 const isDefaultPolicy = computed(() => {
   const policy = rangeCondition.value?.policy;
   if (!policy || typeof policy !== "object") return false;
   return (policy as { preset?: unknown }).preset === "default";
 });
 
-/**
- * The prototype splits conclusions per row, not per run counter: attributed
- * rows carry a category, non-target rows do not, and cached/fresh applies only
- * to attributed rows. The backend summary's `fresh` also counts fresh
- * non-target rows, so the info panel reads the unpaged rows instead.
- */
-const attributionFinal = computed(
-  () => attributionStep.value?.status === "done",
-);
-
-const panelAttributed = computed(() => {
-  if (attributionFinal.value && attributionRows.value) {
-    return attributionRows.value.filter((row) => row.category !== null).length;
+// Each linked report has one conclusion. The legend splits attributed reports by source.
+const reportCounts = computed(() => {
+  const step = attributionData.value;
+  if (step?.key !== "attribution") return null;
+  const { rows, summary } = step.payload;
+  const byCategory = { error: 0, prompt: 0, flow: 0, context: 0, model: 0 };
+  let reused = 0;
+  for (const row of rows) {
+    if (row.category === null) continue;
+    byCategory[row.category]++;
+    if (row.source === "cached") reused++;
   }
-  return run.value?.stats.attributed ?? 0;
+  const attributed = rows.length - summary.nonTarget;
+  return {
+    total: summary.potential,
+    reported: rows.length,
+    attributed,
+    nonTarget: summary.nonTarget,
+    reused,
+    fresh: attributed - reused,
+    byCategory,
+  };
 });
 
-const nonTargetCount = computed(() => {
-  if (!attributionFinal.value || !attributionRows.value) return null;
-  return attributionRows.value.filter((row) => row.category === null).length;
-});
-
-const reusedCount = computed(() => {
-  if (!attributionFinal.value || !attributionRows.value) return null;
-  return attributionRows.value.filter(
-    (row) => row.category !== null && row.source === "cached",
-  ).length;
-});
-
-const freshCount = computed(() => {
-  if (!attributionFinal.value || !attributionRows.value) return null;
-  return attributionRows.value.filter(
-    (row) => row.category !== null && row.source === "fresh",
-  ).length;
-});
-
-const pendingCount = computed(() => {
-  if (attributionFinal.value) return 0;
-  return Math.max(0, (run.value?.stats.potential ?? 0) - panelAttributed.value);
-});
-
-const nonTargetLabel = computed(() =>
-  nonTargetCount.value === null ? "—" : String(nonTargetCount.value),
+const distributionTotal = computed(
+  () => reportCounts.value?.total ?? run.value?.stats.potential ?? 0,
 );
-
-const reusedLabel = computed(() =>
-  reusedCount.value === null ? "—" : String(reusedCount.value),
+const panelAttributed = computed(
+  () => reportCounts.value?.attributed ?? run.value?.stats.attributed ?? 0,
 );
-
-const freshLabel = computed(() =>
-  freshCount.value === null ? "—" : String(freshCount.value),
+const pendingCount = computed(() =>
+  Math.max(0, distributionTotal.value - (reportCounts.value?.reported ?? panelAttributed.value)),
 );
 
 const distribution = computed(() => {
-  const stats = run.value?.stats.byCategory;
+  const stats = reportCounts.value?.byCategory ?? run.value?.stats.byCategory;
   if (!stats) return [];
   const items = [
     { key: "error", label: "错误", value: stats.error, color: "var(--red)" },
@@ -357,11 +344,11 @@ const distribution = computed(() => {
     { key: "context", label: "上下文", value: stats.context ?? 0, color: "var(--green)" },
     { key: "model", label: "模型", value: stats.model, color: "var(--purple)" },
   ];
-  if (nonTargetCount.value !== null) {
+  if (reportCounts.value) {
     items.push({
       key: "nonTarget",
       label: "非该对象",
-      value: nonTargetCount.value,
+      value: reportCounts.value.nonTarget,
       color: "var(--text-faint)",
     });
   }
@@ -374,13 +361,6 @@ const distribution = computed(() => {
     });
   }
   return items;
-});
-
-const distributionTotal = computed(() => {
-  if (attributionFinal.value && attributionRows.value) {
-    return attributionRows.value.length;
-  }
-  return run.value?.stats.potential ?? 0;
 });
 
 const stepErrorCode = computed(() => {
@@ -727,7 +707,7 @@ function clearMissingClusterFocus(): void {
                 潜在 bad case
               </div>
               <div class="v big accent">
-                {{ run.stats.potential }}
+                {{ distributionTotal }}
               </div>
             </div>
             <div class="kv">
@@ -735,7 +715,7 @@ function clearMissingClusterFocus(): void {
                 可归因 / 非该对象
               </div>
               <div class="v big">
-                {{ panelAttributed }} <span class="muted">/ {{ nonTargetLabel }}</span>
+                {{ panelAttributed }} <span class="muted">/ {{ reportCounts?.nonTarget ?? "—" }}</span>
               </div>
             </div>
             <div
@@ -783,7 +763,7 @@ function clearMissingClusterFocus(): void {
               />
               {{ item.label }} <b>{{ item.value }}</b>
             </span>
-            <span class="muted">＝ 归因 {{ panelAttributed }} · 复用缓存 {{ reusedLabel }} · 本次新增 {{ freshLabel }}</span>
+            <span class="muted">＝ 归因 {{ panelAttributed }} · 复用缓存 {{ reportCounts?.reused ?? "—" }} · 本次新增 {{ reportCounts?.fresh ?? "—" }}</span>
           </div>
           <div
             v-if="rangeCondition"

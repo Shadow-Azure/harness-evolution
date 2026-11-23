@@ -257,3 +257,39 @@ async def test_workspace_api_exposes_redacted_job_state_and_role_gate(
     assert history.status_code == 200
     assert len(history.json()["items"]) == 1
     assert "payload" not in history.json()["items"][0]
+
+
+async def test_live_history_preserves_usage_and_reads_previously_redacted_counts(
+    acceptance_api: AcceptanceApi,
+) -> None:
+    workspace_id, run_id = "ws-live-progress", "run-live-progress"
+    await seed_workspace(acceptance_api.database, workspace_id)
+    await seed_run(acceptance_api.database, run_id=run_id, workspace_id=workspace_id)
+    viewer = await seed_identity(
+        acceptance_api.app, acceptance_api.database, username="observer", workspace_id=workspace_id
+    )
+    jobs: JobRunner = acceptance_api.app.state.jobs
+    job = await jobs.repository.insert(
+        kind="attribution_batch", payload={"source": "prepare"}, ref_id=run_id, created_by=None
+    )
+    await jobs.repository.claim(job.id, owner="worker")
+    path = f"/api/workspaces/{workspace_id}/evolution/runs/{run_id}/attribution-jobs"
+    for value, expected in [("private-value", None), (0, 0), (3241, 3241)]:
+        updated = await jobs.update_progress(
+            job.id,
+            0.5,
+            observation={
+                "tokenCount": value,
+                "accessToken": "private-value",
+                "total": 8,
+                "completed": 4,
+            },
+        )
+        assert updated.result and "private-value" not in str(updated.result)
+        response = await acceptance_api.client.get(path, headers=viewer.headers)
+        assert response.status_code == 200
+        item = response.json()["items"][0]
+        assert item["status"] == "running"
+        assert item["observation"]["tokenCount"] == expected
+        assert item["observation"]["completed"] == 4
+        assert item["observation"]["total"] == 8

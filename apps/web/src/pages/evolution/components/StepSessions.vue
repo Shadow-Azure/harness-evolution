@@ -35,7 +35,10 @@ function changePage(delta: number): void {
       <span class="st"><b>{{ summary.reported }}</b><span>上报过 bad case</span></span>
       <span class="st accent"><b>{{ summary.associated }}</b><span>关联</span></span>
       <span class="st"><b>{{ summary.skipped }}</b><span>跳过</span></span>
-      <span v-if="summary.versionUnresolved" class="st"><b>{{ summary.versionUnresolved }}</b><span>版本未知</span></span>
+      <span
+        v-if="summary.versionUnresolved"
+        class="st"
+      ><b>{{ summary.versionUnresolved }}</b><span>版本未知</span></span>
       <span class="st"><b>{{ summary.pending }}</b><span>待轨迹同步</span></span>
     </div>
     <div

@@ -648,7 +648,7 @@ class EvolutionStageService:
     async def _attribution(self, facts: _RunFacts) -> EvolutionStepAttribution:
         """Assemble per-case attribution conclusions and their counts."""
         rows = _legacy_attribution_rows(facts) if facts.legacy else _v2_attribution_rows(facts)
-        potential = len([row for row in rows])
+        potential = len(rows) if facts.legacy else sum(case.included for case in facts.candidates)
         reused = sum(1 for row in rows if row.source == "cached")
         non_target = sum(1 for row in rows if row.category is None)
         return EvolutionStepAttribution(
@@ -657,7 +657,7 @@ class EvolutionStageService:
                 summary=StepAttributionSummary(
                     potential=potential,
                     reused=reused,
-                    fresh=potential - reused,
+                    fresh=len(rows) - reused,
                     non_target=non_target,
                 ),
                 rows=rows,

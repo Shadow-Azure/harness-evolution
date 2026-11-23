@@ -197,11 +197,14 @@ class JobRunner:
     ) -> JobRunRecord:
         """Persist normalized progress and notify the job's run topic."""
         normalized = min(1.0, max(0.0, float(progress)))
-        await self.repository.update_progress(
-            job_id,
-            normalized,
-            sanitize_job_payload(observation) if observation is not None else None,
-        )
+        metrics = None
+        if observation is not None:
+            metrics = sanitize_job_payload(observation)
+            # Observations carry a usage counter alongside redacted diagnostic fields.
+            count = observation.get("tokenCount")
+            if type(count) is int and count >= 0:
+                metrics["tokenCount"] = count
+        await self.repository.update_progress(job_id, normalized, metrics)
         job = await self.get(job_id)
         if job.ref_id and job.kind != "sync":
             self._bus.publish(

@@ -769,7 +769,7 @@ RunDetail.vue
 └── （iteration step 内）ClusterCard.vue → DiffView / EvalCompare / CommitBlock
 ```
 
-**目标与输入口径**：4 列依次为进化对象 / 版本 / 时间段 / 工作空间，然后是关联 Session、时间段内 bad case、潜在 bad case、可归因 / 非该对象；「模型（多选）」不在详情页。分布标题固定为「潜在 bad case 的归因结论分布（N 条）」，N 取潜在 bad case 数，图例含非该对象、错误 / prompt / 模型与「＝ 归因 · 复用缓存 · 本次新增」。关联 Session 显示 `已关联 / 版本未知`；非该对象、复用缓存与本次新增按 attribution step 的 rows 行级统计（`category` 为空即非该对象，`source` 为 `cached` / `fresh`；「本次新增」只计可归因的 fresh 行，与原型一致），策略与缓存开关取 range step 的 condition，接口契约不新增字段。归因尚未完成时复用缓存与本次新增显示 `—`，分布条以「未归因」余量补齐，归因完成后显示最终值。工作区折叠区包含 run 分支（可复制）、基线 ref / commit、仓库、子目录、推送状态与时间、评测状态、脱敏推送错误与本地路径。
+**目标与输入口径**：4 列依次为进化对象 / 版本 / 时间段 / 工作空间，然后是关联 Session、时间段内 bad case、潜在 bad case、可归因 / 非该对象；「模型（多选）」不在详情页。分布标题固定为「潜在 bad case 的归因结论分布（N 条）」，N 取潜在 bad case 数，图例含非该对象、错误 / prompt / 模型与「＝ 归因 · 复用缓存 · 本次新增」。关联 Session 显示 `已关联 / 版本未知`；非该对象、复用缓存与本次新增按 attribution step 的 rows 行级统计（`category` 为空即非该对象，`source` 为 `cached` / `fresh`；「本次新增」只计可归因的 fresh 行，与原型一致），策略与缓存开关取 range step 的 condition，接口契约不新增字段。归因运行中按已关联报告更新分类、缓存与新增数量，分布条以入选候选数减去已出报告数补齐「未归因」。工作区折叠区包含 run 分支（可复制）、基线 ref / commit、仓库、子目录、推送状态与时间、评测状态、脱敏推送错误与本地路径。
 
 **单一 schema**：`run.steps` 恒为七步，`steps[].key` 由后端给定，前端按 key 渲染，不推算回退。
 

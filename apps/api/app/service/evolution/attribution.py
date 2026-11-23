@@ -521,20 +521,20 @@ class AttributionRunSummary:
 
 @dataclass(frozen=True, slots=True)
 class AttributionRunProgress:
-    """Sanitized live observations emitted as individual cases finish."""
+    """Sanitized observations at batch start and after each case finishes."""
 
     total: int
-    completed: int
-    created: int
-    reused: int
-    failed: int
-    non_target: int
-    average_latency_ms: float
-    p95_latency_ms: float
-    token_count: int
-    warning_count: int
-    evidence_coverage_rate: float
-    context_hash: str
+    completed: int = 0
+    created: int = 0
+    reused: int = 0
+    failed: int = 0
+    non_target: int = 0
+    average_latency_ms: float = 0.0
+    p95_latency_ms: float = 0.0
+    token_count: int = 0
+    warning_count: int = 0
+    evidence_coverage_rate: float = 0.0
+    context_hash: str | None = None
 
 
 AttributionProgressCallback = Callable[[AttributionRunProgress], Awaitable[None]]
@@ -721,6 +721,8 @@ class AttributionRunner:
                 skipped=skipped,
             )
 
+        if on_progress is not None:
+            await on_progress(AttributionRunProgress(total=len(pending)))
         case_ids = tuple(candidate.bad_case_id for candidate in pending)
         if (
             cache_enabled

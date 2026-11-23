@@ -20,6 +20,7 @@ from app.service.evolution.attribution import (
     AttributionInput,
     AttributionResult,
     AttributionRunner,
+    AttributionRunProgress,
 )
 from app.service.evolution.attribution_contracts import default_execution_manifest
 from app.service.evolution.engine.contracts import RunBlocked
@@ -124,12 +125,21 @@ async def test_runner_writes_revision_scoped_probe_and_candidate(
         attribution_repository,
         engine_factory=lambda key: engine,
     )
+    progress_rows = []
+
+    async def observe(progress: AttributionRunProgress) -> None:
+        progress_rows.append((progress.completed, progress.total))
+        if progress.completed == 0:
+            assert not engine.calls
+
     summary = await runner.run(
         run,
         (potential_case(), potential_case(OTHER_CASE_ID)),
         cache_enabled=True,
+        on_progress=observe,
     )
 
+    assert progress_rows == [(0, 2), (1, 2), (2, 2)]
     assert summary.processed == 2
     assert summary.created == 2
     assert summary.reused == 0

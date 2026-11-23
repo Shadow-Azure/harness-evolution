@@ -37,7 +37,7 @@ class AttributionJobObservation(IdentityModel):
     non_target: int = 0
     average_latency_ms: float = 0.0
     p95_latency_ms: float = 0.0
-    token_count: int = 0
+    token_count: int | None = 0
     warning_count: int = 0
     evidence_coverage_rate: float = 0.0
     executor: str
@@ -322,6 +322,7 @@ class AttributionJobService:
             else "prepare"
         )
         result = job.result or {}
+        token_count = result.get("tokenCount", 0)
         observation = AttributionJobObservation(
             total=int(result.get("total", result.get("processed", 0))),
             completed=int(
@@ -338,7 +339,7 @@ class AttributionJobService:
             non_target=int(result.get("nonTarget", 0)),
             average_latency_ms=float(result.get("averageLatencyMs", 0.0)),
             p95_latency_ms=float(result.get("p95LatencyMs", 0.0)),
-            token_count=int(result.get("tokenCount", 0)),
+            token_count=token_count if type(token_count) is int else None,
             warning_count=int(result.get("warningCount", 0)),
             evidence_coverage_rate=float(result.get("evidenceCoverageRate", 0.0)),
             executor=str(result.get("executor", "unknown")),

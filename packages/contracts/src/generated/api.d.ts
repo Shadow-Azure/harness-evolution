@@ -2323,7 +2323,7 @@ export interface components {
              * Tokencount
              * @default 0
              */
-            tokenCount: number;
+            tokenCount: number | null;
             /**
              * Total
              * @default 0
