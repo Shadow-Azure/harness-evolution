@@ -1429,7 +1429,7 @@ root-sync 状态表的 `last_error` 直接保存稳定码，per-report source �
 | `ERROR_META[title]`（单结论） | `BadCase.attributionCount` + 归因列表（§4.19） | 一个 bad case × 多对象·版本；`reason` / `reasoning(Markdown)` / `category` / `conclusion` 由归因行承载 |
 | `REPORTS[]` | `bad_case_analysis` 关联的 `probe_reports` 行 | 不再有独立产品实体「问题报告」；物理 `probe_id` 映射为 `attributionId` |
 | `RUNS[]` | `RunCard` / `RunDetail` | V2 映射为 `stats.sessions/versionUnresolvedSessions/potential/attributed/reused/byCategory` |
-| `PATCH.deser` | `patch.file/lines` | diff 行数组原样传给前端着色 |
+| `PATCH.deser` | `patch.files[].file/lines/overwrite` | 多文件逐项渲染，legacy 单文件归一为一个 `files` 项；行数组原样传给前端着色 |
 
 V2 新增映射（2026-11-11）：
 

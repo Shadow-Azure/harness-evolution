@@ -143,11 +143,16 @@ async def test_iteration_projects_single_and_multi_file_stored_bundles(
             3,
             {"file": "SKILL.md", "lines": ["@@ -8 +8 @@", "- 引用可选"]},
         ),
+        _round(
+            "round-malformed",
+            4,
+            {"files": [{"file": "", "lines": []}], "note": "损坏的 patch"},
+        ),
     ]
     await seed_fixture(_database(iteration_api), data)
 
     response = await iteration_api.get(
-        f"/api/evolution/runs/{data['run']['id']}/steps/iteration",
+        f"/api/workspaces/ws-default/evolution/runs/{data['run']['id']}/steps/iteration",
     )
 
     assert response.status_code == 200, response.text
@@ -156,6 +161,7 @@ async def test_iteration_projects_single_and_multi_file_stored_bundles(
         "round-single",
         "round-multi",
         "round-legacy",
+        "round-malformed",
     ]
 
     single_patch = rounds[0]["patch"]
@@ -185,3 +191,5 @@ async def test_iteration_projects_single_and_multi_file_stored_bundles(
             "overwrite": False,
         },
     ]
+
+    assert rounds[3]["patch"] is None

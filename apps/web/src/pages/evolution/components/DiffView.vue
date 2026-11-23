@@ -16,7 +16,7 @@ function lineClass(line: string): string {
 <template>
   <div class="diff">
     <div
-      v-for="file in patch.files"
+      v-for="file in (patch.files ?? [])"
       :key="file.file"
       class="file"
     >
@@ -39,7 +39,7 @@ function lineClass(line: string): string {
       </div>
     </div>
     <div
-      v-if="patch.files.length === 0"
+      v-if="(patch.files ?? []).length === 0"
       class="empty-patch"
     >
       patch 内容为空

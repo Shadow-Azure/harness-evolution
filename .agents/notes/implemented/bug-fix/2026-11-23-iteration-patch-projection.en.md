@@ -28,8 +28,8 @@ The same contract was written twice: the write side's `_stored_patch()` defined 
 
 ## Consequences
 
-- Step 6 returns 200 for the current multi-file bundle, the single-file bundle and the historical legacy shape; when the stored shape gains a field the read model does not use, the whole step no longer fails on `extra="forbid"`.
+- Step 6 returns 200 for the current multi-file bundle, the single-file bundle and the historical legacy shape; a fourth, unrestorable shape degrades to `patch: null` while the other turn fields still render. When the stored shape gains a field the read model does not use, the whole step no longer fails on `extra="forbid"`.
 - `round_patch.py` becomes the shared write/read restoration seam: `git_candidate._patch_file/_patch_note/_patch_hash` and `stages._round_patch()` all take their facts from `stored_bundle()`, so a later storage change only touches this module.
-- An unrestorable patch now degrades to `patch: null` while the rest of the turn card still renders. That is easier to diagnose than a 500, but corrupted data no longer reddens the whole step, so tests and logs must catch it.
-- `packages/contracts` and `05 §3.6` now use `files[]`; clients that read the old `patch.file` must read `files[0]`. The repository has only one consumer of this DTO, `DiffView.vue`, and it is updated.
+- An unrestorable patch now degrades to `patch: null` while the rest of the turn card still renders. The API regression test covers that shape; the read path adds no warning log yet, so the visible signal is a missing patch preview.
+- `packages/contracts` and `05 §3.6` now use `files[]`; clients that read the old `patch.file` must read `files[0]`. The repository has only one consumer of this DTO, `DiffView.vue`, and it is updated; `DiffView` also falls back to an empty list when `files` is absent, so a rolling deploy window cannot throw during render.
 - Production verification needs one deployment; this issue does not migrate data, change patch generation/evaluation/push logic, or unify frontend error codes.

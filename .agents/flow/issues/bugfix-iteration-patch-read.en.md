@@ -128,8 +128,8 @@ Specifically:
 
 1. **API read model**: change `StepRoundPatch` from `{file, lines, note?}` to `{files: [{file, lines, overwrite}], note?}`; `_round_item()` no longer does `model_validate(raw patch)` but reuses `_stored_bundle()` (extract it into a shared helper if needed) to normalize both historical shapes into a bundle (the legacy single file becomes one item in `files`), then projects it explicitly into the DTO. A later stored field then cannot break the read path.
 2. **Contract and design doc**: run `pnpm contract:generate` to update `packages/contracts`, and change the `patch` example in `plans/fullstack-design/05-api-design.md` §3.6 to `files[]` (keep the single-file example to document legacy compatibility).
-3. **Frontend rendering**: `apps/web/src/pages/evolution/components/StepIterations.vue#L215-L221` renders one `DiffView` per file in `files`, each showing its path header (matching the prototype's "生成的 edit patch" block); a single-file patch looks exactly like today.
-4. **Regression tests**: add API tests that build one-file and two-file turns with `_stored_patch()` and assert `steps/iteration` returns 200 with the right `patch.files` count and content; keep one legacy `{file, lines, note}` case. Add a bundle-shaped run fixture to E2E and assert step 6 renders the patch diff, evaluation comparison and commit card.
+3. **Frontend rendering**: `StepIterations.vue#L215-L221` passes `round.patch` to `DiffView`; `DiffView.vue` renders one block per item in `files`, each showing its path header (matching the prototype's "生成的 edit patch" block). A single-file patch looks exactly like today.
+4. **Regression tests**: add API tests that build one-file and two-file turns with `_stored_patch()` and assert `steps/iteration` returns 200 with the right `patch.files` count and content; keep one legacy `{file, lines, note}` case. Add a bundle-shaped run fixture to E2E and assert step 6 renders every file path and the patch content; the evaluation comparison and commit card stay covered by the existing step-6 test.
 5. **Agent Note**: record "the read model must project the stored bundle; never validate a stored dictionary with a forbid-extra model" under `.agents/notes/implemented/bug-fix/`.
 
 Two alternatives are not recommended: catching the exception and returning `patch: null`, or opening `extra="ignore"` on `StepRoundPatch`. The former removes the patch preview from the turn card even though the patch is step 6's core information; the latter still lacks `file / lines` for a real multi-file bundle. Both merely turn the 500 into silently missing content and do not address the root cause.
@@ -138,7 +138,7 @@ Two alternatives are not recommended: catching the exception and returning `patc
 
 - `apps/api/app/service/evolution/stages.py`: `StepRoundPatch` becomes a bundle projection; `_round_item()` reuses `_stored_bundle()`.
 - `packages/contracts`: regenerate the OpenAPI types.
-- `apps/web/src/pages/evolution/components/StepIterations.vue`, `DiffView.vue`: multi-file rendering.
+- `apps/web/src/pages/evolution/components/DiffView.vue`: multi-file rendering; `StepIterations.vue` keeps passing `round.patch` through unchanged.
 - `apps/api/tests/evolution/`, `tests/e2e/`: writer → reader regression.
 - `plans/fullstack-design/05-api-design.md`, Agent Note.
 

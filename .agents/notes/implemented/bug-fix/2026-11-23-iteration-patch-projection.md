@@ -28,8 +28,8 @@ Status: implemented
 
 ## Consequences
 
-- 第 6 步对当前多文件 bundle、单文件 bundle 与历史 legacy 三种形状都返回 200；落库再增加读模型不用的字段时，读取链不会因为 `extra="forbid"` 而整步失败。
+- 第 6 步对当前多文件 bundle、单文件 bundle 与历史 legacy 三种合法形状都返回 200；第四种不可还原形状降级为 `patch: null`，其余轮次字段照常返回。落库再增加读模型不用的字段时，读取链不会因为 `extra="forbid"` 而整步失败。
 - `round_patch.py` 成为写读共享的还原缝：`git_candidate._patch_file/_patch_note/_patch_hash` 与 `stages._round_patch()` 都从 `stored_bundle()` 取事实，后续改存储形状只需改这一处。
-- 无法还原的 patch 现在降级为 `patch: null`；轮次卡其余字段仍然显示。这比 500 更容易诊断，但也意味着损坏数据不会再把整步打红，需要靠测试与日志发现。
-- `packages/contracts` 与 `05 §3.6` 已切到 `files[]`；使用旧 `patch.file` 的客户端必须读取 `files[0]`。仓库内只有 `DiffView.vue` 一处消费该 DTO，已同步。
+- 无法还原的 patch 现在降级为 `patch: null`；轮次卡其余字段仍然显示。API 回归测试已覆盖这一形状；读取层暂不加告警日志，UI 上表现为 patch 预览缺失。
+- `packages/contracts` 与 `05 §3.6` 已切到 `files[]`；使用旧 `patch.file` 的客户端必须读取 `files[0]`。仓库内只有 `DiffView.vue` 一处消费该 DTO，已同步；`DiffView` 对缺失 `files` 的响应也做了空数组兜底，跨越滚动发布窗口不会在渲染期抛错。
 - 生产验证需要一次部署；本 issue 不迁移数据、不改 patch 生成/评测/推送逻辑，也不统一前端错误码。

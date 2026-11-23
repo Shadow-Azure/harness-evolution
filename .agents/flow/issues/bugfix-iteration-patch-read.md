@@ -128,8 +128,8 @@ V2 原型第 6 步在 `plans/ui-prototype-v2/harness-evolution.html` 的 `evStep
 
 1. **API 读模型**：把 `StepRoundPatch` 从 `{file, lines, note?}` 改成 `{files: [{file, lines, overwrite}], note?}`；`_round_item()` 不再 `model_validate(原始 patch)`，而是复用 `_stored_bundle()`（必要时提取为共享 helper）把两种历史形态规整成 bundle（单文件 legacy 变成 1 个文件的 `files`），再显式投影成 DTO。这样后续落库再加字段也不会把读路径打挂。
 2. **契约与设计文档**：运行 `pnpm contract:generate` 更新 `packages/contracts`，并把 `plans/fullstack-design/05-api-design.md` §3.6 的 `patch` 示例改成 `files[]`（保留单文件示例说明 legacy 兼容）。
-3. **前端渲染**：`apps/web/src/pages/evolution/components/StepIterations.vue#L215-L221` 按 `files` 逐个渲染 `DiffView`，每个文件显示路径标题（与原型「生成的 edit patch」区块一致）；单文件时视觉与现在相同。
-4. **回归测试**：新增 API 测试，用 `_stored_patch()` 构造 1 文件与 2 文件 round，断言 `steps/iteration` 返回 200、`patch.files` 数量与内容正确；再保留一条 legacy `{file, lines, note}` 用例。E2E 增加 bundle 形状的 run fixture，断言第 6 步出现 patch diff、评测对比与 commit 卡片。
+3. **前端渲染**：`StepIterations.vue#L215-L221` 把 `round.patch` 传给 `DiffView`；`DiffView.vue` 按 `files` 逐个渲染，每个文件显示路径标题（与原型「生成的 edit patch」区块一致）。单文件时视觉与现在相同。
+4. **回归测试**：新增 API 测试，用 `_stored_patch()` 构造 1 文件与 2 文件 round，断言 `steps/iteration` 返回 200、`patch.files` 数量与内容正确；再保留一条 legacy `{file, lines, note}` 用例。E2E 增加 bundle 形状的 run fixture，断言第 6 步渲染多个文件路径与 patch 内容；评测对比与 commit 卡片由现有第 6 步用例覆盖。
 5. **Agent Note**：在 `.agents/notes/implemented/bug-fix/` 记录「读模型必须从落库 bundle 投影，禁止用 forbid-extra 模型直接校验存储字典」。
 
 不建议的两种替代：只用 `try/except` 把异常吞成 `patch: null`，或给 `StepRoundPatch` 开 `extra="ignore"`。前者让轮次卡片失去 patch 预览（而 patch 正是第 6 步的核心信息）；后者在真实多文件 bundle 上仍缺 `file / lines`。两者都只是把 500 换成「静默缺内容」，没有对齐根因。
@@ -138,7 +138,7 @@ V2 原型第 6 步在 `plans/ui-prototype-v2/harness-evolution.html` 的 `evStep
 
 - `apps/api/app/service/evolution/stages.py`：`StepRoundPatch` 改为 bundle 投影；`_round_item()` 复用 `_stored_bundle()`。
 - `packages/contracts`：重新生成 OpenAPI 类型。
-- `apps/web/src/pages/evolution/components/StepIterations.vue`、`DiffView.vue`：多文件渲染。
+- `apps/web/src/pages/evolution/components/DiffView.vue`：多文件渲染；`StepIterations.vue` 保持原样透传 `round.patch`。
 - `apps/api/tests/evolution/`、`tests/e2e/`：writer → reader 回归。
 - `plans/fullstack-design/05-api-design.md`、Agent Note。
 

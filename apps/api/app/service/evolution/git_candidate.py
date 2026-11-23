@@ -1042,10 +1042,8 @@ def _patch_file(round_: EvolutionRoundRecord) -> str:
 
 def _patch_note(round_: EvolutionRoundRecord) -> str:
     """Read the stored change description for accepted-message reproduction."""
-    if not isinstance(round_.patch, Mapping):
-        return PLACEHOLDER_PATCH_NOTE
-    value = round_.patch.get("note")
-    return value if isinstance(value, str) and value else PLACEHOLDER_PATCH_NOTE
+    bundle = stored_bundle(round_.patch)
+    return bundle.note if bundle is not None else PLACEHOLDER_PATCH_NOTE
 
 
 def _patch_hash(round_: EvolutionRoundRecord) -> str:
