@@ -33,7 +33,7 @@ Production `.env` is read by systemd through `EnvironmentFile=`. A missing requi
 ## Goals
 
 - Add a root `.env.example` as the single production `.env` template, with required fields first and optional fields after them.
-- Put a `# 必填｜...` or `# 选填｜...` line after every variable explaining the value, its purpose, default, and constraints.
+- Keep required fields as active assignments; comment optional fields out by default with a leading `#`. Put a `# 必填｜...` or `# 选填｜...` line after every variable explaining the value, its purpose, default, and constraints.
 - Remove `deploy/env.production.example` and point the deployment docs, bootstrap, and playbook at the new template.
 - Let `.gitignore` track the root `.env.example` while continuing to ignore a real `.env`.
 
@@ -46,7 +46,7 @@ Production `.env` is read by systemd through `EnvironmentFile=`. A missing requi
 
 ## Implementation
 
-- `.env.example`: the required block contains `HE_PRODUCTION`, `HE_HOST`, `HE_DATA_DIR`, `HE_JWT_SECRET`, `HE_DB_URL`, `HE_ADMIN_USERNAME`, and `HE_ADMIN_PASSWORD`; optional blocks then cover authentication, database tuning, upstream services, Git, the AI Agent, and evaluation. Each assignment is followed by a required/optional explanation line.
+- `.env.example`: the required block contains `HE_PRODUCTION`, `HE_HOST`, `HE_DATA_DIR`, `HE_JWT_SECRET`, `HE_DB_URL`, `HE_ADMIN_USERNAME`, and `HE_ADMIN_PASSWORD`; optional blocks then cover authentication, database tuning, upstream services, Git, the AI Agent, and evaluation. Required fields stay as assignment lines and optional fields are commented out by default; each variable is followed by a required/optional explanation line.
 - Remove `deploy/env.production.example` and update the template path in `docs/deployment.md` / `.en.md`, `deploy/bootstrap-server.sh`, and `plans/deploy-aliyun-playbook.md`.
 - Add a `!.env.example` exception to `.gitignore`.
 - Add an Agent Note recording the single-template and standalone-comment decisions.
@@ -72,16 +72,17 @@ pnpm verify:docs
 pnpm verify:flow
 pnpm test:gates
 awk '/^[A-Z][A-Z0-9_]*=/{key=$0; getline; if ($0 !~ /^# (必填|选填)｜/) { print "missing annotation: " key; bad=1 }} END { exit bad }' .env.example
+grep -c '^# [A-Z][A-Z0-9_]*=' .env.example
 ```
 
 - All four gates are green.
-- `awk` prints nothing, proving every assignment is followed by a required/optional explanation.
+- `awk` prints nothing, proving every active required assignment is followed by a required explanation; `grep` prints 81, proving 81 optional entries are commented out by default.
 - The required block precedes the optional blocks in `.env.example`, and no line uses the `KEY=value # comment` form.
 
 ## Acceptance
 
 - A root `.env.example` exists and every required field appears before the optional fields.
-- Every variable has a `必填` or `选填` line explaining what to enter and why; a missing required value fails startup or leaves the first deployment without an administrator.
+- Every variable has a `必填` or `选填` line explaining what to enter and why; required fields stay active and optional fields are commented out by default until enabled; a missing required value fails startup or leaves the first deployment without an administrator.
 - `deploy/env.production.example` is gone, and the template links in `docs/deployment.md` / `.en.md`, bootstrap, and the playbook resolve.
 - A real `.env` stays ignored by git while `.env.example` is tracked.
 - CI is green.

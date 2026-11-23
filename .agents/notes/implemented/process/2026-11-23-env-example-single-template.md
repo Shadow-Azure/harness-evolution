@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-仓库根 `.env.example` 是生产 `.env` 的唯一模板，必填字段在前、选填字段在后，每个赋值行的下一行用 `# 必填｜...` 或 `# 选填｜...` 说明值、作用、默认值与约束。`deploy/env.production.example` 删除，部署文档、bootstrap 与 playbook 的模板链接统一指向根模板；`.gitignore` 保留 `.env` / `.env.*` 的忽略规则，只放行 `.env.example`。注释独立成行，模板可直接复制为服务器 `.env` 而不改变任何值。
+仓库根 `.env.example` 是生产 `.env` 的唯一模板，必填字段在前、选填字段在后，每个赋值行的下一行用 `# 必填｜...` 或 `# 选填｜...` 说明值、作用、默认值与约束。`deploy/env.production.example` 删除，部署文档、bootstrap 与 playbook 的模板链接统一指向根模板；`.gitignore` 保留 `.env` / `.env.*` 的忽略规则，只放行 `.env.example`。必填项保持为生效赋值，选填项默认在行首加 `#` 注释，按需取消注释。注释独立成行，模板可直接复制为服务器 `.env` 而不改变任何值。
 
 ## Alternatives considered
 
@@ -18,4 +18,4 @@ Status: implemented
 
 ## Consequences
 
-模板只有一个 home，Settings 增删字段时只需改根 `.env.example` 与部署文档中的链接。历史 `plans/` 检视记录仍可能提到旧路径，它们是过程快照，不参与链接门禁。注释独立成行让模板可直接复制；后续若有人把说明改回行尾注释，systemd 会把注释当成值，必须靠评审阻止。`HE_VERSION` / `HE_PHASE` 等构建元数据未展开，避免把内部健康检查字段误当成部署必填项。
+模板只有一个 home，Settings 增删字段时只需改根 `.env.example` 与部署文档中的链接。默认模板只启用必填项，避免操作者无意中把选填项设成与预期不同的值。历史 `plans/` 检视记录仍可能提到旧路径，它们是过程快照，不参与链接门禁。注释独立成行让模板可直接复制；后续若有人把说明改回行尾注释，systemd 会把注释当成值，必须靠评审阻止。`HE_VERSION` / `HE_PHASE` 等构建元数据未展开，避免把内部健康检查字段误当成部署必填项。

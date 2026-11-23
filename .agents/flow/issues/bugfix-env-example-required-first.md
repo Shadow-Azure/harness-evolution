@@ -33,7 +33,7 @@ github:
 ## 目标
 
 - 在仓库根新增 `.env.example`，作为生产 `.env` 的唯一模板；必填字段在前，选填字段在后。
-- 每个变量下一行用 `# 必填｜...` 或 `# 选填｜...` 说明填写内容、作用、默认值与约束。
+- 必填项保持为生效的赋值行；选填项默认在行首加 `#` 注释，按需取消注释。每个变量下一行用 `# 必填｜...` 或 `# 选填｜...` 说明填写内容、作用、默认值与约束。
 - 移除 `deploy/env.production.example`，把部署文档、bootstrap 与 playbook 的指引收敛到新模板。
 - `.gitignore` 放行根 `.env.example`，继续忽略真实 `.env`。
 
@@ -46,7 +46,7 @@ github:
 
 ## 实现内容
 
-- `.env.example`：必填段包含 `HE_PRODUCTION`、`HE_HOST`、`HE_DATA_DIR`、`HE_JWT_SECRET`、`HE_DB_URL`、`HE_ADMIN_USERNAME`、`HE_ADMIN_PASSWORD`；随后按鉴权、数据库调优、上游、Git、AI Agent、评测等分组列出选填项。每个赋值行的下一行是必填/选填说明。
+- `.env.example`：必填段包含 `HE_PRODUCTION`、`HE_HOST`、`HE_DATA_DIR`、`HE_JWT_SECRET`、`HE_DB_URL`、`HE_ADMIN_USERNAME`、`HE_ADMIN_PASSWORD`；随后按鉴权、数据库调优、上游、Git、AI Agent、评测等分组列出选填项。必填项保持为赋值行，选填项默认注释；每个变量下一行是必填/选填说明。
 - 删除 `deploy/env.production.example`，更新 `docs/deployment.md` / `.en.md`、`deploy/bootstrap-server.sh` 与 `plans/deploy-aliyun-playbook.md` 中的模板路径。
 - `.gitignore` 增加 `!.env.example` 例外。
 - 新增 Agent Note，记录单一模板与独立注释行的决定。
@@ -72,16 +72,17 @@ pnpm verify:docs
 pnpm verify:flow
 pnpm test:gates
 awk '/^[A-Z][A-Z0-9_]*=/{key=$0; getline; if ($0 !~ /^# (必填|选填)｜/) { print "missing annotation: " key; bad=1 }} END { exit bad }' .env.example
+grep -c '^# [A-Z][A-Z0-9_]*=' .env.example
 ```
 
 - 四个门禁全绿。
-- `awk` 无输出，说明每个赋值行后面都有一条必填/选填说明。
+- `awk` 无输出，说明每个生效的必填赋值行后面都有一条必填说明；`grep` 输出 81，说明 81 个选填项默认被注释。
 - `.env.example` 的必填段在选填段之前，且不存在 `KEY=value # 注释` 形式的行尾注释。
 
 ## 验收标准
 
 - 仓库根存在 `.env.example`；必填字段全部在选填字段之前。
-- 每个变量下一行标明 `必填` 或 `选填`，并说明要填什么、起什么作用；必填项的空值会触发启动失败或首次部署无管理员。
+- 每个变量下一行标明 `必填` 或 `选填`，并说明要填什么、起什么作用；必填项保持生效，选填项默认以 `#` 注释、取消注释后才生效；必填项的空值会触发启动失败或首次部署无管理员。
 - `deploy/env.production.example` 不再存在；`docs/deployment.md` / `.en.md`、bootstrap 与 playbook 的模板链接可达。
 - 真实 `.env` 仍被 git 忽略，`.env.example` 可提交。
 - CI 全绿。
