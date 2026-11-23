@@ -11,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from app.config import ServicePhase, Settings
+from app.config import DEFAULT_ATTRIBUTION_GOLDEN_SET, ServicePhase, Settings
 from app.db.base import Database
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
@@ -31,6 +31,13 @@ from app.service.acquisition.local_sessions import (
     verify_local_sessions,
 )
 from app.service.acquisition.replay import replay_local_payloads
+from app.service.evolution.attribution_contracts import canonical_json_hash
+from app.service.evolution.attribution_eval import (
+    ShadowCandidate,
+    evaluate_shadow,
+    load_golden_set,
+    report_json,
+)
 from app.service.identity.service import IdentityService
 
 
@@ -144,6 +151,26 @@ def _parser() -> argparse.ArgumentParser:
         default="../../fixtures/m2-synthetic/corpus.json",
         type=Path,
     )
+    check.add_argument(
+        "--golden",
+        default=os.getenv("HE_ATTRIBUTION_GOLDEN_SET_PATH", DEFAULT_ATTRIBUTION_GOLDEN_SET),
+        type=Path,
+    )
+    attribution_eval = subcommands.add_parser(
+        "attribution-eval",
+        help="run one attribution engine against the sanitized Golden Set",
+    )
+    attribution_eval.add_argument(
+        "--golden",
+        default=os.getenv("HE_ATTRIBUTION_GOLDEN_SET_PATH", DEFAULT_ATTRIBUTION_GOLDEN_SET),
+        type=Path,
+    )
+    attribution_eval.add_argument(
+        "--engine",
+        choices=("rule-v1", "agent-skill-stub-v1"),
+        default="agent-skill-stub-v1",
+    )
+    attribution_eval.add_argument("--output", type=Path)
     import_local = subcommands.add_parser(
         "import-local",
         help="import development-only Claude session JSONL payloads",
@@ -203,12 +230,37 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "fixtures-check":
             corpus = load_fixture_corpus(args.corpus.resolve())
+            golden = load_golden_set(args.golden.resolve())
             result = {
                 "agents": len(corpus.agents),
                 "bytes": corpus.total_bytes,
+                "golden_cases": len(golden.cases),
+                "golden_set_hash": golden.content_hash,
                 "root_sessions": len(corpus.root_sessions),
                 "status": "valid",
             }
+        elif args.command == "attribution-eval":
+            content = {"instructions": "offline Golden Set evaluation", "tools": []}
+            engine = str(args.engine)
+            report = asyncio.run(
+                evaluate_shadow(
+                    load_golden_set(args.golden.resolve()),
+                    ShadowCandidate(
+                        engine=engine,
+                        skill_key="offline-candidate",
+                        skill_revision=1,
+                        skill_content_hash=canonical_json_hash(content),
+                        skill_executor_type=(
+                            "agent_stub" if engine == "agent-skill-stub-v1" else "builtin_rule"
+                        ),
+                        skill_content=content,
+                    ),
+                ),
+            )
+            if args.output is not None:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                args.output.write_text(report_json(report), encoding="utf-8")
+            result = report.model_dump(mode="json", by_alias=True)
         elif args.command == "seed":
             manifest = load_any_seed_manifest(args.manifest.resolve())
             result = asdict(asyncio.run(run_any_seed(Settings(), manifest)))

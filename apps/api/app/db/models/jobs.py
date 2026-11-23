@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -16,6 +17,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    false,
 )
 
 from app.utils.time import as_shanghai
@@ -36,6 +38,8 @@ job_runs = Table(
     Column("payload", JSON, nullable=False),
     Column("result", JSON, nullable=True),
     Column("error", Text, nullable=True),
+    Column("max_attempts", Integer, nullable=False, server_default="3"),
+    Column("cancel_requested", Boolean, nullable=False, server_default=false()),
     Column(
         "created_by",
         String(36),
@@ -103,6 +107,8 @@ class JobRunRecord:
     lease_owner: str | None = None
     lease_expires_at: datetime | None = None
     heartbeat_at: datetime | None = None
+    max_attempts: int = 3
+    cancel_requested: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +135,8 @@ def record_from_row(row: Any) -> JobRunRecord:
         executor=row["executor"],
         external_job_id=row["external_job_id"],
         attempt=int(row["attempt"]),
+        max_attempts=int(row["max_attempts"]),
+        cancel_requested=bool(row["cancel_requested"]),
         payload=dict(row["payload"]),
         result=dict(row["result"]) if row["result"] is not None else None,
         error=row["error"],

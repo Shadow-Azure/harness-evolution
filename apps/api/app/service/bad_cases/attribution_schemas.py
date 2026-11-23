@@ -7,11 +7,15 @@ from typing import Literal
 
 from pydantic import Field
 
+from app.service.evolution.attribution_contracts import (
+    AttributionExecutionManifest,
+    AttributionReportV2,
+)
 from app.service.identity.schemas import IdentityModel
 
 AttributionObjectType = Literal["skill", "agent", "knowledge"]
-AttributionConclusion = Literal["attributed", "non_target"]
-AttributionCategory = Literal["model", "prompt", "error"]
+AttributionConclusion = Literal["attributed", "non_target", "inconclusive"]
+AttributionCategory = Literal["model", "prompt", "error", "flow", "context"]
 TriggerOrder = Literal["before", "after", "same", "unknown"]
 VersionState = Literal["exact", "unknown"]
 
@@ -72,6 +76,10 @@ class AttributionDetail(AttributionItem):
     reasoning: str
     policy_version: str = Field(max_length=16)
     attribution_engine: str = Field(max_length=64)
+    report_schema_version: str | None = Field(default=None, max_length=32)
+    report: AttributionReportV2 | None = None
+    execution_manifest: AttributionExecutionManifest | None = None
+    execution_manifest_hash: str | None = Field(default=None, max_length=64)
     trigger_compare: AttributionTriggerCompare
     warnings: list[AttributionWarning]
 

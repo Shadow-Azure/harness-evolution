@@ -38,6 +38,8 @@ const run = (overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard => ({
     reused: 9,
     clusters: 2,
     byCategory: {
+      flow: 0,
+      context: 0,
       model: 6,
       prompt: 5,
       error: 5,

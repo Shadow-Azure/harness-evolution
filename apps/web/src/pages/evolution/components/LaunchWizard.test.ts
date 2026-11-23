@@ -96,7 +96,9 @@ const potentialPreview: PotentialPreviewResult = {
 };
 
 const attributionPreview: AttributionPreviewResult = {
-  summary: { potential: 2, reused: 1, fresh: 1, nonTargetKnown: 3 },
+  usesBoundSkill: true,
+  canRecompute: true,
+  summary: { potential: 2, reused: 1, fresh: 0, missing: 1, bySkill: {"attribute-badcases": 1}, nonTargetKnown: 0 },
   targetRevision: resolvedRevision,
 };
 
@@ -172,10 +174,32 @@ function useHandlers(options: HandlerOptions = {}): void {
           )
         : HttpResponse.json(options.catalog ?? targetCatalog),
     ),
+    http.get(`/api${ws}/attribution-skill-packages`, () =>
+      HttpResponse.json({ items: [{ id: "default-attribute-badcases", skillName: "attribute-badcases" }] }),
+    ),
     http.get(`${apiBase}/targets/tgt-1/versions`, () =>
       HttpResponse.json({
         versions: ["v2.0.0", "v1.9.0"],
         defaultRef: "v2.0.0",
+      }),
+    ),
+    http.get(`${apiBase}/targets/tgt-1/attribution-skill`, () =>
+      HttpResponse.json({
+        id: "revision-platform-1",
+        skillId: "skill-platform",
+        workspaceId: null,
+        skillKey: "platform-default",
+        displayName: "平台默认归因",
+        description: "固定规则归因",
+        builtIn: true,
+        enabled: true,
+        revision: 1,
+        content: { engine: "rule-v1" },
+        contentHash: "a".repeat(64),
+        executorType: "builtin_rule",
+        outputSchemaVersion: "probe-report/v2",
+        status: "published",
+        source: "platform",
       }),
     ),
     http.get(`/api${ws}/bad-cases/case-focus`, () =>
@@ -555,7 +579,10 @@ describe("launch wizard", { timeout: 30000 }, () => {
     const stats = wrapper.get("[data-testid='wizard-attribution-stats']").text();
     expect(stats).toContain("2");
     expect(stats).toContain("复用缓存");
-    expect(stats).toContain("3");
+    expect(stats).toContain("0本次新增归因");
+    expect(wrapper.get("[data-testid='wizard-effective-skill']").text()).toContain(
+      "attribute-badcases · 1 份",
+    );
     expect(
       wrapper.get("[data-testid='wizard-condition-revision']").text(),
     ).toBe(`revision ${resolvedRevision}`);
@@ -650,6 +677,59 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(
       wrapper.find("[data-testid='wizard-target-revision']").exists(),
     ).toBe(false);
+  });
+
+  it("explains the missing agent and keeps existing reports available", async () => {
+    useHandlers({ attribution: () => HttpResponse.json({ ...attributionPreview, canRecompute: false }) });
+    const { wrapper } = await mountWizard();
+    await reachStep4(wrapper);
+    expect(wrapper.get("[data-testid='wizard-cache']").attributes("disabled")).toBeDefined();
+    expect(wrapper.find("select[aria-label='本次重算使用的归因 Skill']").exists()).toBe(false);
+    expect(wrapper.text()).toContain("HE_ATTRIBUTION_AGENT");
+    expect(wrapper.get("[data-testid='wizard-cluster']").attributes("disabled")).toBeUndefined();
+  });
+
+  it.each([true, false])("can generate reports for an unbound production target with cache=%s", async (cacheEnabled) => {
+    const submitted: unknown[] = [];
+    useHandlers({
+      attribution: () => HttpResponse.json({
+        ...attributionPreview,
+        usesBoundSkill: false,
+        canRecompute: false,
+        summary: { potential: 2, reused: 0, fresh: 2, missing: 0, bySkill: {}, nonTargetKnown: 0 },
+      }),
+    });
+    server.use(http.post(`${apiBase}/runs`, async ({ request }) => {
+      submitted.push(await request.json());
+      return HttpResponse.json({ runId: "new-run", jobId: "new-job", status: "preparing" }, { status: 202 });
+    }));
+    const { wrapper } = await mountWizard();
+    await reachStep4(wrapper);
+    expect(wrapper.get("[data-testid='wizard-cache']").attributes("disabled")).toBeUndefined();
+    if (!cacheEnabled) {
+      await wrapper.get("[data-testid='wizard-cache']").setValue(false);
+      await flushPromises();
+    }
+    expect(wrapper.find("select[aria-label='本次重算使用的归因 Skill']").exists()).toBe(false);
+    const start = wrapper.get("[data-testid='wizard-start']");
+    expect(start.attributes("disabled")).toBeUndefined();
+    await start.trigger("click");
+    await flushPromises();
+    expect(submitted[0]).toMatchObject({ cacheEnabled });
+    expect(submitted[0]).not.toHaveProperty("attributionPackageId");
+    wrapper.unmount();
+  });
+
+  it("keeps cached launch unavailable when a bound target has no reports", async () => {
+    useHandlers({ attribution: () => HttpResponse.json({
+      ...attributionPreview,
+      summary: { potential: 2, reused: 0, fresh: 0, missing: 2, bySkill: {}, nonTargetKnown: 0 },
+    }) });
+    const { wrapper } = await mountWizard();
+    await reachStep4(wrapper);
+    expect(wrapper.get("[data-testid='wizard-start']").attributes("disabled")).toBeDefined();
+    expect(wrapper.get("[data-testid='wizard-effective-skill']").text()).toContain("本次跳过");
+    wrapper.unmount();
   });
 
   it("re-requests the attribution preview when the cache switch changes", async () => {
@@ -761,7 +841,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
     await reachStep2(wrapper);
 
     expect(wrapper.get("[data-testid='wizard-session-empty']").text()).toContain(
-      "没有对象版本出现过的 Session",
+      "没有对象出现过的 Session",
     );
     expect(
       wrapper

@@ -802,6 +802,9 @@ class AIAgentProvider(ABC):
     async def edit_workspace(self, request: EditRequest) -> EditResult: ...
     """产出编辑计划；确定性应用由 patch source 在临时镜像上执行，diff 以 git 为准"""
 
+    async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict) -> int: ...
+    """在隔离目录运行冻结 Skill，返回 token 数，并将本次公开诊断写入 diagnostics"""
+
     @abstractmethod
     async def health_check(self) -> ProviderHealth: ...
 ```
@@ -1274,7 +1277,7 @@ class PotentialMatcher:
 - 对象总览复用同一 target resolver，但读页面不得被单个不可达/私有/慢仓库阻塞：各 version 解析并发执行并设置短有界超时；失败版本内部跳过、`byVersion` 计 0，不新增 DTO/UI 字段，回退 tag 不允许。
 - 触发点身份：skill/agent/knowledge 的 `targetRevision` 都是归一化 body hash。skill/agent 的裸 git tag 由 target 内容解析器读取 `repoUrl/subDir/SKILL.md` 或 `repoUrl/subDir/AGENT.md`，按与 parser 相同的 `normalize_definition_body` 计算 `digest:<sha256>`；knowledge 由文档内容归一化或 `defaultRef` digest 给出；已带 `digest:` 原样使用。tag 保留为 `targetVersion`（显示/代码基线），`targetRevision` 写 body hash；内容读取失败返回 `TARGET_CONTENT_UNRESOLVED`，不回退到 `tag:`。候选集 = `{targetVersion, targetRevision, legacy object_revision}`；事件侧 `definition_hash`、`document_revision`、`object_revision` 或 `object_version` 任一命中即可。对象进入点 = 该 Session 内 `kind` 映射 `object_type`（skill/agent/knowledge）、`name == target_name` 且 identity 命中候选集的最早 `agent_events`；取最早时与比较同口径：双方都有 `triggered_at` 才比时间，否则按 `(tree_index, event_index)`。bad case 触发点 = [06 §7.4](06-database-design.md) 的锚点事件；`anchorKind=post_process` 时 `eventIndex=INT_MAX`、`triggeredAt=bad_case.created_at`（审计/显示），候选记录 `case_anchor_kind=post_process`，比较时直接视为「对象之后」，不依赖 created_at 与对象进入点的时间先后；`anchorKind=unknown`（上报 agent 无法解析）保持 unknown。比较规则见 [06 §7.5](06-database-design.md)；`unknown` 不满足「之后」。
 - target 内容解析：skill/agent 目标按 `(repoUrl, subDir, tag)` 读取 `SKILL.md`/`AGENT.md`/`agent.md`；knowledge 目标按文档 revision 读取文档内容。skill/agent 文件必须先剥掉 YAML frontmatter（`definition_file_hash`），再复用 parser 的 `normalize_definition_body`；knowledge 文件读仍对全文归一化。优先复用 git 缓存做只读 `git show`，或使用受控的只读内容接口；按 `(repoUrl, subDir, ref)` 缓存并设置超时。失败返回 `TARGET_CONTENT_UNRESOLVED`，不回退到 `tag:`。golden fixture（public `superpowers` main `SKILL.md`）证明 resolver 与 parser 都得到 `digest:8e54…`。v6.4.1 整文件 `9080…`、去 frontmatter 后 `580c…`，与 trace 不一致，不能作为 target 版本；target 必须使用 main。当前 target 配置是无凭据公开仓库，私有仓库内容读取不在本轮。knowledge 的 `KnowledgeContentSource` 是注入缝：生产未绑定文档 Provider 时，裸 revision（非 `digest:`/`provider:`）只能返回 `TARGET_CONTENT_UNRESOLVED`；`digest:`/`provider:` 可直接启动，不静默回退。
-- 版本口径：skill/agent/knowledge 事件 `definition_hash`、`document_revision`、`object_revision` 或 `object_version` 命中候选集才建立 Session 关联；既无 `object_version` 也无可用 `object_revision`/`definition_hash`/`document_revision`（NULL/`unknown`）才进 `versionUnresolved`，有 digest/tag/provider 但不匹配算 `skipped`。该规则在向导、run 与总览共用，不做名称级猜测。knowledge 事件按 `object_revision`/`document_revision` 关联；legacy path+body revision 只用于过渡候选。
+- 关联口径：整棵 Session 树中存在所选类型与名称的事件即关联。归因上下文保留每次出现的实测版本；目标版本用于选定原文和缓存。兼容字段 `versionUnresolved` 在新批次为零。
 - Session 关联输出五个互不重叠的计数（`reported = associated + versionUnresolved + skipped + pending`）；`pending` 是没有归一化轨迹的根。`badCases` 是关联 Session 内的候选数，`potential` 是纳入数；`byReason` 五键零填充，排除行只进 summary。第 2 步只做关联、不再计算 `potentialCount`。
 - policy 校验：default 携带任一开关、custom 缺任一开关、custom 同时关闭两条规则 → `422 POLICY_INVALID`。policy 语义版本固定 `v1`；归因预览缓存键使用首版归因引擎 `rule-v1`。
 
@@ -1295,10 +1298,10 @@ class AttributionRunner:
             await self.candidates.link_probe(run.id, item.bad_case_id, row.probe_id, cached)
 ```
 
-- 缓存键 = `probe_reports.cache_key`：服务计算 `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`，按唯一键原子 upsert。V2 归因以解析后的 `targetRevision`（skill/agent/knowledge 均为归一化 body hash）作为该分量；`probe_reports.object_version` 为 `VARCHAR(96)`，可保存 `tag:` / `digest:` / `provider:` 形式。legacy path+body 键不复用；预览只读既有键。
+- 运行缓存通过 `bad_case_analysis` 关联查找同空间、对象身份与解析版本的报告，在每个候选 Badcase 内按分析完成时间及报告 ID 排序。执行清单和批次标识用于重算写入及幂等恢复。
 - 命中且 `cache_enabled` → 复用：`reused_count+1`、`last_reused_run_id=当前 run`、候选 `is_cached=true`，不再计算。
 - run 创建时固化 `attribution_engine / cache_enabled / potential_policy`；runner 只读 run 快照，不读全局配置或请求方当前值。历史 run 的 `attribution_engine` 默认 `legacy-probe-import`，不会被 V2 runner 误用。
-- `cache_enabled=false` → 跳过读，重算并覆盖同键行（`created_run_id` 更新）。
+- 关闭缓存时以本次选定 Skill 执行，在同一事务内保存新报告、来源 Skill 和 case 关联。
 - 并发同键 upsert 走方言原子语句（`ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO UPDATE`），不先查后写。
 - V2 首版引擎 `rule-v1`（规则引擎）：自身上报 → `attributed`，`category` 按证据判 `error|prompt`；`after_object` 且 discovery → `attributed`/`error`；证据不足或顺序不可比 → `non_target`。confidence 为证据完整度规则分（三票 0.9 / 两票 0.8 / 一票 0.5 / 零票 0.3 / 矛盾 0.2，非目标取补数），只读候选与 bad case 证据、不调用模型；`reason`/`reasoning` 为模板化文案。换真实归因只新增 Engine 子类并注册新 `key`，缓存键自动隔离。
 - **簇级 confidence 与归因 confidence 是两回事**：`probe_reports.confidence` 是引擎对该 bad case 的结论置信度；聚类步写入的 `probe_clusters.confidence` 是簇级占位值（按 `probe_cluster_type`：error 0.82 / prompt 0.74 / model 0.66），`severity = round(min(10, 簇 confidence × impact × reportWeight), 1)`。两者不互相推导，避免把「单条归因的把握」误当成「整个簇的把握」。
@@ -1315,7 +1318,7 @@ class AttributionRunner:
 - 预览与启动共用同一条件归一化（target 空间内 enabled、版本缺省 `defaultRef`、窗口合法、policy 合法）；启动再判 `NO_ASSOCIATED_SESSIONS`/`NO_POTENTIAL_MATCHED`。
 - 三条端点最低 `viewer`；无关联 Session → `409 NO_ASSOCIATED_SESSIONS`（三段都触发），`details.summary` 带 `reported/associated/skipped/versionUnresolved/pending`；有关联但 `potential=0` → `409 NO_POTENTIAL_MATCHED`（潜在段与归因段）。
 - 窗口按 `bad_cases.created_at` 的 Asia/Shanghai 日边界；无 `from/to` 默认最近 90 天，`from > to` 或超过 366 天 → `422 WINDOW_INVALID`。
-- 预览只读：只查 `probe_reports.cache_key`、`bad_case_analysis` 计数与历史 case，不写 probe、归因关联或候选行；归因预览不接收 `engineKey`，缓存键固定 `rule-v1`。
+- 预览只读，与缓存启动使用相同的最新报告查询，结果包含按 Skill 汇总的报告数量及缺失数量。
 - target 版本缺省 `defaultRef`，最长 96；knowledge target 的 `defaultRef` 接受 revision 形式，创建/更新跳过 git `ls-remote`、`versions` 返回空列表；catalog 与 target 表单暂不展示 knowledge（仅 API 配置，选择器与 run 接线归 m10-04）。
 - `cluster_only` 也走 0–4 步（聚类依赖归因），只有 `mode=full` 才建 rounds 与进入迭代。
 

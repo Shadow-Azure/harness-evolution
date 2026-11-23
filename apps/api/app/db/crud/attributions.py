@@ -21,6 +21,7 @@ from app.db.models.domain import (
     agents,
     bad_case_analysis,
     bad_cases,
+    evolution_targets,
     probe_reports,
 )
 from app.db.models.evolution import (
@@ -100,6 +101,15 @@ class ProbeWrite:
     created_run_id: str | None
     created_at: datetime
     updated_at: datetime
+    attribution_skill_name: str | None = None
+    binding_generation: str | None = None
+    binding_owner: str | None = None
+    analysis_id: str | None = None
+    report_schema_version: str | None = None
+    report_payload: Mapping[str, object] | None = None
+    execution_manifest: Mapping[str, object] | None = None
+    execution_manifest_hash: str | None = None
+    legacy_rule: bool = False
 
     def __post_init__(self) -> None:
         """Reject malformed identities and normalize an empty object version."""
@@ -108,7 +118,7 @@ class ProbeWrite:
                 raise ValueError(f"{field_name} must not be empty")
         if self.probe_type not in {"skill", "agent", "knowledge"}:
             raise ValueError(f"unknown probe_type: {self.probe_type}")
-        if self.conclusion not in {"attributed", "non_target"}:
+        if self.conclusion not in {"attributed", "non_target", "inconclusive"}:
             raise ValueError(f"unknown conclusion: {self.conclusion}")
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(f"confidence must be within [0, 1]: {self.confidence}")
@@ -118,6 +128,12 @@ class ProbeWrite:
     @property
     def cache_key(self) -> str:
         """Derive the cache key from the persisted identity fields."""
+        if self.analysis_id and self.execution_manifest_hash:
+            return hashlib.sha256(
+                f"{self.analysis_id}:{self.execution_manifest_hash}".encode()
+            ).hexdigest()
+        if self.execution_manifest_hash is not None and not self.legacy_rule:
+            return self.execution_manifest_hash
         return attribution_cache_key(
             self.workspace_id,
             self.bad_case_id,
@@ -153,6 +169,10 @@ class ProbeCacheRecord:
     policy_version: str
     attribution_engine: str
     cache_key: str
+    report_schema_version: str | None
+    report_payload: Mapping[str, object] | None
+    execution_manifest: Mapping[str, object] | None
+    execution_manifest_hash: str | None
     created_run_id: str | None
     last_reused_run_id: str | None
     reused_count: int
@@ -173,6 +193,7 @@ class BadCaseEvidenceRecord:
     description: str
     metadata: Mapping[str, object]
     created_at: datetime
+    source: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,6 +228,10 @@ class AttributionRecord:
     policy_version: str
     attribution_engine: str
     cache_key: str | None
+    report_schema_version: str | None
+    report_payload: Mapping[str, object] | None
+    execution_manifest: Mapping[str, object] | None
+    execution_manifest_hash: str | None
     created_run_id: str | None
     last_reused_run_id: str | None
     reused_count: int
@@ -272,6 +297,11 @@ def _text(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _mapping(value: object) -> Mapping[str, object] | None:
+    """Copy one JSON object while rejecting arrays and scalar drift."""
+    return dict(value) if isinstance(value, Mapping) else None
+
+
 def _row_attribution(mapping: RowMapping) -> AttributionRecord:
     """Convert one joined attribution mapping into a boundary record."""
     return AttributionRecord(
@@ -292,6 +322,10 @@ def _row_attribution(mapping: RowMapping) -> AttributionRecord:
         policy_version=mapping["policy_version"],
         attribution_engine=mapping["attribution_engine"],
         cache_key=_text(mapping["cache_key"]),
+        report_schema_version=_text(mapping["report_schema_version"]),
+        report_payload=_mapping(mapping["report_payload"]),
+        execution_manifest=_mapping(mapping["execution_manifest"]),
+        execution_manifest_hash=_text(mapping["execution_manifest_hash"]),
         created_run_id=_text(mapping["created_run_id"]),
         last_reused_run_id=_text(mapping["last_reused_run_id"]),
         reused_count=int(mapping["reused_count"]),
@@ -319,6 +353,10 @@ def _row_probe_cache(mapping: RowMapping) -> ProbeCacheRecord:
         policy_version=mapping["policy_version"],
         attribution_engine=mapping["attribution_engine"],
         cache_key=mapping["cache_key"],
+        report_schema_version=_text(mapping["report_schema_version"]),
+        report_payload=_mapping(mapping["report_payload"]),
+        execution_manifest=_mapping(mapping["execution_manifest"]),
+        execution_manifest_hash=_text(mapping["execution_manifest_hash"]),
         created_run_id=_text(mapping["created_run_id"]),
         last_reused_run_id=_text(mapping["last_reused_run_id"]),
         reused_count=int(mapping["reused_count"]),
@@ -348,6 +386,62 @@ class AttributionRepository:
             await session.execute(statement)
             return await self._select_probe_id(session, write.cache_key)
 
+    async def latest_reports(
+        self,
+        workspace: str,
+        kind: str,
+        name: str,
+        version: str,
+        cases: Sequence[str],
+        *,
+        generation: str | None = None,
+    ) -> dict[str, tuple[str, str, str]]:
+        """Return one successful analysis per case, ignoring reuse timestamps."""
+        p = probe_reports.c
+        case = bad_case_analysis.c.bad_case_id
+        result: dict[str, tuple[str, str, str]] = {}
+        async with self._database.session() as session:
+            for chunk in _chunks(cases):
+                statement = (
+                    select(case, p.probe_id, p.attribution_skill_name, p.conclusion)
+                    .select_from(self._attribution_join())
+                    .where(
+                        p.workspace_id == workspace,
+                        p.probe_type == kind,
+                        p.probe_object == name,
+                        p.object_version == version,
+                        case.in_(chunk),
+                        p.conclusion.in_(("attributed", "non_target", "inconclusive")),
+                    )
+                )
+                if generation:
+                    statement = statement.where(p.binding_generation == generation)
+                rank = (
+                    func.row_number()
+                    .over(
+                        partition_by=case,
+                        order_by=(
+                            func.coalesce(p.analyzed_at, p.created_at).desc(),
+                            p.probe_id.desc(),
+                        ),
+                    )
+                    .label("rank")
+                )
+                ranked = statement.add_columns(rank).subquery()
+                latest = select(
+                    ranked.c.bad_case_id,
+                    ranked.c.probe_id,
+                    ranked.c.attribution_skill_name,
+                    ranked.c.conclusion,
+                ).where(ranked.c.rank == 1)
+                for key, probe, skill, conclusion in await session.execute(latest):
+                    result[str(key)] = (
+                        str(probe),
+                        str(skill or "历史报告 · Skill 未记录"),
+                        str(conclusion),
+                    )
+        return result
+
     async def get_probe_by_cache_key(self, cache_key: str) -> ProbeCacheRecord | None:
         """Return the one probe owning a cache key, or ``None`` on a miss."""
         statement = select(probe_reports).where(probe_reports.c.cache_key == cache_key).limit(1)
@@ -358,7 +452,7 @@ class AttributionRepository:
     async def write_probe_and_link(
         self,
         write: ProbeWrite,
-        run_id: str,
+        run_id: str | None,
         now: datetime,
     ) -> str:
         """Write a fresh probe, its case link, and its candidate pointer atomically.
@@ -382,9 +476,23 @@ class AttributionRepository:
         values, updates = self._probe_upsert_parts(write)
         statement = self._probe_upsert_statement(values, updates)
         async with self._database.transaction() as session:
+            if write.binding_generation:
+                current = await session.scalar(
+                    select(evolution_targets.c.id)
+                    .where(
+                        evolution_targets.c.attribution_generation == write.binding_generation,
+                        evolution_targets.c.attribution_owner == write.binding_owner,
+                        evolution_targets.c.enabled.is_(True),
+                    )
+                    .with_for_update()
+                )
+                if current is None:
+                    raise LookupError("target binding changed during attribution")
             await session.execute(statement)
             probe_id = await self._select_probe_id(session, write.cache_key)
             await session.execute(self._link_statement(write.bad_case_id, probe_id, now))
+            if run_id is None:
+                return probe_id
             result = await session.execute(
                 self._candidate_update_statement(
                     run_id,
@@ -531,6 +639,7 @@ class AttributionRepository:
                 bad_cases.c.title,
                 bad_cases.c.bad_case_description,
                 bad_cases.c.meta_data,
+                bad_cases.c.source,
                 bad_cases.c.created_at,
             ).where(bad_cases.c.bad_case_id.in_(chunk))
             async with self._database.session() as session:
@@ -547,6 +656,7 @@ class AttributionRepository:
                     title=str(row["title"]),
                     description=str(row["bad_case_description"]),
                     metadata=dict(metadata) if isinstance(metadata, Mapping) else {},
+                    source=row["source"],
                     created_at=row["created_at"],
                 )
         return found
@@ -611,6 +721,9 @@ class AttributionRepository:
             "probe_type": write.probe_type,
             "probe_object": write.probe_object,
             "object_version": write.object_version,
+            "attribution_skill_name": write.attribution_skill_name,
+            "binding_generation": write.binding_generation,
+            "analyzed_at": write.updated_at,
             "attribute_type": write.attribute_type,
             "conclusion": write.conclusion,
             "confidence": write.confidence,
@@ -619,6 +732,14 @@ class AttributionRepository:
             "policy_version": write.policy_version,
             "attribution_engine": write.attribution_engine,
             "cache_key": write.cache_key,
+            "report_schema_version": write.report_schema_version,
+            "report_payload": (
+                dict(write.report_payload) if write.report_payload is not None else None
+            ),
+            "execution_manifest": (
+                dict(write.execution_manifest) if write.execution_manifest is not None else None
+            ),
+            "execution_manifest_hash": write.execution_manifest_hash,
             "created_run_id": write.created_run_id,
             "last_reused_run_id": None,
             "reused_count": 0,
@@ -626,6 +747,9 @@ class AttributionRepository:
             "updated_at": write.updated_at,
         }
         updates: dict[str, object] = {
+            "attribution_skill_name": write.attribution_skill_name,
+            "binding_generation": write.binding_generation,
+            "analyzed_at": write.updated_at,
             "attribute_type": write.attribute_type,
             "conclusion": write.conclusion,
             "confidence": write.confidence,
@@ -633,6 +757,14 @@ class AttributionRepository:
             "probe_analysis": write.probe_analysis,
             "policy_version": write.policy_version,
             "attribution_engine": write.attribution_engine,
+            "report_schema_version": write.report_schema_version,
+            "report_payload": (
+                dict(write.report_payload) if write.report_payload is not None else None
+            ),
+            "execution_manifest": (
+                dict(write.execution_manifest) if write.execution_manifest is not None else None
+            ),
+            "execution_manifest_hash": write.execution_manifest_hash,
             "updated_at": write.updated_at,
         }
         if write.created_run_id is not None:
@@ -824,6 +956,28 @@ class AttributionRepository:
         async with self._database.session() as session:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(_row_attribution(row) for row in rows)
+
+    @read_only_guard("probe_reports")
+    async def load_historical_probe_ids(
+        self,
+        session_ids: Sequence[str],
+    ) -> dict[str, tuple[str, ...]]:
+        """Batch-load stable historical report references for context bundles."""
+        if not session_ids:
+            return {}
+        statement = (
+            select(probe_reports.c.session_id, probe_reports.c.probe_id)
+            .where(probe_reports.c.session_id.in_(tuple(dict.fromkeys(session_ids))))
+            .order_by(
+                probe_reports.c.session_id, probe_reports.c.created_at, probe_reports.c.probe_id
+            )
+        )
+        async with self._database.session() as session:
+            rows = (await session.execute(statement)).mappings().all()
+        grouped: dict[str, list[str]] = {}
+        for row in rows:
+            grouped.setdefault(str(row["session_id"]), []).append(str(row["probe_id"]))
+        return {session_id: tuple(probe_ids) for session_id, probe_ids in grouped.items()}
 
     @read_only_guard("bad_case_analysis,probe_reports")
     async def count_links(self, case_id: str) -> int:

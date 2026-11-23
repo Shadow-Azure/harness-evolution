@@ -53,6 +53,9 @@ evolution_runs = Table(
         nullable=False,
         server_default="legacy-probe-import",
     ),
+    Column("attribution_skill_key", String(128), nullable=True),
+    Column("attribution_skill_revision", Integer, nullable=True),
+    Column("attribution_skill_content_hash", String(64), nullable=True),
     Column(
         "target_config_id",
         String(36),
@@ -367,6 +370,9 @@ class EvolutionRunRecord:
     potential_policy: dict[str, Any] | None = None
     cache_enabled: bool = False
     attribution_engine: str = "legacy-probe-import"
+    attribution_skill_key: str | None = None
+    attribution_skill_revision: int | None = None
+    attribution_skill_content_hash: str | None = None
     target_revision: str | None = None
     control_state: Literal["running", "pause_requested", "paused"] = "running"
     pause_requested_at: datetime | None = None
@@ -383,7 +389,7 @@ class ProbeClusterRecord:
     run_id: str
     seq: int
     probe_cluster_description: str
-    probe_cluster_type: Literal["model", "prompt", "error"]
+    probe_cluster_type: Literal["model", "prompt", "error", "flow", "context"]
     confidence: float | None
     impact: float | None
     severity: float | None
@@ -488,7 +494,7 @@ class EvolutionRunSummaryRecord:
 class ClusterWrite:
     """Database-neutral cluster payload used by repository writes."""
 
-    type: Literal["model", "prompt", "error"]
+    type: Literal["model", "prompt", "error", "flow", "context"]
     description: str
     probes: tuple[str, ...]
     impact: float
@@ -604,6 +610,15 @@ def record_from_evolution_run(row: Mapping[str, Any]) -> EvolutionRunRecord:
         potential_policy=_optional_json_dict(row.get("potential_policy")),
         cache_enabled=bool(row.get("cache_enabled", False)),
         attribution_engine=(_optional_text(row.get("attribution_engine")) or "legacy-probe-import"),
+        attribution_skill_key=_optional_text(row.get("attribution_skill_key")),
+        attribution_skill_revision=(
+            int(row["attribution_skill_revision"])
+            if row.get("attribution_skill_revision") is not None
+            else None
+        ),
+        attribution_skill_content_hash=_optional_text(
+            row.get("attribution_skill_content_hash"),
+        ),
     )
 
 
@@ -615,7 +630,7 @@ def record_from_probe_cluster(row: Mapping[str, Any]) -> ProbeClusterRecord:
         seq=int(row["seq"]),
         probe_cluster_description=_required_text(row["probe_cluster_description"]),
         probe_cluster_type=cast(
-            Literal["model", "prompt", "error"],
+            Literal["model", "prompt", "error", "flow", "context"],
             _required_text(row["probe_cluster_type"]),
         ),
         confidence=float(row["confidence"]) if row["confidence"] is not None else None,

@@ -64,4 +64,25 @@ export const server = setupServer(
   http.get("/api/sessions/:sessionId/bad-cases", () =>
     HttpResponse.json({ items: [] }),
   ),
+  http.get(
+    "/api/workspaces/:workspaceId/evolution/targets/:targetId/attribution-skill",
+    () =>
+      HttpResponse.json({
+        id: "revision-platform-1",
+        skillId: "skill-platform",
+        workspaceId: null,
+        skillKey: "platform-default",
+        displayName: "平台默认归因",
+        description: "固定规则归因",
+        builtIn: true,
+        enabled: true,
+        revision: 1,
+        content: { engine: "rule-v1" },
+        contentHash: "a".repeat(64),
+        executorType: "builtin_rule",
+        outputSchemaVersion: "probe-report/v2",
+        status: "published",
+        source: "platform",
+      }),
+  ),
 );

@@ -70,11 +70,11 @@ class BadCaseRootSyncCoordinator:
         """Return whether the global query service is configured."""
         return self._settings.session_query_configured
 
-    async def _sources_available(self) -> bool:
+    async def _sources_available(self, workspace_ids: tuple[str, ...] | None = None) -> bool:
         """Return whether any root can be synced by a global or report source."""
         if self.available:
             return True
-        return await self._repository.has_report_source()
+        return await self._repository.has_report_source(workspace_ids)
 
     async def source_available(self) -> bool:
         """Expose whether progress is possible without a configuration change."""
@@ -137,12 +137,12 @@ class BadCaseRootSyncCoordinator:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
 
-    async def status(self) -> BadCaseSyncStatus:
+    async def status(self, workspace_ids: tuple[str, ...] | None = None) -> BadCaseSyncStatus:
         """Read current counts, active job state, and the latest failure."""
-        stats: BadCaseRootSyncStats = await self._repository.stats()
-        last_run_at = await self._repository.last_run_at()
-        last_error = await self._repository.last_error()
-        if not await self._sources_available():
+        stats: BadCaseRootSyncStats = await self._repository.stats(workspace_ids)
+        last_run_at = await self._repository.last_run_at(workspace_ids)
+        last_error = await self._repository.last_error(workspace_ids)
+        if not await self._sources_available(workspace_ids):
             return _status(stats, "unavailable", last_run_at, last_error)
         active = await self._jobs.repository.find_active_kind(KIND)
         if active is not None:

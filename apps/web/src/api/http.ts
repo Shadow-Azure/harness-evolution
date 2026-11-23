@@ -22,6 +22,7 @@ export class ApiError extends Error {
 
 type RequestOptions<T> = {
   acceptedStatuses?: readonly number[];
+  responseType?: "json" | "blob";
   validate?: (payload: unknown, status: number) => T;
 };
 
@@ -88,7 +89,11 @@ function currentAppPath(): string {
 
 function headersFor(init: RequestInit | undefined): Headers {
   const headers = new Headers(init?.headers);
-  if (init?.body !== undefined && !headers.has("content-type")) {
+  if (
+    init?.body !== undefined &&
+    !(init.body instanceof FormData) &&
+    !headers.has("content-type")
+  ) {
     headers.set("content-type", "application/json");
   }
   const token = accessTokenProvider();
@@ -163,6 +168,10 @@ async function execute<T>(
 
   if (response.status === 204) {
     return undefined as T;
+  }
+
+  if (options?.responseType === "blob") {
+    return (await response.blob()) as T;
   }
 
   let payload: unknown;

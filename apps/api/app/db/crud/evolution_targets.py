@@ -10,9 +10,10 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.base import Database
 from app.db.crud.integrity import is_unique_violation
-from app.db.models.domain import agents, bad_cases, evolution_targets
+from app.db.models.domain import agents, attribution_skill_packages, bad_cases, evolution_targets
 from app.db.models.evolution import evolution_runs
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
+from app.errors import AppError, ErrorCode
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
 
@@ -36,6 +37,17 @@ class EvolutionTargetRecord:
     test_project_id: str
     enabled: bool
     workspace_id: str = DEFAULT_WORKSPACE_ID
+    attribution_package_id: str | None = None
+    attribution_skill_name: str | None = None
+    attribution_failures: int = 0
+    attribution_error: str | None = None
+    attribution_will_retry: bool = False
+    attribution_generation: str | None = None
+    attribution_snapshot: dict[str, Any] | None = None
+
+    @property
+    def definition(self) -> dict[str, str] | None:
+        return (self.attribution_snapshot or {}).get("definition")
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +87,13 @@ def _record(row: RowMapping) -> EvolutionTargetRecord:
         validation_project_id=row["validation_project_id"],
         test_project_id=row["test_project_id"],
         enabled=bool(row["enabled"]),
+        attribution_package_id=row["attribution_package_id"],
+        attribution_skill_name=row["attribution_skill_name"],
+        attribution_failures=row["attribution_failures"],
+        attribution_error=row["attribution_error"],
+        attribution_will_retry=row["attribution_due"] is not None,
+        attribution_generation=row["attribution_generation"],
+        attribution_snapshot=row["attribution_snapshot"],
         workspace_id=(str(workspace_id) if workspace_id is not None else DEFAULT_WORKSPACE_ID),
     )
 
@@ -155,6 +174,104 @@ class EvolutionTargetRepository:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(_record(row) for row in rows)
 
+    async def _binding(
+        self, session: Any, workspace: str, package: str, enabled: bool, definition: object = None
+    ) -> dict[str, Any]:
+        name = "attribute-badcases"
+        if package != "default-attribute-badcases":
+            name = (
+                await session.execute(
+                    select(attribution_skill_packages.c.skill_name)
+                    .where(
+                        attribution_skill_packages.c.workspace_id == workspace,
+                        attribution_skill_packages.c.id == package,
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if name is None:
+                raise AppError(
+                    status_code=422,
+                    code=ErrorCode.ATTRIBUTION_SKILL_PACKAGE_INVALID,
+                    message="Skill package does not exist in this workspace",
+                )
+        now = now_shanghai()
+        return dict(
+            attribution_package_id=package,
+            attribution_skill_name=name,
+            attribution_generation=new_id(),
+            attribution_owner=None,
+            attribution_failures=0,
+            attribution_error=None,
+            attribution_snapshot={"definition": definition} if definition else None,
+            attribution_due=now if enabled else None,
+            attribution_cutoff=now,
+        )
+
+    async def pin_binding_skill(
+        self, target: EvolutionTargetRecord, *, skill_key: str, revision: int, content_hash: str
+    ) -> dict[str, Any]:
+        """Both entrypoints adopt the first Skill frozen for this binding generation."""
+        t = evolution_targets.c
+        binding = (
+            t.id == target.id,
+            t.workspace_id == target.workspace_id,
+            t.attribution_package_id == target.attribution_package_id,
+            t.attribution_generation == target.attribution_generation,
+        )
+        proposed = {
+            **(target.attribution_snapshot or {}),
+            "skill": skill_key,
+            "skillRevision": revision,
+            "hash": content_hash,
+        }
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_targets)
+                .where(*binding, t.attribution_snapshot["skill"].as_string().is_(None))
+                .values(attribution_snapshot=proposed)
+            )
+            snapshot = (
+                await session.execute(select(t.attribution_snapshot).where(*binding))
+            ).scalar_one_or_none()
+            if snapshot is None:
+                raise AppError(
+                    status_code=409,
+                    code=ErrorCode.ATTRIBUTION_SKILL_INVALID,
+                    message="target binding changed while freezing its attribution Skill",
+                )
+            return dict(snapshot)
+
+    async def bind_package(self, workspace: str, target: str, package: str) -> None:
+        async with self._database.transaction() as session:
+            table = evolution_targets
+            query = table.c.workspace_id == workspace, table.c.id == target
+            row = (
+                (await session.execute(select(table).where(*query).with_for_update()))
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                raise AppError(
+                    status_code=404,
+                    code=ErrorCode.TARGET_NOT_CONFIGURED,
+                    message="target not found",
+                )
+            if row["attribution_package_id"] != package:
+                await session.execute(
+                    update(table)
+                    .where(*query)
+                    .values(
+                        **await self._binding(
+                            session,
+                            workspace,
+                            package,
+                            row["enabled"],
+                            (row["attribution_snapshot"] or {}).get("definition"),
+                        )
+                    )
+                )
+
     async def insert(self, values: Mapping[str, object]) -> EvolutionTargetRecord:
         """Insert one configured target and surface only the stable conflict type."""
         target_id = new_id()
@@ -162,8 +279,21 @@ class EvolutionTargetRepository:
         workspace_id = str(values.get("workspace_id", DEFAULT_WORKSPACE_ID))
         async with self._database.transaction() as session:
             try:
+                package = values.get("attribution_package_id", "default-attribute-badcases")
+                binding = (
+                    await self._binding(
+                        session,
+                        workspace_id,
+                        str(package),
+                        bool(values["enabled"]),
+                        values.get("definition"),
+                    )
+                    if package is not None
+                    else {}
+                )
                 await session.execute(
                     insert(evolution_targets).values(
+                        **binding,
                         id=target_id,
                         workspace_id=workspace_id,
                         object_type=values["object_type"],
@@ -212,6 +342,65 @@ class EvolutionTargetRepository:
         )
         async with self._database.transaction() as session:
             try:
+                existing = (
+                    (
+                        await session.execute(
+                            _scoped(
+                                select(evolution_targets).where(
+                                    evolution_targets.c.id == target_id
+                                ),
+                                workspace_ids,
+                            ).with_for_update()
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if existing is None:
+                    raise LookupError("evolution target not found")
+                package = values.get("attribution_package_id") or existing["attribution_package_id"]
+                if not package and values.get("definition"):
+                    # A legacy inline Skill remains bound until a package is selected.
+                    statement = statement.values(
+                        attribution_snapshot={"definition": values["definition"]}
+                    )
+                if package and (
+                    package != existing["attribution_package_id"]
+                    or values.get("definition")
+                    != (existing["attribution_snapshot"] or {}).get("definition")
+                    or any(
+                        existing[k] != values[k]
+                        for k in (
+                            "enabled",
+                            "default_ref",
+                            "repo_url",
+                            "sub_dir",
+                            "object_type",
+                            "object_name",
+                        )
+                    )
+                ):
+                    statement = statement.values(
+                        **await self._binding(
+                            session,
+                            existing["workspace_id"],
+                            str(package),
+                            bool(values["enabled"]),
+                            values.get("definition"),
+                        )
+                    )
+                elif (
+                    existing["enabled"]
+                    and existing["attribution_error"]
+                    and existing["attribution_due"] is None
+                ):
+                    # A deliberate save of a failed target resumes the same frozen batch.
+                    # Previously completed cases stay linked to its generation.
+                    statement = statement.values(
+                        attribution_failures=0,
+                        attribution_error=None,
+                        attribution_due=now_shanghai(),
+                    )
                 result = cast(CursorResult[object], await session.execute(statement))
             except IntegrityError as exc:
                 if not is_unique_violation(exc):

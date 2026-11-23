@@ -18,7 +18,7 @@ import {
 } from "./flow-lib.mjs";
 import { parseSignature, structureDiff } from "./translation-pairing-lib.mjs";
 import { recommend, worktreePaths } from "./route-gates.mjs";
-import { applyGithubRef, githubStateReaders, planRetirements, renderIssueBody, runSync } from "./flow-sync.mjs";
+import { applyGithubRef, githubSyncAdapter, parseGithubState, planRetirements, renderIssueBody, runSync } from "./flow-sync.mjs";
 import { verifyFlowDiff } from "./verify-flow.mjs";
 import { checkContracts, compareContractFiles } from "./contract.mjs";
 import { browserViolations } from "../tests/support/runtime.mjs";
@@ -815,6 +815,46 @@ test("github issue body is detailed and design links resolve to the repository",
   assert.doesNotMatch(body, /yaml flow|English/);
 });
 
+test("flow sync parses GitHub state JSON at the CLI adapter boundary", () => {
+  assert.equal(parseGithubState('{"state":"closed"}'), "closed");
+  assert.equal(parseGithubState('{"state":"OPEN"}'), "OPEN");
+  assert.throws(() => parseGithubState("not-json"), SyntaxError);
+  assert.throws(() => parseGithubState('{"state":null}'), /缺少非空 state/);
+  assert.throws(() => parseGithubState("{}"), /缺少非空 state/);
+});
+
+test("issue adapter reads nullable milestone numbers and PATCHes state with its milestone", () => {
+  const calls = [];
+  let output = '{"state":"open","milestone":null}';
+  const adapter = githubSyncAdapter("o/r", (args) => { calls.push(args); return output; });
+  const issue = { data: { github: { number: 17 } } };
+  assert.deepEqual(adapter.readIssue(issue), { state: "open", milestone: null });
+  assert.deepEqual(calls[0], ["api", "repos/o/r/issues/17", "--jq", "{state, milestone: .milestone.number}"]);
+  output = '{"state":"closed","milestone":20}';
+  assert.deepEqual(adapter.readIssue(issue), { state: "closed", milestone: { number: 20 } });
+  adapter.updateIssue(issue, "CLOSED", 20);
+  assert.deepEqual(calls.at(-1), [
+    "api", "-X", "PATCH", "repos/o/r/issues/17", "-f", "state=closed", "-F", "milestone=20",
+  ]);
+  for (output of ['{}', '{"state":"open"}', '{"state":"open","milestone":"20"}', "invalid"])
+    assert.throws(() => adapter.readIssue(issue));
+});
+
+test("flow sync CLI rejects invalid scope arguments before any remote operation", () => {
+  for (const flag of ["--issues", "--milestones"]) {
+    for (const args of [[""], ["0"], ["12,"], ["12", "--retire-missing"]]) {
+      const result = spawnSync(process.execPath, ["scripts/flow-sync.mjs", "--", flag, ...args], { encoding: "utf8" });
+      assert.notEqual(result.status, 0);
+      assert.ok(result.stderr.includes(`${flag} 需要逗号分隔`), result.stderr);
+    }
+  }
+  for (const args of [["--metadata-only"], ["--metadata-only", "--retire-missing"]]) {
+    const result = spawnSync(process.execPath, ["scripts/flow-sync.mjs", "--", ...args], { encoding: "utf8" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /--metadata-only 需要通过 --issues 或 --milestones/);
+  }
+});
+
 test("retire-missing closes only open remote objects absent from the local tree", () => {
   const current = tree();
   current.milestones[0].data.github = { number: 2, url: "https://github.com/o/r/milestone/2" };
@@ -825,22 +865,14 @@ test("retire-missing closes only open remote objects absent from the local tree"
   }), { milestones: [1], issues: [10] });
 });
 
-test("state readers parse the raw JSON returned by gh", () => {
+test("milestone adapter parses raw gh state before deciding whether to PATCH", () => {
   const calls = [];
-  const { readIssueState, readMilestoneState } = githubStateReaders("o/r", (args) => {
+  const adapter = githubSyncAdapter("o/r", (args) => {
     calls.push(args);
-    return args[0] === "api"
-      ? JSON.stringify({ title: "m0", state: "open" })
-      : JSON.stringify({ state: "OPEN" });
+    return JSON.stringify({ title: "m0", state: "open" });
   });
-  assert.equal(readMilestoneState({ data: { github: { number: 2 } } }), "open");
-  assert.equal(readIssueState({ data: { github: { number: 20 } } }), "OPEN");
-  assert.deepEqual(calls, [
-    ["api", "repos/o/r/milestones/2"],
-    ["issue", "view", "20", "--repo", "o/r", "--json", "state"],
-  ]);
-  const broken = githubStateReaders("o/r", () => "{}");
-  assert.throws(() => broken.readIssueState({ data: { github: { number: 20 } } }), /state/);
+  assert.equal(adapter.readMilestoneState({ data: { github: { number: 2 } } }), "open");
+  assert.deepEqual(calls, [["api", "repos/o/r/milestones/2"]]);
 });
 
 test("sync patches only drifted states and is idempotent without drift", async () => {
@@ -855,8 +887,8 @@ test("sync patches only drifted states and is idempotent without drift", async (
     backfill() {},
     readMilestoneState: (milestone) => milestoneStates[milestone.data.github.number],
     updateMilestoneState: (milestone, state) => patched.push([`milestone#${milestone.data.github.number}`, state]),
-    readIssueState: (issue) => issueStates[issue.data.github.number],
-    updateIssueState: (issue, state) => patched.push([`issue#${issue.data.github.number}`, state]),
+    readIssue: (issue) => ({ state: issueStates[issue.data.github.number], milestone: { number: 2 } }),
+    updateIssue: (issue, state) => patched.push([`issue#${issue.data.github.number}`, state]),
   });
 
   const stable = await runSync(structuredClone(current), io({ 2: "closed", 3: "open" }, { 20: "CLOSED" }));
@@ -882,9 +914,70 @@ test("sync republish changed detailed issue bodies", async () => {
   await runSync(current, {
     createMilestone() { throw new Error("unexpected"); }, createIssue() { throw new Error("unexpected"); }, backfill() {},
     readMilestoneState: () => "open", updateMilestoneState() {},
-    readIssueState: () => "OPEN", updateIssueState() {},
+    readIssue: () => ({ state: "open", milestone: { number: 2 } }), updateIssue() {},
     readIssueBody: () => "old", updateIssueBody: (_issue, body) => updates.push(body),
     issueBody: () => "new detailed body",
   });
   assert.deepEqual(updates, ["new detailed body"]);
+});
+
+test("scoped sync repairs only the selected issue's state and milestone", async () => {
+  const current = tree();
+  current.milestones[0].data.github = { number: 2 };
+  current.issues[0].data.github = { number: 20 };
+  current.issues.push({ ...current.issues[0], data: { ...current.issues[0].data, github: { number: 21 } } });
+  const updates = [];
+  const io = {
+    readIssue: (issue) => {
+      assert.equal(issue.data.github.number, 20);
+      return { state: "closed", milestone: null };
+    },
+    updateIssue: (issue, state, milestone) => updates.push([issue.data.github.number, state, milestone]),
+  };
+  await assert.rejects(runSync(current, io, [20, 99]), /未登记/);
+  await runSync(current, io, [20]);
+  assert.deepEqual(updates, [[20, "CLOSED", 2]]);
+});
+
+test("milestone scope touches only its named objects and validates both lists before writing", async () => {
+  const current = tree();
+  current.milestones[0].data.github = { number: 2 };
+  current.issues[0].data.github = { number: 20 };
+  const updates = [];
+  const io = {
+    readMilestoneState(milestone) {
+      assert.equal(milestone.data.github.number, 2);
+      return "open";
+    },
+    updateMilestoneState: (milestone, state) => updates.push([milestone.data.github.number, state]),
+    readIssue: () => ({ state: "open", milestone: null }),
+    updateIssue: (issue, state, milestone) => updates.push([issue.data.github.number, state, milestone]),
+  };
+  await assert.rejects(runSync(current, io, undefined, []), /milestone 编号为空/);
+  await assert.rejects(runSync(current, io, [20], [2, 99]), /milestone 编号为空或未登记/);
+  await assert.rejects(runSync(current, io, [99], [2]), /issue 编号为空或未登记/);
+  assert.deepEqual(updates, []);
+  await runSync(current, io, undefined, [2]);
+  assert.deepEqual(updates, [[2, "closed"]]);
+  updates.length = 0;
+  await runSync(current, io, [20], [2]);
+  assert.deepEqual(updates, [[2, "closed"], [20, "CLOSED", 2]]);
+});
+
+test("metadata-only sync preserves issue bodies and skips unselected drafts", async () => {
+  const current = tree();
+  current.milestones[0].data.github = { number: 2 };
+  current.issues[0].data.github = { number: 20 };
+  current.issues.push({ data: { github: { number: null } } });
+  const updates = [];
+  const io = {
+    readIssue: () => ({ state: "open", milestone: null }),
+    updateIssue: (issue, state, milestone) => updates.push([issue.data.github.number, state, milestone]),
+    issueBody: () => assert.fail("unexpected body render"),
+    readIssueBody: () => assert.fail("unexpected body read"),
+    updateIssueBody: () => assert.fail("unexpected body write"),
+  };
+  const result = await runSync(current, io, [20], undefined, { metadataOnly: true });
+  assert.deepEqual(updates, [[20, "CLOSED", 2]]);
+  assert.deepEqual(result, { milestones: 0, issues: 0, stateUpdates: 1, bodyUpdates: 0 });
 });

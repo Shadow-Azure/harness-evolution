@@ -16,6 +16,7 @@ from app.third_party_api.ai_agent.contracts import (
     EditRequest,
     EditResult,
     ProviderHealth,
+    SkillRunRequest,
 )
 from app.third_party_api.ai_agent.edits import (
     EDIT_BUDGET,
@@ -67,6 +68,7 @@ __all__ = [
     "EditStatus",
     "FakeAIAgentProvider",
     "ProviderHealth",
+    "SkillRunRequest",
     "StructuredSubmission",
     "SubmissionOutcome",
     "SubmissionPrep",

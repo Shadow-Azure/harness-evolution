@@ -23,6 +23,7 @@ import {
   workspaceRoleLabel,
 } from "../../utils/workspaceDisplay";
 import AuthTab from "./components/AuthTab.vue";
+import AttributionSkillsTab from "./components/AttributionSkillsTab.vue";
 import IngestTab from "./components/IngestTab.vue";
 import MembersTab from "./components/MembersTab.vue";
 import SpacesTab from "./components/SpacesTab.vue";
@@ -30,12 +31,13 @@ import WorkspaceFormDialog from "./components/WorkspaceFormDialog.vue";
 
 defineOptions({ name: "WorkspaceAdminPage" });
 
-type AdminTab = "spaces" | "members" | "ingest" | "auth";
+type AdminTab = "spaces" | "members" | "ingest" | "attribution-skills" | "auth";
 
 const TABS: ReadonlyArray<{ key: AdminTab; label: string }> = [
   { key: "spaces", label: "空间与额度" },
   { key: "members", label: "成员与角色" },
   { key: "ingest", label: "上报接入" },
+  { key: "attribution-skills", label: "归因 Skill" },
   { key: "auth", label: "鉴权接入" },
 ];
 
@@ -288,6 +290,11 @@ function workspaceErrorMessage(error: unknown): string {
           v-else-if="activeTab === 'ingest'"
           :workspace-id="workspaceId"
           :workspace="currentWorkspace"
+          :can-manage="canManage"
+        />
+        <AttributionSkillsTab
+          v-else-if="activeTab === 'attribution-skills'"
+          :workspace-id="workspaceId"
           :can-manage="canManage"
         />
         <AuthTab v-else />

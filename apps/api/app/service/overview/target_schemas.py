@@ -60,6 +60,7 @@ class TargetOverviewItem(IdentityModel):
 
     target_id: str = Field(max_length=36)
     object_type: EvolutionObjectType
+    attribution_skill_name: str | None = None
     object_name: str = Field(min_length=1, max_length=128)
     versions: list[str] = Field(
         description=(
@@ -164,7 +165,7 @@ class TargetCaseItem(IdentityModel):
         max_length=64,
         description="The probe id of the newest attribution for this target version.",
     )
-    category: Literal["model", "prompt", "error"] | None = Field(
+    category: Literal["model", "prompt", "error", "flow", "context"] | None = Field(
         default=None,
         description="Attribution category; only present for the attributed state.",
     )

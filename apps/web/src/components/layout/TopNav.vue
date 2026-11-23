@@ -103,8 +103,8 @@ const activeSection = computed(() => {
 });
 
 const { data: acquisition } = useQuery({
-  queryKey: queryKeys.acquisitionStatus,
-  queryFn: getAcquisitionStatus,
+  queryKey: computed(() => [...queryKeys.acquisitionStatus, workspaceId.value]),
+  queryFn: () => getAcquisitionStatus(workspaceId.value),
   refetchInterval: (query) => {
     const status = query.state.data?.status;
     return status === "queued" || status === "running" ? 3_000 : 15_000;
@@ -115,7 +115,7 @@ const pendingLabel = computed(() => {
   if (!acquisition.value) {
     return "";
   }
-  return `待处理 ${acquisition.value.pending}`;
+  return `待归一化 ${acquisition.value.pending}`;
 });
 
 const syncDetail = computed(() => {
@@ -146,17 +146,13 @@ const badCaseSyncDetail = computed(() => {
   if (!status) {
     return "";
   }
-  if (status.status === "unavailable") {
-    return "未配置轨迹查询服务";
-  }
   return `总 ${status.total} · 已同步 ${status.synced} · 未同步 ${status.unsynced}`;
 });
 
 const badCaseProblemSub = computed(() => {
   const status = badCaseSync.value;
-  if (!status || status.status === "unavailable") {
-    return "";
-  }
+  if (!status) return "";
+  if (status.status === "unavailable") return "未配置轨迹查询服务";
   if (status.status === "idle") {
     return `${badCaseSyncStatusLabel(status.status)} · 同步中 ${status.syncing} · 失败 ${status.failed}`;
   }
@@ -170,9 +166,6 @@ const badCaseSyncAria = computed(() => {
   const status = badCaseSync.value;
   if (!status) {
     return "";
-  }
-  if (status.status === "unavailable") {
-    return "问题轨迹未配置";
   }
   return `问题轨迹 总 ${status.total} 已同步 ${status.synced} 未同步 ${status.unsynced}`;
 });
@@ -243,7 +236,7 @@ const analysisDetail = computed(() => {
   if (!progress) {
     return "";
   }
-  return `已分析 ${progress.analyzed} · 待分析 ${progress.pending}`;
+  return `已分析 ${progress.analyzed} · 暂无报告 ${progress.pending}`;
 });
 
 const analysisSub = computed(() => {
@@ -251,7 +244,8 @@ const analysisSub = computed(() => {
   if (!progress) {
     return "";
   }
-  return `问题 ${progress.issue} · 非问题 ${progress.nonIssue}`;
+  const inconclusive = progress.analyzed - progress.issue - progress.nonIssue;
+  return `最近结论：归因到对象 ${progress.issue} · 非该对象 ${progress.nonIssue}${inconclusive > 0 ? ` · 未确定 ${inconclusive}` : ""}`;
 });
 
 const analysisAria = computed(() => {
@@ -259,7 +253,7 @@ const analysisAria = computed(() => {
   if (!progress) {
     return "";
   }
-  return `归因分析 已分析 ${progress.analyzed} 待分析 ${progress.pending}`;
+  return `归因分析 已分析 ${progress.analyzed} 暂无报告 ${progress.pending}`;
 });
 
 const syncAria = computed(() =>
@@ -401,7 +395,7 @@ onBeforeUnmount(() => {
       >
         <span class="sync-summary">{{ pendingLabel }}</span>
         <span
-          v-if="badCaseSync && badCaseSync.status !== 'unavailable'"
+          v-if="badCaseSync"
           class="sync-problem-badge"
           data-testid="sync-problem-badge"
         >
@@ -415,7 +409,7 @@ onBeforeUnmount(() => {
             data-testid="sync-catalog"
           >
             <span class="sync-row">
-              <span class="sync-key">问题数量</span>
+              <span class="sync-key">平台问题数量</span>
               <span class="sync-val">{{ catalogDetail }}</span>
             </span>
             <span
@@ -446,7 +440,7 @@ onBeforeUnmount(() => {
             data-testid="sync-normalization"
           >
             <span class="sync-row">
-              <span class="sync-key">会话归一化</span>
+              <span class="sync-key">平台会话归一化</span>
               <span class="sync-val">{{ normalizationDetail }}</span>
             </span>
             <span
@@ -462,7 +456,7 @@ onBeforeUnmount(() => {
             data-testid="sync-analysis"
           >
             <span class="sync-row">
-              <span class="sync-key">归因分析</span>
+              <span class="sync-key">{{ workspaceId ? "本空间归因分析" : "归因分析" }}</span>
               <span class="sync-val">{{ analysisDetail }}</span>
             </span>
             <span class="sync-problem-sub">

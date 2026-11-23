@@ -11,6 +11,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.acquisition import router as acquisition_router
+from app.api.attribution_skill_packages import router as attribution_skill_packages_router
+from app.api.attribution_skills import router as attribution_skills_router
 from app.api.auth import router as auth_router
 from app.api.catalogs import router as catalogs_router
 from app.api.events import router as events_router
@@ -32,11 +34,14 @@ from app.api.workspaces import router as workspaces_router
 from app.config import Settings
 from app.data_dir import probe_data_directory
 from app.db.base import Database
+from app.db.crud.attribution_skill_packages import AttributionSkillPackageRepository
+from app.db.crud.attribution_skills import AttributionSkillRepository
 from app.db.crud.attributions import AttributionRepository, EvolutionRunCandidateRepository
 from app.db.crud.bad_case_catalog_sync import BadCaseCatalogSyncRepository
 from app.db.crud.bad_case_ingest import BadCaseIngestRepository
 from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
 from app.db.crud.bad_cases import BadCaseRepository
+from app.db.crud.binding_batches import BindingQueue
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.evolution_control import EvolutionControlRepository
 from app.db.crud.evolution_targets import EvolutionTargetRepository
@@ -84,6 +89,17 @@ from app.service.evolution.apply_final import (
     EvolutionFinalizeService,
 )
 from app.service.evolution.attribution import AttributionRunner, resolve_attribution_engine
+from app.service.evolution.attribution_context import AttributionContextProvider
+from app.service.evolution.attribution_jobs import (
+    ATTRIBUTION_JOB_KIND,
+    AttributionJobService,
+)
+from app.service.evolution.attribution_skill_packages import (
+    DEFAULT_PACKAGE_ID,
+    AttributionSkillPackageService,
+)
+from app.service.evolution.attribution_skills import AttributionSkillService
+from app.service.evolution.binding_worker import BindingWorker
 from app.service.evolution.blocked_sweeper import EvolutionBlockedSweeper
 from app.service.evolution.control import EvolutionControlService
 from app.service.evolution.engine.contracts import EngineDeps
@@ -99,6 +115,7 @@ from app.service.evolution.events import (
 from app.service.evolution.gateway_factory import build_eval_gateway_factory
 from app.service.evolution.git_candidate import EvolutionCandidateService
 from app.service.evolution.launch import EvolutionLaunchService
+from app.service.evolution.local_attribution import LocalAttribution
 from app.service.evolution.patch_source import default_patch_source_factory
 from app.service.evolution.potential import PotentialMatcher, PotentialPreviewService
 from app.service.evolution.prepare import EvolutionPrepareService, WorkspacePreparer
@@ -107,9 +124,11 @@ from app.service.evolution.retry import EvolutionRetryService
 from app.service.evolution.runs import EvolutionRunService
 from app.service.evolution.stages import EvolutionStageService
 from app.service.evolution.target_content import (
+    CommitContentSource,
     TargetContentResolver,
     TargetVersionResolver,
 )
+from app.service.evolution.target_definition import TargetDefinitions
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.service import IdentityService
 from app.service.jobs import JobRunner
@@ -182,6 +201,7 @@ def create_app(
     git_remote: GitRemote | None = None,
     git_workspaces: WorkspacePreparer | None = None,
     target_version_resolver: TargetVersionResolver | None = None,
+    definition_source: CommitContentSource | None = None,
 ) -> FastAPI:
     """Compose middleware, exception handling, and routes."""
     resolved_settings = settings or Settings()
@@ -346,30 +366,84 @@ def create_app(
     resolved_git_remote = git_remote or SubprocessGitRemote(
         runner=cast(Any, proxy_runner.run_remote),
     )
-    resolver = target_version_resolver or TargetContentResolver(
-        SubprocessGitContent(
-            cache_root=resolved_settings.data_dir / "target-content",
-            runner=cast(Any, proxy_runner.run),
-        ),
+    git_content = SubprocessGitContent(
+        cache_root=resolved_settings.data_dir / "target-content",
+        runner=cast(Any, proxy_runner.run),
     )
-    evolution_targets = EvolutionTargetService(target_repository, resolved_git_remote)
+    resolver = target_version_resolver or TargetContentResolver(git_content)
+    attribution_enabled = bool(resolved_settings.attribution_agent)
+    evolution_targets = EvolutionTargetService(
+        target_repository,
+        resolved_git_remote,
+        TargetDefinitions(
+            definition_source or git_content, resolved_settings.attribution_package_dir
+        ),
+        default_package_id=DEFAULT_PACKAGE_ID if attribution_enabled else None,
+    )
+    attribution_skills = AttributionSkillService(
+        AttributionSkillRepository(resolved_database),
+        resolved_settings.attribution_golden_set_path,
+    )
+    attribution_skill_packages = AttributionSkillPackageService(
+        AttributionSkillPackageRepository(resolved_database),
+        resolved_settings.attribution_package_dir,
+        resolved_settings.attribution_default_skill_path,
+        runtime_enabled=attribution_enabled,
+    )
+    potential_repository = PotentialRepository(resolved_database)
+    attribution_repository = AttributionRepository(resolved_database)
     potential_preview = PotentialPreviewService(
         evolution_targets,
-        PotentialMatcher(PotentialRepository(resolved_database)),
+        PotentialMatcher(potential_repository),
         resolver,
+        reports=attribution_repository,
+        rule_skills=attribution_skills,
+        local_agent=attribution_enabled,
     )
     probe_query_repository = ProbeQueryRepository(resolved_database)
     evolution_runs = EvolutionRunService(evolution_repository, run_event_store)
-    attribution_repository = AttributionRepository(resolved_database)
     run_candidate_repository = EvolutionRunCandidateRepository(resolved_database)
-    potential_matcher = PotentialMatcher(PotentialRepository(resolved_database))
+    potential_matcher = PotentialMatcher(potential_repository)
     target_overview = TargetOverviewService(
         target_repository,
         TargetOverviewRepository(resolved_database),
         potential_matcher,
         resolver,
     )
-    attribution_runner = AttributionRunner(attribution_repository)
+    local_attribution = LocalAttribution(
+        resolved_settings,
+        attribution_skill_packages,
+        attribution_skills,
+        resolved_database,
+        git_content,
+        ai_agent_provider,
+    )
+    if attribution_enabled:
+        local_attribution.configured_skill_provider()
+    attribution_runner = AttributionRunner(
+        attribution_repository,
+        context_provider=AttributionContextProvider(potential_repository),
+        skill_resolver=local_attribution,
+        engine_factory=local_attribution.engine,
+        prepare_inputs=local_attribution.prepare_inputs,
+        max_concurrency=resolved_settings.attribution_case_concurrency,
+    )
+    binding_worker = BindingWorker(
+        BindingQueue(resolved_database),
+        bad_case_sync,
+        local_attribution,
+        resolver,
+        potential_matcher,
+        attribution_repository,
+        attribution_runner,
+    )
+    attribution_jobs = AttributionJobService(
+        jobs,
+        evolution_repository,
+        run_candidate_repository,
+        attribution_repository,
+        attribution_runner,
+    )
     evolution_stages = EvolutionStageService(
         evolution_repository,
         probe_query_repository,
@@ -383,6 +457,10 @@ def create_app(
         jobs,
         evolution_events,
         resolver,
+        reports=attribution_repository,
+        attribution_skills=local_attribution
+        if resolved_settings.attribution_agent
+        else attribution_skills,
     )
     probe_query = ProbeQueryService(probe_query_repository, target_repository)
     default_workspace_manager = GitWorkspaceManager(
@@ -405,6 +483,7 @@ def create_app(
         workspace_manager,
         evolution_events,
         resolver,
+        attribution_jobs=attribution_jobs,
         agent=ai_agent_provider,
         failure_policy=resolved_settings.effective_ai_agent_failure_policy,
     )
@@ -510,7 +589,12 @@ def create_app(
         """Persist and publish the placeholder terminal evaluation."""
         return await evolution_finalize.handle(job)
 
-    jobs.register_handler("evolution_prepare", prepare_handler)
+    jobs.register_handler(
+        ATTRIBUTION_JOB_KIND,
+        attribution_jobs.handle,
+        concurrency_limit=resolved_settings.attribution_batch_concurrency,
+    )
+    jobs.register_handler("evolution_prepare", prepare_handler, concurrency_limit=2)
     jobs.register_handler("evolution_advance", advance_handler)
     jobs.register_handler("evolution_apply", apply_handler)
     jobs.register_handler("evolution_finalize", finalize_handler)
@@ -548,6 +632,8 @@ def create_app(
             evolution_eval_poller.start()
             phase = "blocked-sweeper"
             evolution_blocked_sweeper.start()
+            if resolved_settings.attribution_agent:
+                binding_worker.start()
         except Exception as exc:
             logger.error(
                 "database initialization failed",
@@ -561,6 +647,7 @@ def create_app(
         try:
             yield
         finally:
+            await binding_worker.stop()
             await proxy_controller.stop()
             await external_contract.stop()
             try:
@@ -634,6 +721,10 @@ def create_app(
     app.state.attribution_read = attribution_read
     app.state.evolution_repository = evolution_repository
     app.state.evolution_targets = evolution_targets
+    app.state.local_attribution = local_attribution if resolved_settings.attribution_agent else None
+    app.state.attribution_skills = attribution_skills
+    app.state.attribution_skill_packages = attribution_skill_packages
+    app.state.attribution_jobs = attribution_jobs
     app.state.target_version_resolver = resolver
     app.state.potential_preview = potential_preview
     app.state.evolution_runs = evolution_runs
@@ -688,6 +779,8 @@ def create_app(
     app.include_router(probe_router)
     app.include_router(preview_router)
     app.include_router(evolution_targets_router)
+    app.include_router(attribution_skills_router)
+    app.include_router(attribution_skill_packages_router)
     app.include_router(workspace_evolution_router)
     app.include_router(catalogs_router)
     app.include_router(workspace_catalogs_router)

@@ -6,10 +6,14 @@ import logging
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, Protocol, cast
 
+from app.db.crud.attributions import AttributionRepository
 from app.db.crud.evolution import EvolutionRepository
+from app.db.crud.evolution_targets import EvolutionTargetRecord
 from app.db.crud.potential import ObjectType, window_day_boundaries
 from app.errors import AppError, ErrorCode
 from app.service.evolution.attribution import DEFAULT_ATTRIBUTION_ENGINE
+from app.service.evolution.attribution_contracts import is_platform_rule
+from app.service.evolution.attribution_executor import AGENT_SKILL_STUB_ENGINE
 from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.events import EvolutionRunEventService
 from app.service.evolution.potential import (
@@ -34,50 +38,6 @@ from app.utils.ids import new_id
 logger = logging.getLogger(__name__)
 
 
-class LaunchTargetRecord(Protocol):
-    """Read-only enabled-target facts consumed from configuration storage."""
-
-    @property
-    def id(self) -> str:
-        """Return the configured target id."""
-
-    @property
-    def object_type(self) -> str:
-        """Return the configured object type."""
-
-    @property
-    def object_name(self) -> str:
-        """Return the configured object name."""
-
-    @property
-    def default_ref(self) -> str:
-        """Return the configured default reference."""
-
-    @property
-    def repo_url(self) -> str:
-        """Return the configured git remote."""
-
-    @property
-    def sub_dir(self) -> str:
-        """Return the configured repository sub directory."""
-
-    @property
-    def validation_project_id(self) -> str:
-        """Return the configured validation-set test project id."""
-
-    @property
-    def test_project_id(self) -> str:
-        """Return the configured test-set test project id."""
-
-    @property
-    def enabled(self) -> bool:
-        """Return whether the target accepts launches."""
-
-    @property
-    def workspace_id(self) -> str:
-        """Return the workspace that owns this configuration."""
-
-
 class LaunchTargetStore(Protocol):
     """Persistence operations consumed by the launch service."""
 
@@ -87,8 +47,27 @@ class LaunchTargetStore(Protocol):
         object_name: str,
         *,
         workspace_ids: Sequence[str] | None = None,
-    ) -> LaunchTargetRecord:
+    ) -> EvolutionTargetRecord:
         """Return the one enabled pair inside the optional workspace scope."""
+        ...
+
+
+class LaunchAttributionSkill(Protocol):
+    """Resolved immutable Skill facts frozen into a run."""
+
+    skill_key: str
+    revision: int
+    content_hash: str
+    executor_type: str
+
+
+class LaunchAttributionSkillResolver(Protocol):
+    """Resolve the effective Skill for a configured target."""
+
+    async def resolve_for_run(
+        self, target: EvolutionTargetRecord, package_id: str | None
+    ) -> LaunchAttributionSkill:
+        """Return target, workspace, or platform fallback resolution."""
         ...
 
 
@@ -103,6 +82,9 @@ class EvolutionLaunchService:
         jobs: JobRunner,
         events: EvolutionRunEventService | None,
         resolver: TargetVersionResolver,
+        *,
+        reports: AttributionRepository | None = None,
+        attribution_skills: LaunchAttributionSkillResolver | None = None,
     ) -> None:
         """Bind launch collaborators for both run modes."""
         self._targets = targets
@@ -110,6 +92,8 @@ class EvolutionLaunchService:
         self._runs = runs
         self._jobs = jobs
         self._events = events
+        self._attribution_skills = attribution_skills
+        self._reports = reports
         self._resolver = resolver
 
     async def request_run(
@@ -155,6 +139,18 @@ class EvolutionLaunchService:
             body.target_name,
             workspace_ids=workspace_ids,
         )
+        latest_only = bool(self._reports and config.attribution_package_id and body.cache_enabled)
+        effective_skill = None
+        if body.attribution_package_id and (body.cache_enabled or self._attribution_skills is None):
+            raise AppError(
+                status_code=422,
+                code=ErrorCode.VALIDATION_INVALID,
+                message="select a Skill only for recomputation using a configured agent",
+            )
+        if self._attribution_skills and not latest_only:
+            effective_skill = await self._attribution_skills.resolve_for_run(
+                config, body.attribution_package_id
+            )
         query = normalized_query(
             body,
             default_version=config.default_ref,
@@ -163,7 +159,23 @@ class EvolutionLaunchService:
         resolved = await self._resolve_version(body, query.target_version, config)
         policy = resolve_policy(body.policy)
         condition = _match_condition(query, config.workspace_id, resolved)
-        await self._require_potential(condition, policy)
+        cases = await self._require_potential(condition, policy)
+        if (
+            self._reports
+            and latest_only
+            and not await self._reports.latest_reports(
+                config.workspace_id,
+                body.target_type,
+                body.target_name,
+                resolved.target_revision,
+                cases,
+            )
+        ):
+            raise AppError(
+                status_code=409,
+                code=ErrorCode.NO_POTENTIAL_MATCHED,
+                message="no cached attribution reports for these cases",
+            )
         job_id = new_id()
         run = await self._runs.create_run(
             self._run_values(
@@ -173,6 +185,8 @@ class EvolutionLaunchService:
                 resolved=resolved,
                 policy=policy,
                 created_by=created_by,
+                effective_skill=effective_skill,
+                latest_only=latest_only,
             ),
             initial_job_id=job_id,
         )
@@ -203,7 +217,7 @@ class EvolutionLaunchService:
         self,
         condition: MatchCondition,
         policy: Any,
-    ) -> None:
+    ) -> tuple[str, ...]:
         """Fail the launch before any write when nothing can be attributed.
 
         Args:
@@ -244,15 +258,19 @@ class EvolutionLaunchService:
                 },
             )
 
+        return tuple(case.bad_case_id for case in match.included)
+
     def _run_values(
         self,
         body: ProbeQueryRequest,
         query: Any,
-        config: LaunchTargetRecord,
+        config: EvolutionTargetRecord,
         *,
         resolved: ResolvedTargetVersion,
         policy: ResolvedPolicy,
         created_by: str | None,
+        effective_skill: LaunchAttributionSkill | None,
+        latest_only: bool,
     ) -> Mapping[str, Any]:
         """Build the immutable run snapshot inserted before enqueueing.
 
@@ -268,15 +286,37 @@ class EvolutionLaunchService:
             Column values for one `preparing` run row.
         """
         start, end = resolve_window(query.window_from, query.window_to)
+        legacy_rule = not config.attribution_package_id and (
+            effective_skill is None
+            or is_platform_rule(effective_skill.skill_key, effective_skill.executor_type)
+        )
         return {
             "title": f"{query.target_name} {resolved.target_version} 自进化",
             "workspace_id": config.workspace_id,
             "mode": body.mode,
             "engine_key": body.engine_key or body.mode,
             "eval_config": _snapshot_eval(body.eval),
-            "potential_policy": policy.snapshot(),
+            "potential_policy": {
+                **policy.snapshot(),
+                **({"latestReportsOnly": True} if latest_only else {}),
+                **({"legacyRule": True} if legacy_rule else {}),
+                **(
+                    {"attributionPackageId": body.attribution_package_id}
+                    if body.attribution_package_id
+                    else {}
+                ),
+            },
             "cache_enabled": body.cache_enabled,
-            "attribution_engine": DEFAULT_ATTRIBUTION_ENGINE,
+            "attribution_engine": _attribution_engine(effective_skill),
+            "attribution_skill_key": (
+                effective_skill.skill_key if effective_skill is not None else None
+            ),
+            "attribution_skill_revision": (
+                effective_skill.revision if effective_skill is not None else None
+            ),
+            "attribution_skill_content_hash": (
+                effective_skill.content_hash if effective_skill is not None else None
+            ),
             "target_config_id": config.id,
             "target_type": query.target_type,
             "target_name": query.target_name,
@@ -299,7 +339,7 @@ class EvolutionLaunchService:
         self,
         body: ProbeQueryRequest,
         version: str,
-        config: LaunchTargetRecord,
+        config: EvolutionTargetRecord,
     ) -> ResolvedTargetVersion:
         """Resolve the launch version, refusing to guess when content is absent."""
         return await self._resolver.resolve(
@@ -337,6 +377,22 @@ def _snapshot_eval(eval_config: Mapping[str, Any] | None) -> dict[str, Any]:
         # falls back to the env-provided key instead of an unset literal.
         snapshot.pop("apiKeyRef", None)
     return snapshot
+
+
+def _attribution_engine(effective_skill: LaunchAttributionSkill | None) -> str:
+    """Select the engine matching the resolved Skill executor boundary."""
+    if effective_skill is None or effective_skill.executor_type == "builtin_rule":
+        return DEFAULT_ATTRIBUTION_ENGINE
+    if effective_skill.executor_type == "local_agent":
+        return "local-agent-skill-v1"
+    if effective_skill.executor_type == "agent_stub":
+        return AGENT_SKILL_STUB_ENGINE
+    raise AppError(
+        status_code=409,
+        code=ErrorCode.ATTRIBUTION_SKILL_INVALID,
+        message="the selected attribution Skill executor is not available",
+        details={"executorType": effective_skill.executor_type},
+    )
 
 
 def _match_condition(

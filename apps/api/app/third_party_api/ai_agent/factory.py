@@ -52,9 +52,11 @@ def register_provider(
     _REGISTRY[normalized] = implementation
 
 
-def build_agent_provider(settings: Settings) -> AIAgentProvider:
-    """Instantiate the provider selected by ``settings.ai_agent_provider``."""
-    provider_id = settings.ai_agent_provider.strip().lower()
+def build_agent_provider(settings: Settings, *, provider_id: str | None = None) -> AIAgentProvider:
+    """Build the deployment provider, or the explicit provider pinned for replay."""
+    provider_id = (
+        (provider_id if provider_id is not None else settings.ai_agent_provider).strip().lower()
+    )
     implementation = _REGISTRY.get(provider_id)
     if implementation is None:
         choices = ", ".join(sorted(_REGISTRY))

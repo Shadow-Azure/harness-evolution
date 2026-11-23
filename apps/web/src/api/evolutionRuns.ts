@@ -1,4 +1,6 @@
 import type {
+  AttributionJobList,
+  AttributionJobView,
   AttributionPreviewRequest,
   AttributionPreviewResult,
   EvolutionRetryAccepted,
@@ -243,6 +245,87 @@ export function retryEvolutionRun(
     ),
     { method: "POST" },
     { acceptedStatuses: RETRY_STATUSES },
+  );
+}
+
+/**
+ * Read newest-first durable attribution batches for one run.
+ * @param workspaceId Route workspace identifier.
+ * @param runId Evolution run identifier.
+ * @returns Sanitized attribution job history.
+ */
+export function listAttributionJobs(
+  workspaceId: string,
+  runId: string,
+): Promise<AttributionJobList> {
+  return request<AttributionJobList>(
+    workspaceEvolutionPath(
+      workspaceId,
+      `/runs/${encodeURIComponent(runId)}/attribution-jobs`,
+    ),
+  );
+}
+
+/**
+ * Start or join the manual attribution batch for one run.
+ * @param workspaceId Route workspace identifier.
+ * @param runId Evolution run identifier.
+ * @returns Accepted or reused durable attribution job.
+ */
+export function startAttributionJob(
+  workspaceId: string,
+  runId: string,
+): Promise<AttributionJobView> {
+  return request<AttributionJobView>(
+    workspaceEvolutionPath(
+      workspaceId,
+      `/runs/${encodeURIComponent(runId)}/attribution-jobs`,
+    ),
+    { method: "POST" },
+    { acceptedStatuses: RETRY_STATUSES },
+  );
+}
+
+/**
+ * Retry one failed attribution batch, preserving its audit identity.
+ * @param workspaceId Route workspace identifier.
+ * @param runId Evolution run identifier.
+ * @param jobId Durable attribution job identifier.
+ * @returns Requeued attribution job.
+ */
+export function retryAttributionJob(
+  workspaceId: string,
+  runId: string,
+  jobId: string,
+): Promise<AttributionJobView> {
+  return request<AttributionJobView>(
+    workspaceEvolutionPath(
+      workspaceId,
+      `/runs/${encodeURIComponent(runId)}/attribution-jobs/${encodeURIComponent(jobId)}/retry`,
+    ),
+    { method: "POST" },
+    { acceptedStatuses: RETRY_STATUSES },
+  );
+}
+
+/**
+ * Cancel queued or running attribution work without deleting its audit row.
+ * @param workspaceId Route workspace identifier.
+ * @param runId Evolution run identifier.
+ * @param jobId Durable attribution job identifier.
+ * @returns Cancelled or already-terminal job.
+ */
+export function cancelAttributionJob(
+  workspaceId: string,
+  runId: string,
+  jobId: string,
+): Promise<AttributionJobView> {
+  return request<AttributionJobView>(
+    workspaceEvolutionPath(
+      workspaceId,
+      `/runs/${encodeURIComponent(runId)}/attribution-jobs/${encodeURIComponent(jobId)}/cancel`,
+    ),
+    { method: "POST" },
   );
 }
 

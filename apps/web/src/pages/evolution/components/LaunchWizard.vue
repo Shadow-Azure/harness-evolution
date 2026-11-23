@@ -13,6 +13,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useRouter } from "vue-router";
 
 import { getBadCase } from "../../../api/badCases";
+import { useAttributionSkillPackages } from "../../../composables/useAttributionSkillPackages";
+import { getTargetAttributionSkill } from "../../../api/attributionSkills";
 import { getTargetCatalog } from "../../../api/catalogs";
 import {
   previewAttribution,
@@ -130,6 +132,9 @@ const includeSelfReport = ref(true);
 const includeAfterObject = ref(true);
 const sameObjectOnly = ref(false);
 const cacheEnabled = ref(true);
+const library = useAttributionSkillPackages(() => props.wid);
+const overridePackage = ref("");
+watch(() => [props.wid, targetId.value], () => { overridePackage.value = ""; });
 
 const sessionPreview = ref<SessionPreviewResult | null>(null);
 const sessionEmptySummary = ref<SessionPreviewSummary | null>(null);
@@ -241,6 +246,20 @@ const versions = useEvolutionTargetVersions(
   computed(() => props.wid),
   computed(() => (step.value === 1 ? targetId.value : null)),
 );
+const effectiveSkill = useQuery({
+  queryKey: computed(() =>
+    queryKeys.targetAttributionSkill(props.wid, targetId.value ?? "empty"),
+  ),
+  queryFn: () => getTargetAttributionSkill(props.wid, targetId.value as string),
+  enabled: computed(() => Boolean(targetId.value)),
+  retry: false,
+});
+const selectedPackage = computed({
+  get: () => overridePackage.value || library.packages.data.value?.items.find(
+    item => item.id === effectiveSkill.data.value?.id,
+  )?.id || "",
+  set: (id: string) => { overridePackage.value = id; },
+});
 const focusCase = useQuery({
   queryKey: computed(() =>
     queryKeys.badCase(props.wid, props.focusCaseId ?? "none"),
@@ -522,7 +541,16 @@ const potentialPageCount = computed(() =>
       )
     : 1,
 );
+const agentAvailable = computed(() => attributionPreview.value?.canRecompute === true);
+const usesBoundSkill = computed(() => attributionPreview.value?.usesBoundSkill === true);
+const canRecompute = computed(() => agentAvailable.value || !usesBoundSkill.value);
 const attributionSummary = computed(() => attributionPreview.value?.summary ?? null);
+const canLaunch = computed(() => {
+  const summary = attributionSummary.value;
+  if (!hasPotential.value || isBusy.value || requestError.value || !summary) return false;
+  if (cacheEnabled.value) return usesBoundSkill.value ? (summary.reused ?? 0) > 0 : summary.potential > 0;
+  return agentAvailable.value ? Boolean(selectedPackage.value) : !usesBoundSkill.value;
+});
 const previewTargetRevision = computed<string | null | undefined>(() => {
   const revisions = [
     attributionPreview.value?.targetRevision,
@@ -1084,7 +1112,7 @@ async function refreshAttribution(): Promise<void> {
 
 /** Accept one full run or cluster-only preview and leave the wizard. */
 async function launch(mode: "full" | "cluster_only"): Promise<void> {
-  if (!selectedTarget.value || !hasPotential.value || isBusy.value) {
+  if (!selectedTarget.value || !canLaunch.value) {
     return;
   }
   pending.value = "launch";
@@ -1095,6 +1123,7 @@ async function launch(mode: "full" | "cluster_only"): Promise<void> {
       mode,
       policy: currentPolicy(),
       cacheEnabled: cacheEnabled.value,
+      ...(!cacheEnabled.value && agentAvailable.value && { attributionPackageId: selectedPackage.value }),
       page: 1,
       pageSize: POTENTIAL_PAGE_SIZE,
     };
@@ -1732,14 +1761,13 @@ const reasonEntries = computed(() => {
 
               <div class="wz-section-title">
                 第 2 步 · Session 关联
-                <span>先判断对象版本出现在哪些 Session，只有出现的 Session 才进入下一步</span>
+                <span>先判断对象出现在哪些 Session，只有出现的 Session 才进入下一步</span>
               </div>
 
               <div class="wz-stats">
                 <span class="st"><b>{{ sessionSummary?.reported ?? 0 }}</b><span>上报过 bad case 的 Session</span></span>
                 <span class="st accent"><b>{{ sessionSummary?.associated ?? 0 }}</b><span>对象出现 · 已关联</span></span>
                 <span class="st"><b>{{ sessionSummary?.skipped ?? 0 }}</b><span>未出现 · 跳过</span></span>
-                <span class="st"><b>{{ sessionSummary?.versionUnresolved ?? 0 }}</b><span>版本未知</span></span>
                 <span class="st"><b>{{ sessionSummary?.pending ?? 0 }}</b><span>待轨迹同步</span></span>
               </div>
 
@@ -1811,7 +1839,7 @@ const reasonEntries = computed(() => {
                   </button>
                 </div>
                 <p class="f-note">
-                  只展示对象版本出现过的 Session；未出现的 Session 已跳过，下一步再按策略筛选潜在 bad case。
+                  只展示对象出现过的 Session；未出现的 Session 已跳过，下一步再按策略筛选潜在 bad case。
                 </p>
               </template>
               <div
@@ -1826,8 +1854,8 @@ const reasonEntries = computed(() => {
                   >
                     ∅
                   </div>
-                  <h3>没有对象版本出现过的 Session</h3>
-                  <p>可回第 1 步调整时间段或对象版本后重试。</p>
+                  <h3>没有对象出现过的 Session</h3>
+                  <p>可回第 1 步调整时间段或选择其他对象后重试。</p>
                 </div>
               </div>
 
@@ -2040,12 +2068,19 @@ const reasonEntries = computed(() => {
                     type="checkbox"
                     data-testid="wizard-cache"
                     aria-label="复用缓存归因"
-                    :disabled="isBusy"
+                    :disabled="isBusy || (cacheEnabled && !canRecompute)"
                     @change="refreshAttribution"
                   >
                   <span class="slider" />
                 </label>
               </div>
+
+              <p
+                v-if="attributionPreview && !canRecompute"
+                class="f-note"
+              >
+                当前部署仅支持复用已有报告。管理员配置 HE_ATTRIBUTION_AGENT 后可选择 Skill 重新归因。
+              </p>
 
               <div
                 class="preview-stats"
@@ -2056,11 +2091,11 @@ const reasonEntries = computed(() => {
                   <span>潜在 bad case</span>
                 </div>
                 <div class="preview-stat">
-                  <strong>{{ attributionSummary?.reused ?? 0 }}</strong>
+                  <strong>{{ attributionSummary?.reused ?? "待执行" }}</strong>
                   <span>复用缓存</span>
                 </div>
                 <div class="preview-stat">
-                  <strong>{{ attributionSummary?.fresh ?? 0 }}</strong>
+                  <strong>{{ attributionSummary?.fresh ?? "待执行" }}</strong>
                   <span>本次新增归因</span>
                 </div>
                 <div class="preview-stat">
@@ -2069,12 +2104,40 @@ const reasonEntries = computed(() => {
                 </div>
               </div>
 
-              <div class="notice">
-                启动后先生成 {{ attributionSummary?.potential ?? 0 }} 条对象级归因，再进入迭代优化。可归因 {{ attributionSummary?.potential ?? 0 }} 个 · 非该对象 {{ attributionSummary?.nonTargetKnown ?? 0 }} 个 · 缓存命中 {{ attributionSummary?.reused ?? 0 }} 个。
+              <div
+                v-if="usesBoundSkill"
+                class="notice"
+                data-testid="wizard-effective-skill"
+              >
+                <b>已有问题报告</b>
+                <p
+                  v-for="(count, skill) in attributionSummary?.bySkill"
+                  :key="skill"
+                >
+                  {{ skill }} · {{ count }} 份
+                </p>
+                <p>尚无报告 {{ attributionSummary?.missing ?? 0 }} 个 Badcase<span v-if="cacheEnabled && usesBoundSkill">，本次跳过</span>。</p>
               </div>
-              <p class="f-note">
-                缓存键包含工作空间、bad case、对象身份/版本、策略版本与归因模型版本；「非该对象问题」不会修改 bad case 本身。
-              </p>
+              <label
+                v-if="!cacheEnabled && agentAvailable"
+                class="cache-option"
+              >
+                本次重算使用的归因 Skill
+                <select
+                  v-model="selectedPackage"
+                  aria-label="本次重算使用的归因 Skill"
+                >
+                  <option
+                    value=""
+                    disabled
+                  >请选择空间内的归因 Skill</option>
+                  <option
+                    v-for="item in library.packages.data.value?.items"
+                    :key="item.id"
+                    :value="item.id"
+                  >{{ item.skillName }}</option>
+                </select>
+              </label>
 
               <p
                 v-if="requestError"
@@ -2184,7 +2247,7 @@ const reasonEntries = computed(() => {
               class="btn accent"
               type="button"
               data-testid="wizard-cluster"
-              :disabled="!hasPotential || isBusy"
+              :disabled="!canLaunch"
               @click="launch('cluster_only')"
             >
               仅聚类
@@ -2193,7 +2256,7 @@ const reasonEntries = computed(() => {
               class="btn primary"
               type="button"
               data-testid="wizard-start"
-              :disabled="!hasPotential || isBusy"
+              :disabled="!canLaunch"
               @click="launch('full')"
             >
               启动自进化 →

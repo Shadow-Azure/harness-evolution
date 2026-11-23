@@ -46,3 +46,12 @@ class FakeTargetVersionResolver:
             return ResolvedTargetVersion(version, f"tag:{version}")
         digest = hashlib.sha256(version.encode("utf-8")).hexdigest()
         return ResolvedTargetVersion(version, f"digest:{digest}")
+
+
+class FakeDefinitionSource:
+    body = "# Deep research\nAlways inspect the evidence."
+
+    async def read_file_at_commit(
+        self, *, repo_url: str, sub_dir: str, ref: str, file_name: str
+    ) -> tuple[str, str]:
+        return self.body, "a" * 40

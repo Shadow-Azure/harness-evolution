@@ -31,9 +31,9 @@ from app.db.crud.overview_targets import (
 )
 from app.db.crud.potential import window_day_boundaries
 from app.errors import AppError, ErrorCode
+from app.service.evolution.attribution_contracts import REPORT_SCHEMA_VERSION
 from app.service.evolution.potential import (
     MatchCondition,
-    PotentialCase,
     PotentialMatch,
     PotentialMatcher,
     ResolvedPolicy,
@@ -91,7 +91,7 @@ BUCKET_POLICY = (
 )
 """The exact bucket-time policy exposed through ``meta.bucketPolicy``."""
 
-CATEGORIES: frozenset[str] = frozenset({"model", "prompt", "error"})
+CATEGORIES: frozenset[str] = frozenset({"model", "prompt", "error", "flow", "context"})
 """The closed attribution category set; anything else is not projected."""
 
 _VERSION_PART = re.compile(r"(\d+)")
@@ -140,7 +140,7 @@ class TargetCaseEntry:
     created_at: datetime
     state: TargetState
     attribution_id: str | None
-    category: Literal["model", "prompt", "error"] | None
+    category: Literal["model", "prompt", "error", "flow", "context"] | None
     attributed_at: datetime | None
     display_version: str = ""
     """The ref shown to readers; falls back to the canonical key when unknown."""
@@ -404,9 +404,9 @@ def _version_accumulators(
 
 def _merge_version_groups(
     groups: dict[str, _VersionAccumulator],
-    runs: Sequence[TargetRunVersionRecord],
+    ref_revisions: Sequence[tuple[str | None, str | None]],
 ) -> dict[str, _VersionAccumulator]:
-    """Merge a ref-only group into its digest group using newest run evidence.
+    """Merge a ref-only group using its binding snapshot or newest run evidence.
 
     A run stores both the selected ref and the revision it resolved to. When the
     trigger events only carry the digest, that run is the evidence that the
@@ -414,9 +414,9 @@ def _merge_version_groups(
     keep a separate ``main`` row at zero next to ``main`` from the digest.
     """
     latest_by_ref: dict[str, str] = {}
-    for run in runs:
-        ref = _known_version(run.target_version)
-        digest = _known_version(run.target_revision)
+    for version, revision in ref_revisions:
+        ref = _known_version(version)
+        digest = _known_version(revision)
         if (
             ref is None
             or ref.startswith(("digest:", "provider:"))
@@ -511,6 +511,8 @@ def _build_version_labels(
     default_ref: str,
     observed: Sequence[ObjectVersionRecord],
     runs: Sequence[TargetRunVersionRecord],
+    *,
+    bound_revision: str | None = None,
 ) -> tuple[tuple[str, ...], dict[str, TargetVersionLabel]]:
     """Build canonical versions and their ref/commit display evidence.
 
@@ -519,7 +521,11 @@ def _build_version_labels(
     ``target_version``. No git lookup happens for digest-only history: it keeps
     the digest instead of guessing a moving ref.
     """
-    groups = _merge_version_groups(_version_accumulators(default_ref, observed), runs)
+    ref_revisions = [(run.target_version, run.target_revision) for run in runs]
+    if bound_revision:
+        observed = (*observed, ObjectVersionRecord(default_ref, bound_revision))
+        ref_revisions.insert(0, (default_ref, bound_revision))
+    groups = _merge_version_groups(_version_accumulators(default_ref, observed), ref_revisions)
     by_revision: dict[str, TargetRunVersionRecord] = {}
     by_ref: dict[str, TargetRunVersionRecord] = {}
     for run in runs:
@@ -575,11 +581,13 @@ def _newest_link_by_case(
     return found
 
 
-def _category(link: AttributionLinkRecord | None) -> Literal["model", "prompt", "error"] | None:
+def _category(
+    link: AttributionLinkRecord | None,
+) -> Literal["model", "prompt", "error", "flow", "context"] | None:
     """Project only the closed attribution category set."""
     if link is None or link.category not in CATEGORIES:
         return None
-    return cast(Literal["model", "prompt", "error"], link.category)
+    return cast(Literal["model", "prompt", "error", "flow", "context"], link.category)
 
 
 def _state(link: AttributionLinkRecord | None) -> TargetState:
@@ -886,7 +894,26 @@ class TargetOverviewService:
             object_name=target.object_name,
             limit=RUN_VERSION_LOOKBACK,
         )
-        versions, labels = _build_version_labels(target.default_ref, observed, runs)
+        links = await self._repository.list_attributions(
+            workspace_id=workspace_id,
+            object_type=target.object_type,
+            object_name=target.object_name,
+            case_ids=tuple(facts_by_id),
+        )
+        # A V2 report records the source that was actually analyzed, even when
+        # the trace has no version or the selected Git ref has since moved.
+        analyzed_versions = {
+            link.object_version
+            for link in links
+            if link.report_schema_version == REPORT_SCHEMA_VERSION and link.object_version
+        }
+        observed = (*observed, *(ObjectVersionRecord(None, v) for v in sorted(analyzed_versions)))
+        versions, labels = _build_version_labels(
+            target.default_ref,
+            observed,
+            runs,
+            bound_revision=target.definition["revision"] if target.definition else None,
+        )
         associated_sessions: set[str] = set()
         version_sessions: dict[str, frozenset[str]] = {}
         resolved = await asyncio.gather(
@@ -895,48 +922,38 @@ class TargetOverviewService:
         entries: list[TargetCaseEntry] = []
         unresolved_versions: set[str] = set()
         for version, resolution in zip(versions, resolved, strict=True):
-            if resolution is None:
-                # Content is the only identity source: keep the observed version
-                # visible but never fall back to tag matching.
-                unresolved_versions.add(version)
-                version_sessions[version] = frozenset()
-                continue
             label = labels[version]
-            association, match = await self._evaluate_resolved(
-                target,
-                version,
-                resolution,
-                workspace_id=workspace_id,
-                window_start=window_start,
-                window_end=window_end,
-            )
-            associated_sessions.update(session.session_id for session in association.sessions)
-            version_sessions[version] = frozenset(
-                session.session_id for session in association.sessions
-            )
-            if not match.included:
-                continue
-            links = await self._repository.list_attributions(
-                workspace_id=workspace_id,
-                object_type=target.object_type,
-                object_name=target.object_name,
-                case_ids=tuple(item.bad_case_id for item in match.included),
-            )
             newest = _newest_link_by_case(links, label.aliases)
-            for item in match.included:
-                fact = facts_by_id.get(item.bad_case_id)
-                if fact is None:
-                    continue
-                link = newest.get(item.bad_case_id)
+            case_ids = {
+                case_id
+                for case_id, link in newest.items()
+                if link.report_schema_version == REPORT_SCHEMA_VERSION
+            }
+            sessions = {facts_by_id[case_id].session_id for case_id in case_ids}
+            if resolution is None:
+                unresolved_versions.add(version)
+            else:
+                association, match = await self._evaluate_resolved(
+                    target,
+                    version,
+                    resolution,
+                    workspace_id=workspace_id,
+                    window_start=window_start,
+                    window_end=window_end,
+                )
+                sessions.update(item.session_id for item in association.sessions)
+                case_ids.update(item.bad_case_id for item in match.included)
+            associated_sessions.update(sessions)
+            version_sessions[version] = frozenset(sessions)
+            for case_id in sorted(case_ids):
                 entries.append(
                     _entry(
-                        item,
                         target=target,
                         version=version,
                         display_version=label.display,
-                        fact=fact,
-                        link=link,
-                    ),
+                        fact=facts_by_id[case_id],
+                        link=newest.get(case_id),
+                    )
                 )
         return TargetAnalysis(
             target=target,
@@ -1047,7 +1064,9 @@ class TargetOverviewService:
             window_start=window_start,
             window_end=window_end,
         )
-        association = await self._matcher.associated_sessions(condition)
+        association = await self._matcher.associated_sessions(
+            condition, observed_revisions=condition.revision_candidates
+        )
         match = await self._matcher.potential_cases(condition, association, self._policy)
         return association, match
 
@@ -1080,7 +1099,6 @@ def _selected_versions(
 
 
 def _entry(
-    item: PotentialCase,
     *,
     target: EvolutionTargetRecord,
     version: str,
@@ -1091,7 +1109,7 @@ def _entry(
     """Combine one matcher row with the case facts and its newest attribution."""
     state = _state(link)
     return TargetCaseEntry(
-        bad_case_id=item.bad_case_id,
+        bad_case_id=fact.bad_case_id,
         target=target,
         version=version,
         session_id=fact.session_id,
@@ -1125,6 +1143,7 @@ def _version_options(analysis: TargetAnalysis) -> list[TargetVersionOption]:
 def _overview_item(analysis: TargetAnalysis) -> TargetOverviewItem:
     """Map one target analysis to its list contract."""
     return TargetOverviewItem(
+        attribution_skill_name=analysis.target.attribution_skill_name,
         target_id=analysis.target.id,
         object_type=analysis.target.object_type,
         object_name=analysis.target.object_name,

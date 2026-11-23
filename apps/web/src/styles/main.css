@@ -79,6 +79,16 @@ a {
   }
 }
 
+.type-chip.type-flow,
+.state-chip.flow {
+  color: var(--blue);
+}
+
+.type-chip.type-context,
+.state-chip.context {
+  color: var(--green);
+}
+
 /* The workspace shell fixes main's height and hides overflow, so the list page
    owns page-level scrolling. The full-width node keeps the scrollbar at the
    window edge; symmetric inline padding preserves the 1080px frame and its

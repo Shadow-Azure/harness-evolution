@@ -20,6 +20,7 @@ defineProps<{
   isPending: boolean;
   isUnreached: boolean;
   focusCluster?: string;
+  canWrite?: boolean;
 }>();
 defineEmits<{
   "missing-cluster-focus": [];
@@ -60,6 +61,7 @@ defineEmits<{
   <StepAttribution
     v-else-if="step?.key === 'attribution'"
     :wid="wid"
+    :can-write="canWrite"
     :step="step"
     :run="run"
   />

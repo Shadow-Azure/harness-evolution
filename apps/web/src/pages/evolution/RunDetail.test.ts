@@ -96,6 +96,8 @@ function run(overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard {
       reused: 9,
       clusters: 2,
       byCategory: {
+        flow: 0,
+        context: 0,
         model: 6,
         prompt: 5,
         error: 5,
@@ -333,6 +335,12 @@ function detail(
       pushedAt: "2026-10-27T12:00:00+08:00",
       pushError: null,
     },
+    attributionSkill: {
+      key: "root-cause-agent",
+      revision: 2,
+      contentHash: "b".repeat(64),
+      engine: "agent-skill-stub-v1",
+    },
     lastEventSeq: 0,
     steps: detailSteps(statuses),
     ...overrides,
@@ -536,6 +544,9 @@ describe("evolution run detail page", () => {
     expect(wrapper.text()).toContain("默认策略");
     expect(wrapper.text()).toContain("复用缓存归因");
     expect(wrapper.text()).toContain("潜在 bad case");
+    expect(wrapper.get("[data-testid='run-attribution-skill']").text()).toContain(
+      "root-cause-agent@r2",
+    );
     expect(wrapper.text()).toContain("可归因 / 非该对象");
     expect(wrapper.text()).not.toContain("模型（多选）");
     expect(wrapper.find(".workspace-panel").exists()).toBe(false);
@@ -942,6 +953,8 @@ describe("evolution run detail page", () => {
                 reused: 9,
                 clusters: 1,
                 byCategory: {
+                  flow: 0,
+                  context: 0,
                   model: 6,
                   prompt: 5,
                   error: 5,
@@ -1001,9 +1014,51 @@ describe("evolution run detail page", () => {
     expect(wrapper.text()).toContain("查看执行日志");
   });
 
+  it("refreshes pending, classified and non-target counts while fresh reports arrive", async () => {
+    let count = 0;
+    server.use(
+      http.get(`${evolutionBase}/runs/:runId`, () => HttpResponse.json(detail(
+        run(), ["done", "done", "done", "active", "pending", "pending", "pending"],
+      ))),
+      http.get(`${evolutionBase}/runs/:runId/steps/range`, () => HttpResponse.json(rangeStep)),
+      http.get(`${evolutionBase}/runs/:runId/attribution-jobs`, () => HttpResponse.json({ items: [] })),
+      http.get(`${evolutionBase}/runs/:runId/steps/attribution`, () => HttpResponse.json({
+        ...attributionStep,
+        status: "active",
+        payload: {
+          summary: { potential: 8, reused: 0, fresh: count, nonTarget: count ? 1 : 0 },
+          rows: attributionRows.slice(0, count).map((row, index) => ({
+            ...row, category: index < 2 ? null : "flow", source: "fresh",
+            conclusion: ["non_target", "inconclusive"][index] ?? "attributed",
+          })),
+        },
+      })),
+    );
+    const wrapper = await mountPage();
+    const info = wrapper.get("[data-testid='run-info-panel']");
+    expect(info.text()).toContain("未归因 8");
+    expect(wrapper.text()).toContain("当前还没有归因报告");
+
+    // Refresh only the run shell, as the REST fallback does when SSE drops.
+    count = 4;
+    await activeQueryClient!.refetchQueries({
+      queryKey: queryKeys.evolutionRun(workspaceId, "evo-full-1"), exact: true,
+    });
+    await vi.waitFor(() => expect(info.text()).toContain("未归因 4"));
+    expect(info.text()).toContain("流程 2");
+    expect(info.text()).toContain("证据不足 1");
+    expect(wrapper.get(".type-inconclusive").text()).toBe("证据不足");
+    expect(info.text()).toContain("非该对象 1");
+    expect(info.text()).toContain("＝ 归因 2 · 复用缓存 0 · 本次新增 2");
+    expect(wrapper.get(".wz-stats").text()).toContain("8潜在 bad case4已出报告");
+    expect(wrapper.findAll("tbody tr")).toHaveLength(4);
+  });
+
   it("labels blocked attribution and exposes both automatic and manual retry", async () => {
     const nextRetryAt = new Date(2026, 9, 27, 12, 5, 0).toISOString();
     server.use(
+      http.get(`${evolutionBase}/runs/:runId/attribution-jobs`, () =>
+        new HttpResponse(null, { status: 503 })),
       http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
@@ -1043,7 +1098,7 @@ describe("evolution run detail page", () => {
           detail: "0 条",
           payload: {
             summary: {
-              potential: 0,
+              potential: 28,
               reused: 0,
               fresh: 0,
               nonTarget: 0,
@@ -1066,9 +1121,11 @@ describe("evolution run detail page", () => {
     );
     expect(wrapper.get("[data-testid='run-retry']").text()).toBe("重试");
     expect(wrapper.get("[data-step-key='clusters']").attributes("disabled")).toBeDefined();
-    expect(wrapper.text()).toContain("没有需要归因的潜在 bad case");
-    expect(wrapper.text()).toContain("16 / —");
-    expect(wrapper.text()).toContain("未归因 12");
+    expect(wrapper.text()).toContain("当前还没有归因报告");
+    expect(wrapper.text()).toContain("归因任务进度读取失败");
+    expect(wrapper.text()).not.toContain("当前没有归因执行记录");
+    expect(wrapper.text()).toContain("0 / 0");
+    expect(wrapper.text()).toContain("未归因 28");
   });
 
   it("derives attributed and non-target counts from attribution rows for legacy runs", async () => {
@@ -1086,7 +1143,7 @@ describe("evolution run detail page", () => {
                 attributed: 3,
                 reused: 0,
                 clusters: 0,
-                byCategory: { model: 0, prompt: 0, error: 2 },
+                byCategory: { model: 0, prompt: 0, error: 2, flow: 0, context: 0 },
               },
             }),
             ["done", "done", "done", "done", "done", "done", "done"],

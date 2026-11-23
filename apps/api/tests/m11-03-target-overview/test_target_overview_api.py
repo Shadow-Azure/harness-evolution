@@ -92,12 +92,14 @@ async def seed_attribution(
     conclusion: str,
     category: str | None,
     updated_at: datetime,
+    report_schema_version: str | None = None,
 ) -> None:
     """Insert one probe link with explicit identity and attribution time."""
     async with database.transaction() as session:
         await session.execute(
             insert(probe_reports).values(
                 probe_id=probe_id,
+                report_schema_version=report_schema_version,
                 workspace_id=workspace_id,
                 session_id=session_id,
                 probe_type=probe_type,
@@ -1454,3 +1456,53 @@ async def test_body_hash_event_associates_through_a_bare_tag(
     assert body["stats"]["sessions"] == 5
     assert body["byVersion"][0]["version"] == "v2.0.0"
     assert body["byVersion"][0]["potential"] == 4
+
+
+async def test_workspace_counts_completed_reports_without_trace_revision(
+    target_overview_api: TargetOverviewApi,
+) -> None:
+    """Read real V2 reports once per case even with no observed revision or legacy status."""
+    api = target_overview_api
+    root = "session-unversioned-bound"
+    case_id = "case-unversioned-bound"
+    digest = "digest:" + "a" * 64
+    main = await seed_session(api.database, session_id=root, started_at=NOW)
+    await seed_event(api.database, agent_id=main, event_index=0, kind="skill", name="deep-research")
+    await seed_case(
+        api.database, workspace_id=WORKSPACE_A, session_id=root, case_id=case_id, created_at=NOW
+    )
+    for hour, conclusion in [(10, "attributed"), (11, "non_target")]:
+        await seed_attribution(
+            api.database,
+            probe_id=f"bound-{hour}",
+            session_id=root,
+            case_id=case_id,
+            object_version=digest,
+            conclusion=conclusion,
+            category=None,
+            updated_at=_at(hour, 0),
+            report_schema_version="probe-report/v2",
+        )
+    overview = await api.client.get(
+        f"/api/workspaces/{WORKSPACE_A}/overview/targets/cases",
+        params={**WINDOW, "targets": TARGET_SKILL},
+        headers=api.reader_a,
+    )
+    assert overview.status_code == 200
+    cases = [row for row in overview.json()["items"] if row["badCaseId"] == case_id]
+    assert [(row["attributionId"], row["state"]) for row in cases] == [("bound-11", "nonTarget")]
+    status = await api.client.get(
+        "/api/acquisition/status", params={"workspaceId": WORKSPACE_A}, headers=api.reader_a
+    )
+    assert status.status_code == 200
+    progress = status.json()["badCaseAnalysis"]
+    assert (progress["analyzed"], progress["nonIssue"], progress["issue"]) == (1, 1, 0)
+    assert progress["pending"] == progress["total"] - 1
+    other = await api.client.get(
+        "/api/acquisition/status", params={"workspaceId": WORKSPACE_C}, headers=api.reader_c
+    )
+    assert other.json()["badCaseAnalysis"]["total"] == other.json()["badCaseSync"]["total"] == 0
+    forbidden = await api.client.get(
+        "/api/acquisition/status", params={"workspaceId": WORKSPACE_B}, headers=api.reader_a
+    )
+    assert forbidden.status_code == 404

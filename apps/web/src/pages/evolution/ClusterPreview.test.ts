@@ -11,7 +11,6 @@ import {
   describe,
   expect,
   it,
-  vi,
 } from "vitest";
 
 import { createAppRouter } from "../../router";
@@ -56,7 +55,7 @@ function runDetail(status: RunStatus) {
       attributed: 2,
       reused: 0,
       clusters: 1,
-      byCategory: { model: 0, prompt: 2, error: 0 },
+      byCategory: { flow: 0, context: 0, model: 0, prompt: 2, error: 0 },
     },
     progress: {
       unit: completed ? 5 : 0,
@@ -92,7 +91,7 @@ function runDetail(status: RunStatus) {
   };
 }
 
-function rangeStep() {
+function rangeStep(cacheEnabled = true, attributionPackageId?: string) {
   return {
     key: "range",
     index: 0,
@@ -114,7 +113,8 @@ function rangeStep() {
           includeAfterObject: false,
           sameObjectOnly: true,
         },
-        cacheEnabled: true,
+        cacheEnabled,
+        attributionPackageId,
         workspaceId,
       },
       stats: { sessions: 1, badCases: 2, potential: 2 },
@@ -316,11 +316,15 @@ describe("cluster preview page", () => {
     wrapper.unmount();
   });
 
-  it("launches a full run with the persisted condition and follows its detail", async () => {
+  it.each([
+    { cacheEnabled: true, packageId: undefined },
+    { cacheEnabled: false, packageId: "uploaded-skill-2" },
+    { cacheEnabled: false, packageId: undefined },
+  ])("launches a full run preserving cache=$cacheEnabled and package=$packageId", async ({ cacheEnabled, packageId }) => {
     const bodies: Record<string, unknown>[] = [];
     server.use(
       http.get(detailPath, () => HttpResponse.json(runDetail("completed"))),
-      http.get(rangePath, () => HttpResponse.json(rangeStep())),
+      http.get(rangePath, () => HttpResponse.json(rangeStep(cacheEnabled, packageId))),
       http.get(clustersPath, () => HttpResponse.json(clustersStep())),
       http.get(attributionPath, () => HttpResponse.json(attributionStep())),
       http.get(
@@ -337,6 +341,9 @@ describe("cluster preview page", () => {
     );
 
     const { wrapper, router } = await mountPage();
+    const navigated = new Promise<string>((resolve) => {
+      router.afterEach((to) => resolve(to.path));
+    });
     await wrapper.get("[data-testid='cluster-launch-full']").trigger("click");
     await flushPromises();
     await flushPromises();
@@ -349,14 +356,12 @@ describe("cluster preview page", () => {
       from: "2026-10-01",
       to: "2026-10-31",
       mode: "full",
-      cacheEnabled: true,
+      cacheEnabled,
       policy: { preset: "default" },
     });
-    await vi.waitFor(() => {
-      expect(router.currentRoute.value.path).toBe(
-        `/workspaces/${workspaceId}/evolution/runs/run-full`,
-      );
-    });
+    if (packageId) expect(bodies[0]?.attributionPackageId).toBe(packageId);
+    else expect(bodies[0]).not.toHaveProperty("attributionPackageId");
+    expect(await navigated).toBe(`/workspaces/${workspaceId}/evolution/runs/run-full`);
     wrapper.unmount();
   });
 

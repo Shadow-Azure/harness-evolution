@@ -102,29 +102,29 @@ async def test_after_object_discovery_is_attributed_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unknown_order_is_non_target_without_category() -> None:
-    """An incomparable order cannot attribute the case to the object."""
+async def test_unknown_order_is_inconclusive_without_category() -> None:
+    """An incomparable order remains uncertain instead of claiming non-target."""
     result = await RuleBasedEngine().attribute(
         attribution_input(hit_reason="order_unknown", order_state="unknown"),
     )
 
-    assert result.conclusion == "non_target"
+    assert result.conclusion == "inconclusive"
     assert result.category is None
-    assert result.confidence == pytest.approx(0.2)
-    assert "非该对象问题" in result.reason
-    assert "不进簇" in result.reasoning
+    assert result.confidence == pytest.approx(0.0)
+    assert "证据不足" in result.reason
+    assert "不进入聚类" in result.reasoning
 
 
 @pytest.mark.asyncio
-async def test_empty_self_report_is_non_target_by_insufficient_evidence() -> None:
+async def test_empty_self_report_is_inconclusive_by_insufficient_evidence() -> None:
     """An included case with no title or description has no usable evidence."""
     result = await RuleBasedEngine().attribute(
         attribution_input(title="   ", description="  "),
     )
 
-    assert result.conclusion == "non_target"
+    assert result.conclusion == "inconclusive"
     assert result.category is None
-    assert result.confidence == pytest.approx(0.1)
+    assert result.confidence == pytest.approx(0.0)
     assert "证据不足" in result.reasoning
 
 

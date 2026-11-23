@@ -19,32 +19,34 @@ a CLI session: the real CLI's ``--no-session-persistence`` explicitly makes a
 session unavailable for ``--resume``, so the retry is a new call, not a resumed
 conversation.
 
-Credentials and model endpoints stay in ``~/.claude``; this module never reads
-them, never passes a key on the command line, and never logs stdout/stderr
-verbatim. Diagnostics are bounded and redacted before they become a
-``AgentProviderError`` detail or a health string.
+Analysis and edits use the deployment environment. Skill calls project only
+their allowed settings into a private home and sandbox. The shared runner
+keeps credentials off argv and bounds stderr for diagnostics.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import math
 import os
 import shutil
-import signal
-import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, Protocol
+from typing import TYPE_CHECKING, Any, Final
 
+from app.third_party_api.ai_agent import claude_skill
 from app.third_party_api.ai_agent.base import (
     ANALYZE_TIMEOUT_SECONDS,
     EDIT_TIMEOUT_SECONDS,
     PERMISSION_MODE,
     AIAgentProvider,
+)
+from app.third_party_api.ai_agent.claude_cli import (
+    AsyncioClaudeCliRunner,
+    ClaudeCliResult,
+    ClaudeCliRunner,
 )
 from app.third_party_api.ai_agent.contracts import (
     AgentCallTrace,
@@ -55,6 +57,7 @@ from app.third_party_api.ai_agent.contracts import (
     EditRequest,
     EditResult,
     ProviderHealth,
+    SkillRunRequest,
 )
 from app.third_party_api.ai_agent.edits import EditPlan
 from app.third_party_api.ai_agent.submission import (
@@ -88,9 +91,6 @@ HEALTH_TIMEOUT_SECONDS: Final = 10.0
 CANCELLED_EXIT_CODE: Final = 143
 """128+SIGTERM; a CLI killed by a supervisor rather than a real analysis failure."""
 
-_GRACE_SECONDS: Final = 5.0
-"""Seconds between the process-group SIGINT and the SIGKILL escalation."""
-
 _MAX_DETAIL_CHARS: Final = 1_000
 """Upper bound for a redacted diagnostic carried by a provider error."""
 
@@ -99,146 +99,6 @@ _MAX_VERSION_CHARS: Final = 120
 
 _MAX_SETTINGS_BYTES: Final = 1024 * 1024
 """Settings files larger than this are ignored by the auth-source probe."""
-
-
-@dataclass(frozen=True, slots=True)
-class ClaudeCliResult:
-    """Captured output from one Claude CLI process.
-
-    ``cancelled`` is set by the default runner when the call was stopped by the
-    provider (timeout, cancellation, or escalation). It is separate from
-    ``returncode`` because a killed process may report a negative signal code
-    or a shell-style ``143``.
-    """
-
-    returncode: int
-    stdout: str
-    stderr: str
-    cancelled: bool = False
-
-
-class ClaudeCliRunner(Protocol):
-    """Injectable transport for one Claude CLI invocation."""
-
-    async def run(
-        self,
-        argv: Sequence[str],
-        *,
-        cwd: Path,
-        env: Mapping[str, str],
-        timeout_seconds: float,
-    ) -> ClaudeCliResult:
-        """Run ``argv`` in ``cwd`` and return its captured output."""
-        ...
-
-
-class _ManagedProcess(Protocol):
-    """Structural view of the subprocess fields process management needs."""
-
-    @property
-    def pid(self) -> int:
-        """Return the child process id."""
-        ...
-
-    @property
-    def returncode(self) -> int | None:
-        """Return the exit code, or ``None`` while still running."""
-        ...
-
-    async def wait(self) -> int:
-        """Wait for the process to exit and return its code."""
-        ...
-
-    async def communicate(self) -> tuple[bytes, bytes]:
-        """Collect stdout/stderr until EOF."""
-        ...
-
-    def terminate(self) -> None:
-        """Ask the process to stop (non-POSIX fallback)."""
-        ...
-
-    def kill(self) -> None:
-        """Force the process to stop (non-POSIX fallback)."""
-        ...
-
-
-class AsyncioClaudeCliRunner:
-    """Default runner: one process group with SIGINT→SIGKILL escalation."""
-
-    def __init__(self, *, grace_seconds: float = _GRACE_SECONDS) -> None:
-        """Bind the grace period used between SIGINT and SIGKILL."""
-        if grace_seconds < 0:
-            raise ValueError("grace_seconds must not be negative")
-        self._grace_seconds = grace_seconds
-
-    async def run(
-        self,
-        argv: Sequence[str],
-        *,
-        cwd: Path,
-        env: Mapping[str, str],
-        timeout_seconds: float,
-    ) -> ClaudeCliResult:
-        """Run the CLI and stop its whole process group on timeout/cancellation."""
-        if timeout_seconds <= 0:
-            raise ValueError("timeout_seconds must be positive")
-        process = await asyncio.create_subprocess_exec(
-            *argv,
-            cwd=str(cwd),
-            env=dict(env),
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
-        )
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=timeout_seconds,
-            )
-        except TimeoutError:
-            return await self._terminate(process)
-        except asyncio.CancelledError:
-            await self._terminate(process)
-            raise
-        return ClaudeCliResult(
-            returncode=process.returncode if process.returncode is not None else -1,
-            stdout=stdout.decode(errors="replace"),
-            stderr=stderr.decode(errors="replace"),
-        )
-
-    async def _terminate(self, process: _ManagedProcess) -> ClaudeCliResult:
-        """Send SIGINT to the group, then SIGKILL after the grace period."""
-        _signal_process_group(process, signal.SIGINT)
-        try:
-            await asyncio.wait_for(process.wait(), timeout=self._grace_seconds)
-        except TimeoutError:
-            _signal_process_group(process, signal.SIGKILL)
-            if process.returncode is None:
-                await process.wait()
-        returncode = process.returncode if process.returncode is not None else -1
-        return ClaudeCliResult(
-            returncode=returncode,
-            stdout="",
-            stderr="",
-            cancelled=True,
-        )
-
-
-def _signal_process_group(process: _ManagedProcess, sig: signal.Signals) -> None:
-    """Signal the whole child group, treating an already-gone process as done."""
-    if process.returncode is not None:
-        return
-    if sys.platform == "win32":
-        if sig == signal.SIGKILL:
-            process.kill()
-        else:
-            process.terminate()
-        return
-    try:
-        os.killpg(os.getpgid(process.pid), sig)
-    except OSError:
-        return
 
 
 @dataclass(frozen=True, slots=True)
@@ -292,6 +152,21 @@ class ClaudeCodeProvider(AIAgentProvider):
         version strings, and the list is recorded for observability only.
         """
         return self._capabilities
+
+    def skill_model_identity(self, model: str) -> dict[str, str]:
+        return claude_skill.model_identity(model, self._settings_file())
+
+    async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict[str, Any]) -> int:
+        """Invoke one slash command in its isolated attempt with the shared CLI runner."""
+        return await claude_skill.run(
+            request,
+            diagnostics,
+            self._runner,
+            self._binary(),
+            self._settings_file(),
+            allow_path_fallback=not self.settings
+            or self.settings.ai_agent_claude_bin == DEFAULT_CLAUDE_BIN,
+        )
 
     async def analyze(self, request: AnalysisRequest) -> AnalysisResult:
         """Run one headless analysis and collect it through the submission channel."""
@@ -591,35 +466,10 @@ class ClaudeCodeProvider(AIAgentProvider):
         return tuple(argv)
 
     def _binary(self) -> str:
-        """Resolve the configured CLI path with ``~`` expansion."""
-        settings = self.settings
-        configured = settings.ai_agent_claude_bin if settings is not None else DEFAULT_CLAUDE_BIN
-        return str(Path(configured).expanduser())
+        return claude_binary(self.settings)
 
     def _settings_file(self) -> Path:
-        """Return the deployment settings file path.
-
-        Precedence is the test override, the explicit
-        ``HE_AI_AGENT_CLAUDE_SETTINGS`` deployment path, ``CLAUDE_CONFIG_DIR``
-        (the directory the CLI itself reads), then the legacy ``~/.claude``.
-        The explicit path is what makes the service account independent of the
-        deploy user's home; the config directory covers CLI-side auxiliary
-        files such as plugins and session caches.
-        """
-        if self._settings_path_override is not None:
-            return self._settings_path_override
-        settings = self.settings
-        configured = (
-            settings.ai_agent_claude_settings.strip()
-            if settings is not None and settings.ai_agent_claude_settings
-            else ""
-        )
-        if configured:
-            return Path(configured).expanduser()
-        config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
-        if config_dir:
-            return Path(config_dir).expanduser() / CLAUDE_SETTINGS_FILENAME
-        return Path.home() / ".claude" / CLAUDE_SETTINGS_FILENAME
+        return self._settings_path_override or claude_settings_file(self.settings)
 
     def _bare_mode_auth_hint(self) -> str:
         """Name the bare-mode credential *source*, never a credential value.
@@ -650,6 +500,21 @@ def _is_cancelled(result: ClaudeCliResult) -> bool:
     that translated SIGTERM into its own exit status.
     """
     return result.cancelled or result.returncode == CANCELLED_EXIT_CODE
+
+
+def claude_binary(settings: Settings | None) -> str:
+    """Resolve the shared service binary installed by Deploy."""
+    return str(Path(settings.ai_agent_claude_bin if settings else DEFAULT_CLAUDE_BIN).expanduser())
+
+
+def claude_settings_file(settings: Settings | None) -> Path:
+    """Resolve the explicit service settings, CLI config directory, or user default."""
+    configured = (settings.ai_agent_claude_settings or "").strip() if settings else ""
+    if configured:
+        return Path(configured).expanduser()
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
+    directory = Path(config_dir).expanduser() if config_dir else Path.home() / ".claude"
+    return directory / CLAUDE_SETTINGS_FILENAME
 
 
 def _binary_available(binary: str) -> bool:

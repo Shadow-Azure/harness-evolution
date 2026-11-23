@@ -7,6 +7,7 @@ import type {
   EvolutionStepIteration,
   StepRound,
 } from "@harness/contracts";
+import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
@@ -46,7 +47,7 @@ const run = {
     attributed: 1,
     reused: 0,
     clusters: 1,
-    byCategory: { model: 0, prompt: 0, error: 1 },
+    byCategory: { flow: 0, context: 0, model: 0, prompt: 0, error: 1 },
   },
   progress: {
     unit: 5,
@@ -610,7 +611,11 @@ describe("run detail conformance", () => {
         ],
       },
     } satisfies EvolutionStepAttribution;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { initialData: { items: [] }, staleTime: Infinity } },
+    });
     const wrapper = mount(StepAttribution, {
+      global: { plugins: [[VueQueryPlugin, { queryClient }]] },
       props: { wid: "ws-test", step: attribution, run },
     });
 

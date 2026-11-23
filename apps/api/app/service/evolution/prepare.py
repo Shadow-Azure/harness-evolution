@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Literal, Protocol, cast
 from urllib.parse import urlsplit
 
@@ -28,6 +27,7 @@ from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
 from app.service.evolution.ai_observability import AiAgentCall
 from app.service.evolution.attribution import AttributionRunner, AttributionRunSummary
+from app.service.evolution.attribution_jobs import candidate_snapshot
 from app.service.evolution.cluster import (
     HYBRID_ALGORITHM,
     LEXICAL_ALGORITHM,
@@ -60,15 +60,11 @@ from app.service.evolution.events import (
 )
 from app.service.evolution.git_failures import classify_git_failure
 from app.service.evolution.potential import (
-    AnchorSource,
-    HitReason,
     MatchCondition,
-    OrderState,
     PotentialCase,
     PotentialMatcher,
     ResolvedPolicy,
     SessionAssociation,
-    TriggerPoint,
     resolve_policy,
     resolve_window,
 )
@@ -124,6 +120,13 @@ class WorkspacePreparer(Protocol):
         """Prepare one isolated repository workspace."""
 
 
+class AttributionBatchDispatcher(Protocol):
+    """Durable attribution lane shared with manual and scheduled entrypoints."""
+
+    async def run_for_prepare(self, run: EvolutionRunRecord) -> AttributionRunSummary:
+        """Submit or join the run's idempotent attribution batch."""
+
+
 @dataclass(slots=True)
 class _PrepareContext:
     """Mutable facts shared across the seven prepare stages."""
@@ -157,6 +160,8 @@ class EvolutionPrepareService:
         resolver: TargetVersionResolver | None = None,
         agent: AIAgentProvider | None = None,
         failure_policy: Literal["strict", "degrade"] = "degrade",
+        *,
+        attribution_jobs: AttributionBatchDispatcher | None = None,
     ) -> None:
         """Bind persistence, the shared matcher, the runner, git workspaces, and the agent.
 
@@ -172,6 +177,7 @@ class EvolutionPrepareService:
         self._attribution = attribution
         self._workspaces = workspaces
         self._events = events
+        self._attribution_jobs = attribution_jobs
         self._resolver = resolver
         self._agent = agent
         self._failure_policy = failure_policy
@@ -309,29 +315,34 @@ class EvolutionPrepareService:
 
         await checkpoint(self._runs, run.id)
         if resolved is not None and run.progress_unit < 4:
-            candidates = await self._candidates_from_rows(run)
-            for offset in range(0, len(candidates), ATTRIBUTION_EVENT_BATCH):
-                batch = candidates[offset : offset + ATTRIBUTION_EVENT_BATCH]
-                try:
-                    summary = await self._attribution.run(
-                        run,
-                        batch,
-                        run.cache_enabled,
-                        target_revision=resolved.target_revision,
-                    )
-                except RunBlocked:
-                    raise
-                except (ConfigError, ValueError):
-                    raise
-                except Exception as exc:
-                    raise RunBlocked(
-                        "attribution failed",
-                        stage="attribution",
-                        error_stage="prepare",
-                        retryable=True,
-                    ) from exc
+            if self._attribution_jobs is not None:
+                summary = await self._attribution_jobs.run_for_prepare(run)
                 await self._record_attribution_batches(run, summary, job.id)
                 await checkpoint(self._runs, run.id)
+            else:
+                candidates = await candidate_snapshot(run, self._candidates, self._attributions)
+                for offset in range(0, len(candidates), ATTRIBUTION_EVENT_BATCH):
+                    batch = candidates[offset : offset + ATTRIBUTION_EVENT_BATCH]
+                    try:
+                        summary = await self._attribution.run(
+                            run,
+                            batch,
+                            run.cache_enabled,
+                            target_revision=resolved.target_revision,
+                        )
+                    except RunBlocked:
+                        raise
+                    except (ConfigError, ValueError):
+                        raise
+                    except Exception as exc:
+                        raise RunBlocked(
+                            "attribution failed",
+                            stage="attribution",
+                            error_stage="prepare",
+                            retryable=True,
+                        ) from exc
+                    await self._record_attribution_batches(run, summary, job.id)
+                    await checkpoint(self._runs, run.id)
             rows = await self._candidates.list(run.id)
             stats = dict(run.stats)
             stats.update(
@@ -750,50 +761,6 @@ class EvolutionPrepareService:
                 message="prepared run has an incomplete round snapshot",
             )
 
-    async def _candidates_from_rows(
-        self,
-        run: EvolutionRunRecord,
-    ) -> tuple[PotentialCase, ...]:
-        """Reconstruct included matcher rows from stored candidates on retry."""
-        rows = await self._candidates.list(run.id)
-        included = [row for row in rows if row.included]
-        evidence = await self._attributions.load_bad_case_evidence(
-            tuple(row.bad_case_id for row in included),
-        )
-        candidates: list[PotentialCase] = []
-        for row in included:
-            case = evidence.get(row.bad_case_id)
-            candidates.append(
-                PotentialCase(
-                    bad_case_id=row.bad_case_id,
-                    session_id=row.session_id,
-                    object_name=run.target_name,
-                    bad_case_type=case.bad_case_type if case is not None else "self",
-                    trigger_at=row.case_trigger_at or row.created_at,
-                    hit_reason=cast(HitReason, row.included_reason),
-                    order_state=cast(OrderState, row.order_state),
-                    included=True,
-                    object_trigger=_trigger_point(
-                        row.object_trigger_agent_id,
-                        row.object_trigger_event_index,
-                        row.object_trigger_at,
-                    ),
-                    case_trigger=(
-                        _trigger_point(
-                            row.case_trigger_agent_id,
-                            row.case_trigger_event_index,
-                            row.case_trigger_at,
-                        )
-                        if row.case_trigger_agent_id is not None
-                        or row.case_trigger_event_index is not None
-                        or row.case_trigger_at is not None
-                        else None
-                    ),
-                    anchor_source=cast(AnchorSource, row.case_anchor_kind or "unknown"),
-                ),
-            )
-        return tuple(candidates)
-
     async def _attributed_count(self, run: EvolutionRunRecord) -> int:
         """Count distinct included bad cases with an attributed conclusion."""
         rows = await self._attributions.list_clusterable_probes(run.id)
@@ -802,7 +769,7 @@ class EvolutionPrepareService:
     async def _category_counts(self, run: EvolutionRunRecord) -> dict[str, int]:
         """Count attributed probes by their closed category."""
         rows = await self._attributions.list_clusterable_probes(run.id)
-        counts = {"model": 0, "prompt": 0, "error": 0}
+        counts = dict.fromkeys(TYPE_CONFIDENCE, 0)
         for _, attribute_type, _ in rows:
             if attribute_type in counts:
                 counts[attribute_type] += 1
@@ -926,20 +893,6 @@ def _candidate_writes(
             ),
         )
         for case in cases
-    )
-
-
-def _trigger_point(
-    agent_id: str | None,
-    event_index: int | None,
-    triggered_at: datetime | None,
-) -> TriggerPoint:
-    """Rebuild one stored trigger coordinate without inventing order."""
-    return TriggerPoint(
-        agent_id=agent_id,
-        event_index=event_index,
-        triggered_at=triggered_at,
-        tree_index=None,
     )
 
 

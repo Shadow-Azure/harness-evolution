@@ -14,6 +14,7 @@ from app.db.crud.probe_query import ProbeQueryRepository
 from app.db.models.evolution import evolution_runs
 from app.errors import AppError
 from app.service.evolution.attribution import AttributionRunner, RuleBasedEngine
+from app.service.evolution.engine.contracts import RunBlocked
 from app.service.evolution.prepare import EvolutionPrepareService
 from app.service.evolution.stages import (
     EvolutionStageService,
@@ -23,6 +24,7 @@ from app.service.evolution.stages import (
 )
 from app.service.evolution.state import STEP_KEYS
 from tests.evolution.test_m10_04_prepare import (
+    FailingEngine,
     FakeWorkspacePreparer,
     _create_run,
     _job,
@@ -98,6 +100,51 @@ async def test_v2_run_returns_all_seven_steps_in_order(harness: Harness) -> None
     assert cluster.cases[0].bad_case_id == "case-m10-04"
     iteration = await service.step("run-m10-04", "iteration")
     assert iteration.payload.rounds[0].case_count == 1  # type: ignore[union-attr]
+
+
+async def test_unreported_candidate_counts_as_potential_but_not_fresh(harness: Harness) -> None:
+    await _seed_self_case(harness)
+    await _create_run(harness.database)
+    reports = AttributionRepository(harness.database)
+    prepare = EvolutionPrepareService(
+        EvolutionRepository(harness.database),
+        EvolutionRunCandidateRepository(harness.database),
+        reports,
+        harness.matcher,
+        AttributionRunner(reports, engine_factory=lambda _: FailingEngine()),
+        FakeWorkspacePreparer(),
+    )
+    with pytest.raises(RunBlocked):
+        await prepare.handle(_job())
+    step = await _stage_service(harness.database).step("run-m10-04", "attribution")
+    assert step.key == "attribution"
+    assert step.payload.summary.potential == 1
+    assert step.payload.summary.fresh == 0
+    assert step.payload.rows == []
+
+
+async def test_step_keeps_inconclusive_reports_out_of_non_target_count(harness: Harness) -> None:
+    """A V2 insufficient-evidence report is completed and distinct from a negative result."""
+    from sqlalchemy import update
+
+    from app.db.models.domain import probe_reports
+
+    await _seed_self_case(harness)
+    await _create_run(harness.database)
+    await _prepare_service(harness.database, harness).handle(_job())
+    async with harness.database.transaction() as session:
+        await session.execute(
+            update(probe_reports)
+            .where(probe_reports.c.created_run_id == "run-m10-04")
+            .values(conclusion="inconclusive", attribute_type=None)
+        )
+    step = await _stage_service(harness.database).step("run-m10-04", "attribution")
+    assert step.key == "attribution"
+    (row,) = step.payload.rows
+    assert row.conclusion == "inconclusive"
+    assert row.category is None
+    assert step.payload.summary.non_target == 0
+    assert step.payload.summary.fresh == 1
 
 
 async def test_historical_session_rows_fall_back_to_bounded_title(

@@ -13,7 +13,7 @@ depends:
   - m11-04
   - m11-07
 priority: P0
-status: in-progress
+status: done
 scope:
   - tests/**
   - fixtures/**

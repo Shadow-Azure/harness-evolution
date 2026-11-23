@@ -11,6 +11,8 @@ defineProps<{
 }>();
 
 function typeLabel(type: ProbePreviewItem["attributeType"]): string {
+  if (type === "flow") return "流程";
+  if (type === "context") return "上下文";
   if (type === "prompt") return "prompt";
   if (type === "model") return "模型";
   return "错误";

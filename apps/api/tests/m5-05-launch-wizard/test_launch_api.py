@@ -1,12 +1,17 @@
 """Launch wizard API contract: probe preview, run creation, cluster previews."""
 
+import asyncio
+import hashlib
 import json
+import os
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import httpx
+import pytest
 import pytest_asyncio
 from pydantic import SecretStr
 from sqlalchemy import insert, select
@@ -25,8 +30,10 @@ from app.db.models.domain import (
 )
 from app.db.models.evolution import evolution_runs
 from app.main import create_app
+from app.service.evolution.attribution import AttributionInput, AttributionResult, RuleBasedEngine
 from app.third_party_api.git.workspace import PreparedWorkspace
-from tests.target_content_support import FakeTargetVersionResolver
+from app.utils.definition import definition_file_hash
+from tests.target_content_support import FakeDefinitionSource, FakeTargetVersionResolver
 
 ADMIN_TEMP_PASSWORD = "launch-wizard-admin-temp-password"
 ADMIN_PASSWORD = "launch-wizard-admin-password"
@@ -160,7 +167,7 @@ def _analysis_values(
     }
 
 
-async def _seed_hits(app: Any) -> None:
+async def _seed_hits(app: Any, revision: str = "tag:v2.0.0") -> None:
     """Insert divergent reported objects, probe root causes, and foreign targets."""
     await ensure_fixture_external_tables(app.state.database)
     async with app.state.database.transaction() as session:
@@ -255,7 +262,7 @@ async def _seed_hits(app: Any) -> None:
                     "kind": "skill",
                     "name": "deep-research",
                     "object_version": "v2.0.0",
-                    "object_revision": "tag:v2.0.0",
+                    "object_revision": revision,
                     "triggered_at": datetime(2026, 8, 25, 8, 0, tzinfo=UTC),
                 },
                 {
@@ -266,7 +273,7 @@ async def _seed_hits(app: Any) -> None:
                     "kind": "skill",
                     "name": "deep-research",
                     "object_version": "v2.0.0",
-                    "object_revision": "tag:v2.0.0",
+                    "object_revision": revision,
                     "triggered_at": datetime(2026, 9, 5, 8, 0, tzinfo=UTC),
                 },
                 {
@@ -277,7 +284,7 @@ async def _seed_hits(app: Any) -> None:
                     "kind": "skill",
                     "name": "reported-object",
                     "object_version": "v2.0.0",
-                    "object_revision": "tag:v2.0.0",
+                    "object_revision": revision,
                     "triggered_at": datetime(2026, 9, 20, 8, 0, tzinfo=UTC),
                 },
             ],
@@ -376,12 +383,27 @@ class _FakeWorkspacePreparer:
 
 
 @pytest_asyncio.fixture
-async def launch_api(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
+async def launch_api(
+    tmp_path: Path, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[httpx.AsyncClient]:
     """Provide an authenticated admin client over a migrated, seeded app."""
+    from app.third_party_api.ai_agent import factory
+    from tests.attribution.test_local_runtime import ScriptAgent
+
+    if getattr(request, "param", None) == "provider":
+        monkeypatch.setitem(factory._REGISTRY, ScriptAgent.provider_id, ScriptAgent)
+        monkeypatch.setenv("AI_AGENT_PROVIDER", ScriptAgent.provider_id)
+    revision = (
+        f"digest:{definition_file_hash(FakeDefinitionSource.body)}"
+        if getattr(request, "param", None)
+        else "tag:v2.0.0"
+    )
     app = create_app(
         Settings(
             db_dialect=DatabaseDialect.SQLITE,
             data_dir=tmp_path,
+            attribution_package_dir=tmp_path / "attribute",
+            attribution_agent=getattr(request, "param", None),
             jwt_secret=SecretStr("launch-wizard-api-signing-secret-sufficient"),
             admin_username="admin",
             admin_password=SecretStr(ADMIN_TEMP_PASSWORD),
@@ -391,7 +413,8 @@ async def launch_api(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
             ai_agent_failure_policy="degrade",
         ),
         git_workspaces=_FakeWorkspacePreparer(tmp_path),
-        target_version_resolver=FakeTargetVersionResolver(),
+        target_version_resolver=FakeTargetVersionResolver(revisions={"v2.0.0": revision}),
+        definition_source=FakeDefinitionSource(),
     )
     transport = httpx.ASGITransport(app=app)
     client = httpx.AsyncClient(transport=transport, base_url="http://testserver")
@@ -413,7 +436,7 @@ async def launch_api(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
                 json={"username": "admin", "password": ADMIN_PASSWORD},
             )
             client.headers["Authorization"] = f"Bearer {relogin.json()['accessToken']}"
-            await _seed_hits(app)
+            await _seed_hits(app, revision)
             yield client
     finally:
         await client.aclose()
@@ -423,6 +446,7 @@ def _query_body(**overrides: Any) -> dict[str, Any]:
     """Build one probe query body aimed at the seeded target."""
     body: dict[str, Any] = {
         "targetType": "skill",
+        "cacheEnabled": False,
         "targetName": "deep-research",
         "targetVersion": "v2.0.0",
         "from": "2026-08-01",
@@ -498,7 +522,14 @@ async def test_probe_query_returns_hit_statistics_and_rows(
         "unanalyzed": 0,
         "probes": 3,
         "usedProbes": 3,
-        "byAttributeType": {"model": 1, "prompt": 1, "error": 1, "nonIssue": 0},
+        "byAttributeType": {
+            "model": 1,
+            "prompt": 1,
+            "error": 1,
+            "flow": 0,
+            "context": 0,
+            "nonIssue": 0,
+        },
     }
     assert body["total"] == 3
     assert body["page"] == 1
@@ -678,11 +709,11 @@ async def test_start_run_rejects_window_and_empty_hits(
     )
     empty = await launch_api.post(
         "/api/evolution/runs",
-        json=_query_body(targetVersion="v9.9.9"),
+        json=_query_body(**{"from": "2026-01-01", "to": "2026-01-02"}),
     )
     reported_only = await launch_api.post(
         "/api/evolution/runs",
-        json=_query_body(targetName="reported-object"),
+        json=_query_body(targetName="reported-object", targetVersion="v9.9.9"),
     )
 
     assert inverted.status_code == 422
@@ -695,6 +726,119 @@ async def test_start_run_rejects_window_and_empty_hits(
     assert reported_run in {
         card["runId"] for card in runs.json()["running"] + runs.json()["history"]
     }
+
+
+async def test_editing_unbound_target_keeps_main_remote_validation(
+    launch_api: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Editing an upgraded target must not require a Git definition file until it binds a Skill."""
+    service = _app_of(launch_api).state.evolution_targets
+    validate = AsyncMock()
+    freeze = AsyncMock(side_effect=AssertionError("legacy edit loaded a definition"))
+    monkeypatch.setattr(service._git_remote, "validate", validate)
+    monkeypatch.setattr(service._definitions, "freeze", freeze)
+    route = "/api/workspaces/ws-default/evolution/targets"
+    response = await launch_api.get(route)
+    target = next(t for t in response.json()["items"] if t["id"] == "target-enabled")
+    body = {
+        key: target[key]
+        for key in (
+            "objectType",
+            "objectName",
+            "repoUrl",
+            "subDir",
+            "defaultRef",
+            "validationProjectId",
+            "testProjectId",
+            "enabled",
+        )
+    }
+    body["testProjectId"] = "edited-project"
+    edited = await launch_api.put(f"{route}/target-enabled", json=body)
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["attributionPackageId"] is None
+    validate.assert_awaited_once()
+    freeze.assert_not_awaited()
+
+
+async def test_unbound_production_target_computes_cache_misses_and_reuses_them(
+    launch_api: httpx.AsyncClient,
+) -> None:
+    """Legacy rule runs keep their production cache identity across the upgrade."""
+    workspace = "/api/workspaces/ws-default/evolution"
+    body = _query_body(mode="cluster_only", cacheEnabled=True)
+    preview_body = {
+        key: body[key]
+        for key in ("targetType", "targetName", "targetVersion", "from", "to", "cacheEnabled")
+    }
+    app = _app_of(launch_api)
+    for pass_index in range(2):
+        preview = await launch_api.post(f"{workspace}/preview/attribution", json=preview_body)
+        assert preview.status_code == 200, preview.text
+        summary = preview.json()["summary"]
+        assert preview.json()["usesBoundSkill"] is False
+        assert summary["potential"] > 0
+        assert summary["reused"] == (summary["potential"] if pass_index else 0)
+        assert summary["fresh"] == (0 if pass_index else summary["potential"])
+        launched = await launch_api.post(f"{workspace}/cluster-previews", json=body)
+        assert launched.status_code == 202, launched.text
+        job = await app.state.jobs.wait(launched.json()["jobId"])
+        assert job.status == "completed", job.error
+        history = await app.state.attribution_jobs.history(launched.json()["runId"])
+        assert history.items[0].observation.reused == summary["reused"]
+        assert history.items[0].observation.created == summary["fresh"]
+
+
+async def test_prepare_joins_paused_attribution_and_resumes_only_missing_cases(
+    launch_api: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pause finishes the in-flight case, prevents new calls, and resumes its missing tail."""
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls: list[str] = []
+
+    class SlowRule(RuleBasedEngine):
+        async def attribute(self, item: AttributionInput) -> AttributionResult:
+            calls.append(item.bad_case_id)
+            started.set()
+            await release.wait()
+            return await super().attribute(item)
+
+    app = _app_of(launch_api)
+    runner = app.state.attribution_jobs._runner
+    monkeypatch.setattr(runner, "_engine_factory", lambda _: SlowRule())
+    monkeypatch.setattr(runner, "_max_concurrency", 1)
+    api = "/api/workspaces/ws-default/evolution"
+    result = await launch_api.post(f"{api}/cluster-previews", json=_query_body(mode="cluster_only"))
+    assert result.status_code == 202, result.text
+    run_id = result.json()["runId"]
+    path = f"{api}/runs/{run_id}"
+    try:
+        await asyncio.wait_for(started.wait(), 5)
+        paused = await launch_api.post(f"{path}/pause")
+        assert paused.status_code == 200, paused.text
+        refused = await launch_api.post(f"{path}/attribution-jobs")
+        assert refused.status_code == 409, refused.text
+        (child,) = (await app.state.attribution_jobs.history(run_id)).items
+        retry = await launch_api.post(f"{path}/attribution-jobs/{child.job_id}/retry")
+        assert retry.status_code == 409, retry.text
+    finally:
+        release.set()
+    yielded = await app.state.jobs.wait(result.json()["jobId"])
+    assert yielded.result["yielded"] is True
+    assert len(calls) == 1
+    resumed = await launch_api.post(f"{path}/resume")
+    assert resumed.status_code == 200, resumed.text
+    async with asyncio.timeout(10):
+        while True:
+            row = (await launch_api.get(f"{path}")).json()
+            if row["status"] == "completed":
+                break
+            await asyncio.sleep(0.05)
+    assert len(calls) > 1
+    assert len(set(calls)) == len(calls)
 
 
 async def test_start_run_accepts_and_snapshots_query(
@@ -747,8 +891,14 @@ async def test_start_run_accepts_and_snapshots_query(
     assert str(row["window_from"]) == "2026-08-01"
     assert str(row["window_to"]) == "2026-09-30"
     assert row["models"] == []
-    assert row["cache_enabled"] is True
+    assert row["cache_enabled"] is False
+    assert row["attribution_skill_key"] == "platform-default"
+    assert row["attribution_skill_revision"] == 1
+    assert row["attribution_skill_content_hash"] == (
+        "7e30d5d3721030420842f9e1f1b08e9a1c33644eb7a78eca82bbd06abbca525d"
+    )
     assert row["potential_policy"] == {
+        "legacyRule": True,
         "preset": "default",
         "includeSelfReport": True,
         "includeAfterObject": True,
@@ -797,6 +947,7 @@ async def test_start_run_snapshots_custom_policy_and_cache_switch(
         )
     assert row["cache_enabled"] is False
     assert row["potential_policy"] == {
+        "legacyRule": True,
         "preset": "custom",
         "includeSelfReport": True,
         "includeAfterObject": True,
@@ -878,14 +1029,14 @@ async def test_cluster_preview_creates_cluster_only_run(
 
     empty = await launch_api.post(
         "/api/evolution/cluster-previews",
-        json=_query_body(mode="cluster_only", targetVersion="v9.9.9"),
+        json=_query_body(mode="cluster_only", **{"from": "2026-01-01", "to": "2026-01-02"}),
     )
     assert empty.status_code == 409
     assert empty.json()["error"]["code"] == "NO_ASSOCIATED_SESSIONS"
 
     response = await launch_api.post(
         "/api/evolution/cluster-previews",
-        json=_query_body(mode="cluster_only"),
+        json=_query_body(mode="cluster_only", targetVersion="v9.9.9"),
     )
     assert response.status_code == 202
     body = response.json()
@@ -926,3 +1077,217 @@ async def test_launch_rejects_unregistered_engine_before_writes(
     runs = await launch_api.get("/api/evolution/runs")
     assert runs.json()["running"] == []
     assert runs.json()["history"] == []
+
+
+@pytest.mark.parametrize(
+    "launch_api",
+    ["claude" if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1" else "provider"],
+    indirect=True,
+)
+@pytest.mark.parametrize(
+    "selection",
+    ["other"]
+    if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1"
+    else ["bound", "implicit", "other"],
+)
+async def test_local_attribution_from_wizard_to_cluster(
+    launch_api: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    selection: str,
+) -> None:
+    """Start through HTTP and wait for the real job, report transaction and clustering."""
+    import io
+    import zipfile
+
+    from app.service.evolution.attribution_skill_packages import AttributionSkillPackageService
+    from tests.attribution.test_local_runtime import Source
+
+    app = _app_of(launch_api)
+    # The binding must use its saved file even if runtime Git reads are unavailable.
+    runtime_source = Source()
+    app.state.local_attribution.source = runtime_source
+    workspace = "/api/workspaces/ws-default"
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr(
+            "SKILL.md",
+            "---\nname: acceptance-skill\ndescription: Synthetic case acceptance\n---\n"
+            "For this synthetic case classify the reported object as flow. "
+            "Use the supplied writer to produce probe_report.json with the reported version.",
+        )
+
+    uploaded = await launch_api.post(
+        f"{workspace}/attribution-skill-packages",
+        files={"file": ("custom.zip", archive.getvalue(), "application/zip")},
+    )
+    assert uploaded.status_code == 201
+
+    runtime_read = runtime_source.read_file
+    offline = AsyncMock(side_effect=AssertionError("bound batch fetched the mutable ref"))
+    monkeypatch.setattr(runtime_source, "read_file", offline)
+
+    # Exercise the same atomic create used by the overview form.
+    old = await launch_api.get(f"{workspace}/evolution/targets")
+    target = next(t for t in old.json()["items"] if t["id"] == "target-enabled")
+    deleted = await launch_api.delete(f"{workspace}/evolution/targets/target-enabled")
+    assert deleted.status_code == 204
+    monkeypatch.setattr(app.state.evolution_targets._git_remote, "validate", AsyncMock())
+    body = {
+        k: v
+        for k, v in target.items()
+        if k not in {"id", "attributionSkillName", "attributionFailure", "definition"}
+    }
+    # Exercise the deployed default as well as an immutable uploaded package.
+    bound_id = "default-attribute-badcases" if selection == "bound" else uploaded.json()["id"]
+    bound_name = "attribute-badcases" if selection == "bound" else "acceptance-skill"
+    body["attributionPackageId"] = bound_id
+    created = await launch_api.post(f"{workspace}/evolution/targets", json=body)
+    assert created.status_code == 201, created.text
+    target_id = created.json()["id"]
+    assert created.json()["attributionSkillName"] == bound_name
+    protected = await launch_api.delete(f"{workspace}/attribution-skill-packages/{bound_id}")
+    assert protected.status_code == 409
+    async with asyncio.timeout(600 if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") else 15):
+        while True:
+            async with app.state.database.session() as session:
+                due = await session.scalar(
+                    select(evolution_targets.c.attribution_due).where(
+                        evolution_targets.c.id == target_id
+                    )
+                )
+            if due is None:
+                break
+            await asyncio.sleep(0.2)
+    before = await launch_api.get("/api/evolution/runs")
+    assert before.json()["running"] == before.json()["history"] == []
+    root = app.state.local_attribution.root("ws-default")
+    batches = root / "attribute_input/batches"
+    (binding_batch,) = list(batches.iterdir())
+    binding_inputs = [
+        json.loads(path.read_bytes()) for path in binding_batch.glob("*/manifest.json")
+    ]
+    offline.assert_not_awaited()
+    monkeypatch.setattr(runtime_source, "read_file", runtime_read)
+    assert binding_inputs
+    for manifest in binding_inputs:
+        definition = root / "attribute_source" / manifest["definitionKey"] / "definition.md"
+        assert definition.read_text() == created.json()["definition"]["preview"]
+        assert manifest["gitSource"]["commit"] == created.json()["definition"]["commit"]
+    assert all(
+        m["batchId"] == binding_batch.name and m["trigger"] == "target_binding"
+        for m in binding_inputs
+    )
+    assert all(m["skill"]["name"] == bound_name for m in binding_inputs)
+    preview_body = {
+        key: value
+        for key, value in _query_body(cacheEnabled=True).items()
+        if key in {"targetType", "targetName", "targetVersion", "from", "to", "cacheEnabled"}
+    }
+    cached = await launch_api.post(f"{workspace}/evolution/preview/attribution", json=preview_body)
+    assert cached.status_code == 200, cached.text
+    counts = cached.json()["summary"]
+    assert counts["bySkill"] == {bound_name: counts["potential"]}
+    assert counts["potential"] > 0 and counts["missing"] == counts["fresh"] == 0
+    cache_run = await launch_api.post(
+        f"{workspace}/evolution/cluster-previews",
+        json=_query_body(mode="cluster_only", cacheEnabled=True),
+    )
+    assert cache_run.status_code == 202, cache_run.text
+    assert (await app.state.jobs.wait(cache_run.json()["jobId"])).status == "completed"
+    assert set(batches.iterdir()) == {binding_batch}
+    assert not (root / "attribute_output" / cache_run.json()["runId"]).exists()
+    # A deployment can replace the shared writer between binding and launch.
+    # Only a newly selected package should pick up these changed bytes.
+    old_writer = app.state.local_attribution.packages.writer_path.read_bytes()
+    new_writer = tmp_path / "make_probe_report.py"
+    new_writer.write_bytes(old_writer + b"\n# Updated platform writer\n")
+    monkeypatch.setattr(
+        AttributionSkillPackageService, "writer_path", property(lambda _: new_writer)
+    )
+    body = _query_body()
+    if selection == "bound":
+        body["attributionPackageId"] = bound_id
+    elif selection == "other":
+        body["attributionPackageId"] = "default-attribute-badcases"
+    expected_skill = "attribute-badcases" if selection == "other" else bound_name
+    accepted = await launch_api.post("/api/evolution/runs", json=body)
+    assert accepted.status_code == 202
+    job = await app.state.jobs.wait(accepted.json()["jobId"])
+    assert job.status == "completed", job.error
+    range_step = await launch_api.get(
+        f"{workspace}/evolution/runs/{accepted.json()['runId']}/steps/range"
+    )
+    assert range_step.status_code == 200, range_step.text
+    assert range_step.json()["payload"]["condition"]["attributionPackageId"] == body.get(
+        "attributionPackageId"
+    )
+    async with app.state.database.session() as session:
+        reports = (
+            (
+                await session.execute(
+                    select(probe_reports).where(
+                        probe_reports.c.created_run_id == accepted.json()["runId"]
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+    assert reports
+    binding = await launch_api.get(f"{workspace}/evolution/targets/{target_id}/attribution-skill")
+    assert binding.status_code == 200
+    assert binding.json()["id"] == bound_id
+    assert binding.json()["contentHash"] == binding_inputs[0]["skill"]["snapshotHash"]
+    resources = await launch_api.get(f"{workspace}/attribution-skill-packages")
+    resource = next(item for item in resources.json()["items"] if item["id"] == bound_id)
+    if selection == "bound":
+        download = await launch_api.get(
+            f"{workspace}/attribution-skill-packages/{bound_id}/download"
+        )
+        assert download.status_code == 200
+        resource_bytes = download.content
+    else:
+        resource_bytes = archive.getvalue()
+    assert resource["contentHash"] == hashlib.sha256(resource_bytes).hexdigest()
+    for report in reports:
+        assert report["attribution_skill_name"] == expected_skill
+        assert report["attribution_engine"] == "local-agent-skill-v1"
+        case_id = report["execution_manifest"]["badCaseId"]
+        inputs = batches / accepted.json()["runId"] / case_id
+        manifest = json.loads((inputs / "manifest.json").read_bytes())
+        assert manifest["trigger"] == "evolution_run"
+        assert manifest["inputHash"] == report["execution_manifest"]["contextSnapshotHash"]
+        assert (
+            manifest["skill"]["snapshotHash"]
+            == report["execution_manifest"]["skill"]["contentHash"]
+        )
+        original = next(m for m in binding_inputs if m["badcaseId"] == case_id)
+        assert manifest["evidenceHash"] == original["evidenceHash"]
+        skill_hash = manifest["skill"]["snapshotHash"]
+        writer = root / "attribute_skill/snapshots" / skill_hash / "skill/make_probe_report.py"
+        if selection == "other":
+            assert skill_hash != original["skill"]["snapshotHash"]
+            assert writer.read_bytes() == new_writer.read_bytes()
+        else:
+            assert manifest["skill"] == original["skill"]
+            assert writer.read_bytes() == old_writer
+        canonical = report["report_payload"]["sourceReport"]
+        assert canonical["attribute_type"] in {
+            "prompt",
+            "model",
+            "flow",
+            "context",
+            "error",
+            "unknown",
+        }
+        if report["conclusion"] == "attributed":
+            assert report["attribute_type"] == canonical["attribute_type"]
+        else:
+            assert report["attribute_type"] is None
+        if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") != "1":
+            assert canonical["attribute_type"] == "flow"
+    refreshed = await launch_api.post(
+        f"{workspace}/evolution/preview/attribution", json=preview_body
+    )
+    assert refreshed.json()["summary"]["bySkill"] == {expected_skill: counts["potential"]}

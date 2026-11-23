@@ -213,8 +213,8 @@ async def test_cache_hits_and_ref_refresh_preserve_complete_objects(tmp_path: Pa
     assert first.base_commit is not None
 
     target = seed / "skills" / "deep-research"
-    (target / "SKILL.md").write_text("# Refreshed\n", encoding="utf-8")
     _git(seed, "switch", "feature")
+    (target / "SKILL.md").write_text("# Refreshed\n", encoding="utf-8")
     _git(seed, "add", ".")
     _git(seed, "commit", "-m", "refresh feature")
     refreshed = _git(seed, "rev-parse", "HEAD")

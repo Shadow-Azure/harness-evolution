@@ -110,6 +110,8 @@ class EvolutionRunAttributeStats(IdentityModel):
     model: int = 0
     prompt: int = 0
     error: int = 0
+    flow: int = 0
+    context: int = 0
 
 
 class EvolutionRunStats(IdentityModel):
@@ -185,6 +187,15 @@ class EvolutionRunWorkspace(IdentityModel):
     push_error: str | None
 
 
+class EvolutionRunAttributionSkill(IdentityModel):
+    """Immutable attribution Skill identity frozen when the run was launched."""
+
+    key: str
+    revision: int
+    content_hash: str
+    engine: str
+
+
 class EvolutionRunStep(IdentityModel):
     """One backend-owned stepper node with lazy-load eligibility."""
 
@@ -214,6 +225,7 @@ class EvolutionRunDetail(EvolutionRunCard):
     workspace: EvolutionRunWorkspace
     last_event_seq: int
     steps: list[EvolutionRunStep]
+    attribution_skill: EvolutionRunAttributionSkill | None
 
 
 class EvolutionRunList(IdentityModel):
@@ -271,9 +283,11 @@ def _stats(summary: EvolutionRunSummaryRecord) -> EvolutionRunStats:
         model=_non_negative_int(by_category.get("model")),
         prompt=_non_negative_int(by_category.get("prompt")),
         error=_non_negative_int(by_category.get("error")),
+        flow=_non_negative_int(by_category.get("flow")),
+        context=_non_negative_int(by_category.get("context")),
     )
     legacy_prepared = is_legacy_run(summary.run.attribution_engine)
-    used_probes = category.model + category.prompt + category.error
+    used_probes = sum(category.model_dump().values())
     if legacy_prepared:
         sessions = _non_negative_int(raw.get("sessions"))
         bad_cases = _non_negative_int(raw.get("probes"))
@@ -535,4 +549,16 @@ class EvolutionRunService:
             ),
             last_event_seq=last_event_seq,
             steps=_detail_steps(summary),
+            attribution_skill=(
+                EvolutionRunAttributionSkill(
+                    key=run.attribution_skill_key,
+                    revision=run.attribution_skill_revision,
+                    content_hash=run.attribution_skill_content_hash,
+                    engine=run.attribution_engine,
+                )
+                if run.attribution_skill_key is not None
+                and run.attribution_skill_revision is not None
+                and run.attribution_skill_content_hash is not None
+                else None
+            ),
         )

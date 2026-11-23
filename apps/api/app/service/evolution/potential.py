@@ -13,12 +13,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from functools import cmp_to_key
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field, field_validator
 
 from app.constants import POST_PROCESS_EVENT_INDEX
-from app.db.crud.attributions import attribution_cache_key
+from app.db.crud.attributions import AttributionRepository, attribution_cache_key
 from app.db.crud.evolution_targets import EvolutionTargetRecord
 from app.db.crud.potential import (
     AgentNodeRecord,
@@ -30,6 +30,7 @@ from app.db.crud.potential import (
     window_day_boundaries,
 )
 from app.errors import AppError, ErrorCode
+from app.service.evolution.attribution_contracts import default_execution_manifest, is_platform_rule
 from app.service.evolution.target_content import (
     TargetVersionResolver,
     resolve_legacy_target_version,
@@ -37,6 +38,9 @@ from app.service.evolution.target_content import (
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.schemas import IdentityModel
 from app.utils.time import now_shanghai
+
+if TYPE_CHECKING:
+    from app.service.evolution.attribution_skills import AttributionSkillService
 
 OrderState = Literal["comparable", "unknown"]
 HitReason = Literal[
@@ -316,13 +320,18 @@ class AttributionPreviewSummary(IdentityModel):
     """Cache reuse preview and the historical non-target reference count."""
 
     potential: int = Field(ge=0)
-    reused: int = Field(ge=0)
-    fresh: int = Field(ge=0)
+    reused: int | None = Field(ge=0)
+    fresh: int | None = Field(ge=0)
+    by_skill: dict[str, int] = Field(default_factory=dict)
+    missing: int = Field(default=0, ge=0)
     non_target_known: int = Field(ge=0)
 
 
 class AttributionPreviewResult(IdentityModel):
-    """Read-only attribution preview; it has no paged rows."""
+    """Read-only counts and whether this deployment can run workspace Skill packages."""
+
+    can_recompute: bool
+    uses_bound_skill: bool
 
     summary: AttributionPreviewSummary
     target_revision: str | None = None
@@ -382,7 +391,7 @@ class CaseVerdict:
 
 @dataclass(frozen=True, slots=True)
 class AssociatedSession:
-    """One Session whose trace contains the requested object version."""
+    """One Session whose trace contains the requested object."""
 
     session_id: str
     short: str
@@ -464,7 +473,7 @@ def compare_triggers(
 
     Args:
         case: Resolved bad-case anchor, or ``None`` when it cannot be resolved.
-        target: Object entry point from a version-matched `agent_events` row.
+        target: Object entry point from a matching event or node in the Session tree.
         post_process: Whether the case anchor is the explicit post-process kind.
 
     Returns:
@@ -584,11 +593,14 @@ class PotentialMatcher:
         """Bind the matcher to its read-only repository."""
         self._repository = repository
 
-    async def associated_sessions(self, condition: MatchCondition) -> SessionAssociation:
-        """Return Sessions whose trace contains the requested object identity.
+    async def associated_sessions(
+        self, condition: MatchCondition, *, observed_revisions: frozenset[str] | None = None
+    ) -> SessionAssociation:
+        """Return Sessions whose trace contains the requested object type and name.
 
         Args:
             condition: Normalized workspace, object, version, revision, and window.
+            observed_revisions: Restrict historical overview statistics to one observed version.
 
         Returns:
             The non-overlapping Session partition plus the window case snapshot.
@@ -618,18 +630,23 @@ class PotentialMatcher:
         )
         events_by_session: dict[str, list[ObjectEventRecord]] = {}
         for event in events:
-            events_by_session.setdefault(event.session_id, []).append(event)
+            if observed_revisions is None or not observed_revisions.isdisjoint(
+                (
+                    event.object_version,
+                    event.object_revision,
+                    event.definition_hash,
+                    event.document_revision,
+                )
+            ):
+                events_by_session.setdefault(event.session_id, []).append(event)
         case_counts = Counter(case.session_id for case in cases)
 
-        candidates = condition.revision_candidates
         associated: list[AssociatedSession] = []
-        version_unresolved: list[str] = []
         skipped: list[str] = []
         for session_id in traced:
             session_events = events_by_session.get(session_id, [])
-            matching = [event for event in session_events if _event_matches(event, candidates)]
-            if matching:
-                entry = min(matching, key=cmp_to_key(_compare_entry_order))
+            if session_events:
+                entry = min(session_events, key=cmp_to_key(_compare_entry_order))
                 associated.append(
                     AssociatedSession(
                         session_id=session_id,
@@ -650,8 +667,6 @@ class PotentialMatcher:
                         bad_case_count=case_counts.get(session_id, 0),
                     ),
                 )
-            elif any(_event_revision_unresolved(event) for event in session_events):
-                version_unresolved.append(session_id)
             else:
                 skipped.append(session_id)
 
@@ -661,7 +676,7 @@ class PotentialMatcher:
             reported=len(session_ids),
             associated=len(associated),
             skipped=len(skipped),
-            version_unresolved=len(version_unresolved),
+            version_unresolved=0,
             pending=len(pending),
             sessions=tuple(associated),
             cases=cases,
@@ -780,6 +795,7 @@ class PotentialMatcher:
         match: PotentialMatch,
         *,
         cache_enabled: bool,
+        legacy_rule: bool = False,
     ) -> AttributionPreviewCounts:
         """Count existing cache keys and the historical non-target reference.
 
@@ -803,6 +819,23 @@ class PotentialMatcher:
                     POLICY_VERSION,
                     ATTRIBUTION_ENGINE,
                 )
+                if legacy_rule
+                else default_execution_manifest(
+                    workspace_id=condition.workspace_id,
+                    bad_case_id=item.bad_case_id,
+                    target_type=condition.target_type,
+                    target_name=condition.target_name,
+                    target_version=condition.target_revision,
+                    policy_version=POLICY_VERSION,
+                    engine=ATTRIBUTION_ENGINE,
+                    session_id=item.session_id,
+                    hit_reason=item.hit_reason,
+                    order_state=item.order_state,
+                    object_trigger_at=item.object_trigger.triggered_at,
+                    case_trigger_at=(
+                        item.case_trigger.triggered_at if item.case_trigger is not None else None
+                    ),
+                ).content_hash
                 for item in match.included
             )
             reused = len(await self._repository.existing_cache_keys(keys))
@@ -828,11 +861,18 @@ class PotentialPreviewService:
         targets: EvolutionTargetService,
         matcher: PotentialMatcher,
         resolver: TargetVersionResolver,
+        *,
+        local_agent: bool = False,
+        reports: AttributionRepository | None = None,
+        rule_skills: AttributionSkillService | None = None,
     ) -> None:
         """Bind target configuration validation, the matcher, and content resolution."""
         self._targets = targets
         self._matcher = matcher
         self._resolver = resolver
+        self._reports = reports
+        self._rule_skills = rule_skills
+        self._local_agent = local_agent
 
     async def sessions(
         self,
@@ -841,7 +881,7 @@ class PotentialPreviewService:
         workspace_id: str,
     ) -> SessionPreviewResult:
         """Return paged associated Sessions plus the non-overlapping partition."""
-        condition = await self._condition(body, workspace_id=workspace_id)
+        condition, _ = await self._condition(body, workspace_id=workspace_id)
         association = await self._matcher.associated_sessions(condition)
         if not association.sessions:
             raise _no_associated_sessions(association)
@@ -878,7 +918,7 @@ class PotentialPreviewService:
         workspace_id: str,
     ) -> PotentialPreviewResult:
         """Return paged included cases plus the closed reason distribution."""
-        condition = await self._condition(body, workspace_id=workspace_id)
+        condition, _ = await self._condition(body, workspace_id=workspace_id)
         policy = resolve_policy(body.policy)
         association = await self._matcher.associated_sessions(condition)
         if not association.sessions:
@@ -918,7 +958,7 @@ class PotentialPreviewService:
         workspace_id: str,
     ) -> AttributionPreviewResult:
         """Return cache reuse counts without executing or writing attribution."""
-        condition = await self._condition(body, workspace_id=workspace_id)
+        condition, config = await self._condition(body, workspace_id=workspace_id)
         policy = resolve_policy(body.policy)
         association = await self._matcher.associated_sessions(condition)
         if not association.sessions:
@@ -926,16 +966,48 @@ class PotentialPreviewService:
         match = await self._matcher.potential_cases(condition, association, policy)
         if not match.included:
             raise _no_potential_matched()
+        if self._reports and config.attribution_package_id:
+            rows = await self._reports.latest_reports(
+                workspace_id,
+                condition.target_type,
+                condition.target_name,
+                condition.target_revision,
+                tuple(case.bad_case_id for case in match.included),
+            )
+            groups: dict[str, int] = {}
+            for _, skill, _ in rows.values():
+                groups[skill] = groups.get(skill, 0) + 1
+            return AttributionPreviewResult(
+                can_recompute=self._local_agent,
+                uses_bound_skill=True,
+                summary=AttributionPreviewSummary(
+                    potential=match.potential,
+                    reused=len(rows) if body.cache_enabled else 0,
+                    fresh=0 if body.cache_enabled else match.potential,
+                    missing=match.potential - len(rows),
+                    by_skill=groups,
+                    non_target_known=sum(row[2] == "non_target" for row in rows.values()),
+                ),
+                target_revision=condition.target_revision,
+            )
+        legacy_rule = False
+        if not self._local_agent and self._rule_skills is not None:
+            resolved_skill = await self._rule_skills.resolve(workspace_id, config.id)
+            legacy_rule = is_platform_rule(resolved_skill.skill_key, resolved_skill.executor_type)
+        deferred = self._local_agent and body.cache_enabled
         counts = await self._matcher.attribution_preview(
             condition,
             match,
-            cache_enabled=body.cache_enabled,
+            cache_enabled=body.cache_enabled and not deferred,
+            legacy_rule=legacy_rule,
         )
         return AttributionPreviewResult(
+            can_recompute=self._local_agent,
+            uses_bound_skill=False,
             summary=AttributionPreviewSummary(
                 potential=counts.potential,
-                reused=counts.reused,
-                fresh=counts.fresh,
+                reused=None if deferred else counts.reused,
+                fresh=None if deferred else counts.fresh,
                 non_target_known=counts.non_target_known,
             ),
             target_revision=condition.target_revision,
@@ -946,7 +1018,7 @@ class PotentialPreviewService:
         body: PreviewCondition,
         *,
         workspace_id: str,
-    ) -> MatchCondition:
+    ) -> tuple[MatchCondition, EvolutionTargetRecord]:
         """Validate the target/window and resolve the version and day bounds."""
         config = await self._targets.enabled_config(
             body.target_type,
@@ -981,7 +1053,7 @@ class PotentialPreviewService:
             target_revision=target_revision,
             window_start=window_start,
             window_end=window_end,
-        )
+        ), config
 
     async def _resolve_version(
         self,
@@ -1158,33 +1230,6 @@ def _compare_entry_order(left: ObjectEventRecord, right: ObjectEventRecord) -> i
     left_key = (left.tree_index, left.event_index)
     right_key = (right.tree_index, right.event_index)
     return (left_key > right_key) - (left_key < right_key)
-
-
-def _event_matches(event: ObjectEventRecord, candidates: frozenset[str]) -> bool:
-    """Return whether any persisted identity form matches the target."""
-    return any(
-        value is not None and value in candidates
-        for value in (
-            event.object_version,
-            event.object_revision,
-            event.definition_hash,
-            event.document_revision,
-        )
-    )
-
-
-def _event_revision_unresolved(event: ObjectEventRecord) -> bool:
-    """Return whether an event carries no usable version or revision identity."""
-    if event.object_version is not None:
-        return False
-    return not any(
-        value is not None and value != "unknown"
-        for value in (
-            event.object_revision,
-            event.definition_hash,
-            event.document_revision,
-        )
-    )
 
 
 def _associated_order_key(

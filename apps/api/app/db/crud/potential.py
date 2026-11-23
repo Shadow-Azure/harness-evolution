@@ -189,8 +189,7 @@ class PotentialRepository:
     ) -> tuple[ObjectEventRecord, ...]:
         """Return every trigger event of one object kind/name in the sessions.
 
-        Version filtering happens in the matcher: a NULL version must be counted
-        as unresolved instead of silently disappearing from the query.
+        Read all agents under each root. Observed versions are attribution evidence.
         """
         if not session_ids:
             return ()
@@ -247,6 +246,35 @@ class PotentialRepository:
                 )
                 for row in rows
             )
+        # Some transcripts identify the agent or skill on a node without logging a call.
+        # Prefer event coordinates whenever the Session has recorded the invocation.
+        if object_type in ("agent", "skill"):
+            traced = {event.session_id for event in events}
+            missing = tuple(dict.fromkeys(root for root in session_ids if root not in traced))
+            identity = (
+                func.coalesce(func.nullif(agents.c.agent_type, ""), agents.c.name)
+                if object_type == "agent"
+                else agents.c.skill_name
+            )
+            for chunk in _chunks(missing):
+                nodes = select(agents.c.root_session_id, agents.c.id, agents.c.tree_index).where(
+                    agents.c.root_session_id.in_(chunk), identity == object_name
+                )
+                async with self._database.session() as session:
+                    for row in (await session.execute(nodes)).mappings():
+                        events.append(
+                            ObjectEventRecord(
+                                session_id=str(row["root_session_id"]),
+                                agent_id=str(row["id"]),
+                                tree_index=int(row["tree_index"]),
+                                event_index=-1,
+                                object_version=None,
+                                object_revision=None,
+                                definition_hash=None,
+                                document_revision=None,
+                                triggered_at=None,
+                            )
+                        )
         return tuple(events)
 
     async def list_agents(

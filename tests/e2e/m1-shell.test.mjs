@@ -353,7 +353,7 @@ test("m1-shell exposes the prototype navigation, demo state, and clean responsiv
       "空间管理成员 · 上报 · 鉴权",
     ]);
     assert.equal(initial.badge, "演示数据");
-    assert.equal(initial.pending, "待处理 0");
+    assert.equal(initial.pending, "待归一化 0");
     assert.match(initial.pendingDetail, /已处理/);
     assert.equal(initial.hasEmpty, true);
     assert.equal(initial.bodyBackground, "rgb(244, 245, 247)");
@@ -397,7 +397,7 @@ test("m1-shell exposes the prototype navigation, demo state, and clean responsiv
       })()`,
       "idle admin sync",
     );
-    assert.deepEqual(idleSync, { action: "立即处理", pending: "待处理 0" });
+    assert.deepEqual(idleSync, { action: "立即处理", pending: "待归一化 0" });
 
     await page.session.send("Runtime.evaluate", {
       expression: `document.querySelector('#tn-evo').click()`,
