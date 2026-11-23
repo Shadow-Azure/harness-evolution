@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from importlib import import_module
 from pathlib import Path
-from typing import ClassVar, cast
+from typing import Any, ClassVar, cast
 
 
 class ModelBackend(ABC):
@@ -26,6 +26,10 @@ class AgentBackend(ABC):
     def model_identity(self, model: str) -> dict[str, str]:
         """Return non-secret facts that must remain stable between launch and execution."""
         return {"model": model}
+
+    def execution_details(self, directory: Path) -> dict[str, Any]:
+        """Collect agent-specific public diagnostics before the working directory is removed."""
+        return {}
 
     @abstractmethod
     async def execute(self, directory: Path, prompt: str, model: str, timeout_seconds: int) -> int:

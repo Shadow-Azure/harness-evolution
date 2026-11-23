@@ -8,9 +8,14 @@ import os
 import shutil
 import signal
 import sys
+import tempfile
 from pathlib import Path
+from typing import Any, cast
+from uuid import uuid4
 
 from app.third_party_api.attribution.backend import AgentBackend
+from app.third_party_api.attribution.transcript import read_transcript
+from app.utils.redaction import sanitize_value
 
 _PROVIDER_ENV = (
     "ANTHROPIC_API_KEY",
@@ -115,6 +120,34 @@ def _sandbox(directory: Path, executable: str) -> list[str]:
 
 
 class ClaudeBackend(AgentBackend):
+    def __init__(self) -> None:
+        self._session_id = str(uuid4())
+        self._details: dict[str, Any] = {}
+        self._secrets: tuple[str, ...] = ()
+
+    def execution_details(self, directory: Path) -> dict[str, Any]:
+        details = sanitize_value(
+            {
+                **self._details,
+                "sessionId": self._session_id,
+                "transcript": read_transcript(directory, self._session_id),
+            }
+        )
+
+        # Tools can echo a provider credential without a recognizable key or prefix.
+        def scrub(value: Any) -> Any:
+            if isinstance(value, str):
+                for secret in self._secrets:
+                    value = value.replace(secret, "<redacted>")
+                return value
+            if isinstance(value, dict):
+                return {scrub(k): scrub(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [scrub(v) for v in value]
+            return value
+
+        return cast(dict[str, Any], scrub(details))
+
     def model_identity(self, model: str) -> dict[str, str]:
         env = _provider_environment()
         resolved = env.get(f"ANTHROPIC_DEFAULT_{model.upper()}_MODEL", model)
@@ -131,35 +164,70 @@ class ClaudeBackend(AgentBackend):
         if executable is None:
             raise RuntimeError("claude executable unavailable")
         directory = await asyncio.to_thread(directory.resolve)
-        proc = await asyncio.create_subprocess_exec(
-            *_sandbox(directory, executable),
-            executable,
-            "-p",
-            "--output-format",
-            "json",
-            "--bare",
-            "--permission-mode",
-            "bypassPermissions",
-            "--allow-dangerously-skip-permissions",
-            "--model",
-            model,
-            prompt,
-            cwd=directory,
-            env=_environment(directory),
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-            start_new_session=True,
+        env = _environment(directory)
+        self._secrets = tuple(
+            env[k] for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN") if env.get(k)
         )
+        with tempfile.TemporaryFile() as errors:
+            proc = await asyncio.create_subprocess_exec(
+                *_sandbox(directory, executable),
+                executable,
+                "-p",
+                "--output-format",
+                "json",
+                "--bare",
+                "--session-id",
+                self._session_id,
+                "--permission-mode",
+                "bypassPermissions",
+                "--allow-dangerously-skip-permissions",
+                "--model",
+                model,
+                prompt,
+                cwd=directory,
+                env=env,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=errors,
+                start_new_session=True,
+            )
+            try:
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+            finally:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGKILL)
+                await proc.wait()
+                self._details["exitCode"] = proc.returncode
+                size = errors.seek(0, os.SEEK_END)
+                errors.seek(max(0, size - 16384))
+                self._details["stderrTail"] = errors.read().decode(errors="replace")
+                self._details["stderrTruncated"] = size > 16384
         try:
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
-        finally:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(proc.pid, signal.SIGKILL)
-            await proc.wait()
+            result = json.loads(stdout)
+        except ValueError:
+            if proc.returncode:
+                raise RuntimeError(
+                    f"claude attribution exited with status {proc.returncode}"
+                ) from None
+            raise
+        if not isinstance(result, dict):
+            raise ValueError("invalid Claude result")
+        self._details["result"] = {
+            k: result[k]
+            for k in (
+                "subtype",
+                "is_error",
+                "result",
+                "usage",
+                "modelUsage",
+                "total_cost_usd",
+                "num_turns",
+                "duration_ms",
+            )
+            if k in result
+        }
         if proc.returncode:
             raise RuntimeError(f"claude attribution exited with status {proc.returncode}")
-        result = json.loads(stdout)
         if result.get("is_error") or result.get("subtype") != "success":
             raise RuntimeError("claude attribution did not complete")
         usage = result.get("usage", {})

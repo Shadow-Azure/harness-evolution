@@ -14,6 +14,8 @@ Status: implemented
 
 对象总览将按历史版本匹配的候选与已有 V2 报告按分析版本、Badcase 合并，轨迹版本缺失时仍能展示已完成报告。顶部同步面板按当前空间统计轨迹根与 Badcase，每条 Badcase 以最近一次完成的结论计数；目录采集和归一化显示平台级进度。
 
+逐次记录 Agent 的可见交互，并用输入清单关联原始 Badcase。工作目录内可由 Skill 写入的文件不作为入库凭据；日志与正式报告分开保存。
+
 ## Alternatives considered
 
 空间级生效会影响无关对象。按全部历史报告计数会在重算后重复统计同一 Badcase。先按对象版本和 Badcase 取最新报告，再按 Skill 分组。

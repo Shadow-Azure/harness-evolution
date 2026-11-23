@@ -26,6 +26,8 @@ This directory records the inputs a local Agent used for attribution and the rep
 │       └── manifest.json
 └── attribute_output/<batch_id>/<case_key>/
     ├── attempt-<random>/
+    ├── logs/<attempt>/attribute_log.json
+    ├── attribute_log.json
     └── probe_report.json
 ```
 
@@ -49,9 +51,9 @@ Session and Badcase directory names normally use the original ID. For IDs with c
 
 ## Claude working directory and report
 
-Claude starts in a temporary `attempt-*` directory with the prompt `/<skill_name> input_badcase.json，请分析并生成归因报告`. The platform copies five archived files into that directory under fixed names: `input_badcase.json`, `session_tree.json`, `traces.json`, `trace_coverage.json` and `attribute_source.md`. The selected Skill is staged under `.claude/skills/<skill_name>/`, with a compatibility link at `.cac/skills/<skill_name>`. Custom Skills can read their inputs using relative paths.
+Claude runs `/<skill_name> input_badcase.json，请分析并生成归因报告` with five frozen inputs and the Skill under `.claude/skills/<skill_name>/` (alias `.cac/skills/`). Its isolated home is temporary. The platform verifies the writer invocation and regenerates the report from the original input before publication and database ingestion.
 
-The Skill must invoke its bundled `make_probe_report.py` with `--output probe_report.json`. The platform verifies the writer receipt and file digest, then runs the frozen writer outside the Agent working directory against the original case input. When the reports match, it publishes the canonical file and persists the report, producing Skill and execution manifest in the database. The temporary attempt is cleaned up on completion or exception. A failed attempt may leave an input manifest without a report. Filesystem publication and database persistence are separate steps. Consult the database to confirm ingestion.
+`attribute_log.json` holds the last finished attempt. Each `logs/<attempt>/` preserves its status, prompt, input manifest, Claude session ID, visible turns, tool calls and results, CLI result and usage. The main transcript read is limited to 8 MiB; see `transcript.status` for partial or unavailable history. The database confirms ingestion after `report_validated`.
 
 ## Trace a report back to its inputs
 

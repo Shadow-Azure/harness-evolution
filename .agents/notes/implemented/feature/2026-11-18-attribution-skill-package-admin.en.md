@@ -14,6 +14,8 @@ Keep uploaded archives in workspace-scoped storage. A target write records one p
 
 The target overview combines observed-version candidates with completed V2 reports by analysis version and Badcase, including reports whose trace has no version. The sync panel counts trace roots and Badcases in the selected workspace, using each case’s latest completed conclusion. Catalog acquisition and normalization counters cover the platform.
 
+Record visible agent interactions per attempt and link the original Badcase through its input manifest. Keep execution logs separate from validated reports because the Skill can write files inside its working directory.
+
 ## Alternatives considered
 
 Workspace-wide activation changes unrelated targets. Counting every historical report inflates case counts after recomputation. Deduplicate by case and resolved target revision before grouping by Skill.

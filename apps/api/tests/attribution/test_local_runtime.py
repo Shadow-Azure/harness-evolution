@@ -21,6 +21,7 @@ from app.db.models.domain import evolution_targets, probe_reports
 from app.service.evolution.attribution import AttributionRunner
 from app.service.evolution.attribution_skill_packages import AttributionSkillPackageService
 from app.service.evolution.attribution_skills import AttributionSkillService
+from app.service.evolution.engine.contracts import RunBlocked
 from app.service.evolution.local_attribution import ENGINE, LocalAttribution, canonical_report
 from app.third_party_api.attribution.backend import AgentBackend, AgentFactory
 from tests.attribution.support import CASE_ID, NOW, OTHER_RUN_ID, Harness, potential_case
@@ -158,6 +159,19 @@ async def test_local_skill_report_to_sqlite(
         skill_resolver=service,
         prepare_input=service.prepare_input,
     )
+    if not use_claude:
+
+        async def timeout(*args: object) -> int:
+            raise TimeoutError
+
+        with monkeypatch.context() as simulated_failure:
+            simulated_failure.setattr(ScriptAgent, "execute", timeout)
+            with pytest.raises(RunBlocked):
+                await runner.run(run, [potential_case()], True)
+        output = service.root(run.workspace_id) / "attribute_output" / run.id / CASE_ID
+        failure = json.loads((output / "attribute_log.json").read_bytes())
+        assert (failure["stage"], failure["status"]) == ("agent", "timeout")
+        assert not (output / "probe_report.json").exists()
     summary = await runner.run(run, [potential_case()], True)
     assert summary.created == 1
     linked = await store.linked_probe_ids(run.id)
@@ -174,6 +188,16 @@ async def test_local_skill_report_to_sqlite(
     artifact = (
         service.root(run.workspace_id) / "attribute_output" / run.id / CASE_ID / "probe_report.json"
     )
+    audit = json.loads(artifact.with_name("attribute_log.json").read_bytes())
+    assert audit["status"] == "report_validated" and audit["badcaseId"] == CASE_ID
+    assert audit["prompt"].startswith(f"/{selected.skill_key} input_badcase.json")
+    assert (service.root(run.workspace_id) / audit["inputManifest"]).is_file()
+    history = artifact.parent / "logs" / audit["attempt"] / "attribute_log.json"
+    assert json.loads(history.read_bytes()) == audit
+    assert not (artifact.parent / audit["attempt"]).exists()
+    if not use_claude:
+        assert len(list(artifact.parent.glob("logs/*/attribute_log.json"))) == 2
+        assert failure["attempt"] != audit["attempt"]
     assert persisted["report_payload"]["sourceReport"] == json.loads(artifact.read_bytes())
     if selected != default:
         assert persisted["attribute_type"] == category

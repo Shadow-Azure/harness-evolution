@@ -26,6 +26,8 @@
 │       └── manifest.json
 └── attribute_output/<batch_id>/<case_key>/
     ├── attempt-<random>/
+    ├── logs/<attempt>/attribute_log.json
+    ├── attribute_log.json
     └── probe_report.json
 ```
 
@@ -49,9 +51,9 @@
 
 ## Claude 的工作目录与报告
 
-Claude 从临时 `attempt-*` 目录启动，提示词为 `/<skill_name> input_badcase.json，请分析并生成归因报告`。平台把归档中的五个文件以固定名称复制到此目录，即 `input_badcase.json`、`session_tree.json`、`traces.json`、`trace_coverage.json` 和 `attribute_source.md`。选定 Skill 放在 `.claude/skills/<skill_name>/`；`.cac/skills/<skill_name>` 是兼容入口。自定义 Skill 可始终通过相对路径读取输入。
+Claude 在临时目录运行 `/<skill_name> input_badcase.json，请分析并生成归因报告`，读取五个冻结输入及 `.claude/skills/<skill_name>/`（兼容入口 `.cac/skills/`）。独立 HOME 随执行清理。平台用原始输入复核 Skill 对 `make_probe_report.py` 的调用及输出，发布报告后再入库。
 
-Skill 必须调用包中的 `make_probe_report.py`，指定 `--output probe_report.json`。平台检查 writer 回执、文件哈希，并在 Agent 工作目录外使用冻结的脚本和单条输入重新生成报告。两份内容一致后发布正式文件，随后将报告、来源 Skill 和执行清单写入数据库。正常结束或抛错时会清理临时 attempt。失败的执行可能已有输入清单但没有报告；磁盘发布与数据库写入分为两步，入库状态以数据库为准。
+`attribute_log.json` 记录最近结束的尝试；`logs/<attempt>/` 保留各次状态、提示词、输入清单、Claude 会话 ID、可见对话及工具输入输出、CLI 结果与用量。主会话记录最多读取 8 MiB，截断或缺失见 `transcript.status`。执行成功标为 `report_validated`，数据库反映入库状态。
 
 ## 从报告查回输入
 

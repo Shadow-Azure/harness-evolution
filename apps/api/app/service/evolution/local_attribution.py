@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -14,6 +15,7 @@ import tempfile
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -51,6 +53,8 @@ from app.third_party_api.attribution.backend import AgentFactory, ModelFactory
 from app.third_party_api.git.content import GitContentUnavailable
 from app.utils.definition import definition_file_hash
 from app.utils.redaction import sanitize_value
+
+logger = logging.getLogger(__name__)
 
 ENGINE = "local-agent-skill-v1"
 INSTRUCTIONS = """
@@ -474,23 +478,76 @@ class LocalAttribution:
         output.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="attempt-", dir=output) as tmp:
             work = Path(tmp)
-            await asyncio.to_thread(self._stage_attempt, snapshot, work, name, manifest, item)
             prompt = f"/{name} input_badcase.json，请分析并生成归因报告"  # noqa: RUF001
-            backend = AgentFactory.create(manifest["agent"])
-            if backend.model_identity(manifest["model"]) != manifest["modelIdentity"]:
-                raise ValueError("model configuration differs from the frozen run")
-            tokens = await backend.execute(
-                work, prompt, manifest["model"], self.settings.attribution_timeout_seconds
-            )
-            candidate = await asyncio.to_thread(self._read_emission, work)
-            # Regenerate from the original input and platform-owned writer outside the agent cwd.
-            report = await asyncio.to_thread(
-                canonical_report,
-                snapshot / "skill/make_probe_report.py",
-                item.local_input["input_badcase.json"],
-                candidate,
-                output,
-            )
+            history = output / "logs" / work.name
+            history.mkdir(parents=True, mode=0o700)
+            log: dict[str, Any] = {
+                "schemaVersion": 1,
+                "attempt": work.name,
+                "workspaceId": item.workspace_id,
+                "batchId": item.run_id,
+                "badcaseId": item.bad_case_id,
+                "sourceSessionId": item.session_id,
+                "skill": name,
+                "skillHash": item.attribution_skill_content_hash,
+                "agent": manifest["agent"],
+                "model": manifest["modelIdentity"],
+                "prompt": prompt,
+                "inputManifest": str((archive.case_path / "manifest.json").relative_to(root)),
+                "startedAt": datetime.now(UTC).isoformat(),
+                "status": "running",
+                "stage": "prepare",
+            }
+            backend = None
+            await asyncio.to_thread(_write_log, history, log)
+            try:
+                await asyncio.to_thread(self._stage_attempt, snapshot, work, name, manifest, item)
+                backend = AgentFactory.create(manifest["agent"])
+                if backend.model_identity(manifest["model"]) != manifest["modelIdentity"]:
+                    raise ValueError("model configuration differs from the frozen run")
+                log["stage"] = "agent"
+                tokens = await backend.execute(
+                    work, prompt, manifest["model"], self.settings.attribution_timeout_seconds
+                )
+                log.update(stage="validate_report", tokens=tokens)
+                candidate = await asyncio.to_thread(self._read_emission, work)
+                # Validate outside the agent cwd using the original input and platform writer.
+                report = await asyncio.to_thread(
+                    canonical_report,
+                    snapshot / "skill/make_probe_report.py",
+                    item.local_input["input_badcase.json"],
+                    candidate,
+                    output,
+                )
+                log.update(
+                    status="report_validated",
+                    report=str((output / "probe_report.json").relative_to(root)),
+                    reportHash=canonical_json_hash(report),
+                )
+            except BaseException as exc:
+                log.update(
+                    status="cancelled"
+                    if isinstance(exc, asyncio.CancelledError)
+                    else "timeout"
+                    if isinstance(exc, TimeoutError)
+                    else "failed",
+                    error=type(exc).__name__,
+                )
+                raise
+            finally:
+                log["finishedAt"] = datetime.now(UTC).isoformat()
+                if backend is not None:
+                    try:
+                        log["execution"] = await asyncio.to_thread(backend.execution_details, work)
+                    except Exception as exc:
+                        log["diagnosticError"] = type(exc).__name__
+                try:
+                    await asyncio.to_thread(_write_log, history, log, output)
+                except (OSError, ValueError, TypeError) as exc:
+                    # A log publication failure must not repeat a paid invocation.
+                    logger.error(
+                        "Could not finalize attribution log %s (%s)", history, type(exc).__name__
+                    )
         category = report["attribute_type"]
         same_target = (
             report["probe_object"] == item.probe_object
@@ -520,6 +577,28 @@ class LocalAttribution:
             canonical_report=report,
             warnings=("CONFIDENCE_NOT_REPORTED",),
         )
+
+
+def _write_log(history: Path, record: Mapping[str, Any], latest: Path | None = None) -> None:
+    """Publish a complete JSON snapshot; retain every retry outside the agent sandbox."""
+    dest = history / "attribute_log.json"
+    with tempfile.NamedTemporaryFile(
+        dir=history, mode="w", encoding="utf-8", errors="backslashreplace", delete=False
+    ) as tmp:
+        path = Path(tmp.name)
+        try:
+            json.dump(record, tmp, ensure_ascii=False, indent=2, allow_nan=False)
+            tmp.flush()
+            os.replace(path, dest)
+        finally:
+            path.unlink(missing_ok=True)
+    if latest is not None:
+        link = history / "publishing"
+        os.link(dest, link)
+        try:
+            os.replace(link, latest / dest.name)
+        finally:
+            link.unlink(missing_ok=True)
 
 
 def canonical_report(
