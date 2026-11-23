@@ -240,11 +240,16 @@ const iterationStep = {
           message: "candidate",
         },
         patch: {
-          file: "SKILL.md",
-          lines: [
-            "@@ -1 +1 @@",
-            "- 读取索引",
-            "+ 读取索引前校验快照",
+          files: [
+            {
+              file: "SKILL.md",
+              lines: [
+                "@@ -1 +1 @@",
+                "- 读取索引",
+                "+ 读取索引前校验快照",
+              ],
+              overwrite: false,
+            },
           ],
         },
         push: { status: "succeeded", attempts: 1, error: null },

@@ -6977,9 +6977,9 @@
         "title": "StepRoundEval",
         "type": "object"
       },
-      "StepRoundPatch": {
+      "StepRoundFilePatch": {
         "additionalProperties": false,
-        "description": "Patch preview stored with the round.\n\n``note`` carries the patch source's one-line change description (for the\nminimal-config source it starts with \"最小配置变更\"). Rounds published\nbefore the patch-source seam persist only ``file``/``lines``, so the field\nstays optional and older snapshots keep rendering unchanged.",
+        "description": "One file inside a round's patch preview.",
         "properties": {
           "file": {
             "title": "File",
@@ -6990,6 +6990,30 @@
               "type": "string"
             },
             "title": "Lines",
+            "type": "array"
+          },
+          "overwrite": {
+            "default": false,
+            "title": "Overwrite",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file",
+          "lines"
+        ],
+        "title": "StepRoundFilePatch",
+        "type": "object"
+      },
+      "StepRoundPatch": {
+        "additionalProperties": false,
+        "description": "Patch preview projected from the round's stored bundle.\n\nThe durable shape carries ``files[]`` plus ``note``/``intent``/``report``,\nand single-file rounds also keep the legacy ``file``/``lines`` keys. This\nread model is built from :func:`stored_bundle` instead of validating the\nraw dictionary, so a later writer field cannot break step 6 again.",
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/StepRoundFilePatch"
+            },
+            "title": "Files",
             "type": "array"
           },
           "note": {
@@ -7005,8 +7029,7 @@
           }
         },
         "required": [
-          "file",
-          "lines"
+          "files"
         ],
         "title": "StepRoundPatch",
         "type": "object"

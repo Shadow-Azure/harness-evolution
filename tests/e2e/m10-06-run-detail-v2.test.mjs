@@ -1180,3 +1180,80 @@ test("m10-06 step 6 renders the accepted commit as collapsible Markdown", async 
     await page.close();
   }
 });
+
+test("m10-06 step 6 iteration renders every stored bundle patch file", async () => {
+  const page = await createBrowserPage();
+  const violations = browserViolations(page.session);
+  try {
+    await installCookie(page, await currentLoginCookie());
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1500,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await openRun(page, "run-v2-completed");
+    await waitForDocument(
+      page.session,
+      `document.querySelectorAll("[data-step-key]").length === 7`,
+      "seven-step run detail",
+    );
+    await evaluate(
+      page,
+      `document.querySelector("[data-step-key='iteration']").click()`,
+    );
+    const bundle = await waitForDocument(
+      page.session,
+      `(() => {
+        const round = document.querySelector("[data-round-id='v2-round-1']");
+        const diff = round?.querySelector(".diff");
+        if (!diff) return null;
+        return {
+          files: [...diff.querySelectorAll(".fhead")].map((node) => node.textContent.trim()),
+          added: [...diff.querySelectorAll(".dline.add")].length,
+          deleted: [...diff.querySelectorAll(".dline.del")].length,
+          pageHorizontalScroll:
+            document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      })()`,
+      "multi-file bundle patch diff",
+    );
+    assert.deepEqual(bundle.files, ["SKILL.md", "config/synthetic-review.json"]);
+    assert.ok(bundle.added >= 2, JSON.stringify(bundle));
+    assert.ok(bundle.deleted >= 2, JSON.stringify(bundle));
+    assert.equal(bundle.pageHorizontalScroll, false);
+    await evaluate(
+      page,
+      `document.querySelector("[data-round-id='v2-round-1'] .diff").scrollIntoView({ block: "center" })`,
+    );
+    await screenshot(page, "09-after-step6-iteration-patch.png");
+
+    await evaluate(
+      page,
+      `document.querySelector("[data-round-id='v2-round-2'] .cluster-head").click()`,
+    );
+    const legacy = await waitForDocument(
+      page.session,
+      `(() => {
+        const round = document.querySelector("[data-round-id='v2-round-2']");
+        const diff = round?.querySelector(".diff");
+        if (!diff) return null;
+        return {
+          files: [...diff.querySelectorAll(".fhead")].map((node) => node.textContent.trim()),
+        };
+      })()`,
+      "legacy single-file patch diff",
+    );
+    assert.deepEqual(legacy.files, ["SKILL.md"]);
+    await evaluate(
+      page,
+      `document.querySelector("[data-round-id='v2-round-2'] .diff").scrollIntoView({ block: "center" })`,
+    );
+    await screenshot(page, "10-after-step6-legacy-patch.png");
+
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+  } finally {
+    await page.session.send("Emulation.clearDeviceMetricsOverride").catch(() => {});
+    await page.close();
+  }
+});

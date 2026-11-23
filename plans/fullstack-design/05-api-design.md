@@ -413,7 +413,8 @@ erDiagram
   "cases": [ { "badCaseId": "BC-HC-0007", "title": "检索索引读取失败",
     "objectName": "deep-research", "badCaseType": "self",
     "triggerAt": "2026-09-06T09:12:00+08:00", "createdAt": "2026-09-06T09:20:00+08:00" } ],
-  "patch": { "file": "SKILL.md", "lines": ["+ 读取索引前校验快照字段"] },
+  "patch": { "files": [ { "file": "SKILL.md", "lines": ["+ 读取索引前校验快照字段"], "overwrite": false } ],
+    "note": "启用快照字段校验" },
   "candidate": { "ref": "evo/20261023-evo-20261023-01/candidate/r1", "commit": "ab12…",
     "message": "evolve(deep-research@v2.0.0): 针对「检索索引读取失败」的候选变更" },
   "push": { "status": "succeeded", "attempts": 1, "error": null },
@@ -421,6 +422,8 @@ erDiagram
   "accepted": true,
   "finalCommit": { "hash": "cd34…", "message": "evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取\n\n## 问题\n…" } }
 ```
+
+`patch` 从落库 bundle 投影，`files[]` 顺序与 candidate commit 的文件顺序一致；`overwrite` 表示该文件以整文件覆盖写入。单文件轮次的落库字典另外保留 legacy 顶层 `file / lines / overwrite`，以及 `note / intent / report`；读取侧必须先还原 bundle 再显式投影，**禁止把落库字典直接交给 `extra="forbid"` 读模型**。历史轮次只有 `file / lines / note` 时等价于一个 `files` 项，`note` 缺失仍为 `null`。
 
 `finalCommit.message` 是 amend 后的完整 commit message（Markdown）：首行是 `evolve(<target>): <subject>`，其后是 `## 问题`、`## 分析`、`## 改动`、`## 追溯` 等正文段，末尾可带 `---` 与 `Harness-*` trailer。展示层必须把首行当 subject，其余交给 Markdown 渲染；禁止把整段 message 按纯文本插值。旧 run 的单行 message 仍合法，按 subject 展示即可。
 
@@ -1426,7 +1429,7 @@ root-sync 状态表的 `last_error` 直接保存稳定码，per-report source �
 | `ERROR_META[title]`（单结论） | `BadCase.attributionCount` + 归因列表（§4.19） | 一个 bad case × 多对象·版本；`reason` / `reasoning(Markdown)` / `category` / `conclusion` 由归因行承载 |
 | `REPORTS[]` | `bad_case_analysis` 关联的 `probe_reports` 行 | 不再有独立产品实体「问题报告」；物理 `probe_id` 映射为 `attributionId` |
 | `RUNS[]` | `RunCard` / `RunDetail` | V2 映射为 `stats.sessions/versionUnresolvedSessions/potential/attributed/reused/byCategory` |
-| `PATCH.deser` | `patch.file/lines` | diff 行数组原样传给前端着色 |
+| `PATCH.deser` | `patch.files[].file/lines/overwrite` | 多文件逐项渲染，legacy 单文件归一为一个 `files` 项；行数组原样传给前端着色 |
 
 V2 新增映射（2026-11-11）：
 
