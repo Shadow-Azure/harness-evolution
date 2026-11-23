@@ -53,6 +53,7 @@ export async function availablePort() {
  * @param {import("node:child_process").ChildProcess} child Process owning the URL.
  * @param {() => string} logs Current child output for diagnostics.
  * @param {(response: Response) => boolean} [accept] Accepted response predicate.
+ * @param {number} [timeoutMs] Total readiness budget in milliseconds.
  * @returns {Promise<Response>} First accepted response.
  */
 export async function waitFor(
@@ -60,19 +61,25 @@ export async function waitFor(
   child,
   logs,
   accept = (response) => response.ok,
+  timeoutMs = 20_000,
 ) {
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
       throw new Error(`process exited before ${url} was ready:\n${logs()}`);
     }
     try {
-      const response = await fetch(url);
+      const remaining = Math.max(1, deadline - Date.now());
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(Math.min(2_000, remaining)),
+      });
       if (accept(response)) return response;
+      await response.body?.cancel();
     } catch {
       // The child has not bound its port yet.
     }
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    const remaining = deadline - Date.now();
+    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, Math.min(100, remaining)));
   }
   throw new Error(`timed out waiting for ${url}:\n${logs()}`);
 }
@@ -135,12 +142,15 @@ class CdpSession {
     this.nextId = 1;
     this.pending = new Map();
     this.listeners = new Map();
+    this.socket.addEventListener("close", () => this.rejectPending("CDP websocket closed"));
+    this.socket.addEventListener("error", () => this.rejectPending("CDP websocket failed"));
     this.socket.addEventListener("message", (event) => {
       const message = JSON.parse(String(event.data));
       if (message.id) {
         const pending = this.pending.get(message.id);
         if (!pending) return;
         this.pending.delete(message.id);
+        clearTimeout(pending.timer);
         if (message.error) {
           pending.reject(new Error(`${pending.method}: ${message.error.message}`));
         } else {
@@ -154,13 +164,33 @@ class CdpSession {
     });
   }
 
-  async open() {
+  rejectPending(message) {
+    for (const [id, pending] of this.pending) {
+      this.pending.delete(id);
+      clearTimeout(pending.timer);
+      pending.reject(new Error(`${message}: ${pending.method}`));
+    }
+  }
+
+  async open(timeoutMs = 20_000) {
     if (this.socket.readyState === WebSocket.OPEN) return this;
+    if (this.socket.readyState >= WebSocket.CLOSING) throw new Error("CDP websocket closed");
     await new Promise((resolve, reject) => {
-      this.socket.addEventListener("open", resolve, { once: true });
-      this.socket.addEventListener("error", () => reject(new Error("CDP websocket failed")), {
-        once: true,
-      });
+      const finish = (error) => {
+        clearTimeout(timer);
+        this.socket.removeEventListener("open", opened);
+        this.socket.removeEventListener("error", failed);
+        this.socket.removeEventListener("close", closed);
+        if (error) reject(error);
+        else resolve();
+      };
+      const opened = () => finish();
+      const failed = () => finish(new Error("CDP websocket failed"));
+      const closed = () => finish(new Error("CDP websocket closed before opening"));
+      const timer = setTimeout(() => finish(new Error("CDP websocket opening timed out")), timeoutMs);
+      this.socket.addEventListener("open", opened);
+      this.socket.addEventListener("error", failed);
+      this.socket.addEventListener("close", closed);
     });
     return this;
   }
@@ -171,16 +201,29 @@ class CdpSession {
     this.listeners.set(method, listeners);
   }
 
-  async send(method, params = {}) {
+  async send(method, params = {}, timeoutMs = 20_000) {
+    if (this.socket.readyState !== WebSocket.OPEN) throw new Error(`CDP websocket closed: ${method}`);
     const id = this.nextId++;
+    const payload = JSON.stringify({ id, method, params });
     const response = new Promise((resolve, reject) => {
-      this.pending.set(id, { method, resolve, reject });
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`CDP ${method} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      this.pending.set(id, { method, resolve, reject, timer });
+      try {
+        this.socket.send(payload);
+      } catch (error) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(error);
+      }
     });
-    this.socket.send(JSON.stringify({ id, method, params }));
     return await response;
   }
 
   close() {
+    this.rejectPending("CDP session closed");
     this.socket.close();
   }
 }
@@ -221,7 +264,7 @@ async function createBrowserPageOnce() {
     );
     const response = await fetch(
       `http://127.0.0.1:${debuggingPort}/json/new?about:blank`,
-      { method: "PUT" },
+      { method: "PUT", signal: AbortSignal.timeout(20_000) },
     );
     assert.equal(response.ok, true, `failed to create Chrome target:\n${logs}`);
     const target = await response.json();
