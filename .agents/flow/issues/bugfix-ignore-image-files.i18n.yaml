@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-ignore-image-files.md
-bugfix-ignore-image-files.md: 7c6cfa1e4cf94f7eac0b4023b7df9335bae4d6cf
-bugfix-ignore-image-files.en.md: 6e69f47a714d4866994efd9b2529e51c99bef9c5
+bugfix-ignore-image-files.md: 26dd9740f2f4d9366e1103062befad4c0f0fc8ea
+bugfix-ignore-image-files.en.md: 0fdbb9502dd2d177e0d06c99ea67a4aa73c684b4

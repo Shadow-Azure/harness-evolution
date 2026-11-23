@@ -11,6 +11,7 @@ priority: P2
 status: in-progress
 scope:
   - .agents/flow/issues/bugfix-attribution-presence-single-source*
+  - .agents/flow/issues/bugfix-ignore-image-files*
   - .agents/notes/implemented/architecture/2026-11-17-potential-matcher*
   - plans/ui-prototype-v2/harness-evolution.html
   - plans/fullstack-design/02-features.md
