@@ -805,6 +805,21 @@
   .evo-app .commit { border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); background: color-mix(in srgb, var(--green) 6%, transparent); border-radius: 8px; padding: 10px 12px; font-family: var(--mono); font-size: 11.5px; }
 .evo-app .commit .hash { color: var(--green); font-weight: 700; }
 .evo-app .commit .cline { color: var(--text-dim); white-space: pre-wrap; word-break: break-all; }
+.evo-app .commit .commit-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.evo-app .commit .commit-subject { color: var(--text); }
+.evo-app .commit .commit-toggle { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; padding: 0; border: 0; background: transparent; color: var(--blue); font: inherit; font-size: 11px; cursor: pointer; }
+.evo-app .commit .commit-toggle:hover { text-decoration: underline; }
+.evo-app .commit .commit-message { margin-top: 9px; padding-top: 9px; border-top: 1px dashed var(--border); color: var(--text-dim); font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 12px; line-height: 1.7; max-height: 520px; overflow: auto; overflow-wrap: anywhere; }
+.evo-app .commit .commit-message p { margin: 0 0 6px; }
+.evo-app .commit .commit-message p:last-child { margin-bottom: 0; }
+.evo-app .commit .commit-message h4, .evo-app .commit .commit-message h5 { margin: 9px 0 4px; color: var(--text); font-size: 12px; font-weight: 700; }
+.evo-app .commit .commit-message h4:first-child, .evo-app .commit .commit-message h5:first-child { margin-top: 0; }
+.evo-app .commit .commit-message ul { margin: 3px 0 8px; padding-left: 18px; }
+.evo-app .commit .commit-message li { margin: 1px 0; }
+.evo-app .commit .commit-message a { color: var(--blue); }
+.evo-app .commit .commit-message code { padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-inset); font-family: var(--mono); font-size: 10.5px; }
+.evo-app .commit .commit-message hr { margin: 9px 0; border: 0; border-top: 1px solid var(--border); }
+.evo-app .commit .commit-message .commit-trailer { margin: 1px 0; color: var(--text-faint); font-family: var(--mono); font-size: 10.5px; }
 .evo-app .reject-note { border: 1px dashed var(--border); border-radius: 8px; padding: 9px 12px; font-size: 12px; color: var(--text-dim); }
 /* 最终结果 */
   .evo-app .verdict { display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-radius: 10px; margin-bottom: 14px; }
@@ -5046,6 +5061,7 @@ function evMakeRun(cfg) {
     };
   });
   run.clusters.sort((a, b) => b.sev - a.sev);
+  run.clusters.forEach(c => { c.fullMessage = evCommitMessage(run, c); });
   if (cfg.preparing) run.clusters = [];
   run.final.bestVersion = cfg.target.version + '-best';
   run.progress = cfg.progress ?? 0;
@@ -5101,7 +5117,7 @@ Object.assign(evNoGainRun.final, {
   ],
 });
 
-const EV_STATE = { expanded: new Set(), selStep: null, lastDetailId: null, detailTab: 'steps', logLevel: 'all', wz: null, targetDialog: null };
+const EV_STATE = { expanded: new Set(), commitOpen: new Set(), selStep: null, lastDetailId: null, detailTab: 'steps', logLevel: 'all', wz: null, targetDialog: null };
 
 function evTotal(run) { return 5 + run.clusters.length + 1; }
 function evIsDone(run) { return run.failed || run.progress >= evTotal(run); }
@@ -5414,6 +5430,77 @@ function evCaseTable(c) {
     ${rows.map(x => `<tr><td>${evCaseLink(x)}</td><td>${evEsc(x.title)}</td><td class="mono">${evEsc(x.objectName)}</td><td>${evCaseType(x)}</td><td class="mono">L${x.triggerLine}</td><td class="mono">${x.clock}</td></tr>`).join('')}
   </tbody></table>`;
 }
+/* 方案 A：默认紧凑 commit 卡 + 按需展开 Markdown 全文（原型内联渲染，仅演示展示层） */
+function evInline(src) {
+  let out = evEsc(src);
+  out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  return out;
+}
+function evMarkdown(source) {
+  const lines = String(source || '').split('\n');
+  const out = [];
+  let list = null;
+  let para = [];
+  const flushPara = () => { if (para.length) { out.push(`<p>${evInline(para.join(' '))}</p>`); para = []; } };
+  const flushList = () => { if (list) { out.push(`<ul>${list.map(item => `<li>${evInline(item)}</li>`).join('')}</ul>`); list = null; } };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) { flushPara(); flushList(); continue; }
+    if (line === '---') { flushPara(); flushList(); out.push('<hr>'); continue; }
+    if (/^##\s+/.test(line)) { flushPara(); flushList(); out.push(`<h4 class="md-h">${evInline(line.replace(/^##\s+/, ''))}</h4>`); continue; }
+    if (/^###\s+/.test(line)) { flushPara(); flushList(); out.push(`<h5 class="md-h">${evInline(line.replace(/^###\s+/, ''))}</h5>`); continue; }
+    if (/^[-*]\s+/.test(line)) { flushPara(); if (!list) list = []; list.push(line.replace(/^[-*]\s+/, '')); continue; }
+    if (/^Harness-[A-Za-z-]+:/.test(line)) { flushPara(); flushList(); out.push(`<p class="commit-trailer">${evEsc(line)}</p>`); continue; }
+    if (list) flushList();
+    para.push(line);
+  }
+  flushPara(); flushList();
+  return out.join('');
+}
+function evCommitMessage(run, c) {
+  const delta = c.eval.cand - c.eval.cur;
+  const caseIds = (c.caseIds || []).slice(0, 4);
+  return [
+    `evolve(${run.target.name}@${run.target.version}): 修复${c.title}`,
+    '',
+    '## 问题',
+    `${run.target.name}@${run.target.version} 的聚类「${c.title}」包含需要处理的来源问题：${caseIds.join('、')}。`,
+    '',
+    '## 分析',
+    c.phenomenon,
+    '',
+    '## 改动',
+    `- ${c.patch.file}（补充校验与边界处理）`,
+    '',
+    '## 为什么接纳',
+    `评测集得分 ${c.eval.cur.toFixed(1)} → ${c.eval.cand.toFixed(1)}（${delta >= 0 ? '+' : ''}${delta.toFixed(1)}），候选版本有收益。`,
+    '',
+    '## 追溯',
+    `- [自进化运行](#/run/${run.id}?step=iteration)`,
+    `- [问题簇](#/run/${run.id}?step=clusters&cluster=${c.id})`,
+    ...caseIds.map(id => `- 来源问题：${id}`),
+    '',
+    '---',
+    `Harness-Evaluated-Commit: ${c.commit}`,
+    `Harness-Verdict: accepted (${c.eval.cand.toFixed(1)} vs ${c.eval.cur.toFixed(1)}, ${delta >= 0 ? '+' : ''}${delta.toFixed(1)})`,
+    'Harness-Decision-Rule: external-verdict',
+  ].join('\n');
+}
+function evCommitBlock(run, c) {
+  const key = run.id + ':' + c.id;
+  const message = c.fullMessage || evCommitMessage(run, c);
+  const subject = message.split('\n')[0];
+  const body = message.split('\n').slice(1).join('\n').trim();
+  const open = EV_STATE.commitOpen.has(key);
+  return `<div class="commit">
+    <div class="commit-head"><span class="hash">commit ${c.commit}</span>　<span class="commit-subject">${evEsc(subject)}</span></div>
+    ${body ? `<button type="button" class="commit-toggle" data-action="ev-toggle-commit" data-key="${key}" aria-expanded="${open}">${open ? '收起完整 commit message' : '查看完整 commit message'}<span class="caret">${open ? '▾' : '▸'}</span></button>` : ''}
+    ${body && open ? `<div class="commit-message markdown">${evMarkdown(body)}</div>` : ''}
+  </div>`;
+}
+
 function evCluster(run, c, i) {
   const key = run.id + ':' + c.id, open = EV_STATE.expanded.has(key);
   const done = evRoundDone(run, i), active = evRoundActive(run, i);
@@ -5432,7 +5519,7 @@ function evCluster(run, c, i) {
         <div class="attr-line">判定：<b>问题真实存在</b> · 置信度 <b class="mono">${(c.conf * 100).toFixed(0)}%</b> · 严重程度 <b class="mono">${c.sev.toFixed(1)}</b>/10</div></div>
       ${done || active ? `<div class="cb-sec"><div class="cb-label">生成的 edit patch（current → candidate）</div>${evDiff(c.patch)}</div>` : ''}
       ${done ? `<div class="cb-sec"><div class="cb-label">评测对比（验证集）</div>${evEval(c.eval, c.accepted)}</div>
-        <div class="cb-sec">${c.accepted ? `<div class="commit"><div><span class="hash">commit ${c.commit}</span>　evolve(${evEsc(run.target.name)}): ${evEsc(c.title)}</div><div class="cline">cluster: ${c.id} · ${evEsc(c.title)}（${evEsc(c.type)}，置信度 ${(c.conf * 100).toFixed(0)}%，严重程度 ${c.sev.toFixed(1)}）\ncases: ${(c.caseIds || []).join(', ')}\nphenomenon: ${evEsc(c.phenomenon)}</div></div>` : `<div class="reject-note">未接纳：candidate 评测无收益，current 保持 ${c.eval.cur.toFixed(1)}，进入下一轮。</div>`}</div>` : ''}
+        <div class="cb-sec">${c.accepted ? evCommitBlock(run, c) : `<div class="reject-note">未接纳：candidate 评测无收益，current 保持 ${c.eval.cur.toFixed(1)}，进入下一轮。</div>`}</div>` : ''}
       ${active ? `<div class="waiting"><span class="pulse"></span> 正在评测 candidate…（点右上角「模拟推进一轮」查看结果）</div>` : ''}
       ${!done && !active ? `<div class="waiting">等待前面 ${i} 轮迭代完成后执行</div>` : ''}
     </div>` : ''}
@@ -6010,8 +6097,9 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]');
   if (!el) return;
   const a = el.dataset.action;
-  if (a === 'ev-open-run') { EV_STATE.expanded.clear(); EV_STATE.lastDetailId = null; location.hash = '#/run/' + el.dataset.id; }
+  if (a === 'ev-open-run') { EV_STATE.expanded.clear(); EV_STATE.commitOpen.clear(); EV_STATE.lastDetailId = null; location.hash = '#/run/' + el.dataset.id; }
   else if (a === 'ev-toggle-cluster') { const k = el.dataset.key; EV_STATE.expanded.has(k) ? EV_STATE.expanded.delete(k) : EV_STATE.expanded.add(k); evRoute(); }
+  else if (a === 'ev-toggle-commit') { const k = el.dataset.key; EV_STATE.commitOpen.has(k) ? EV_STATE.commitOpen.delete(k) : EV_STATE.commitOpen.add(k); evRoute(); }
   else if (a === 'ev-sel-step') { EV_STATE.detailTab = 'steps'; EV_STATE.selStep = +el.dataset.step; evRoute(); }
   else if (a === 'ev-detail-tab') { EV_STATE.detailTab = el.dataset.tab === 'logs' ? 'logs' : 'steps'; evRoute(); }
   else if (a === 'ev-log-level') { EV_STATE.logLevel = el.dataset.level || 'all'; evRoute(); }

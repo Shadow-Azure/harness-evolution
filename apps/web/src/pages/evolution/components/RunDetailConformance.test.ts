@@ -456,6 +456,91 @@ describe("run detail conformance", () => {
     expect(wrapper.text()).toContain("Harness-Evaluated-Commit");
     expect(wrapper.text()).toContain(evaluatedCommit.slice(0, 12));
     expect(wrapper.text()).toContain(finalCommit.slice(0, 12));
+    expect(wrapper.get(".commit-subject").text()).toBe("accepted candidate");
+    expect(wrapper.find(".commit-toggle").exists()).toBe(false);
+  });
+
+  it("renders an accepted commit message as collapsible Markdown", async () => {
+    const evaluatedCommit = "abcdef1234567890";
+    const finalCommit = "fedcba0987654321";
+    const message = [
+      "evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取",
+      "",
+      "## 问题",
+      "",
+      "聚类「检索索引读取失败」包含 3 个来源 bad case。",
+      "",
+      "## 改动",
+      "",
+      "- 读取前校验 `chunk_count`",
+      "- 补充边界测试",
+      "",
+      "## 追溯",
+      "",
+      "- https://example.com/run/1",
+      "",
+      "---",
+      "",
+      "Harness-Evaluated-Commit: abc",
+    ].join("\n");
+    const wrapper = mount(StepIterations, {
+      props: {
+        wid: "ws-test",
+        step: iterationStep([
+          round({
+            status: "accepted",
+            candidate: {
+              ref: "refs/candidate",
+              commit: evaluatedCommit,
+              message: "candidate",
+            },
+            push: { status: "succeeded", attempts: 1, error: null },
+            eval: {
+              status: "completed",
+              current: 84.6,
+              candidate: 85.1,
+              nextPollAt: null,
+            },
+            accepted: true,
+            finalCommit: { hash: finalCommit, message },
+          }),
+        ]),
+      },
+    });
+
+    const commit = wrapper.get(".commit");
+    expect(commit.get(".commit-subject").text()).toBe(
+      "evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取",
+    );
+    expect(commit.text()).not.toContain("##");
+    expect(commit.text()).not.toContain("---");
+    expect(commit.find(".commit-message").exists()).toBe(false);
+    expect(commit.get(".commit-toggle").attributes("aria-expanded")).toBe("false");
+    expect(commit.get(".commit-toggle").text()).toContain(
+      "查看完整 commit message",
+    );
+
+    await commit.get(".commit-toggle").trigger("click");
+
+    expect(commit.find(".commit-message").exists()).toBe(true);
+    expect(
+      commit.findAll(".commit-message h2").map((heading) => heading.text()),
+    ).toEqual(["问题", "改动", "追溯"]);
+    expect(commit.findAll(".commit-message li")).toHaveLength(3);
+    const link = commit.get(".commit-message a");
+    expect(link.attributes("href")).toBe("https://example.com/run/1");
+    expect(link.attributes("target")).toBe("_blank");
+    expect(link.attributes("rel")).toBe("noopener noreferrer");
+    expect(commit.text()).not.toContain("##");
+    expect(commit.text()).not.toContain("---");
+    expect(commit.get(".commit-toggle").text()).toContain("收起完整 commit message");
+    expect(commit.get(".commit-toggle").attributes("aria-expanded")).toBe("true");
+
+    await commit.get(".commit-toggle").trigger("click");
+
+    expect(commit.find(".commit-message").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Harness-Evaluated-Commit");
+    expect(commit.text()).toContain(finalCommit.slice(0, 12));
   });
 
   it("colors added, deleted, hunk and context diff lines", () => {

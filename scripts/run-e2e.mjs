@@ -35,7 +35,13 @@ if (requestedPattern) {
   }
 }
 
-const nodeArguments = ["--test", "--test-concurrency=1"];
+const nodeArguments = [
+  "--test",
+  "--test-concurrency=1",
+  // Backstop: a stalled CDP command or a hook that never settles must fail
+  // with the test name instead of consuming the whole suite budget.
+  "--test-timeout=180000",
+];
 if (requestedPattern) {
   nodeArguments.push(`--test-name-pattern=${requestedPattern}`);
 }
@@ -43,9 +49,11 @@ nodeArguments.push(...selectedFiles);
 
 const result = spawnSync(process.execPath, nodeArguments, {
   stdio: "inherit",
-  // The real-browser suite now covers 35 cases (M1-M8). Keep a bounded budget
-  // but leave room for cold Vite/Chrome starts on shared CI runners.
-  timeout: Number(process.env.HE_E2E_TIMEOUT_MS ?? 600_000),
+  // The real-browser suite now covers 79 cases (M1-M8). A healthy run takes
+  // ~8 minutes locally, but shared CI runners measured 8-13 minutes and two
+  // consecutive runs crossed the old 10-minute ceiling. Keep a bounded budget
+  // with real headroom so a slow runner is not reported as a test failure.
+  timeout: Number(process.env.HE_E2E_TIMEOUT_MS ?? 900_000),
   killSignal: "SIGTERM",
 });
 if (result.error?.code === "ETIMEDOUT") {

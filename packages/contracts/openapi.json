@@ -2404,6 +2404,8 @@
               "attribution_reused",
               "workspace_prepared",
               "clusters_created",
+              "ai_agent_call",
+              "degraded",
               "step_advanced",
               "run_pause_requested",
               "run_paused",

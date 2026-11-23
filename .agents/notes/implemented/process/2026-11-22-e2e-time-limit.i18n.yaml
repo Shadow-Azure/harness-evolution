@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/process/2026-11-22-e2e-time-limit.md
+2026-11-22-e2e-time-limit.md: a0de5ea69371a1e310bca08e980a34def0f5daa6
+2026-11-22-e2e-time-limit.en.md: 69bf0683e1a205170c14454e54a6c1893a1b7c47

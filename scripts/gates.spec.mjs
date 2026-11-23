@@ -672,7 +672,9 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   assert.match(ci, /run: pnpm test:db$/m);
   assert.match(ci, /run: pnpm test:db:mysql$/m);
   assert.match(ci, /run: pnpm test:integration$/m);
-  assert.match(ci, /run: pnpm test:e2e$/m);
+  // The e2e step wraps the suite in a one-shot retry shell block, so match
+  // the command itself rather than the exact single-line `run:` form.
+  assert.match(ci, /pnpm test:e2e/);
   assert.match(ci, /pnpm fixtures:check$/m);
   assert.match(ci, /pnpm fixtures:seed$/m);
   assert.match(ci, /run: pnpm verify:local-data$/m);

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import pytest
 import pytest_asyncio
 from eval_stub import StubEvalPlatform, git
 from pydantic import SecretStr
@@ -23,18 +24,29 @@ from sqlalchemy import insert
 from app.config import DatabaseDialect, Settings
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.probe_query import ProbeQueryRepository
+from app.db.crud.run_events import SqlRunEventStore
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.models.domain import bad_case_analysis, bad_cases, probe_reports
 from app.db.models.evolution import evolution_rounds, probe_cluster_probes, probe_clusters
 from app.db.models.jobs import JobRunRecord
+from app.service.events import EventBus
 from app.service.evolution.advance import EvolutionAdvanceService
 from app.service.evolution.apply_final import EvolutionApplyService, EvolutionFinalizeService
-from app.service.evolution.engine.contracts import EvalGatewayConfig
+from app.service.evolution.engine.contracts import ConfigError, EvalGatewayConfig
 from app.service.evolution.eval_poller import EvolutionEvalPoller, EvolutionEvalSubmitter
+from app.service.evolution.events import EvolutionRunEventService
 from app.service.evolution.gateway_factory import build_eval_gateway_factory
 from app.service.evolution.git_candidate import EvolutionCandidateService
-from app.service.evolution.patch_source import default_patch_source_factory
+from app.service.evolution.patch_source import AgentEditPatchSource, default_patch_source_factory
+from app.third_party_api.ai_agent.contracts import (
+    AgentCallTrace,
+    AgentProviderError,
+    AgentUsage,
+    EditRequest,
+    EditResult,
+)
+from app.third_party_api.ai_agent.fake import FakeAIAgentProvider
 from app.third_party_api.git.workspace import GitWorkspaceManager
 
 SH = ZoneInfo("Asia/Shanghai")
@@ -566,3 +578,273 @@ class _NoJobs:
     async def submit(self, **kwargs: Any) -> None:
         """Absorb one follow-up submission."""
         return None
+
+
+class _RecordingAgent(FakeAIAgentProvider):
+    """Fake provider that records the edit requests it receives."""
+
+    def __init__(self, edit_plan: Mapping[str, Any]) -> None:
+        """Bind the deterministic plan and an empty request log."""
+        super().__init__(edit_plan=edit_plan)
+        self.requests: list[EditRequest] = []
+
+    async def edit_workspace(self, request: EditRequest) -> EditResult:
+        """Record the request and delegate to the deterministic fake."""
+        self.requests.append(request)
+        return await super().edit_workspace(request)
+
+
+def _agent_plan() -> dict[str, Any]:
+    """Build one two-file plan against the seeded target repository."""
+    return {
+        "summary": "提高重试上限并补充说明",
+        "edits": [
+            {
+                "op": "replace",
+                "file": "skills/deep-research/config/deep-research.json",
+                "target": '"maxRetries": 2',
+                "content": '"maxRetries": 3',
+                "rationale": "同簇 case 均在第 2 次重试后仍失败",
+            },
+            {
+                "op": "append",
+                "file": "skills/deep-research/SKILL.md",
+                "content": "Retry budget: 3 attempts.",
+                "rationale": "让技能说明与配置一致",
+            },
+        ],
+    }
+
+
+async def _agent_edit_environment(
+    tmp_path: Path,
+    loop_state: tuple[Any, ...],
+    stub_url: str,
+    *,
+    agent: FakeAIAgentProvider | None = None,
+) -> tuple[EvolutionAdvanceService, EvolutionRunEventService, Any]:
+    """Prepare the real workspace, services, and advance handler for agent-edit."""
+    _database, repository, probes, bare, _seed, base_commit = loop_state
+    env = {API_KEY_REF: "stub-secret-value"}
+    eval_config = {
+        "mode": "http",
+        "baseUrl": stub_url,
+        "apiKeyRef": API_KEY_REF,
+        "patchMode": "agent-edit",
+    }
+    workspaces = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+        push_enabled=True,
+    )
+    await _seed_run_and_round(_database, repository, eval_config, str(bare))
+    await _prepare_workspace(repository, workspaces, base_commit)
+    resolved_agent = agent if agent is not None else _RecordingAgent(_agent_plan())
+    events = EvolutionRunEventService(
+        SqlRunEventStore(_database),
+        repository,
+        EventBus(queue_capacity=32),
+    )
+    candidates = EvolutionCandidateService(
+        repository,
+        workspaces,
+        events=events,
+        patch_source_factory=lambda run: AgentEditPatchSource(resolved_agent),
+    )
+    gateway_for_run = _gateway_for_run(tmp_path, stub_url, env)
+    submitter = EvolutionEvalSubmitter(
+        repository,
+        gateway_for_run,
+        events=None,
+        now=lambda: datetime.now(SH),
+        poll_interval=timedelta(seconds=1),
+    )
+    advance = EvolutionAdvanceService(repository, candidates, probes, submitter)
+    return advance, events, resolved_agent
+
+
+async def test_real_loop_agent_edit_commits_a_multi_file_candidate(
+    tmp_path: Path,
+    loop_state: tuple[Any, ...],
+) -> None:
+    """One EditPlan becomes a real two-file candidate with intent and diff events."""
+    _database, repository, _probes, bare, _seed, _base = loop_state
+    platform = StubEvalPlatform(status_sequence=["completed"])
+    server, stub_url = platform.build()
+    try:
+        advance, events, agent = await _agent_edit_environment(tmp_path, loop_state, stub_url)
+        await advance.handle(_job("evolution_advance", {"runId": RUN_ID}))
+        round_ = await repository.get_round(ROUND_ID)
+        assert round_ is not None
+        assert round_.push_status == "succeeded"
+        assert round_.candidate_ref is not None
+        assert round_.candidate_commit is not None
+        assert isinstance(round_.patch, dict)
+        stored_files = {item["file"] for item in round_.patch["files"]}
+        assert stored_files == {
+            "skills/deep-research/SKILL.md",
+            "skills/deep-research/config/deep-research.json",
+        }
+        assert round_.patch["intent"]["summary"] == "提高重试上限并补充说明"
+        assert {item["status"] for item in round_.patch["report"]} == {"applied"}
+
+        commit = round_.candidate_commit
+        pushed_config = json.loads(
+            git(
+                bare,
+                "show",
+                f"{commit}:skills/deep-research/config/deep-research.json",
+            ),
+        )
+        assert pushed_config == {"maxRetries": 3}
+        pushed_skill = git(bare, "show", f"{commit}:skills/deep-research/SKILL.md")
+        assert "Retry budget: 3 attempts." in pushed_skill
+        assert git(bare, "rev-parse", f"refs/tags/{round_.candidate_ref}") == commit
+        assert "skills/deep-research/SKILL.md" in (round_.candidate_message or "")
+        assert agent.requests[0].allowed_paths == ("skills/deep-research/**",)
+
+        page = await events.list(RUN_ID, after_seq=0, limit=50, level=None)
+        committed = [item for item in page.items if item.event_type == "candidate_committed"]
+        assert len(committed) == 1
+        payload = committed[0].payload
+        assert payload is not None
+        assert sorted(payload["files"]) == [
+            "skills/deep-research/SKILL.md",
+            "skills/deep-research/config/deep-research.json",
+        ]
+        assert payload["intent"]["summary"] == "提高重试上限并补充说明"
+        assert {item["status"] for item in payload["report"]} == {"applied"}
+        assert "SKILL.md" in payload["unifiedDiff"]
+        assert "config/deep-research.json" in payload["unifiedDiff"]
+
+        calls = [item for item in page.items if item.event_type == "ai_agent_call"]
+        assert len(calls) == 1
+        call = calls[0]
+        assert call.step_index == 5
+        assert call.stage == "candidate"
+        call_payload = call.payload
+        assert call_payload is not None
+        assert call_payload["task"] == "agent.edit"
+        assert call_payload["provider"] == "fake"
+        assert call_payload["outcome"] == "ok"
+        assert call_payload["attempts"] == 1
+        assert call_payload["feedbackRetries"] == 0
+        assert call_payload["submissionRounds"] == 0
+        assert call_payload["submissionParsedBy"] is None
+        assert call_payload["totalTokens"] == 0
+        assert call_payload["inputTokens"] == 0
+        assert call_payload["outputTokens"] == 0
+        assert call_payload["costUsd"] == 0
+        assert call_payload["latencyMs"] == 0
+    finally:
+        server.shutdown()
+
+
+class _FailingEditAgent(FakeAIAgentProvider):
+    """Fail one edit call after a parsed CLI result, with usage attached."""
+
+    async def edit_workspace(self, request: EditRequest) -> EditResult:
+        """Raise the normalized provider failure the patch source must record."""
+        del request
+        raise AgentProviderError(
+            "edit backend unavailable",
+            retryable=False,
+            provider_id=self.provider_id,
+            trace=AgentCallTrace(
+                attempts=1,
+                submission_rounds=1,
+                submission_validation_failures=1,
+            ),
+            usage=AgentUsage(model="fake", input_tokens=7, output_tokens=3, cost_usd=0.002),
+            latency_ms=23,
+        )
+
+
+async def test_agent_edit_provider_failure_records_the_call_before_run_failure(
+    tmp_path: Path,
+    loop_state: tuple[Any, ...],
+) -> None:
+    """One provider failure produces one error call, then the run failure."""
+    _database, repository, _probes, _bare, _seed, _base = loop_state
+    platform = StubEvalPlatform(status_sequence=["completed"])
+    server, stub_url = platform.build()
+    try:
+        advance, events, _agent = await _agent_edit_environment(
+            tmp_path,
+            loop_state,
+            stub_url,
+            agent=_FailingEditAgent(),
+        )
+        with pytest.raises(ConfigError, match="edit backend unavailable"):
+            await advance.handle(_job("evolution_advance", {"runId": RUN_ID}))
+
+        page = await events.list(RUN_ID, after_seq=0, limit=50, level=None)
+        calls = [item for item in page.items if item.event_type == "ai_agent_call"]
+        assert len(calls) == 1
+        call = calls[0]
+        assert call.stage == "candidate"
+        assert call.step_index == 5
+        payload = call.payload
+        assert payload is not None
+        assert payload["task"] == "agent.edit"
+        assert payload["outcome"] == "error"
+        assert payload["model"] == "fake"
+        assert payload["totalTokens"] == 10
+        assert payload["costUsd"] == pytest.approx(0.002)
+        assert payload["latencyMs"] == 23
+        assert payload["attempts"] == 1
+        assert payload["submissionRounds"] == 1
+        assert payload["submissionValidationFailures"] == 1
+
+        failed = [item for item in page.items if item.event_type == "run_failed"]
+        assert len(failed) == 1
+        assert call.seq < failed[0].seq
+        run = await repository.get_run(RUN_ID)
+        assert run is not None
+        assert run.status == "failed"
+        assert run.error_stage == "patch"
+    finally:
+        server.shutdown()
+
+
+async def test_agent_edit_apply_failure_still_records_the_provider_call(
+    tmp_path: Path,
+    loop_state: tuple[Any, ...],
+) -> None:
+    """A plan that cannot apply is one ok call followed by the run failure."""
+    _database, _repository, _probes, _bare, _seed, _base = loop_state
+    platform = StubEvalPlatform(status_sequence=["completed"])
+    server, stub_url = platform.build()
+    bad_plan = {
+        "summary": "target a missing anchor",
+        "edits": [
+            {
+                "op": "replace",
+                "file": "skills/deep-research/SKILL.md",
+                "target": "missing anchor",
+                "content": "unused",
+                "rationale": "exercise the post-call apply failure",
+            },
+        ],
+    }
+    try:
+        advance, events, _agent = await _agent_edit_environment(
+            tmp_path,
+            loop_state,
+            stub_url,
+            agent=_RecordingAgent(bad_plan),
+        )
+        with pytest.raises(ConfigError, match="no applicable change"):
+            await advance.handle(_job("evolution_advance", {"runId": RUN_ID}))
+
+        page = await events.list(RUN_ID, after_seq=0, limit=50, level=None)
+        calls = [item for item in page.items if item.event_type == "ai_agent_call"]
+        assert len(calls) == 1
+        assert calls[0].payload is not None
+        assert calls[0].payload["task"] == "agent.edit"
+        assert calls[0].payload["outcome"] == "ok"
+        failed = [item for item in page.items if item.event_type == "run_failed"]
+        assert len(failed) == 1
+        assert calls[0].seq < failed[0].seq
+    finally:
+        server.shutdown()

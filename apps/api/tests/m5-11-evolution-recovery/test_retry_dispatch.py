@@ -42,9 +42,9 @@ from app.service.evolution.git_candidate import (
 )
 from app.service.evolution.retry import EvolutionRetryService
 from app.third_party_api.git.workspace import (
+    CandidateBundle,
     CandidateWorkspace,
     GitOperationError,
-    Patch,
     PreparedWorkspace,
 )
 
@@ -123,19 +123,20 @@ class WorkspaceDouble:
     created: list[str] = field(default_factory=list)
     pushed: list[str] = field(default_factory=list)
 
-    async def create_candidate(
+    async def create_candidate_bundle(
         self,
         prepared: PreparedWorkspace,
         *,
         run_branch: str,
         candidate_ref: str,
-        patch: Patch,
+        bundle: CandidateBundle,
         message: str,
         expected_run_id: str | None = None,
         reset_workspace: bool = False,
+        allow_protected_paths: bool = False,
     ) -> CandidateWorkspace:
-        """Record and return one deterministic candidate."""
-        del prepared, patch
+        """Record and return one deterministic multi-file candidate."""
+        del prepared, bundle, reset_workspace, allow_protected_paths
         self.created.append(candidate_ref)
         return CandidateWorkspace(
             workspace_path=Path("workspace"),
@@ -636,9 +637,15 @@ async def test_saved_patch_bypasses_model_generation(state: State) -> None:
     def forbidden(_: Any) -> Any:
         raise AssertionError("resuming a durable patch called the model twice")
 
+    events = EvolutionRunEventService(
+        SqlRunEventStore(state.database),
+        state.repository,
+        EventBus(queue_capacity=8),
+    )
     service = EvolutionCandidateService(
         state.repository,
         state.workspace,  # type: ignore[arg-type]
+        events=events,
         patch_source_factory=forbidden,
     )
     published = await service.publish(
@@ -646,6 +653,8 @@ async def test_saved_patch_bypasses_model_generation(state: State) -> None:
     )
     assert published.patch == patch
     assert published.status == "evaluating"
+    page = await events.list(RUN_ID, after_seq=0, limit=50, level=None)
+    assert [event for event in page.items if event.event_type == "ai_agent_call"] == []
 
 
 async def test_initial_transient_push_failure_carries_one_minute_backoff(

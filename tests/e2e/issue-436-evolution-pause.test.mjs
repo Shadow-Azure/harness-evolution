@@ -182,6 +182,9 @@ async function clickControl(page, selector) {
 async function screenshot(page, filename, { force = false } = {}) {
   if (!force && process.env.HE_KEEP_E2E_ARTIFACTS !== "1") return;
   stage(`artifact: capturing ${filename}`);
+  // Screenshots are evidence, not assertions. A headless Chrome target can
+  // detach under memory pressure on shared runners; losing one PNG must not
+  // turn an otherwise correct pause/resume flow into a red suite.
   try {
     const { data } = await page.session.send("Page.captureScreenshot", {
       format: "png",
@@ -190,7 +193,7 @@ async function screenshot(page, filename, { force = false } = {}) {
     });
     await writeFile(path.join(screenshotDir, filename), data, "base64");
   } catch (error) {
-    throw new Error(`artifact capture failed (${filename}): ${error.message}`, { cause: error });
+    console.warn(`issue-436 screenshot ${filename} skipped: ${error.message}`);
   }
 }
 
@@ -354,6 +357,7 @@ test("issue-436 pauses a run from its card, preserves it across reload, and cont
     await waitForUI(page.session, `document.querySelector('.control-button')?.textContent.trim() === '继续执行'`);
     await page.session.send("Page.reload");
     await waitForUI(page.session, `document.querySelector('.detail-head .badge')?.textContent.trim() === '已暂停'`);
+    await waitForUI(page.session, `document.querySelector('.control-button')?.textContent.trim() === '继续执行'`);
     stage("control: pause persisted across reload");
     await screenshot(page, "02-paused-after-reload.png");
     await evaluate(page, `document.querySelector('.control-button').click()`);
