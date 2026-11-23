@@ -34,11 +34,14 @@ from app.third_party_api.ai_agent.base import (
     PERMISSION_MODE,
 )
 from app.third_party_api.ai_agent.claude_code import (
+    ANALYZE_TOOLS,
     EDIT_MAX_TURNS,
     EDIT_PLAN_FILENAME,
     HEALTH_TIMEOUT_SECONDS,
     READ_ONLY_TOOLS,
+    SUBMISSION_TOOL,
     AsyncioClaudeCliRunner,
+    _parse_cli_stdout,
 )
 
 _REAL_RESULT_FIXTURE = (
@@ -240,6 +243,24 @@ def _request(prompt: str = "rate the cluster") -> AnalysisRequest:
     )
 
 
+def _absolute_rule(path: Path) -> str:
+    """Render the ``//``-anchored permission path the provider must use."""
+    return f"//{path.as_posix().lstrip('/')}"
+
+
+def _submission_rules(directory: Path) -> str:
+    """Build the exact analyze allow list for one resolved task directory."""
+    return (
+        f"Read({_absolute_rule(directory / 'schema.json')}),"
+        f"Edit({_absolute_rule(directory / 'result.json5')})"
+    )
+
+
+def _result_document(**fields: Any) -> str:
+    """Render one result document for a scripted CLI step."""
+    return json.dumps({"type": "result", "is_error": False, **fields})
+
+
 async def test_analyze_success_single_json_result(tmp_path: Path) -> None:
     """A normal result document plus a written literal becomes an AnalysisResult."""
     binary = _binary(tmp_path)
@@ -276,16 +297,219 @@ async def test_analyze_success_single_json_result(tmp_path: Path) -> None:
     assert call.cwd.name.startswith("he-ai-submission-")
     assert call.timeout_seconds == ANALYZE_TIMEOUT_SECONDS
     assert argv[0] == str(binary)
-    assert "--bare" in argv
+    assert "--bare" not in argv
+    assert "--safe-mode" in argv
+    assert "--restricted" in argv
+    assert "--strict-mcp-config" in argv
     prompt = argv[argv.index("-p") + 1]
     assert "rate the cluster" in prompt
     assert "./result.json5" in prompt
-    assert argv[argv.index("--output-format") + 1] == "json"
+    assert argv[argv.index("--output-format") + 1] == "stream-json"
+    assert "--verbose" in argv
     assert argv[argv.index("--permission-mode") + 1] == PERMISSION_MODE
-    assert argv[argv.index("--allowed-tools") + 1] == "Write(./result.json5)"
+    assert argv[argv.index("--tools") + 1] == ",".join(ANALYZE_TOOLS)
+    assert argv[argv.index("--allowed-tools") + 1] == _submission_rules(call.cwd)
+    assert SUBMISSION_TOOL in ANALYZE_TOOLS
     assert "--no-session-persistence" in argv
     assert "--settings" not in argv
     assert "--resume" not in argv
+
+
+async def test_analyze_fails_fast_when_the_tool_set_lacks_write(tmp_path: Path) -> None:
+    """A CLI tool set without ``Write`` is terminal, not a retry loop."""
+    init = {"type": "system", "subtype": "init", "tools": ["Bash", "Edit", "Read"]}
+    runner = MockRunner(
+        ClaudeCliResult(
+            returncode=0,
+            stdout="\n".join(
+                (
+                    json.dumps(init),
+                    _result_document(stop_reason="end_turn", num_turns=1),
+                ),
+            ),
+            stderr="",
+        ),
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    with pytest.raises(AgentProviderError) as caught:
+        await provider.analyze(_request())
+
+    error = caught.value
+    assert error.message == "claude-code analysis tool set does not include Write"
+    assert error.detail is not None
+    assert "Write" in error.detail
+    assert "tools=Bash,Edit,Read" in error.detail
+    assert error.trace.attempts == 1
+    assert error.trace.submission_rounds == 0
+    assert len(runner.calls) == 1
+
+
+async def test_analyze_fails_fast_when_the_submission_write_is_denied(
+    tmp_path: Path,
+) -> None:
+    """A denied write names the tool and path instead of retrying into a timeout."""
+    runner = MockRunner(
+        lambda cwd: ClaudeCliResult(
+            returncode=0,
+            stdout=_result_document(
+                stop_reason="end_turn",
+                num_turns=3,
+                permission_denials=[
+                    {
+                        "tool_name": "Write",
+                        "tool_use_id": "tool-1",
+                        "tool_input": {"file_path": str(cwd / "result.json5")},
+                    },
+                ],
+            ),
+            stderr="",
+        ),
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    with pytest.raises(AgentProviderError) as caught:
+        await provider.analyze(_request())
+
+    error = caught.value
+    assert error.message == "claude-code analysis submission write was denied"
+    assert error.detail is not None
+    assert "permission denied: Write(" in error.detail
+    assert "result.json5" in error.detail
+    assert "stop_reason=end_turn" in error.detail
+    assert "num_turns=3" in error.detail
+    assert error.trace.attempts == 1
+    assert error.trace.submission_rounds == 1
+    assert error.trace.submission_parse_failures == 1
+    assert len(runner.calls) == 1
+
+
+async def test_analyze_retries_an_invalid_literal_even_when_a_write_was_denied(
+    tmp_path: Path,
+) -> None:
+    """A parsed-but-invalid literal still gets the designed feedback retry."""
+
+    def invalid_with_denial(cwd: Path) -> ClaudeCliResult:
+        _write_result(cwd, {"confidence": 2.0, "summary": "too high"})
+        return ClaudeCliResult(
+            returncode=0,
+            stdout=_result_document(
+                permission_denials=[
+                    {
+                        "tool_name": "Write",
+                        "tool_input": {"file_path": str(cwd / "outside.txt")},
+                    },
+                ],
+            ),
+            stderr="",
+        )
+
+    runner = MockRunner(
+        invalid_with_denial,
+        _analyze_step({"confidence": 0.5, "summary": "fixed"}, session_id="session-2"),
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    result = await provider.analyze(_request())
+
+    assert result.output["confidence"] == 0.5
+    assert result.trace.attempts == 2
+    assert len(runner.calls) == 2
+
+
+async def test_analyze_retry_keeps_permission_denial_evidence(tmp_path: Path) -> None:
+    """A denial on the final attempt stays visible in the terminal failure detail."""
+
+    def denied(cwd: Path) -> ClaudeCliResult:
+        (cwd / "result.json5").unlink(missing_ok=True)
+        return ClaudeCliResult(
+            returncode=0,
+            stdout=_result_document(
+                permission_denials=[
+                    {
+                        "tool_name": "Write",
+                        "tool_input": {"file_path": str(cwd / "result.json5")},
+                    },
+                ],
+            ),
+            stderr="",
+        )
+
+    runner = MockRunner(
+        _analyze_step({"confidence": 2.0, "summary": "bad"}, session_id="session-1"),
+        denied,
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    with pytest.raises(AgentProviderError) as caught:
+        await provider.analyze(_request())
+
+    error = caught.value
+    assert error.message == "claude-code analysis submission failed validation"
+    assert error.detail is not None
+    assert "permission_denials=Write(" in error.detail
+    assert error.trace.attempts == 2
+    assert error.trace.submission_parse_failures == 1
+    assert error.trace.submission_validation_failures == 1
+    assert len(runner.calls) == 2
+
+
+async def test_cancelled_call_keeps_stderr_and_cli_evidence(tmp_path: Path) -> None:
+    """A timeout/cancellation keeps bounded stderr, the tool set, and denials."""
+    runner = MockRunner(
+        lambda cwd: ClaudeCliResult(
+            returncode=-2,
+            cancelled=True,
+            stdout="\n".join(
+                (
+                    json.dumps(
+                        {"type": "system", "subtype": "init", "tools": ["Read", "Write"]},
+                    ),
+                    _result_document(
+                        permission_denials=[
+                            {
+                                "tool_name": "Write",
+                                "tool_input": {"file_path": str(cwd / "result.json5")},
+                            },
+                        ],
+                    ),
+                ),
+            ),
+            stderr="network unavailable",
+        ),
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    with pytest.raises(AgentProviderError) as caught:
+        await provider.analyze(_request())
+
+    error = caught.value
+    assert error.detail is not None
+    assert "cancelled" in error.detail
+    assert "tools=Read,Write" in error.detail
+    assert "permission_denials=Write(" in error.detail
+    assert "stderr=network unavailable" in error.detail
+    assert len(runner.calls) == 1
 
 
 async def test_analyze_discards_the_disposable_task_directory(tmp_path: Path) -> None:
@@ -407,7 +631,9 @@ async def test_invalid_submission_retries_once_with_feedback(tmp_path: Path) -> 
     assert "rate the cluster" in retry_prompt
     assert "confidence" in retry_prompt
     assert "重新写入" in retry_prompt
-    assert retry_argv[retry_argv.index("--allowed-tools") + 1] == ("Write(./result.json5)")
+    assert retry_argv[retry_argv.index("--allowed-tools") + 1] == _submission_rules(
+        runner.calls[1].cwd,
+    )
 
 
 async def test_missing_submission_keeps_parse_failure_provenance(tmp_path: Path) -> None:
@@ -1278,3 +1504,54 @@ async def test_e2e_real_cli_analyze_smoke() -> None:
     assert result.usage.model != "claude-code"
     assert result.usage.input_tokens + result.usage.output_tokens > 0
     assert result.usage.cost_usd >= 0
+
+
+@pytest.mark.skipif(
+    not _e2e_enabled() or not Path(_E2E_BIN).is_file(),
+    reason="set HE_AI_AGENT_CLAUDE_E2E=1 with an installed claude CLI",
+)
+async def test_e2e_real_cli_denies_write_outside_task_directory(
+    tmp_path: Path,
+) -> None:
+    """The real CLI denies a write outside the one submission task directory."""
+    provider = ClaudeCodeProvider(
+        Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            ai_agent_provider="claude-code",
+            ai_agent_claude_bin=_E2E_BIN,
+        ),
+    )
+    prep = provider._submission.prepare("smoke-escape", E2EOutput)
+    outside = tmp_path / "escape.txt"
+    try:
+        directory = prep.directory.resolve()
+        prompt = (
+            f"Use the Write tool to create the file {outside} with the exact text "
+            "escape. Do not use any other tool and do not write any other file. "
+            "Then stop."
+        )
+        argv = provider._analyze_argv(
+            prompt,
+            prep,
+            directory=directory,
+            settings_file=provider._settings_file(),
+        )
+        result = await AsyncioClaudeCliRunner().run(
+            argv,
+            cwd=directory,
+            env=dict(os.environ),
+            timeout_seconds=ANALYZE_TIMEOUT_SECONDS,
+        )
+        parsed = _parse_cli_stdout(result.stdout, fallback_model="e2e")
+
+        assert result.returncode == 0
+        assert result.cancelled is False
+        assert not outside.exists()
+        assert SUBMISSION_TOOL in parsed.tools
+        assert any(
+            denial.get("tool_name") == SUBMISSION_TOOL
+            and str(outside) in json.dumps(denial.get("tool_input", {}))
+            for denial in parsed.permission_denials
+        )
+    finally:
+        provider._submission.discard(prep)
