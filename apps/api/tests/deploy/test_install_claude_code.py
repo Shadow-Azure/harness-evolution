@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import base64
 import importlib.util
+import io
 import json
 import stat
+import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -259,50 +262,22 @@ def test_switch_current_is_a_relative_atomic_link(tmp_path: Path) -> None:
 
 
 def test_preflight_accepts_service_readable_assets(tmp_path: Path) -> None:
-    prefix = tmp_path / "claude-code"
-    binary = prefix / "2.1.323-1" / "usr" / "bin" / "claude"
-    binary.parent.mkdir(parents=True)
-    binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    binary.chmod(0o755)
-    settings = prefix / "config" / "settings.json"
-    settings.parent.mkdir(parents=True)
-    settings.write_text("{}\n", encoding="utf-8")
-    settings.chmod(0o644)
-    for directory in (tmp_path, prefix, prefix / "2.1.323-1", prefix / "config"):
-        directory.chmod(0o755)
+    prefix, binary, settings = seed_shared_assets(tmp_path)
 
     install_claude_code.preflight_shared_access(binary, settings, prefix)
 
 
 def test_preflight_rejects_unreadable_settings(tmp_path: Path) -> None:
-    prefix = tmp_path / "claude-code"
-    binary = prefix / "2.1.323-1" / "usr" / "bin" / "claude"
-    binary.parent.mkdir(parents=True)
-    binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    binary.chmod(0o755)
-    settings = prefix / "config" / "settings.json"
-    settings.parent.mkdir(parents=True)
-    settings.write_text("{}\n", encoding="utf-8")
+    prefix, binary, settings = seed_shared_assets(tmp_path)
     settings.chmod(0o600)
-    for directory in (tmp_path, prefix, prefix / "2.1.323-1", prefix / "config"):
-        directory.chmod(0o755)
 
     with pytest.raises(RuntimeError, match="not readable"):
         install_claude_code.preflight_shared_access(binary, settings, prefix)
 
 
 def test_preflight_rejects_non_executable_binary(tmp_path: Path) -> None:
-    prefix = tmp_path / "claude-code"
-    binary = prefix / "2.1.323-1" / "usr" / "bin" / "claude"
-    binary.parent.mkdir(parents=True)
-    binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    prefix, binary, settings = seed_shared_assets(tmp_path)
     binary.chmod(0o644)
-    settings = prefix / "config" / "settings.json"
-    settings.parent.mkdir(parents=True)
-    settings.write_text("{}\n", encoding="utf-8")
-    settings.chmod(0o644)
-    for directory in (tmp_path, prefix, prefix / "2.1.323-1", prefix / "config"):
-        directory.chmod(0o755)
 
     with pytest.raises(RuntimeError, match="not executable"):
         install_claude_code.preflight_shared_access(binary, settings, prefix)
@@ -316,3 +291,129 @@ def test_write_atomic_does_not_chmod_an_existing_home(tmp_path: Path) -> None:
     install_claude_code.write_atomic(home / ".claude.json", "{}\n", 0o600)
 
     assert stat.S_IMODE(home.stat().st_mode) == 0o755
+
+
+def seed_shared_assets(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """Create a prefix whose whole chain is service-readable."""
+    prefix = tmp_path / "claude-code"
+    binary = prefix / "2.1.323-1" / "usr" / "bin" / "claude"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    binary.chmod(0o755)
+    settings = prefix / "config" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text("{}\n", encoding="utf-8")
+    settings.chmod(0o644)
+    for directory in (
+        tmp_path,
+        prefix,
+        prefix / "2.1.323-1",
+        prefix / "2.1.323-1" / "usr",
+        prefix / "2.1.323-1" / "usr" / "bin",
+        prefix / "config",
+    ):
+        directory.chmod(0o755)
+    return prefix, binary, settings
+
+
+def test_preflight_rejects_untraversable_version_chain(tmp_path: Path) -> None:
+    prefix, binary, settings = seed_shared_assets(tmp_path)
+    for relative in ("2.1.323-1", "2.1.323-1/usr", "2.1.323-1/usr/bin"):
+        directory = prefix / relative
+        directory.chmod(0o700)
+
+        with pytest.raises(RuntimeError, match="not traversable") as error:
+            install_claude_code.preflight_shared_access(binary, settings, prefix)
+
+        assert str(directory) in str(error.value)
+        directory.chmod(0o755)
+
+
+def test_repair_service_access_fixes_an_existing_version_directory(tmp_path: Path) -> None:
+    prefix, binary, settings = seed_shared_assets(tmp_path)
+    version = prefix / "2.1.323-1"
+    for directory in (version, version / "usr", version / "usr" / "bin"):
+        directory.chmod(0o700)
+
+    install_claude_code.repair_service_access(binary, prefix)
+
+    for directory in (prefix, version, version / "usr", version / "usr" / "bin"):
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o755
+    assert stat.S_IMODE(binary.stat().st_mode) == 0o755
+    install_claude_code.preflight_shared_access(binary, settings, prefix)
+
+
+def test_install_from_deb_repairs_an_existing_version_directory(tmp_path: Path) -> None:
+    prefix, binary, _ = seed_shared_assets(tmp_path)
+    (prefix / "2.1.323-1").chmod(0o700)
+
+    installed = install_claude_code.install_from_deb(
+        tmp_path / "missing.deb", "2.1.323-1", prefix, tmp_path
+    )
+
+    assert installed == binary
+    assert stat.S_IMODE((prefix / "2.1.323-1").stat().st_mode) == 0o755
+
+
+def test_install_from_deb_sets_service_traversable_version_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prefix = tmp_path / "claude-code"
+    home = tmp_path / "home"
+    home.mkdir()
+    deb = tmp_path / "claude-code.deb"
+    deb.write_bytes(b"")
+    real_run = subprocess.run
+
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if command[0] == "dpkg-deb":
+            staging = Path(command[3])
+            extracted = staging / "usr/bin/claude"
+            extracted.parent.mkdir(parents=True)
+            extracted.write_text("#!/bin/sh\necho '2.1.323 (Claude Code)'\n", encoding="utf-8")
+            extracted.chmod(0o755)
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return real_run(command, **kwargs)
+
+    monkeypatch.setattr(install_claude_code.subprocess, "run", fake_run)
+
+    binary = install_claude_code.install_from_deb(deb, "2.1.323-1", prefix, home)
+
+    version = prefix / "2.1.323-1"
+    assert binary == version / "usr" / "bin" / "claude"
+    for directory in (version, version / "usr", version / "usr" / "bin"):
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o755
+
+
+def test_main_configure_only_repairs_the_existing_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    prefix = tmp_path / "claude-code"
+    version = prefix / "2.1.323-1"
+    binary = version / "usr" / "bin" / "claude"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\necho '2.1.323 (Claude Code)'\n", encoding="utf-8")
+    binary.chmod(0o755)
+    for directory in (prefix, version, version / "usr", version / "usr" / "bin"):
+        directory.chmod(0o755)
+    version.chmod(0o700)
+    launcher = home / ".local" / "bin" / "claude"
+    launcher.parent.mkdir(parents=True)
+    launcher.symlink_to(binary)
+
+    entries = "\n".join(
+        [
+            f"CLAUDE_CODE_MODEL {encode('claude-sonnet-5')}",
+            f"CLAUDE_CODE_API_KEY {encode('sk-test')}",
+        ]
+    )
+    monkeypatch.setattr(install_claude_code.sys, "stdin", io.StringIO(entries))
+
+    exit_code = install_claude_code.main(
+        ["--version", "2.1.323-1", "--prefix", str(prefix), "--home", str(home)]
+    )
+
+    assert exit_code == 0
+    assert stat.S_IMODE(version.stat().st_mode) == 0o755
