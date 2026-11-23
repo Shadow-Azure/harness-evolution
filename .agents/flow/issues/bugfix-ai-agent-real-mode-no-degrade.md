@@ -25,7 +25,7 @@ scope:
   - plans/**
   - .agents/**
 adr:
-  - ../../notes/proposed/feature/2026-11-22-evolution-real-ai-design.md
+  - ../../notes/implemented/feature/2026-11-22-evolution-real-ai-design.md
 github:
   number: 521
   url: https://github.com/Shadow-Azure/harness-evolution/issues/521
@@ -103,7 +103,7 @@ github:
 - [07 §5.5.2](../../../plans/fullstack-design/07-backend-implementation.md)：三层聚类的审查/评分任务与三条降级路径；本 issue 修改的是“真实模式下是否允许降级”的契约，并补部署前置。
 - [07 §5.5.1](../../../plans/fullstack-design/07-backend-implementation.md)：AI Agent provider 的父类契约与 `AI_AGENT_PROVIDER` 选择；strict/degrade 策略应落在这一层，而不是散落在业务分支。
 - [06 §5.3](../../../plans/fullstack-design/06-database-design.md)：`confidence` / `severity` / `rank` 的持久化契约；strict 失败时不得写入兜底值，避免“零迁移”字段被错误数据污染。
-- [2026-11-22 真实模型化设计 Note](https://github.com/Shadow-Azure/harness-evolution/blob/main/.agents/notes/proposed/feature/2026-11-22-evolution-real-ai-design.md)：降级“最坏情况等于今天的行为”的原始取舍；本 issue 记录在真实模式下该取舍不再成立，并补 deploy/harness 用户边界的根治。
+- [2026-11-22 真实模型化设计 Note](https://github.com/Shadow-Azure/harness-evolution/blob/main/.agents/notes/implemented/feature/2026-11-22-evolution-real-ai-design.md)：降级“最坏情况等于今天的行为”的原始取舍；本 issue 记录在真实模式下该取舍不再成立，并补 deploy/harness 用户边界的根治。
 - 外部参考：[systemd.exec](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html)（LoadCredential/DynamicUser/StateDirectory/ConfigurationDirectory）、[SSD Nodes 专用服务账号](https://www.ssdnodes.com/learn/least-privilege-users-vps)、[systemd 服务 HOME/PATH 坑](https://bbs.huaweicloud.com/blogs/522224)、[Claude Code env-vars / CLAUDE_CONFIG_DIR](https://code.claude.com/docs/en/env-vars)。
 
 ## 实现内容

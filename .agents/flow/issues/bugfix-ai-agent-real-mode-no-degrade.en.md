@@ -25,7 +25,7 @@ scope:
   - plans/**
   - .agents/**
 adr:
-  - ../../notes/proposed/feature/2026-11-22-evolution-real-ai-design.md
+  - ../../notes/implemented/feature/2026-11-22-evolution-real-ai-design.md
 github:
   number: 521
   url: https://github.com/Shadow-Azure/harness-evolution/issues/521
@@ -103,7 +103,7 @@ In production run `01M834EBAY3C9BB3TM8V85VHQN` (2026-11-23 10:40, target `codesp
 - [07 §5.5.2](../../../plans/fullstack-design/07-backend-implementation.md): the three-layer clustering review/scoring tasks and the three degradation paths; this issue changes the "is degradation allowed in real mode" contract and adds the deployment prerequisite.
 - [07 §5.5.1](../../../plans/fullstack-design/07-backend-implementation.md): the AI Agent provider parent contract and `AI_AGENT_PROVIDER` selection; the strict/degrade policy belongs at this seam rather than in business branches.
 - [06 §5.3](../../../plans/fullstack-design/06-database-design.md): the persisted `confidence`/`severity`/`rank` contract; strict failures must not write fallback values and pollute the zero-migration columns.
-- [2026-11-22 real-AI design note](https://github.com/Shadow-Azure/harness-evolution/blob/main/.agents/notes/proposed/feature/2026-11-22-evolution-real-ai-design.md): the original "worst case equals today's behavior" degradation trade-off; this issue records that the trade-off no longer holds in real mode and adds the deploy/harness user-boundary root fix.
+- [2026-11-22 real-AI design note](https://github.com/Shadow-Azure/harness-evolution/blob/main/.agents/notes/implemented/feature/2026-11-22-evolution-real-ai-design.md): the original "worst case equals today's behavior" degradation trade-off; this issue records that the trade-off no longer holds in real mode and adds the deploy/harness user-boundary root fix.
 - External references: [systemd.exec](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html) (`LoadCredential`/`DynamicUser`/`StateDirectory`/`ConfigurationDirectory`), [SSD Nodes dedicated service account](https://www.ssdnodes.com/learn/least-privilege-users-vps), [systemd HOME/PATH pitfalls](https://bbs.huaweicloud.com/blogs/522224), [Claude Code env-vars / CLAUDE_CONFIG_DIR](https://code.claude.com/docs/en/env-vars).
 
 ## Implementation
