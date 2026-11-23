@@ -34,7 +34,7 @@ sessionId attempts feedbackRetries submissionRounds submissionParsedBy submissio
 submissionParseFailures submissionValidationFailures
 ```
 
-- `outcome` 取 `ok`、`degraded` 或 `error`；`submissionParsedBy` 是最后一批解析档位（即使文档随后校验失败），无提交时为 null；`submissionRepaired` 表示最后一批经 repair 档，成功与否看 `outcome`。
+- `outcome` 取 `ok`、`degraded` 或 `error`；`submissionParsedBy` 是最后一轮的解析档位（即使文档随后校验失败），无提交时为 null；`submissionRepaired` 表示最后一轮经 repair 档，成功与否看 `outcome`。
 - 解析失败率 = `submissionParseFailures` / `submissionRounds`（`submissionRounds=0` 时比率不适用）；`feedbackRetries` 是回喂重试次数。
 - analyze 事件落 stage `cluster` 第 5 步（`step_index=4`），agent-edit 事件落 stage `candidate` 第 6 步（`step_index=5`）。
 - 失败调用在已解析 CLI 结果后保留 usage 与 latency；解析前的进程级失败记 0 与 unknown。
