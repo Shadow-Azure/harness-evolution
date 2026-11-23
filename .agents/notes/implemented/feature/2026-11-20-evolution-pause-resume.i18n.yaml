@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/feature/2026-11-20-evolution-pause-resume.md
-2026-11-20-evolution-pause-resume.md: 40de2dcbf546c5248ac0608ba929b16d73d20b2f
-2026-11-20-evolution-pause-resume.en.md: e3943268f76967705d3a613ecb40d216a93c2684
+2026-11-20-evolution-pause-resume.md: 216fa93a1695e2c9079f9f8954de0ca63bb332c7
+2026-11-20-evolution-pause-resume.en.md: 56ce3c8ce50add7993d0f2e470d403498cc85991
