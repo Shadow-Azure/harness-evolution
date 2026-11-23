@@ -1,0 +1,3 @@
+# 合并门：所有文件必须由仓库所有者批准
+# 规则集 "Protect main" 的 require_code_owner_review 依赖此文件
+* @Shadow-Azure
