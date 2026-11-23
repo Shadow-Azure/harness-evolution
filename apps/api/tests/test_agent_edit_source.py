@@ -17,6 +17,8 @@ from app.service.evolution.git_candidate import CandidateSource, CandidateTrace
 from app.service.evolution.patch_source import AgentEditPatchSource
 from app.third_party_api.ai_agent.base import AIAgentProvider
 from app.third_party_api.ai_agent.contracts import (
+    AgentCallTrace,
+    AgentProviderError,
     AgentUsage,
     AnalysisRequest,
     AnalysisResult,
@@ -150,8 +152,14 @@ class ScriptedProvider(AIAgentProvider):
         return EditResult(
             summary=plan.summary,
             provider_id=self.provider_id,
-            usage=AgentUsage(model=self.provider_id),
+            usage=AgentUsage(
+                model=self.provider_id,
+                input_tokens=11,
+                output_tokens=5,
+                cost_usd=0.003,
+            ),
             session_id=f"session-{index + 1}",
+            latency_ms=13,
             plan=plan,
         )
 
@@ -243,7 +251,73 @@ async def test_agent_edit_requires_a_prepared_workspace(tmp_path: Path) -> None:
     """A run without a workspace fails before any provider call."""
     provider = ScriptedProvider([_plan()])
     run = replace(_run(tmp_path / "missing"), workspace_path=None)
+    source = AgentEditPatchSource(provider)
 
     with pytest.raises(ConfigError, match="prepared workspace"):
-        await AgentEditPatchSource(provider).build_bundle(run, 1, _trace())
+        await source.build_bundle(run, 1, _trace())
     assert provider.requests == []
+    assert source.last_ai_call is None
+
+
+async def test_agent_edit_exposes_the_call_for_the_candidate_event(tmp_path: Path) -> None:
+    """The provider call stays observable even when the plan cannot be applied."""
+    workspace = _workspace(tmp_path)
+    provider = ScriptedProvider(
+        [_plan(_replace(f"{SUB_DIR}/SKILL.md", "missing anchor", "unused"))],
+    )
+    source = AgentEditPatchSource(provider)
+
+    with pytest.raises(ConfigError, match="no applicable change"):
+        await source.build_bundle(_run(workspace), 1, _trace())
+
+    call = source.last_ai_call
+    assert call is not None
+    assert call.task == "agent.edit"
+    assert call.provider == "scripted"
+    assert call.outcome == "ok"
+    assert call.trace.attempts == 1
+    payload = call.payload()
+    assert payload["sessionId"] == "session-1"
+    assert payload["totalTokens"] == 16
+    assert payload["inputTokens"] == 11
+    assert payload["costUsd"] == pytest.approx(0.003)
+    assert payload["latencyMs"] == 13
+    assert payload["submissionRounds"] == 0
+
+
+class FailingEditProvider(ScriptedProvider):
+    """Raise one normalized provider failure instead of returning a plan."""
+
+    async def edit_workspace(self, request: EditRequest) -> EditResult:
+        """Record the request and fail like a real CLI edit call."""
+        self.requests.append(request)
+        raise AgentProviderError(
+            "scripted edit failed",
+            retryable=False,
+            provider_id=self.provider_id,
+            trace=AgentCallTrace(attempts=1, submission_rounds=1, submission_validation_failures=1),
+            usage=AgentUsage(model="scripted", input_tokens=7, output_tokens=3, cost_usd=0.001),
+            latency_ms=21,
+        )
+
+
+async def test_agent_edit_exposes_a_failed_call_as_an_error_record(tmp_path: Path) -> None:
+    """A provider failure keeps its trace so the caller can record the error call."""
+    workspace = _workspace(tmp_path)
+    source = AgentEditPatchSource(FailingEditProvider([_plan()]))
+
+    with pytest.raises(AgentProviderError):
+        await source.build_bundle(_run(workspace), 1, _trace())
+
+    call = source.last_ai_call
+    assert call is not None
+    assert call.outcome == "error"
+    assert call.provider == "scripted"
+    assert call.trace.submission_validation_failures == 1
+    payload = call.payload()
+    assert payload["outcome"] == "error"
+    assert payload["feedbackRetries"] == 0
+    assert payload["model"] == "scripted"
+    assert payload["totalTokens"] == 10
+    assert payload["costUsd"] == pytest.approx(0.001)
+    assert payload["latencyMs"] == 21

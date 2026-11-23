@@ -392,6 +392,12 @@ async def test_invalid_submission_retries_once_with_feedback(tmp_path: Path) -> 
 
     assert result.output["confidence"] == 0.5
     assert result.session_id == "session-2"
+    assert result.trace.attempts == 2
+    assert result.trace.feedback_retries == 1
+    assert result.trace.submission_validation_failures == 1
+    assert result.trace.submission_parse_failures == 0
+    assert result.trace.parsed_by == "strict"
+    assert result.trace.repaired is False
     assert len(runner.calls) == 2
     for call in runner.calls:
         assert "--resume" not in call.argv
@@ -404,11 +410,48 @@ async def test_invalid_submission_retries_once_with_feedback(tmp_path: Path) -> 
     assert retry_argv[retry_argv.index("--allowed-tools") + 1] == ("Write(./result.json5)")
 
 
+async def test_missing_submission_keeps_parse_failure_provenance(tmp_path: Path) -> None:
+    """Two rounds without a literal stay attributable as parse failures."""
+    document = json.dumps({"type": "result"})
+    runner = MockRunner(
+        lambda _cwd: ClaudeCliResult(returncode=0, stdout=document, stderr=""),
+        lambda _cwd: ClaudeCliResult(returncode=0, stdout=document, stderr=""),
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    with pytest.raises(AgentProviderError) as caught:
+        await provider.analyze(_request())
+
+    error = caught.value
+    assert error.trace.attempts == 2
+    assert error.trace.feedback_retries == 1
+    assert error.trace.submission_parse_failures == 2
+    assert error.trace.submission_validation_failures == 0
+    assert error.trace.parsed_by is None
+    assert error.trace.repaired is False
+
+
 async def test_second_invalid_submission_fails_with_bounded_detail(tmp_path: Path) -> None:
     """After one failed retry the provider raises instead of retrying forever."""
     runner = MockRunner(
-        _analyze_step({"confidence": 2.0, "summary": "still high"}, session_id="session-1"),
-        _analyze_step({"confidence": 3.0, "summary": "higher"}, session_id="session-2"),
+        _analyze_step(
+            {"confidence": 2.0, "summary": "still high"},
+            session_id="session-1",
+            usage={"input_tokens": 9, "output_tokens": 2},
+            total_cost_usd=0.001,
+            model="claude-test",
+        ),
+        _analyze_step(
+            {"confidence": 3.0, "summary": "higher"},
+            session_id="session-2",
+            usage={"input_tokens": 9, "output_tokens": 2},
+            total_cost_usd=0.001,
+            model="claude-test",
+        ),
     )
     provider = ClaudeCodeProvider(
         _settings(tmp_path),
@@ -425,8 +468,46 @@ async def test_second_invalid_submission_fails_with_bounded_detail(tmp_path: Pat
     assert error.detail is not None
     assert "confidence" in error.detail
     assert len(error.detail) <= 1_000
+    assert error.trace.attempts == 2
+    assert error.trace.feedback_retries == 1
+    assert error.trace.submission_rounds == 2
+    assert error.trace.submission_validation_failures == 2
+    assert error.trace.submission_parse_failures == 0
+    assert error.usage is not None
+    assert error.usage.model == "claude-test"
+    assert error.usage.input_tokens == 9
+    assert error.usage.cost_usd == pytest.approx(0.001)
+    assert error.latency_ms >= 0
     assert len(runner.calls) == 2
     assert "--resume" not in runner.calls[1].argv
+
+
+async def test_retry_cli_failure_keeps_the_first_submission_provenance(
+    tmp_path: Path,
+) -> None:
+    """A process failure on the retry still counts both calls and one round."""
+    runner = MockRunner(
+        _analyze_step({"confidence": 2.0, "summary": "bad"}, session_id="session-1"),
+        ClaudeCliResult(returncode=1, stdout='{"type": "result"}', stderr="boom"),
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    with pytest.raises(AgentProviderError) as caught:
+        await provider.analyze(_request())
+
+    error = caught.value
+    assert error.retryable is True
+    assert error.trace.attempts == 2
+    assert error.trace.submission_rounds == 1
+    assert error.trace.feedback_retries == 1
+    assert error.trace.submission_validation_failures == 1
+    assert error.trace.submission_parse_failures == 0
+    assert error.usage is None
+    assert len(runner.calls) == 2
 
 
 async def test_invalid_submission_without_session_id_still_retries(
@@ -793,7 +874,13 @@ async def test_edit_invalid_plan_raises_without_retry(tmp_path: Path) -> None:
     """An invalid EditPlan is terminal; the edit phase never resumes on its own."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    runner = MockRunner(_edit_step({"summary": "   ", "edits": []}))
+    runner = MockRunner(
+        _edit_step(
+            {"summary": "   ", "edits": []},
+            usage={"input_tokens": 5, "output_tokens": 1},
+            total_cost_usd=0.002,
+        ),
+    )
     provider = ClaudeCodeProvider(
         _settings(tmp_path),
         runner=runner,
@@ -807,6 +894,13 @@ async def test_edit_invalid_plan_raises_without_retry(tmp_path: Path) -> None:
     assert error.retryable is False
     assert error.detail is not None
     assert "summary" in error.detail
+    assert error.trace.attempts == 1
+    assert error.trace.submission_rounds == 1
+    assert error.trace.submission_validation_failures == 1
+    assert error.usage is not None
+    assert error.usage.input_tokens == 5
+    assert error.usage.cost_usd == pytest.approx(0.002)
+    assert error.latency_ms >= 0
     assert len(runner.calls) == 1
 
 

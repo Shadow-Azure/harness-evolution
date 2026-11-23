@@ -24,9 +24,10 @@ from pathlib import Path, PurePosixPath
 from typing import Protocol, cast, runtime_checkable
 
 from app.db.models.evolution import EvolutionRunRecord
+from app.service.evolution.ai_observability import AiAgentCall
 from app.service.evolution.engine.contracts import ConfigError
 from app.third_party_api.ai_agent.base import AIAgentProvider
-from app.third_party_api.ai_agent.contracts import EditRequest
+from app.third_party_api.ai_agent.contracts import AgentProviderError, EditRequest
 from app.third_party_api.ai_agent.edits import (
     EDIT_BUDGET,
     MAX_CONTENT_LINES,
@@ -39,6 +40,8 @@ from app.third_party_api.git.workspace import Patch
 
 PATCH_SOURCE_MODES = ("placeholder", "minimal-config", "agent-edit")
 DEFAULT_PATCH_SOURCE_MODE = "placeholder"
+AGENT_EDIT_TASK = "agent.edit"
+"""Task key recorded on the agent-edit provider call."""
 PLACEHOLDER_PATCH_NOTE = "V1 占位 patch；真实文件已写入 isolated workspace"
 _CONFIG_FILENAME = "config/{}.json"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
@@ -357,6 +360,17 @@ class AgentEditPatchSource:
     def __init__(self, provider: AIAgentProvider) -> None:
         """Bind the AI agent backend."""
         self._provider = provider
+        self._last_ai_call: AiAgentCall | None = None
+
+    @property
+    def last_ai_call(self) -> AiAgentCall | None:
+        """Return the observability record of the most recent provider call.
+
+        The candidate service reads this after ``build_bundle`` so a call whose
+        plan later fails to apply is still recorded as one ``ai_agent_call``.
+        The source is created per publish, and every build resets the field.
+        """
+        return self._last_ai_call
 
     async def build(
         self,
@@ -390,15 +404,23 @@ class AgentEditPatchSource:
     ) -> PatchBundle:
         """Ask the agent for one plan, apply it on a mirror, and bundle the files."""
         del round_seq
+        self._last_ai_call = None
         workspace = _agent_workspace(run)
         allowed = _allowed_paths(run.sub_dir)
-        result = await self._provider.edit_workspace(
-            EditRequest(
-                workspace=workspace,
-                prompt=_edit_prompt(run, trace, allowed=allowed),
-                allowed_paths=allowed,
-            ),
-        )
+        try:
+            result = await self._provider.edit_workspace(
+                EditRequest(
+                    workspace=workspace,
+                    prompt=_edit_prompt(run, trace, allowed=allowed),
+                    allowed_paths=allowed,
+                ),
+            )
+        except AgentProviderError as exc:
+            # The provider call happened even though no plan came back; keep the
+            # normalized error record so the failure is cost-attributable too.
+            self._last_ai_call = AiAgentCall.failed(AGENT_EDIT_TASK, exc)
+            raise
+        self._last_ai_call = AiAgentCall.from_edit(AGENT_EDIT_TASK, result)
         plan = result.plan
         if plan is None:
             raise ConfigError("agent provider returned no EditPlan for the edit request")

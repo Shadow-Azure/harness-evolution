@@ -14,11 +14,14 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
 from app.third_party_api.ai_agent.edits import EditPlan
+
+SubmissionParsedBy = Literal["strict", "json5", "repair"]
+"""Tier of the submission parse ladder that produced the accepted literal."""
 
 
 def _require_non_empty(value: str, name: str) -> None:
@@ -63,6 +66,60 @@ class AgentUsage:
 
 
 @dataclass(frozen=True, slots=True)
+class AgentCallTrace:
+    """Bounded provenance of one provider call for the run-event stream.
+
+    ``attempts`` counts the model calls the provider actually made, including
+    the one bounded feedback retry, so ``feedback_retries`` is derivable rather
+    than counted twice. The submission counters keep the layer-5 metrics
+    (parse failure rate, repair provenance) observable without storing raw model
+    output: a parse failure means no ladder tier produced a document, while a
+    validation failure means a document parsed but the caller's Pydantic model
+    rejected it. ``parsed_by`` describes the final round's ladder tier even when
+    that document failed validation; ``outcome`` remains the success signal.
+    """
+
+    attempts: int = 1
+    submission_rounds: int = 0
+    submission_parse_failures: int = 0
+    submission_validation_failures: int = 0
+    parsed_by: SubmissionParsedBy | None = None
+    repaired: bool = False
+
+    def __post_init__(self) -> None:
+        """Reject impossible counters before they reach durable events."""
+        _require_non_negative(self.attempts, "AgentCallTrace.attempts")
+        _require_non_negative(self.submission_rounds, "AgentCallTrace.submission_rounds")
+        _require_non_negative(
+            self.submission_parse_failures,
+            "AgentCallTrace.submission_parse_failures",
+        )
+        _require_non_negative(
+            self.submission_validation_failures,
+            "AgentCallTrace.submission_validation_failures",
+        )
+        if self.attempts < 1:
+            raise ValueError("AgentCallTrace.attempts must be at least 1")
+        if self.submission_rounds > self.attempts:
+            raise ValueError("AgentCallTrace.submission_rounds cannot exceed attempts")
+        failures = self.submission_parse_failures + self.submission_validation_failures
+        if failures > self.submission_rounds:
+            raise ValueError("AgentCallTrace failures cannot exceed submission rounds")
+        if self.repaired and self.parsed_by != "repair":
+            raise ValueError("AgentCallTrace.repaired requires parsed_by='repair'")
+
+    @property
+    def feedback_retries(self) -> int:
+        """Return how many extra calls the feedback loop added."""
+        return self.attempts - 1
+
+    @property
+    def submission_failures(self) -> int:
+        """Return the total failed collection rounds across parse and validation."""
+        return self.submission_parse_failures + self.submission_validation_failures
+
+
+@dataclass(frozen=True, slots=True)
 class AnalysisRequest:
     """One structured analysis request.
 
@@ -94,6 +151,7 @@ class AnalysisResult:
     session_id: str | None = None
     latency_ms: int = 0
     retryable: bool = False
+    trace: AgentCallTrace = field(default_factory=AgentCallTrace)
 
     def __post_init__(self) -> None:
         """Reject a blank provider and negative latency."""
@@ -140,6 +198,7 @@ class EditResult:
     latency_ms: int = 0
     retryable: bool = False
     plan: EditPlan | None = None
+    trace: AgentCallTrace = field(default_factory=AgentCallTrace)
 
     def __post_init__(self) -> None:
         """Reject blank identifiers, negative latency, and a drifting summary."""
@@ -181,18 +240,34 @@ class AgentProviderError(RuntimeError):
         retryable: bool,
         provider_id: str,
         detail: str | None = None,
+        trace: AgentCallTrace | None = None,
+        usage: AgentUsage | None = None,
+        latency_ms: int = 0,
     ) -> None:
-        """Store the normalized failure fields alongside the runtime message."""
+        """Store the normalized failure fields alongside the runtime message.
+
+        ``trace`` lets a failed call keep its attempt and submission counters
+        for the ``ai_agent_call`` error record; callers that failed before the
+        submission channel ran leave it at the single-attempt default.
+        ``usage`` and ``latency_ms`` carry the normalized cost fields when the
+        failure happened after a CLI result was parsed, so a failed call can
+        still be cost-attributed; failures before that keep zero usage.
+        """
         _require_non_empty(message, "AgentProviderError.message")
         _require_non_empty(provider_id, "AgentProviderError.provider_id")
+        _require_non_negative(latency_ms, "AgentProviderError.latency_ms")
         super().__init__(message)
         self.message = message
         self.retryable = retryable
         self.provider_id = provider_id
         self.detail = detail
+        self.trace = trace if trace is not None else AgentCallTrace()
+        self.usage = usage
+        self.latency_ms = latency_ms
 
 
 __all__ = [
+    "AgentCallTrace",
     "AgentProviderError",
     "AgentUsage",
     "AnalysisRequest",
@@ -200,4 +275,5 @@ __all__ = [
     "EditRequest",
     "EditResult",
     "ProviderHealth",
+    "SubmissionParsedBy",
 ]

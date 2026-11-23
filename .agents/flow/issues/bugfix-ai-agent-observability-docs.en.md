@@ -10,13 +10,15 @@ depends:
   - bugfix-19
   - bugfix-21
 priority: P2
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - docs/**
   - .agents/**
+  - plans/**
+  - scripts/doc-budgets.manifest.json
 adr:
-  - ../../notes/proposed/feature/2026-11-22-evolution-real-ai-design.md
+  - ../../notes/implemented/feature/2026-11-22-evolution-real-ai-design.md
 github:
   number: 489
   url: https://github.com/Shadow-Azure/harness-evolution/issues/489
@@ -24,13 +26,13 @@ github:
 
 ## Background
 
-After the implementation chain (bugfix-15→21) lands, this issue wraps up: complete `ai_agent_call` observability into operable metrics, refresh the resident documents (architecture/development/new ai-agent page), and move the design Note from proposed to implemented.
+After the implementation chain (bugfix-15→21) lands, this issue wraps up: complete `ai_agent_call` observability into operable metrics, refresh the resident documents (architecture/development/new ai-agent page), and keep the design Note in sync now that it lives under `implemented/`.
 
 ## Goals
 
 - **Observability**: `ai_agent_call` events uniformly record task, provider, model, tokens, cost, latency, and outcome (including `degraded` and feedback-retry counts); the submission-file parse-failure rate is derivable from the event stream.
 - **Documents**: add an ai-agent outbound-layer page under `docs/` (bilingual pair, word budget registered); update the "not yet available" list in `docs/architecture.md` to match what actually shipped (real patches landed; real evaluation stays described per the eval gateway's current state); extend `docs/development.md` with configuration notes — only `AI_AGENT_PROVIDER`, `HE_AI_AGENT_CLAUDE_BIN` (with default), and the `agent-edit` enum value of `HE_PATCH_SOURCE_MODE`.
-- **Note**: update `proposed/feature/2026-11-22-evolution-real-ai-design.md` with landed facts and move it to `implemented/` (or partially, at the maintainer's semantic judgment).
+- **Note**: `implemented/feature/2026-11-22-evolution-real-ai-design.md` stays in sync with landed facts (the triplet moved from `proposed/`).
 - No AGENTS.md command-list additions (no new script commands).
 
 ## Design basis
@@ -42,6 +44,7 @@ After the implementation chain (bugfix-15→21) lands, this issue wraps up: comp
 ## Implementation
 
 - Verify event-field coverage and fill gaps; optionally one stats helper or query example.
+- `HE_PATCH_SOURCE_MODE=agent-edit` passes configuration validation (otherwise the documented enum value cannot start).
 - The three document changes + `pnpm record:i18n` + budget registration.
 - Note status migration with fact sync.
 
@@ -55,7 +58,7 @@ After the implementation chain (bugfix-15→21) lands, this issue wraps up: comp
 ## Dependencies and delivery boundary
 
 - Dependencies: bugfix-19 (clustering integration) and bugfix-21 (patch loop) — the observability and documents describe their final shape.
-- Delivery boundary: observability events and documents/Note; no business-behavior changes.
+- Delivery boundary: observability events and documents/Note; no business-rule change, only minimal observability wiring and configuration validation.
 
 ## Independent verification
 

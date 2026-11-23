@@ -225,6 +225,11 @@ def test_settings_patch_source_mode_validates_choices() -> None:
     """The env-backed fallback only accepts the registered source modes."""
     settings = Settings(jwt_secret=SecretStr("m12-03-secret"), patch_source_mode="minimal-config")
     assert settings.patch_source_mode == "minimal-config"
+    agent_edit = Settings(
+        jwt_secret=SecretStr("m12-03-secret"),
+        patch_source_mode="agent-edit",
+    )
+    assert agent_edit.patch_source_mode == "agent-edit"
     with pytest.raises(Exception):
         Settings(jwt_secret=SecretStr("m12-03-secret"), patch_source_mode="llm")
 

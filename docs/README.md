@@ -10,6 +10,7 @@
 |---|---|
 | [AGENTS.md](AGENTS.md) | 文档分层、写作规则与门禁 |
 | [architecture.md](architecture.md) | 服务边界、数据流、数据层与 API |
+| [ai-agent.md](ai-agent.md) | 自进化 AI 出站层、提交通道与观测事件 |
 | [compatibility.md](compatibility.md) | V1 兼容面、触发版本与机械退役清单 |
 | [roadmap.md](roadmap.md) | 产品阶段路线与各阶段验收 |
 | [development.md](development.md) | 本地环境、日常循环与提交流程 |

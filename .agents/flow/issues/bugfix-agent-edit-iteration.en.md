@@ -20,7 +20,7 @@ scope:
   - plans/**
   - .agents/**
 adr:
-  - ../../notes/proposed/feature/2026-11-22-evolution-real-ai-design.md
+  - ../../notes/implemented/feature/2026-11-22-evolution-real-ai-design.md
 github:
   number: 488
   url: https://github.com/Shadow-Azure/harness-evolution/issues/488

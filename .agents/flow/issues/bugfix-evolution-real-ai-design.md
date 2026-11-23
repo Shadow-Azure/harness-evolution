@@ -13,7 +13,7 @@ scope:
   - plans/fullstack-design/**
   - .agents/**
 adr:
-  - ../../notes/proposed/feature/2026-11-22-evolution-real-ai-design.md
+  - ../../notes/implemented/feature/2026-11-22-evolution-real-ai-design.md
 github:
   number: 486
   url: https://github.com/Shadow-Azure/harness-evolution/issues/486
@@ -40,7 +40,7 @@ github:
 
 - 07 在 §5.5 与 §5.6 之间插入四节；§5.5 词法聚类原文不动，被引用为分组层第一实现。
 - 04 目录树 `third_party_api/` 下加 `ai_agent/` 一行；§5.1 表加「模型出站（自进化）」行，并补一句说明 `ai_agent` 不是早期统一 Provider 的复活。
-- Agent Note：`.agents/notes/proposed/feature/2026-11-22-evolution-real-ai-design.md`（三件套），记录四项取舍与被否方案。
+- Agent Note：`.agents/notes/implemented/feature/2026-11-22-evolution-real-ai-design.md`（三件套），记录四项取舍与被否方案。
 
 ## 实施步骤
 

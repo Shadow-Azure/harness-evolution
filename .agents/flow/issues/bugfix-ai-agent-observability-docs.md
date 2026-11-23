@@ -10,13 +10,15 @@ depends:
   - bugfix-19
   - bugfix-21
 priority: P2
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - docs/**
   - .agents/**
+  - plans/**
+  - scripts/doc-budgets.manifest.json
 adr:
-  - ../../notes/proposed/feature/2026-11-22-evolution-real-ai-design.md
+  - ../../notes/implemented/feature/2026-11-22-evolution-real-ai-design.md
 github:
   number: 489
   url: https://github.com/Shadow-Azure/harness-evolution/issues/489
@@ -24,13 +26,13 @@ github:
 
 ## 背景
 
-实施链（bugfix-15→21）落地后收尾：把 `ai_agent_call` 观测事件补全为可运营指标，更新常驻文档（architecture/development/新 ai-agent 页），并把设计 Note 从 proposed 转 implemented。
+实施链（bugfix-15→21）落地后收尾：把 `ai_agent_call` 观测事件补全为可运营指标，更新常驻文档（architecture/development/新 ai-agent 页），并把设计 Note 迁入 implemented 并同步事实。
 
 ## 目标
 
 - **观测**：`ai_agent_call` 事件统一记录 task、provider、model、tokens、cost、latency、outcome（含 `degraded` 与回喂重试次数）；提交文件解析失败率可从事件序列统计。
 - **文档**：`docs/` 新增 ai-agent 出站层页（中英成对，登记词数预算）；`docs/architecture.md` 的「未具备」清单按实际交付更新（真实 patch 落地、真实评测仍按 eval 网关现状表述）；`docs/development.md` 增补配置说明——仅 `AI_AGENT_PROVIDER`、`HE_AI_AGENT_CLAUDE_BIN`（带默认）与 `HE_PATCH_SOURCE_MODE` 的 `agent-edit` 枚举值。
-- **Note**：`proposed/feature/2026-11-22-evolution-real-ai-design.md` 随实际落地更新事实并转 `implemented/`（或按落地范围部分转，语义由维护者判断）。
+- **Note**：`implemented/feature/2026-11-22-evolution-real-ai-design.md` 随落地保持事实同步（三件套已从 `proposed/` 迁入 `implemented/`）。
 - AGENTS.md 命令清单无新增（无新脚本命令）。
 
 ## 设计依据
@@ -42,6 +44,7 @@ github:
 ## 实现内容
 
 - 事件字段核对与补齐（如缺）；一处统计辅助或查询示例（可选）。
+- `HE_PATCH_SOURCE_MODE` 的 `agent-edit` 通过配置校验（否则文档中的枚举值无法启动）。
 - 三份文档改动 + `pnpm record:i18n` + 词数预算登记。
 - Note 状态迁移与事实同步。
 
@@ -55,7 +58,7 @@ github:
 ## 依赖与交付边界
 
 - 依赖：bugfix-19（聚类接入）、bugfix-21（patch 闭环）——观测与文档描述它们的最终形态。
-- 交付边界：观测事件与文档/Note；不改业务行为。
+- 交付边界：观测事件与文档/Note；不改写业务规则，仅做观测接线与配置校验的最小修正。
 
 ## 独立验证
 

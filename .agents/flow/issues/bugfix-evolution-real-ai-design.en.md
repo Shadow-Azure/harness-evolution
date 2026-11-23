@@ -13,7 +13,7 @@ scope:
   - plans/fullstack-design/**
   - .agents/**
 adr:
-  - ../../notes/proposed/feature/2026-11-22-evolution-real-ai-design.md
+  - ../../notes/implemented/feature/2026-11-22-evolution-real-ai-design.md
 github:
   number: 486
   url: https://github.com/Shadow-Azure/harness-evolution/issues/486
@@ -40,7 +40,7 @@ The four model-driven stages of the seven-step self-evolution loop are placehold
 
 - Insert the four sections between §5.5 and §5.6 in 07; the §5.5 lexical clustering text is untouched and referenced as the first grouping-layer implementation.
 - Add the `ai_agent/` line under `third_party_api/` in the 04 directory tree; add a "model outbound (self-evolution)" row to the §5.1 table plus one sentence clarifying that `ai_agent` is not a revival of the early unified Provider.
-- Agent Note: `.agents/notes/proposed/feature/2026-11-22-evolution-real-ai-design.md` (triplet), recording the four decisions and the rejected alternatives.
+- Agent Note: `.agents/notes/implemented/feature/2026-11-22-evolution-real-ai-design.md` (triplet), recording the four decisions and the rejected alternatives.
 
 ## Steps
 
