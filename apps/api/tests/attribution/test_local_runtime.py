@@ -10,6 +10,7 @@ import sys
 import zipfile
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 from sqlalchemy import insert, select
@@ -24,7 +25,12 @@ from app.service.evolution.attribution_skill_packages import AttributionSkillPac
 from app.service.evolution.attribution_skills import AttributionSkillService
 from app.service.evolution.engine.contracts import RunBlocked
 from app.service.evolution.local_attribution import ENGINE, LocalAttribution, canonical_report
-from app.third_party_api.attribution.backend import AgentBackend, AgentFactory
+from app.third_party_api.ai_agent import (
+    FakeAIAgentProvider,
+    SkillRunRequest,
+    build_agent_provider,
+    factory,
+)
 from tests.attribution.support import CASE_ID, NOW, OTHER_RUN_ID, Harness, potential_case
 from tests.attribution.test_m10_03_runner import load_run
 from tests.workspaces.helpers import create_user
@@ -35,12 +41,14 @@ class Source:
         return "# Deep research\nAlways inspect the evidence."
 
 
-class ScriptAgent(AgentBackend):
+class ScriptAgent(FakeAIAgentProvider):
+    provider_id = "script-test"
     category = "flow"
 
-    async def execute(self, directory: Path, prompt: str, model: str, timeout_seconds: int) -> int:
+    async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict[str, Any]) -> int:
         import asyncio
 
+        directory, prompt = request.directory, request.prompt
         skill = next((directory / ".claude/skills").iterdir()).name
         assert prompt == f"/{skill} input_badcase.json，请分析并生成归因报告"  # noqa: RUF001
         assert (directory / "session_tree.json").is_file()
@@ -80,10 +88,11 @@ async def test_local_skill_report_to_sqlite(
     db = attribution_harness.database
     monkeypatch.setattr(ScriptAgent, "category", category)
     use_claude = os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1"
-    monkeypatch.setitem(AgentFactory.providers, "test", ScriptAgent)
+    monkeypatch.setitem(factory._REGISTRY, ScriptAgent.provider_id, ScriptAgent)
     settings = Settings(
         attribution_package_dir=tmp_path / "attribute",
-        attribution_agent="claude" if use_claude else "test",
+        attribution_agent="provider",
+        ai_agent_provider="claude-code" if use_claude else ScriptAgent.provider_id,
         attribution_timeout_seconds=150,
     )
     packages = AttributionSkillPackageService(
@@ -92,7 +101,12 @@ async def test_local_skill_report_to_sqlite(
         settings.attribution_default_skill_path,
     )
     service = LocalAttribution(
-        settings, packages, AttributionSkillService(AttributionSkillRepository(db)), db, Source()
+        settings,
+        packages,
+        AttributionSkillService(AttributionSkillRepository(db)),
+        db,
+        Source(),
+        build_agent_provider(settings),
     )
     run = await load_run(db)
     default = await service.resolve(run.workspace_id, "")
@@ -162,11 +176,11 @@ async def test_local_skill_report_to_sqlite(
     )
     if not use_claude:
 
-        async def timeout(*args: object) -> int:
+        async def timeout(*args: object, **kwargs: object) -> int:
             raise TimeoutError
 
         with monkeypatch.context() as simulated_failure:
-            simulated_failure.setattr(ScriptAgent, "execute", timeout)
+            simulated_failure.setattr(ScriptAgent, "run_skill", timeout)
             with pytest.raises(RunBlocked):
                 await runner.run(run, [potential_case()], True)
         output = service.root(run.workspace_id) / "attribute_output" / run.id / CASE_ID
@@ -196,6 +210,7 @@ async def test_local_skill_report_to_sqlite(
     history = artifact.parent / "logs" / audit["attempt"] / "attribute_log.json"
     assert json.loads(history.read_bytes()) == audit
     assert not (artifact.parent / audit["attempt"]).exists()
+    assert audit["agent"] == settings.ai_agent_provider
     if not use_claude:
         assert len(list(artifact.parent.glob("logs/*/attribute_log.json"))) == 2
         assert failure["attempt"] != audit["attempt"]
@@ -284,14 +299,16 @@ async def test_historical_inline_binding_can_freeze_and_recover_its_exact_revisi
     from app.service.evolution.attribution_skills import AttributionSkillCreate
 
     db = attribution_harness.database
-    settings = Settings(attribution_package_dir=tmp_path, attribution_agent="test")
-    monkeypatch.setitem(AgentFactory.providers, "test", ScriptAgent)
+    settings = Settings(attribution_package_dir=tmp_path, attribution_agent=ScriptAgent.provider_id)
+    monkeypatch.setitem(factory._REGISTRY, ScriptAgent.provider_id, ScriptAgent)
     repo = AttributionSkillRepository(db)
     registry = AttributionSkillService(repo)
     packages = AttributionSkillPackageService(
         AttributionSkillPackageRepository(db), tmp_path, settings.attribution_default_skill_path
     )
-    runtime = LocalAttribution(settings, packages, registry, db, Source())
+    runtime = LocalAttribution(
+        settings, packages, registry, db, Source(), build_agent_provider(settings)
+    )
     workspace = "ws-default"
     target_id = "existing-inline-target"
     revision = await registry.create(

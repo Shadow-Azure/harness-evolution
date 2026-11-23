@@ -416,7 +416,10 @@ def create_app(
         attribution_skills,
         resolved_database,
         git_content,
+        ai_agent_provider,
     )
+    if attribution_enabled:
+        local_attribution.configured_skill_provider()
     attribution_runner = AttributionRunner(
         attribution_repository,
         context_provider=AttributionContextProvider(potential_repository),

@@ -4,14 +4,16 @@ import json
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
 
 from app.config import Settings
 from app.service.evolution.local_attribution import LocalAttribution
-from app.third_party_api.attribution import claude_backend, writer_entrypoint
-from app.third_party_api.attribution.backend import AgentFactory, ModelFactory
+from app.third_party_api.ai_agent import SkillRunRequest, build_agent_provider, claude_skill
+from app.third_party_api.attribution import writer_entrypoint
+from app.third_party_api.attribution.backend import ModelFactory, legacy_skill_provider
 from app.third_party_api.attribution.transcript import read_transcript
 
 
@@ -21,9 +23,9 @@ def test_deployment_factory_accepts_compatible_plugins() -> None:
     with pytest.raises(ValueError, match="invalid attribution model"):
         model.resolve(" ")
     with pytest.raises(ValueError, match="incompatible"):
-        AgentFactory.create("app.third_party_api.attribution.backend:NativeModel")
-    with pytest.raises(ValueError, match="unknown attribution provider"):
-        AgentFactory.create("invalid")
+        legacy_skill_provider("app.third_party_api.attribution.backend:NativeModel")
+    with pytest.raises(ValueError, match="unknown AI agent provider"):
+        build_agent_provider(Settings(), provider_id="invalid")
 
 
 @pytest.mark.parametrize("platform", ["darwin", "linux"])
@@ -36,9 +38,9 @@ def test_sandbox_uses_case_directory_and_installed_binary(
     if platform == "linux":
         monkeypatch.setattr(shutil, "which", lambda _: None)
         with pytest.raises(RuntimeError, match="bubblewrap"):
-            claude_backend._sandbox(work, binary)
+            claude_skill._sandbox(work, binary)
         monkeypatch.setattr(shutil, "which", lambda _: "/usr/bin/bwrap")
-    argv = claude_backend._sandbox(work, binary)
+    argv = claude_skill._sandbox(work, binary)
     if platform == "darwin":
         assert argv[0] == "/usr/bin/sandbox-exec"
         assert f"WORK={work}" in argv and f"CLAUDE={binary}" in argv
@@ -63,19 +65,21 @@ async def test_failed_cli_envelopes_never_publish_success(
     binary = tmp_path / "stub"
     binary.write_text(f"#!/usr/bin/env python3\nprint({payload!r})\nraise SystemExit({exitcode})\n")
     binary.chmod(0o700)
-    monkeypatch.setattr(claude_backend, "_sandbox", lambda *_: [])
+    monkeypatch.setattr(claude_skill, "_sandbox", lambda *_: [])
     settings = Settings(
         ai_agent_claude_bin=str(binary), ai_agent_claude_settings=str(tmp_path / "none")
     )
     work = tmp_path / "attempt"
     work.mkdir()
-    backend = AgentFactory.create("claude", settings)
+    backend = build_agent_provider(settings)
+    request = SkillRunRequest(work, "fixture", "haiku", 10)
+    diagnostics: dict[str, Any] = {}
     with pytest.raises((RuntimeError, ValueError), match=error):
-        await backend.execute(work, "fixture", "haiku", 10)
-    assert backend.execution_details(work)["exitCode"] == exitcode
+        await backend.run_skill(request, diagnostics=diagnostics)
+    assert diagnostics["exitCode"] == exitcode
     binary.unlink()
     with pytest.raises(RuntimeError, match="executable unavailable"):
-        await backend.execute(work, "fixture", "haiku", 10)
+        await backend.run_skill(request, diagnostics=diagnostics)
 
 
 def test_truncated_or_incomplete_transcript_retains_visible_turns(tmp_path: Path) -> None:
@@ -132,3 +136,47 @@ def test_only_successful_writer_output_can_be_collected(
     report.unlink()
     with pytest.raises(ValueError, match="invalid platform report output"):
         LocalAttribution._read_emission(tmp_path)
+
+
+def test_historical_claude_snapshot_keeps_its_provider_after_deployment_switch() -> None:
+    from unittest.mock import Mock
+
+    from app.third_party_api.ai_agent import AgentProviderError, ClaudeCodeProvider
+
+    settings = Settings(ai_agent_provider="fake", attribution_agent="provider")
+    shared = build_agent_provider(settings)
+    runtime = LocalAttribution(settings, Mock(), Mock(), Mock(), Mock(), shared)
+    with pytest.raises(AgentProviderError, match="does not support Skill"):
+        runtime.configured_skill_provider()
+    assert isinstance(runtime._skill_provider("claude"), ClaudeCodeProvider)
+    assert isinstance(runtime._skill_provider("claude-code"), ClaudeCodeProvider)
+
+
+async def test_legacy_plugin_still_collects_diagnostics(tmp_path: Path) -> None:
+    from app.third_party_api.attribution.backend import AgentBackend
+
+    class InstalledPlugin(AgentBackend):
+        async def execute(
+            self, directory: Path, prompt: str, model: str, timeout_seconds: int
+        ) -> int:
+            assert (directory, prompt, model, timeout_seconds) == (tmp_path, "case", "private", 30)
+            return 7
+
+        def execution_details(self, directory: Path) -> dict[str, Any]:
+            return {"receipt": directory.name}
+
+    from unittest.mock import patch
+
+    # An installed legacy plugin was selected by its module:Class path.
+    with patch("app.third_party_api.attribution.backend.import_module") as loader:
+        loader.return_value.InstalledPlugin = InstalledPlugin
+        provider = legacy_skill_provider("intranet:InstalledPlugin")
+    diagnostics: dict[str, Any] = {}
+    assert provider.skill_model_identity("private") == {"model": "private"}
+    assert (
+        await provider.run_skill(
+            SkillRunRequest(tmp_path, "case", "private", 30), diagnostics=diagnostics
+        )
+        == 7
+    )
+    assert diagnostics == {"receipt": tmp_path.name}

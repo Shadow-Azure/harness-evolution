@@ -3,11 +3,16 @@
 import json
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from app.third_party_api.attribution import claude_backend
-from app.third_party_api.attribution.claude_backend import ClaudeBackend
+from app.third_party_api.ai_agent import (
+    ClaudeCodeProvider,
+    SkillRunRequest,
+    build_agent_provider,
+    claude_skill,
+)
 
 
 @pytest.mark.parametrize("exit_code", [0, 1])
@@ -38,19 +43,20 @@ print(json.dumps({'result':'visible reply','subtype':'success',
     work = tmp_path / "case"
     work.mkdir()
     monkeypatch.setattr(shutil, "which", lambda _: str(executable))
-    monkeypatch.setattr(claude_backend, "_sandbox", lambda *_: [])
+    monkeypatch.setattr(claude_skill, "_sandbox", lambda *_: [])
     monkeypatch.setattr(
-        claude_backend,
+        claude_skill,
         "_provider_environment",
         lambda _: {"ANTHROPIC_API_KEY": "test-credential-opaque"},
     )
-    backend = ClaudeBackend()
+    backend = ClaudeCodeProvider()
+    details: dict[str, Any] = {}
+    request = SkillRunRequest(work, "test prompt", "test", 10)
     if exit_code:
         with pytest.raises(RuntimeError, match="status 1"):
-            await backend.execute(work, "test prompt", "test", 10)
+            await backend.run_skill(request, diagnostics=details)
     else:
-        assert await backend.execute(work, "test prompt", "test", 10) == 3
-    details = backend.execution_details(work)
+        assert await backend.run_skill(request, diagnostics=details) == 3
     assert details["exitCode"] == exit_code
     assert details["result"]["result"] == "visible reply"
     turns = details["transcript"]["turns"]
@@ -62,14 +68,15 @@ print(json.dumps({'result':'visible reply','subtype':'success',
     external = tmp_path / "external.jsonl"
     transcript.rename(external)
     transcript.symlink_to(external)
-    assert backend.execution_details(work)["transcript"]["status"] == "unavailable"
+    from app.third_party_api.attribution.transcript import read_transcript
+
+    assert read_transcript(work, details["sessionId"])["status"] == "unavailable"
 
 
 async def test_attribution_uses_shared_service_binary_and_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from app.config import Settings
-    from app.third_party_api.attribution.backend import AgentFactory
 
     binary = tmp_path / "shared" / "current" / "bin" / "claude"
     binary.parent.mkdir(parents=True)
@@ -100,12 +107,111 @@ print(json.dumps({"subtype": "success", "usage": {"input_tokens": 9}}))
     for key in ("ANTHROPIC_BASE_URL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "fixture-key")
-    monkeypatch.setattr(claude_backend, "_sandbox", lambda *_: [])
-    backend = AgentFactory.create(
-        "claude",
+    monkeypatch.setattr(claude_skill, "_sandbox", lambda *_: [])
+    backend = build_agent_provider(
         Settings(ai_agent_claude_bin=str(binary), ai_agent_claude_settings=str(settings_file)),
     )
     work = tmp_path / "attempt"
     work.mkdir()
-    assert backend.model_identity("haiku")["model"] == "deployed-model"
-    assert await backend.execute(work, "fixture prompt", "haiku", 10) == 9
+    assert backend.skill_model_identity("haiku")["model"] == "deployed-model"
+    assert (
+        await backend.run_skill(
+            SkillRunRequest(work, "fixture prompt", "haiku", 10), diagnostics={}
+        )
+        == 9
+    )
+
+
+async def test_shared_provider_keeps_concurrent_skill_sessions_separate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+
+    from app.config import Settings
+
+    executable = tmp_path / "claude"
+    executable.write_text(
+        """#!/usr/bin/env python3
+import json, pathlib, sys, time
+name = pathlib.Path.cwd().name
+assert sys.argv[-1] == name
+time.sleep(0.05)
+print(json.dumps({"subtype": "success", "result": name, "usage": {"output_tokens": len(name)}}))
+"""
+    )
+    executable.chmod(0o700)
+    monkeypatch.setattr(claude_skill, "_sandbox", lambda *_: [])
+    provider = ClaudeCodeProvider(
+        Settings(ai_agent_claude_bin=str(executable)), settings_path=tmp_path / "settings"
+    )
+
+    async def invoke(name: str) -> tuple[int, dict[str, Any]]:
+        work = tmp_path / name
+        work.mkdir()
+        details: dict[str, Any] = {}
+        count = await provider.run_skill(
+            SkillRunRequest(work, name, "fixture", 10), diagnostics=details
+        )
+        return count, details
+
+    (left_count, left), (right_count, right) = await asyncio.gather(
+        invoke("first"), invoke("second")
+    )
+    assert (left_count, right_count) == (5, 6)
+    assert (left["result"]["result"], right["result"]["result"]) == ("first", "second")
+    assert left["sessionId"] != right["sessionId"]
+
+
+@pytest.mark.parametrize("caller_cancelled", [False, True], ids=["timeout", "cancel"])
+async def test_skill_keeps_private_diagnostics_when_interrupted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caller_cancelled: bool
+) -> None:
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from app.config import Settings
+    from app.third_party_api.ai_agent.claude_cli import ClaudeCliCancelled, ClaudeCliResult
+
+    binary = tmp_path / "claude"
+    binary.touch(mode=0o700)
+    work = tmp_path / "case"
+    work.mkdir()
+    runner = AsyncMock()
+    stopped = ClaudeCliResult(-9, "", "interrupted", cancelled=True, stderr_truncated=True)
+    if caller_cancelled:
+        runner.run.side_effect = ClaudeCliCancelled(stopped)
+    else:
+        runner.run.return_value = stopped
+    monkeypatch.setattr(claude_skill, "_sandbox", lambda *_: ["sandbox"])
+    provider = ClaudeCodeProvider(
+        Settings(ai_agent_claude_bin=str(binary)),
+        runner=runner,
+        settings_path=tmp_path / "settings",
+    )
+    details: dict[str, Any] = {}
+    with pytest.raises(asyncio.CancelledError if caller_cancelled else TimeoutError):
+        await provider.run_skill(
+            SkillRunRequest(work, "/test input_badcase.json", "model", 3), diagnostics=details
+        )
+    argv = runner.run.await_args.args[0]
+    assert argv == [
+        "sandbox",
+        str(binary),
+        "-p",
+        "--output-format",
+        "json",
+        "--bare",
+        "--session-id",
+        details["sessionId"],
+        "--permission-mode",
+        "bypassPermissions",
+        "--allow-dangerously-skip-permissions",
+        "--model",
+        "model",
+        "/test input_badcase.json",
+    ]
+    assert (details["exitCode"], details["stderrTail"], details["stderrTruncated"]) == (
+        -9,
+        "interrupted",
+        True,
+    )

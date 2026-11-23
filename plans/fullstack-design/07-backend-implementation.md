@@ -802,6 +802,9 @@ class AIAgentProvider(ABC):
     async def edit_workspace(self, request: EditRequest) -> EditResult: ...
     """产出编辑计划；确定性应用由 patch source 在临时镜像上执行，diff 以 git 为准"""
 
+    async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict) -> int: ...
+    """在隔离目录运行冻结 Skill，返回 token 数，并将本次公开诊断写入 diagnostics"""
+
     @abstractmethod
     async def health_check(self) -> ProviderHealth: ...
 ```

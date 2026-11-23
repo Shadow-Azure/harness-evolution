@@ -48,7 +48,12 @@ async def test_runtime_reads_the_commit_that_launch_resolved(
     source = Mock()
     source.read_file = AsyncMock(side_effect=lambda **kwargs: bodies[kwargs["ref"]])
     service = LocalAttribution(
-        Mock(attribution_package_dir=tmp_path), Mock(), Mock(), attribution_harness.database, source
+        Mock(attribution_package_dir=tmp_path),
+        Mock(),
+        Mock(),
+        attribution_harness.database,
+        source,
+        Mock(),
     )
     first = replace(case_input(), selected_version="main", source_commit=first_commit)
     second = replace(first, source_commit=second_commit, run_id="another-batch")
@@ -71,7 +76,12 @@ async def test_retry_keeps_old_evidence_and_new_batch_sees_trace_backfill(
 
     item = case_input()
     service = LocalAttribution(
-        Mock(attribution_package_dir=tmp_path), Mock(), Mock(), attribution_harness.database, Mock()
+        Mock(attribution_package_dir=tmp_path),
+        Mock(),
+        Mock(),
+        attribution_harness.database,
+        Mock(),
+        Mock(),
     )
     read_tree = AsyncMock(wraps=SessionRepository(attribution_harness.database).tree_snapshot)
     monkeypatch.setattr(service.sessions, "tree_snapshot", read_tree)
@@ -143,7 +153,12 @@ async def test_target_source_failure_never_caches_partial_or_moved_content(
 
     source = Mock()
     service = LocalAttribution(
-        Mock(attribution_package_dir=tmp_path), Mock(), Mock(), attribution_harness.database, source
+        Mock(attribution_package_dir=tmp_path),
+        Mock(),
+        Mock(),
+        attribution_harness.database,
+        source,
+        Mock(),
     )
     body = "# Agent\nUse the fixed input."
     item = replace(

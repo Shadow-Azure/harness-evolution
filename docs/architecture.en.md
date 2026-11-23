@@ -58,6 +58,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, authentication and workspace roles, credential ingest and quota, workspace Session and overview, multi-attribution error details, four-step wizard, seven-step runs and lane DAG, evidence gates and knowledge triggers, jobs/SSE, target configuration, fixtures, cross-stack API/E2E, and docs/flow/contract gates, plus the AI Agent outbound layer (`analyze`/`edit_workspace` and `agent-edit` patch).
+- Present: dual-dialect API, authentication and workspace roles, credential ingest and quota, workspace Session and overview, multi-attribution error details, four-step wizard, seven-step runs and lane DAG, evidence gates and knowledge triggers, jobs/SSE, target configuration, fixtures, cross-stack API/E2E, and docs/flow/contract gates, plus the AI Agent outbound layer (`analyze`/`edit_workspace`/`run_skill` and `agent-edit` patch).
 - Missing: real evaluation (eval gateway), and the user deactivation UI.
 - Explicitly out: production credential access, automatic code changes without evidence, and deleting V1 surfaces inside the compatibility window.

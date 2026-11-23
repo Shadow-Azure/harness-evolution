@@ -156,7 +156,12 @@ async def test_recovered_worker_preserves_snapshot_and_skips_reports_from_same_g
     monkeypatch.setattr("app.db.crud.binding_batches.now_shanghai", lambda: clock)
 
     runtime = LocalAttribution(
-        Mock(attribution_timeout_seconds=60), Mock(), Mock(), attribution_harness.database, Mock()
+        Mock(attribution_timeout_seconds=60),
+        Mock(),
+        Mock(),
+        attribution_harness.database,
+        Mock(),
+        Mock(),
     )
     latest = FrozenSkill("attribute-badcases", 1, "f" * 64)
     freeze = AsyncMock(return_value=latest)
@@ -278,7 +283,12 @@ async def test_binding_polls_missing_session_without_reanalyzing_completed_cases
     target = await repo.insert(TARGET)
     queue = BindingQueue(attribution_harness.database)
     runtime = LocalAttribution(
-        Mock(attribution_timeout_seconds=60), Mock(), Mock(), attribution_harness.database, Mock()
+        Mock(attribution_timeout_seconds=60),
+        Mock(),
+        Mock(),
+        attribution_harness.database,
+        Mock(),
+        Mock(),
     )
     freeze = AsyncMock(return_value=FrozenSkill("attribute-badcases", 1, "f" * 64))
     monkeypatch.setattr(runtime, "resolve_package", freeze)

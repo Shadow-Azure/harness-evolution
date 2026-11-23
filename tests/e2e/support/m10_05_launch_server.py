@@ -13,12 +13,12 @@ from m5_launch_server import DeterministicGitRemote
 
 def main() -> None:
     """Serve the composed application on the requested loopback port."""
-    settings = Settings()
-    if settings.attribution_agent == "e2e-script":
-        from app.third_party_api.attribution.backend import AgentFactory
+    if os.environ.get("AI_AGENT_PROVIDER") == "script-test":
+        from app.third_party_api.ai_agent import register_provider
         from tests.attribution.test_local_runtime import ScriptAgent
 
-        AgentFactory.providers["e2e-script"] = ScriptAgent
+        register_provider(ScriptAgent.provider_id, ScriptAgent)
+    settings = Settings()
     app = create_app(settings, git_remote=DeterministicGitRemote())
     uvicorn.run(
         app,

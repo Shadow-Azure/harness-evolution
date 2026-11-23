@@ -51,7 +51,7 @@ Session and Badcase directory names normally use the original ID. For IDs with c
 
 ## Claude working directory and report
 
-Claude runs `/<skill_name> input_badcase.json，请分析并生成归因报告` with five frozen inputs and the Skill under `.claude/skills/<skill_name>/` (alias `.cac/skills/`). Its isolated home is temporary. The platform verifies the writer invocation and regenerates the report from the original input before publication and database ingestion.
+The worker and wizard call `run_skill` with the frozen provider and model. Claude runs `/<skill_name> input_badcase.json，请分析并生成归因报告` with five frozen inputs and the Skill under `.claude/skills/<skill_name>/` (alias `.cac/skills/`). Its isolated home is temporary. The platform verifies the writer invocation and regenerates the report from the original input before publication and database ingestion.
 
 `attribute_log.json` holds the last finished attempt. Each `logs/<attempt>/` preserves its status, prompt, input manifest, Claude session ID, visible turns, tool calls and results, CLI result and usage. The main transcript read is limited to 8 MiB; see `transcript.status` for partial or unavailable history. The database confirms ingestion after `report_validated`.
 

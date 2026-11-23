@@ -383,7 +383,6 @@ before(async () => {
     HE_ADMIN_PASSWORD: initialPassword,
     HE_ADMIN_USERNAME: "admin",
     HE_DATA_DIR: dataDir,
-    HE_ATTRIBUTION_AGENT: "e2e-script",
     HE_ATTRIBUTION_PACKAGE_DIR: path.join(dataDir, "attribute"),
     HE_DB_DIALECT: "sqlite",
     HE_JWT_SECRET: secret,
@@ -421,6 +420,8 @@ before(async () => {
       env: {
         ...env,
         HE_DOCS_ENABLED: "false",
+        HE_ATTRIBUTION_AGENT: "provider",
+        AI_AGENT_PROVIDER: "script-test",
         HE_HOST: "127.0.0.1",
         HE_PORT: String(apiPort),
         HE_SYNC_INTERVAL_SECONDS: "0",

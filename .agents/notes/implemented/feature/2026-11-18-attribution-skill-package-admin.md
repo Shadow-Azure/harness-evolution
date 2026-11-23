@@ -18,7 +18,7 @@ Status: implemented
 
 报告按实际归因对象写入 `probe_type`。Agent 的标准值为 `agent`，旧包传入的 `agents` 在生成新报告时归一化。冻结脚本的产物先按原格式校验，原始上报对象的类型保留在 `from_bad_cases`。
 
-归因执行器复用生产 AI 的 Claude 二进制与模型端点，只把所需模型配置传入每个 Badcase 的独立 CLI 环境，以便复验快照、输出脚本和会话记录。归因与自进化向导通过同一把缓存锁读取 Git 定义及其提交。
+归因与聚类共用 Agent 工厂和 Claude 子进程管理，内网 Agent 只需注册一次。归因单独定义 `run_skill`，以便用冻结输入和平台脚本核验文件结果。每次调用独立保存会话、脱敏日志与用量，允许并发使用同一 Provider 实例。归因与自进化向导通过同一把缓存锁读取 Git 定义及其提交。
 
 ## Alternatives considered
 

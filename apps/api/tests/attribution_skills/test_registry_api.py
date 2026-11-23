@@ -437,7 +437,7 @@ async def test_migration_installs_registry_and_run_snapshot_columns(
     } <= run_columns
 
 
-@pytest.mark.parametrize("skill_api", ["test-local"], indirect=True)
+@pytest.mark.parametrize("skill_api", ["claude"], indirect=True)
 async def test_package_mode_keeps_one_explicit_target_binding(
     skill_api: SkillApiEnvironment,
 ) -> None:

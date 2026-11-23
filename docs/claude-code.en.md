@@ -39,5 +39,3 @@ The version directory, `usr`, and `usr/bin` must be `755`; the last command is t
 ## Rollback
 
 Point `/opt/harness/shared/claude-code/current` back at the previous version directory, or rerun `Deploy` with the desired `CLAUDE_CODE_VERSION`. Shared settings and `.env` are written atomically, so a failure keeps the previous copy; `current` is decoupled from `HE_AI_AGENT_CLAUDE_BIN`, so a rollback needs no `.env` change. See [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md) for the steps.
-
-For Skill attribution, set `HE_ATTRIBUTION_AGENT=claude` after the service account passes its bubblewrap check. [Deployment](../plans/deploy-aliyun-playbook.md)

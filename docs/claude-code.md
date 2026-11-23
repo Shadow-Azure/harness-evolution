@@ -37,5 +37,3 @@ ssh deploy@<host> 'sudo -u harness /opt/harness/shared/claude-code/current/usr/b
 ## 回滚
 
 把 `/opt/harness/shared/claude-code/current` 指回上一版本目录，或重跑带所需 `CLAUDE_CODE_VERSION` 的 `Deploy`。共享 settings 与 `.env` 原子写入，失败保留上一份；`current` 与 `HE_AI_AGENT_CLAUDE_BIN` 解耦，回滚不需要改 `.env`。步骤见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)。
-
-Skill 归因依赖 bubblewrap 及 `HE_ATTRIBUTION_AGENT=claude`。[部署验收](../plans/deploy-aliyun-playbook.md)

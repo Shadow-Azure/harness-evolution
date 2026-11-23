@@ -1,21 +1,22 @@
 """Parent contract for outbound AI Agent providers.
 
 Subclasses own one backend each (``fake`` and the real ``claude-code`` CLI).
-They answer the same three capability questions, so business services never
-import a vendor module or branch on a backend name.
+Skill-capable providers also execute a frozen Skill in an isolated workspace.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, ClassVar, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from app.third_party_api.ai_agent.contracts import (
+    AgentProviderError,
     AnalysisRequest,
     AnalysisResult,
     EditRequest,
     EditResult,
     ProviderHealth,
+    SkillRunRequest,
 )
 
 if TYPE_CHECKING:
@@ -52,6 +53,27 @@ class AIAgentProvider(ABC):
     @abstractmethod
     async def edit_workspace(self, request: EditRequest) -> EditResult:
         """Return the structured EditPlan the caller applies deterministically."""
+
+    def require_skill_support(self) -> None:
+        """Fail at assembly if an enabled deployment cannot execute a Skill."""
+        if type(self).run_skill is AIAgentProvider.run_skill:
+            raise AgentProviderError(
+                "provider does not support Skill execution",
+                provider_id=self.provider_id,
+                retryable=False,
+            )
+
+    def skill_model_identity(self, model: str) -> dict[str, str]:
+        """Public settings that pin an executable Skill to its model for replay."""
+        return {"model": model}
+
+    async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict[str, Any]) -> int:
+        """Return token use; put sanitized attempt details in diagnostics even on failure."""
+        raise AgentProviderError(
+            "provider does not support Skill execution",
+            provider_id=self.provider_id,
+            retryable=False,
+        )
 
     @abstractmethod
     async def health_check(self) -> ProviderHealth:

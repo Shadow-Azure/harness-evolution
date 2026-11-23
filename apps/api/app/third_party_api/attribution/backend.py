@@ -1,12 +1,23 @@
 """Deployment-selected agent invocation and model settings."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
+from app.third_party_api.ai_agent.base import AIAgentProvider
+from app.third_party_api.ai_agent.contracts import AgentProviderError, ProviderHealth
+
 if TYPE_CHECKING:
-    from app.config import Settings
+    from app.third_party_api.ai_agent.contracts import (
+        AnalysisRequest,
+        AnalysisResult,
+        EditRequest,
+        EditResult,
+        SkillRunRequest,
+    )
 
 
 class ModelBackend(ABC):
@@ -23,8 +34,37 @@ class NativeModel(ModelBackend):
         return model
 
 
-class AgentBackend(ABC):
-    """Invoke a CLI or SDK on a single private working directory."""
+class AgentBackend(AIAgentProvider):
+    """Compatibility for installed module:Class Skill plugins with the old execute method."""
+
+    provider_id = "legacy-skill"
+
+    def skill_model_identity(self, model: str) -> dict[str, str]:
+        return self.model_identity(model)
+
+    async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict[str, Any]) -> int:
+        try:
+            return await self.execute(
+                request.directory, request.prompt, request.model, request.timeout_seconds
+            )
+        finally:
+            try:
+                diagnostics.update(self.execution_details(request.directory))
+            except Exception as exc:
+                diagnostics["diagnosticError"] = type(exc).__name__
+
+    async def analyze(self, request: AnalysisRequest) -> AnalysisResult:
+        raise AgentProviderError(
+            "Skill-only provider", provider_id=self.provider_id, retryable=False
+        )
+
+    async def edit_workspace(self, request: EditRequest) -> EditResult:
+        raise AgentProviderError(
+            "Skill-only provider", provider_id=self.provider_id, retryable=False
+        )
+
+    async def health_check(self) -> ProviderHealth:
+        return ProviderHealth(provider_id=self.provider_id, healthy=False, detail="No health probe")
 
     def model_identity(self, model: str) -> dict[str, str]:
         """Return non-secret facts that must remain stable between launch and execution."""
@@ -60,13 +100,6 @@ class ModelFactory:
         return _provider(provider, cls.providers, ModelBackend)
 
 
-class AgentFactory:
-    providers: ClassVar[dict[str, type[AgentBackend]]] = {}
-
-    @classmethod
-    def create(cls, provider: str, settings: "Settings | None" = None) -> AgentBackend:
-        from app.third_party_api.attribution.claude_backend import ClaudeBackend
-
-        if provider == "claude" and provider not in cls.providers:
-            return ClaudeBackend(settings)
-        return _provider(provider, cls.providers, AgentBackend)
+def legacy_skill_provider(path: str) -> AgentBackend:
+    """Instantiate an installed legacy plugin once per attempt, preserving its frozen identity."""
+    return _provider(path, {}, AgentBackend)

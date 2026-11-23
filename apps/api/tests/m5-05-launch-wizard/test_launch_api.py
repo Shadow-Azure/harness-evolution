@@ -384,9 +384,15 @@ class _FakeWorkspacePreparer:
 
 @pytest_asyncio.fixture
 async def launch_api(
-    tmp_path: Path, request: pytest.FixtureRequest
+    tmp_path: Path, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[httpx.AsyncClient]:
     """Provide an authenticated admin client over a migrated, seeded app."""
+    from app.third_party_api.ai_agent import factory
+    from tests.attribution.test_local_runtime import ScriptAgent
+
+    if getattr(request, "param", None) == "provider":
+        monkeypatch.setitem(factory._REGISTRY, ScriptAgent.provider_id, ScriptAgent)
+        monkeypatch.setenv("AI_AGENT_PROVIDER", ScriptAgent.provider_id)
     revision = (
         f"digest:{definition_file_hash(FakeDefinitionSource.body)}"
         if getattr(request, "param", None)
@@ -1075,7 +1081,7 @@ async def test_launch_rejects_unregistered_engine_before_writes(
 
 @pytest.mark.parametrize(
     "launch_api",
-    ["claude" if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1" else "test-local"],
+    ["claude" if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1" else "provider"],
     indirect=True,
 )
 @pytest.mark.parametrize(
@@ -1095,10 +1101,8 @@ async def test_local_attribution_from_wizard_to_cluster(
     import zipfile
 
     from app.service.evolution.attribution_skill_packages import AttributionSkillPackageService
-    from app.third_party_api.attribution.backend import AgentFactory
-    from tests.attribution.test_local_runtime import ScriptAgent, Source
+    from tests.attribution.test_local_runtime import Source
 
-    monkeypatch.setitem(AgentFactory.providers, "test-local", ScriptAgent)
     app = _app_of(launch_api)
     # The binding must use its saved file even if runtime Git reads are unavailable.
     runtime_source = Source()

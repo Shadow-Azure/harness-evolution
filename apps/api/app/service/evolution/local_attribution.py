@@ -48,8 +48,9 @@ from app.service.evolution.attribution_skills import (
     EffectiveAttributionSkill,
 )
 from app.service.evolution.target_content import TARGET_FILE_NAMES, TargetContentSource
+from app.third_party_api.ai_agent import AIAgentProvider, SkillRunRequest, build_agent_provider
 from app.third_party_api.attribution import writer_entrypoint
-from app.third_party_api.attribution.backend import AgentFactory, ModelFactory
+from app.third_party_api.attribution.backend import ModelFactory, legacy_skill_provider
 from app.third_party_api.git.content import GitContentUnavailable
 from app.utils.definition import definition_file_hash
 from app.utils.redaction import sanitize_value
@@ -102,6 +103,7 @@ class LocalAttribution:
         registry: AttributionSkillService,
         database: Database,
         source: TargetContentSource,
+        agent: AIAgentProvider,
     ):
         self.settings = settings
         self.packages = packages
@@ -110,6 +112,25 @@ class LocalAttribution:
         self.targets = EvolutionTargetRepository(database)
         self.sessions = SessionRepository(database)
         self.source = source
+        self.agent = agent
+
+    def _skill_provider(self, selector: str) -> AIAgentProvider:
+        # Old manifests pin "claude"; only the deployment selector follows the shared instance.
+        if selector in {"claude", "app.third_party_api.attribution.claude_backend:ClaudeBackend"}:
+            selector = "claude-code"
+        if selector == self.agent.provider_id:
+            return self.agent
+        if ":" in selector:
+            return legacy_skill_provider(selector)
+        return build_agent_provider(self.settings, provider_id=selector)
+
+    def configured_skill_provider(self) -> AIAgentProvider:
+        selector = self.settings.attribution_agent
+        if not selector:
+            raise ValueError("attribution agent is not configured")
+        provider = self.agent if selector == "provider" else self._skill_provider(selector)
+        provider.require_skill_support()
+        return provider
 
     def root(self, workspace: str) -> Path:
         return self.settings.attribution_package_dir.resolve() / _component(workspace)
@@ -237,17 +258,15 @@ class LocalAttribution:
             }
         files["make_probe_report.py"] = self.packages.writer_path.read_bytes()
         files["SKILL.md"] += INSTRUCTIONS.encode()
-        agent = self.settings.attribution_agent
-        if not agent:
-            raise ValueError("attribution agent is not configured")
-        backend = AgentFactory.create(agent, self.settings)
+        provider = self.configured_skill_provider()
         model = ModelFactory.create(self.settings.attribution_llm).resolve(
             self.settings.attribution_model
         )
+        selector = self.settings.attribution_agent or ""
         manifest = {
             "name": name,
-            "agent": agent,
-            "modelIdentity": backend.model_identity(model),
+            "agent": selector if ":" in selector else provider.provider_id,
+            "modelIdentity": provider.skill_model_identity(model),
             "model": model,
             "llm": self.settings.attribution_llm,
             "contract": _digest(INSTRUCTIONS.encode()),
@@ -538,16 +557,19 @@ class LocalAttribution:
                 "status": "running",
                 "stage": "prepare",
             }
-            backend = None
+            diagnostics: dict[str, Any] = {}
             await asyncio.to_thread(_write_log, history, log)
             try:
                 await asyncio.to_thread(self._stage_attempt, snapshot, work, name, manifest, item)
-                backend = AgentFactory.create(manifest["agent"], self.settings)
-                if backend.model_identity(manifest["model"]) != manifest["modelIdentity"]:
+                provider = self._skill_provider(manifest["agent"])
+                if provider.skill_model_identity(manifest["model"]) != manifest["modelIdentity"]:
                     raise ValueError("model configuration differs from the frozen run")
                 log["stage"] = "agent"
-                tokens = await backend.execute(
-                    work, prompt, manifest["model"], self.settings.attribution_timeout_seconds
+                tokens = await provider.run_skill(
+                    SkillRunRequest(
+                        work, prompt, manifest["model"], self.settings.attribution_timeout_seconds
+                    ),
+                    diagnostics=diagnostics,
                 )
                 log.update(stage="validate_report", tokens=tokens)
                 candidate = await asyncio.to_thread(self._read_emission, work)
@@ -576,11 +598,8 @@ class LocalAttribution:
                 raise
             finally:
                 log["finishedAt"] = datetime.now(UTC).isoformat()
-                if backend is not None:
-                    try:
-                        log["execution"] = await asyncio.to_thread(backend.execution_details, work)
-                    except Exception as exc:
-                        log["diagnosticError"] = type(exc).__name__
+                if diagnostics:
+                    log["execution"] = diagnostics
                 try:
                     await asyncio.to_thread(_write_log, history, log, output)
                 except (OSError, ValueError, TypeError) as exc:
