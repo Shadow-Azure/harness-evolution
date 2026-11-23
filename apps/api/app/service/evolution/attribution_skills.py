@@ -455,11 +455,11 @@ class AttributionSkillService:
     async def resolve_for_run(
         self, target: EvolutionTargetRecord, package_id: str | None
     ) -> EffectiveAttributionSkill:
-        if package_id:
+        if package_id or target.attribution_package_id:
             raise AppError(
                 status_code=422,
                 code=ErrorCode.VALIDATION_INVALID,
-                message="select a Skill only for recomputation using a configured agent",
+                message="Skill recomputation requires an available attribution runtime",
             )
         return await self.resolve(target.workspace_id, target.id)
 

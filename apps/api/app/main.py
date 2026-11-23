@@ -371,7 +371,8 @@ def create_app(
         runner=cast(Any, proxy_runner.run),
     )
     resolver = target_version_resolver or TargetContentResolver(git_content)
-    attribution_enabled = ai_agent_provider.supports_skills
+    attribution_error = ai_agent_provider.skill_preflight_error()
+    attribution_enabled = attribution_error is None
     evolution_targets = EvolutionTargetService(
         target_repository,
         resolved_git_remote,
@@ -601,6 +602,16 @@ def create_app(
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
         """Start storage and migrations without turning outages into crashes."""
         phase = "startup"
+        logger.log(
+            logging.WARNING if attribution_error else logging.INFO,
+            "attribution runtime preflight",
+            extra={
+                "event": "attribution.preflight",
+                "provider_id": ai_agent_provider.provider_id,
+                "ready": attribution_enabled,
+                "error_code": attribution_error,
+            },
+        )
         await _record_ai_agent_health(ai_agent_provider)
         proxy_controller.start()
         try:
@@ -726,7 +737,8 @@ def create_app(
     app.state.attribution_read = attribution_read
     app.state.evolution_repository = evolution_repository
     app.state.evolution_targets = evolution_targets
-    app.state.local_attribution = local_attribution if attribution_enabled else None
+    # Package bindings stay readable and editable while the execution sandbox is unavailable.
+    app.state.local_attribution = local_attribution if ai_agent_provider.supports_skills else None
     app.state.attribution_skills = attribution_skills
     app.state.attribution_skill_packages = attribution_skill_packages
     app.state.attribution_jobs = attribution_jobs

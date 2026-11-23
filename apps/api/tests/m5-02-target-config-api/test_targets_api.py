@@ -289,9 +289,12 @@ async def _complete_login(
 
 @pytest_asyncio.fixture
 async def target_http(
-    tmp_path: Path, request: pytest.FixtureRequest
+    tmp_path: Path, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[TargetHttpEnvironment]:
     """Provide member/admin clients over one application with a fake git remote."""
+    monkeypatch.setattr(
+        "app.third_party_api.ai_agent.claude_skill.sandbox_preflight_error", lambda: None
+    )
     settings = Settings(
         db_dialect=DatabaseDialect.SQLITE,
         data_dir=tmp_path,

@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/feature/2026-11-18-attribution-skill-package-admin.md
-2026-11-18-attribution-skill-package-admin.md: 90392231fd647a0dc34a6fd905e6bdf7ee614658
-2026-11-18-attribution-skill-package-admin.en.md: 6d8798b167f5658d2006af3e227f5fea1a88d0ef
+2026-11-18-attribution-skill-package-admin.md: 82dfab4b1bc6672e92859f7b394f2edf51946d22
+2026-11-18-attribution-skill-package-admin.en.md: ae7043348d90aa7d0d60cf100a37dffd5643cb33

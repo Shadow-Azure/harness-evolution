@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -68,6 +69,38 @@ def _environment(directory: Path, provider_env: dict[str, str]) -> dict[str, str
     }
     env.update(provider_env)
     return env
+
+
+def sandbox_preflight_error() -> str | None:
+    """Check Linux namespace access under the calling account without invoking Claude."""
+    if not sys.platform.startswith("linux"):
+        return None
+    binary = shutil.which("bwrap")
+    if binary is None:
+        return "ATTRIBUTION_BWRAP_MISSING"
+    try:
+        result = subprocess.run(  # noqa: S603 - fixed sandbox probe runs the system true binary.
+            [
+                binary,
+                "--unshare-all",
+                "--share-net",
+                "--die-with-parent",
+                "--ro-bind",
+                "/",
+                "/",
+                "--",
+                "/bin/true",
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env={"PATH": os.defpath},
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "ATTRIBUTION_BWRAP_UNUSABLE"
+    return None if result.returncode == 0 else "ATTRIBUTION_BWRAP_UNUSABLE"
 
 
 def _sandbox(directory: Path, executable: str) -> list[str]:

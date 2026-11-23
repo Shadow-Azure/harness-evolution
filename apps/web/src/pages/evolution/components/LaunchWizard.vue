@@ -2124,7 +2124,7 @@ const reasonEntries = computed(() => {
                 v-if="attributionPreview && !canRecompute"
                 class="f-note"
               >
-                当前 AI Agent Provider 不支持执行归因 Skill，可以复用已有报告。
+                归因运行时不可用，可以复用已有报告。
               </p>
 
               <div

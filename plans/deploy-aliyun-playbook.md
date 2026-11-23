@@ -53,11 +53,34 @@
 
 ### 验证 Skill 归因
 
-API 启动时从 `AI_AGENT_PROVIDER` 获取公共实例。它实现 `run_skill` 时，后台自动领取已到期的对象绑定，向导也可使用所选 Skill 重算。`fake` 部署可复用已有报告。Claude 从公共 settings 的 `model` 或 `ANTHROPIC_MODEL` 取得模型，未指定时使用 CLI 默认值。已冻结的批次按快照中的 Provider 与模型执行。上传包、快照、输入和报告存入 `HE_DATA_DIR/attribute`，可用 `HE_ATTRIBUTION_PACKAGE_DIR` 指定持久卷。
+对象绑定与向导重算共用 `AI_AGENT_PROVIDER`、CLI、服务 settings 和密钥。默认 `claude-code`，显式 `fake` 可用缓存。Claude 使用 `ANTHROPIC_MODEL`、共享 settings 和 CLI 默认模型，已冻结的批次保留原快照。上传包与产物位于 `HE_DATA_DIR/attribute`，可用 `HE_ATTRIBUTION_PACKAGE_DIR` 指定持久卷。
 
-API 启动日志的 `event=attribution_binding_worker` 会记录 Provider 和消费者是否已启动。发布后可检查当前空间 `GET /api/workspaces/{wid}/attribution-skill-packages` 的 `runtimeEnabled`。已有待处理绑定会自动领取。批次处理完毕会释放租约，可按 `probe_reports.binding_generation` 对照本代报告。
+Ubuntu 首次 bootstrap 会安装 bubblewrap。旧主机由管理员安装并用 API 服务账号运行最小命名空间探针。退出码 0 表示该账号可以启动沙箱。
 
-Worker 依赖 Python 3，Linux 使用 bubblewrap 和可用的用户命名空间，macOS 使用 Seatbelt。新建 Linux 主机由 `deploy/bootstrap-server.sh` 安装 bubblewrap。已有主机开启归因前可用 `sudo -u harness bwrap --unshare-all --share-net --ro-bind / / -- /bin/true` 检查；修改服务环境后重启 API 生效。
+```sh
+sudo apt-get install bubblewrap
+sudo -u harness bwrap --unshare-all --share-net --die-with-parent --ro-bind / / -- /bin/true
+```
+
+发布时部署账号用候选 API 检查公共 Provider，失败时恢复备份的 `.env`，迁移和 release 切换均未执行。修复主机后重跑 Deploy。若该版本已在运行，执行 `sudo systemctl restart harness-api`。API 以服务账号再次检查，查看启动记录：
+
+```sh
+journalctl -u harness-api -b -g 'attribution.preflight|attribution_binding_worker'
+```
+
+`ATTRIBUTION_BWRAP_MISSING` 表示服务 PATH 找不到 bwrap，`ATTRIBUTION_BWRAP_UNUSABLE` 表示命名空间探针未能成功，检查服务账号权限和主机命名空间策略。`ATTRIBUTION_PROVIDER_UNSUPPORTED` 表示公共 Provider 缺少 Skill 能力。预检失败时两处对象页提示“归因未运行”，已排队绑定保留到下次就绪启动。
+
+恢复后应看到 `ready=True`、`started=True`。以空间成员身份读取 `GET /api/workspaces/{wid}/attribution-skill-packages`，应有 `runtimeEnabled=true`。后台自动领取已到期的绑定。核对原 generation，避免重新绑定生成另一批次：
+
+```sql
+SELECT attribution_generation, attribution_due, attribution_owner, attribution_failures
+FROM evolution_targets WHERE workspace_id = '<workspace>' AND id = '<target>';
+SELECT attribution_skill_name, COUNT(*) AS reports
+FROM probe_reports WHERE workspace_id = '<workspace>' AND binding_generation = '<generation>'
+GROUP BY attribution_skill_name;
+```
+
+批次成功后 owner 和 due 均可为空。按同一代次核对对象总览报告及 `attribute/<workspace>/attribute_output/<generation>/<case>/probe_report.json`。历史生产事件 #544 的验收口径为原 generation 下 22 条 discovery 对应 22 份 `attribute-badcases` 报告。
 
 ## 6. 常见问题
 

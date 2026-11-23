@@ -5,10 +5,12 @@ import { computed } from "vue";
 import EmptyState from "../../../../components/ui/EmptyState.vue";
 import ErrorState from "../../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../../components/ui/LoadingSkeleton.vue";
+import AttributionRuntimeNotice from "./AttributionRuntimeNotice.vue";
 
 const props = withDefaults(
   defineProps<{
     targets: EvolutionTarget[];
+    runtimeUnavailable?: boolean;
     loading?: boolean;
     error?: Error | null;
     canWrite: boolean;
@@ -119,6 +121,10 @@ function toggle(target: EvolutionTarget): void {
             </td>
             <td>
               {{ target.attributionSkillName || "未绑定" }}
+              <AttributionRuntimeNotice
+                v-if="runtimeUnavailable && target.attributionSkillName"
+                badge
+              />
               <p
                 v-if="target.attributionFailure"
                 class="binding-failure"

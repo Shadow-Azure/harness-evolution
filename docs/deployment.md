@@ -2,7 +2,7 @@
 
 [English](deployment.en.md) | 中文
 
-生产是阿里云单实例 SaaS：nginx 托管前端并反代 `/api` 到本机 uvicorn（127.0.0.1:8787），MySQL 8 同机。发布由 GitHub Actions 完成：main 的 CI（`ci-ok`）全绿后，`Deploy` 构建前端、推送 release、迁移、切软链、重启，探活失败回滚。设计依据见 [plans/fullstack-design/01-architecture.md §6](../plans/fullstack-design/01-architecture.md)。
+阿里云单机部署 nginx、uvicorn（127.0.0.1:8787）和 MySQL 8。nginx 托管前端并反代 `/api`。设计依据见 [plans/fullstack-design/01-architecture.md §6](../plans/fullstack-design/01-architecture.md)。
 
 ## 云资源
 
@@ -44,13 +44,17 @@
 
 ## 配置注入
 
-数据目录与评测配置经同一通道写入服务器 `.env`：`Deploy` 从 GitHub Environment `vars.HE_DATA_DIR` 取绝对路径（空值用默认），评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入；`apiKeyRef` 只存环境变量名，未配置时跳过。Git 推送凭据同通道注入：`HE_GIT_PUSH_PROVIDER` 总是写入，`HE_GIT_PUSH_TOKEN` 为空时移除旧键，`GIT_ASKPASS` 指向 `/opt/harness/shared/git-askpass.sh`。值经 base64 传输、`inject-config.py` 原子写入并保持 `.env` 0600，注入前备份 `.env.bak.<sha>`；解码失败告警跳过并保留旧值，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [.env.example](../.env.example)。
+Deploy 将 `vars.HE_DATA_DIR` 和评测 Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入 `.env`；`apiKeyRef` 存变量名，缺失时跳过。`HE_GIT_PUSH_PROVIDER` 总是写入，`HE_GIT_PUSH_TOKEN` 为空时移除旧键，`GIT_ASKPASS` 指向 `/opt/harness/shared/git-askpass.sh`。值经 base64 传输、`inject-config.py` 原子写入并保持 `.env` 0600，注入前备份 `.env.bak.<sha>`；解码失败告警跳过并保留旧值，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [.env.example](../.env.example)。
 
 ### AI Agent 配置
 
 模型审查与 patch 生成经 Secrets 注入 `AI_AGENT_PROVIDER`、`HE_AI_AGENT_FAILURE_POLICY`、`HE_PATCH_SOURCE_MODE`：非空写入 `.env`，缺失或空显式 `--unset`。`HE_AI_AGENT_FAILURE_POLICY` 留空按 provider 推导（`fake` → `degrade`，其余 → `strict`）；`strict` 下聚类 AI 失败让 run 在聚类阶段显式失败。值含换行/回车时注入前失败，其余解码失败告警跳过并保留旧值（默认值与合法值见[模板](../.env.example)）。
 
-API 使用无 home 的 `harness` 账号。Deploy 注入 Claude CLI、共享 settings、`CLAUDE_CONFIG_DIR` 和 `ANTHROPIC_API_KEY`。跳过安装时用 `HE_AI_AGENT_CLAUDE_BIN` 指定路径。`agent-edit` 需配置 Provider。支持 Skill 的 Provider 启动即领取待处理绑定，绑定归因与向导重算共用其模型。
+`agent-edit` 需配置 Provider。API 以无 home 的 `harness` 读取共享 settings 和 `CLAUDE_CONFIG_DIR`。自带 CLI 可用 `HE_AI_AGENT_CLAUDE_BIN` 指定。
+
+### 归因运行时
+
+绑定归因与向导重算沿用公共 Provider 和模型。Linux Claude 需安装 `sudo apt-get install bubblewrap`。发布在迁移前检查，API 启动复检。用 `journalctl -u harness-api -g attribution.preflight` 查原因。恢复后重启，原绑定自动续跑。服务账号探针、报告核对见[归因验收](../plans/deploy-aliyun-playbook.md#验证-skill-归因)。
 
 ## Claude Code
 
@@ -59,7 +63,7 @@ API 使用无 home 的 `harness` 账号。Deploy 注入 Claude CLI、共享 sett
 ## 发布与回滚
 
 - 触发：push main → CI 全绿 → `Deploy`；支持 `workflow_dispatch` 手动触发。
-- 行为：[deploy/release.sh](../deploy/release.sh) 校验数据目录 → 安装依赖 → `alembic upgrade head` → 切换 `current` 软链 → `systemctl restart harness-api` → 探活 `/api/health`（最长 60 秒）。
+- 行为：[deploy/release.sh](../deploy/release.sh) 校验数据目录 → 安装依赖 → 归因预检 → `alembic upgrade head` → 切换 `current` 软链 → `systemctl restart harness-api` → 探活 `/api/health`（最长 60 秒）。
 - 回滚：探活失败时先恢复 `.env`，再将软链退回上一 release 并重启；本地保留最近 5 个 release 与 5 份 `.env` 备份。
 - 重启排水：unit 用 `KillMode=mixed` + `TimeoutStopSec=45` 先发 SIGTERM；应用在 `HE_JOB_DRAIN_TIMEOUT_SECONDS`（默认 25 秒）内等在跑 job，超时释放租约并标 `interrupted`，下次启动续跑。
 - 迁移幂等：连续发布对已应用的迁移零副作用。

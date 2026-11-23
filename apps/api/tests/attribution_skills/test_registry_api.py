@@ -61,9 +61,12 @@ async def _login(client: httpx.AsyncClient) -> None:
 
 @pytest_asyncio.fixture
 async def skill_api(
-    tmp_path: Path, request: pytest.FixtureRequest
+    tmp_path: Path, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[SkillApiEnvironment]:
     """Provide a migrated SQLite app with one configured target."""
+    monkeypatch.setattr(
+        "app.third_party_api.ai_agent.claude_skill.sandbox_preflight_error", lambda: None
+    )
     provider = getattr(request, "param", "fake")
     settings = Settings(
         ai_agent_provider=provider,

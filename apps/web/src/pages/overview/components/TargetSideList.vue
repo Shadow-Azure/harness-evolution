@@ -4,10 +4,12 @@ import { computed } from "vue";
 
 import ErrorState from "../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
+import AttributionRuntimeNotice from "../../evolution/targets/components/AttributionRuntimeNotice.vue";
 
 const PAGE_SIZE = 5;
 
 const props = defineProps({
+  runtimeUnavailable: Boolean,
   items: {
     type: Array as () => TargetOverviewItem[],
     default: () => [],
@@ -149,7 +151,13 @@ function evolvable(item: TargetOverviewItem): number {
                 <span class="mono">@{{ primaryVersion(item) }}</span>
               </span>
             </span>
-            <span class="meta">归因 Skill · {{ item.attributionSkillName || "未绑定" }}</span>
+            <span class="meta">
+              归因 Skill · {{ item.attributionSkillName || "未绑定" }}
+              <AttributionRuntimeNotice
+                v-if="runtimeUnavailable && item.attributionSkillName"
+                badge
+              />
+            </span>
             <span class="meta">
               <span><b>{{ item.sessions }}</b> 关联 Session</span>
               <span><b>{{ item.potential }}</b> 潜在 bad case</span>

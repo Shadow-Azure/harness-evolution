@@ -31,6 +31,8 @@ EDIT_TIMEOUT_SECONDS: Final = 1_800
 PERMISSION_MODE: Final = "dontAsk"
 """Headless permission mode shared by CLI backends; never grants file edits."""
 
+SKILL_UNSUPPORTED: Final = "ATTRIBUTION_PROVIDER_UNSUPPORTED"
+
 
 class AIAgentProvider(ABC):
     """Unified outbound AI interface; the parent defines contracts only."""
@@ -58,6 +60,10 @@ class AIAgentProvider(ABC):
     def supports_skills(self) -> bool:
         """Whether the deployed provider implements the optional Skill entry point."""
         return type(self).run_skill is not AIAgentProvider.run_skill
+
+    def skill_preflight_error(self) -> str | None:
+        """Return a stable reason when this deployment cannot start a Skill batch."""
+        return None if self.supports_skills else SKILL_UNSUPPORTED
 
     def require_skill_support(self) -> None:
         """Fail at assembly if an enabled deployment cannot execute a Skill."""

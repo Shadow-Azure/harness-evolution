@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 服务器端发布脚本：由 GitHub Actions 通过 SSH 调用。
 # 用法: release.sh /opt/harness/releases/<sha>
-# 行为: 校验数据目录 → 安装 API 依赖 → Alembic 迁移 → 原子切换 current 软链 →
+# 行为: 校验数据目录 → 安装 API 依赖 → 归因预检 → Alembic 迁移 → 原子切换 current 软链 →
 #       重启服务 → 健康检查（/api/health，最多 60s）→ 失败回滚上一 release。
 # 失败时恢复注入前的 .env（注入器备份到 /opt/harness/shared/.env.bak.<sha>）。
 # 权限: deploy 用户仅对 systemctl restart/start harness-api 免密 sudo。
@@ -138,12 +138,15 @@ fi
 echo "[release] 安装 API 依赖（共享 venv: $VENV）"
 "$VENV/bin/pip" install --quiet "$API_DIR"
 
+# Use the candidate API and the shared service environment, including the provider default.
+(cd "$API_DIR" && "$VENV/bin/python" -m app.third_party_api.ai_agent.preflight) ||
+  fail "归因运行时预检失败，尚未执行迁移或切换 current。请检查上方错误码与服务账号的 bubblewrap 权限。"
+
 echo "[release] 数据库迁移（Alembic upgrade head）"
-cp "$API_DIR/alembic.ini" "$API_DIR/alembic.ini.release"
 # ini 中 sqlalchemy.url 为空，发布时注入 HE_DB_URL；转义替换串里的 & 与 |
 ESC_URL=${HE_DB_URL//&/\\&}
 ESC_URL=${ESC_URL//|/\\|}
-sed -i "s|^sqlalchemy.url *=.*|sqlalchemy.url = ${ESC_URL}|" "$API_DIR/alembic.ini.release"
+(umask 077; sed "s|^sqlalchemy.url *=.*|sqlalchemy.url = ${ESC_URL}|" "$API_DIR/alembic.ini" > "$API_DIR/alembic.ini.release")
 (cd "$API_DIR" && "$VENV/bin/alembic" -c alembic.ini.release upgrade head)
 
 echo "[release] 原子切换 current -> $RELEASE"
