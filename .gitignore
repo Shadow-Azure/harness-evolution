@@ -27,3 +27,21 @@ dist/
 claude-code-sessions
 
 /apps/api/release-assets/
+
+# 图片文件
+*.png
+*.jpg
+*.jpeg
+*.jpe
+*.jfif
+*.gif
+*.webp
+*.avif
+*.bmp
+*.tif
+*.tiff
+*.ico
+*.svg
+*.heic
+*.heif
+*.apng
