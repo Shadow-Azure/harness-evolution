@@ -10,7 +10,7 @@ depends:
   - bugfix-17
   - bugfix-20
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/app/main.py
   - apps/api/app/service/evolution/**
