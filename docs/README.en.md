@@ -10,6 +10,7 @@ The sole index for `docs/`. Every resident document must be registered in the ta
 |---|---|
 | [AGENTS.md](AGENTS.md) | Documentation layering, writing rules and gate entry points |
 | [architecture.en.md](architecture.en.md) | Service boundaries, data flow, data-layer strategy and current API |
+| [ai-agent.en.md](ai-agent.en.md) | Self-evolution AI outbound layer, submission channel and observability events |
 | [compatibility.en.md](compatibility.en.md) | V1 compatibility surfaces, trigger version and mechanical retirement checklist |
 | [roadmap.en.md](roadmap.en.md) | Product phase roadmap and per-phase acceptance |
 | [development.en.md](development.en.md) | Local environment, daily loop, commits and flow operations |
