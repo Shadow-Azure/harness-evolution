@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/bugfix-attribution-presence-single-source.md
+bugfix-attribution-presence-single-source.md: 740533ca7bc40863236db1a0ea3fa87e38aa4677
+bugfix-attribution-presence-single-source.en.md: 43a04e260fbc1d53d4f30510de60e7f9894f18cf

@@ -58,9 +58,9 @@
 | F3 | Session 列表：搜索（标题/仓库）、状态 chips（全部/完成/有失败）、排序（最新/用户轮次/消息/子 agent）、卡片密度条（失败/百消息、问题/百消息） | [浏览器页](../14-15-ui-prototype/harness-evolution.html) | 真实 | `GET /api/sessions` | `session_families`（轨迹聚合列）+ `bad_cases`（问题数查询时聚合） | `pages/sessions/SessionList.vue` |
 | F4 | 会话概览：标题、meta、状态徽章、9 项统计条、CTA（打开错误详情） | 同上 | 真实 | `GET /api/sessions/{sid}` | `session_families`（轨迹聚合列）+ `bad_cases`（问题数查询时聚合） | `pages/sessions/SessionOverview.vue` |
 | F5 | Agent 执行流图：默认小窗口 lane DAG（一条 lane = 一次 agent invocation；bar = 日志行区间；跨 lane 重叠 = 并发），`A1/A1.1` 深度、BC marker、全部 lane 展开、滚轮缩放/拖拽平移；结构树保留为切换视图 | 同上 | **真实**：结构来自轨迹表，问题卡来自空间上报的 `bad_cases` | `GET …/sessions/{sid}/tree` | `agents`、`agent_events`、`bad_cases` | `components/agent-tree/*` |
-| F6 | 会话内问题列表：bad_case 列表（title 短标题、reason 描述正文、归因数、上报对象、metaData 事实）、定位联动、`badCaseId` 深链 | 同上 | 真实（空间上报；归因由 run 写） | `GET …/sessions/{sid}/bad-cases` | `bad_cases`、`bad_case_analysis`、`probe_reports` | `components/bad-cases/BadCaseList.vue` |
+| F6 | 会话内问题列表：bad_case 列表（title 短标题、reason 描述正文、归因数、上报对象、metaData 事实）、定位联动、`badCaseId` 深链 | 同上 | 真实（空间上报；归因由绑定批次或 run 写） | `GET …/sessions/{sid}/bad-cases` | `bad_cases`、`bad_case_analysis`、`probe_reports` | `components/bad-cases/BadCaseList.vue` |
 | ~~F7~~ | ~~时间线：用户轮次分组、类型过滤、消息卡、展开/折叠~~ **已裁撤（2026-10-22）：完整时间线由外部平台承担**；本服务只保留 `user_turns` 作为用户输入锚点（prompt + 行号/message 偏移），供未来执行流展示；消息/内容块不落库 | — | — | —（不提供读接口） | `user_turns`（内部） | — |
-| F8 | 错误详情与多归因：左栏可折叠 bad_case 组 + 归因子项分页（3 种状态：尚未归因 / 可归因 / 非该对象问题）、执行流保留全部并发分支并高亮选中 case、问题描述/归因分析双 Tab、结论横幅、对象·版本、推导过程（Markdown） | 同上 | 真实（`bad_cases` 经 `bad_case_analysis` 关联多条 `probe_reports`，归因由 run 生成） | `GET …/bad-cases/{badCaseId}/attributions`、`GET …/attributions/{attributionId}` | `bad_cases`、`bad_case_analysis`、`probe_reports` | `pages/errors/*` |
+| F8 | 错误详情与多归因：左栏可折叠 bad_case 组 + 归因子项分页（3 种状态：尚未归因 / 可归因 / 非该对象问题）、执行流保留全部并发分支并高亮选中 case、问题描述/归因分析双 Tab、结论横幅、对象·版本、推导过程（Markdown） | 同上 | 真实（`bad_cases` 经 `bad_case_analysis` 关联多条 `probe_reports`，归因由绑定批次或 Run 生成） | `GET …/bad-cases/{badCaseId}/attributions`、`GET …/attributions/{attributionId}` | `bad_cases`、`bad_case_analysis`、`probe_reports` | `pages/errors/*` |
 
 ### 2.2 自进化域
 
@@ -124,7 +124,7 @@
 - **F23 上报接入**：凭据 + `BadCaseIngest`（字段边界见 [05 §3.8](05-api-design.md)）→ 201；重复 `badCaseId` 覆盖且 `used` 不变；额度满 409 且旧数据不丢；跨空间凭据 403；凭据轮换后旧凭据 401；上报后自动进入轨迹补齐队列。
 - **F24 bad case 总览**：指标条 6 项与 SQL 手算一致；来源多选不选=全部；日/周/月分桶与空桶补零正确；列表组合筛选（时间/来源/类型任意为空）分页 8 条；点 ID 深链在新窗口恢复到对应 bad case 的问题描述 Tab。
 - **F25 进化对象总览**：对象列表按可进化量降序、5 条/页；潜在数与向导/run 同条件一致；三态计数去重正确；版本分布允许同一 bad case 多版本出现且「去重后」真实去重；单对象卡的时间窗独立于总览。
-- **F26 归因进自进化**：向导四步（② 只列整棵树中出现所选对象的 Session、③ 命中原因列、④ 潜在/复用/新增/历史非该对象四数）；默认策略两支并集可复现；自定义三开关真值表逐格；缓存第二次运行 `reused == potential`；「非该对象问题」不进簇但错误详情可见；新 run 使用七步 schema，历史 V1 run 由服务端适配。
+- **F26 归因进自进化**：向导四步（② 只列整棵树中出现所选对象的 Session、③ 命中原因列、④ 潜在/按 Skill 分组的已有报告/缺报告/复用/重算）；Session 关联按对象类型和名称，`targetRevision` 只固定原文、报告与缓存；默认策略两支并集可复现；自定义三开关真值表逐格；缓存第二次运行 `reused == potential`；「非该对象问题」不进簇但错误详情可见；新 run 使用七步 schema，历史 V1 run 由服务端适配。
 - **F27 错误详情多归因**：左栏可折叠组与组内分页（2 条/页）；父行→问题描述、子项→归因分析并定位；多条导航 `N/total`；未归因空态 + 启动入口（仅空间管理员可见）；深链 `?case=&tab=&at=` 可恢复。
 
 ## 3. 功能点 → 数据来源矩阵（哪些是桩）
@@ -184,6 +184,6 @@
 | 向导开启缓存 | 在当前候选集按空间、对象、解析后的版本、Badcase 选最新完成报告，按 Skill 分组 | 未命中单列并跳过，零命中时无法启动 |
 | 向导关闭缓存 | 对当前候选使用单次所选包，固化版本及产物 | 新报告可供下一次复用，对象绑定保持原值 |
 
-已有对象在迁移时保留可解析的历史选择。新建对象和更换绑定会触发分析。后台以绑定批次为单位恢复，候选报告和关联在同一事务提交。
+已有对象在迁移时保留可解析的历史选择。新建对象、更换绑定或修改影响分析的字段会登记新的绑定批次；只改工程 ID 不触发分析。后台以绑定批次为单位恢复，候选报告和关联在同一事务提交。
 
-归因预览返回部署能力 `canRecompute`。公共 AI Agent Provider 支持执行 Skill 且其预检通过时，后台领取已有对象绑定，向导可按所选包单次重算。Linux Claude 需能启动 bubblewrap 命名空间。运行时不可用时，绑定保留，缓存报告可复用，配置页和总览提示暂停，已绑定行标示“归因未运行”。Agent 模式的对象绑定接口使用空间包 ID，保留已绑定内联提示词的读取和历史回放。解除对象绑定、写入或回滚空间默认值及修改旧注册表返回 409，调用方可在对象上显式选择默认包。规则引擎模式保留注册表 revision 和既有绑定优先级。
+归因预览返回部署能力 `canRecompute`。公共 AI Agent Provider 支持执行 Skill 且其预检通过时，后台领取已有对象绑定，向导可按所选包单次重算。Linux Claude 需能启动 bubblewrap 命名空间。运行时不可用时，绑定保留，缓存报告可复用，配置页和总览提示暂停，已绑定行标示“归因未运行”。Agent 模式的对象绑定接口使用空间包 ID，保留已绑定内联提示词的读取和历史回放。解除对象绑定、写入或回滚空间默认值及修改旧注册表返回 409，调用方可在对象上显式选择默认包。规则引擎模式保留注册表 revision 和既有绑定优先级。契约细节见 [05 §4.11/§4.20](05-api-design.md)、[06 §4.2.2/§5.1/§7.5](06-database-design.md)、[07 §5.13–5.14](07-backend-implementation.md) 与 [08 §9.2/§9.5](08-frontend-implementation.md)。

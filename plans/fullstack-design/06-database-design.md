@@ -13,7 +13,7 @@
 | 类别 | 表 | 写入方 | 我们的权限 |
 |---|---|---|---|
 | 轨迹侧 | `trajectory_payloads`（外部写）、`source_records`、`session_families`、`agents`、`user_turns`、`agent_events`、`sync_runs`、`sync_lock` | 本服务（source_records/归一化） | 读写（payload 表只读） |
-| 问题侧 | `bad_cases`、`bad_case_analysis`、`probe_reports` | 上报接口写 `bad_cases`；归因由自进化 run 写 | 读写 |
+| 问题侧 | `bad_cases`、`bad_case_analysis`、`probe_reports` | 上报接口写 `bad_cases`；归因由对象绑定批次或自进化 run 写 | 读写 |
 | 自进化侧 | `evolution_targets`、`evolution_runs`、`evolution_run_events`、`evolution_run_candidates`、`probe_clusters`、`probe_cluster_probes`、`evolution_rounds`、`evolution_finals` | 本服务 | 读写 |
 | 通用 | `users`、`job_runs` | 本服务 | 读写 |
 
@@ -264,7 +264,7 @@ erDiagram
 | `message_offset` | `INTEGER` | NOT NULL | 该触发点之前已经出现的 assistant message 数 |
 | `kind` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` / `workflow` / `knowledge` |
 | `name` | `VARCHAR(255)` | NULL | 触发对象名：skill 名 / agent 类型 / workflow 名 / 知识文档名（title → 文件名 → `document_id`） |
-| `object_version` | `VARCHAR(64)` | NULL | 触发时从事件元数据解析出的对象版本；源数据没有版本时为空，关联与归因按 §7.5 的版本规则处理 |
+| `object_version` | `VARCHAR(64)` | NULL | 触发时从事件元数据解析出的对象版本；源数据没有版本时为空。Session 关联按 §7.5 的类型+名称出现，报告与缓存按选定的 `targetRevision`。 |
 | `object_revision` | `VARCHAR(96)` | NULL | M9/V2：`tag:<tag>` / `digest:<sha256(body)>` / `provider:<value>` / `unknown`；skill/agent/知识库文件匹配的 digest 都是归一化 body hash，不含 source path；knowledge 事件用 `provider:` 承载 Provider 原始 revision，与文件读的 body hash 语义不同 |
 | `definition_hash` | `CHAR(64)` | NULL | M9/V2：skill/agent/知识库文件 body hash；skill/agent/knowledge 文件匹配的统一键，source path 不参与 |
 | `file_read_hash` | `CHAR(64)` | NULL | M9：文件读取内容 hash；仅完整读取时非空 |
@@ -524,7 +524,14 @@ erDiagram
 | `probe_analysis` | `TEXT` | NOT NULL | Markdown 推导过程；前端禁用裸 HTML |
 | `policy_version` | `VARCHAR(16)` | NOT NULL DEFAULT 'v1' | 潜在策略语义版本 |
 | `attribution_engine` | `VARCHAR(64)` | NOT NULL DEFAULT 'legacy-probe-import' | 归因引擎标识；历史行标 `legacy-probe-import` |
-| `cache_key` | `CHAR(64)` | NULL UNIQUE | `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`；case 维度由关联行保证。V2 写入时必填；孤立历史 probe 保持 NULL（见下方兼容例外） |
+| `cache_key` | `CHAR(64)` | NULL UNIQUE | legacy rule 与兼容路径的缓存键：`sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`；case 维度由关联行保证。Agent 绑定包模式按 `bad_case_analysis` 取最新完成报告，不把该列当作预览真相；孤立历史 probe 保持 NULL（见下方兼容例外） |
+| `report_schema_version` | `VARCHAR(32)` | NULL | V2 报告 schema 版本；历史行 NULL |
+| `report_payload` | `JSON` | NULL | V2 报告正文（结论、分类、证据、缺口）；历史行 NULL，读取时回退 `probe_description/probe_analysis` |
+| `execution_manifest` | `JSON` | NULL | 执行清单：Provider、模型身份、Skill 文件、平台脚本与输入哈希 |
+| `execution_manifest_hash` | `CHAR(64)` | NULL | 规范化清单哈希；重试与报告校验使用，索引 `INDEX(execution_manifest_hash)` |
+| `attribution_skill_name` | `VARCHAR(128)` | NULL | 产出该报告的 Skill 名；绑定批次与单次重算都写入，用于 `bySkill` 分组 |
+| `analyzed_at` | `DATETIME` | NULL | 报告产出时间；相同对象·版本与 Badcase 下按它取最新完成报告 |
+| `binding_generation` | `VARCHAR(36)` | NULL | 对象绑定批次 ID；后台恢复时据此跳过已完成的 case；Run 内报告为 NULL |
 | `created_run_id` | `VARCHAR(36)` | NULL FK → `evolution_runs.id` ON DELETE SET NULL | 最近一次生成或重算该结论的 run（首次生成不单独保留） |
 | `last_reused_run_id` | `VARCHAR(36)` | NULL FK | 最近一次复用的 run |
 | `reused_count` | `INTEGER` | NOT NULL DEFAULT 0 | 复用次数 |
@@ -560,11 +567,32 @@ erDiagram
 | `default_ref` | `VARCHAR(128)` | NOT NULL | 默认基线分支或 tag（如 `main` / `v2.0.0`） |
 | `validation_project_id` | `VARCHAR(128)` | NOT NULL DEFAULT `''` | 验证集在外部测试平台的测试工程 ID；历史行为空串 |
 | `test_project_id` | `VARCHAR(128)` | NOT NULL DEFAULT `''` | 测试集在外部测试平台的测试工程 ID；历史行为空串 |
-| `enabled` | BOOLEAN | NOT NULL DEFAULT true | 关闭后不进入向导候选 |
+| `enabled` | BOOLEAN | NOT NULL DEFAULT true | 关闭后不进入向导候选，也不领取绑定批次 |
+| `attribution_package_id` | `VARCHAR(64)` | NULL | 绑定的空间 Skill 包 ID；NULL 表示空间默认包或历史内联提示词。跨空间/不存在的包在保存时返回 409 |
+| `attribution_generation` | `VARCHAR(36)` | NULL | 绑定批次 ID；新建、换包或影响分析的字段变化时更新，后台按它领取批次 |
+| `attribution_snapshot` | `JSON` | NULL | 保存时固定的对象定义原文与 commit；`definition` 为空且无包时保留历史内联提示词 |
 | `created_by` | `VARCHAR(36)` | NULL | FK → `users.id` |
 | `created_at` / `updated_at` | `DATETIME` | NOT NULL | — |
 
-约束：`UNIQUE(workspace_id, object_type, object_name)`（V2 由全局唯一改含空间）；索引：`INDEX(enabled)`、`INDEX(workspace_id)`。
+约束：`UNIQUE(workspace_id, object_type, object_name)`（V2 由全局唯一改含空间）；索引：`INDEX(enabled)`、`INDEX(workspace_id)`、`INDEX(workspace_id, attribution_package_id)`。
+
+### 5.1.1 `attribution_skill_packages` / `attribution_skill_package_bindings` —— 空间 Skill 包
+
+| 表 | 列 | 说明 |
+|---|---|---|
+| `attribution_skill_packages` | `id` PK | ULID；平台内置包使用固定 ID，不落库 |
+| | `workspace_id` | 空间隔离；`UNIQUE(workspace_id, skill_name)` |
+| | `skill_name` / `uploader_id` / `uploader_name` | Skill 名、上传者 ID 与显示名 |
+| | `archive_name` / `file_count` / `size_bytes` / `content_hash` | 原包名、文件数、ZIP 字节数与内容哈希 |
+| | `storage_path` / `skill_md_path` / `prompt_text` | 解包目录、`SKILL.md` 相对路径与提示词原文 |
+| | `created_at` | 上传时间；索引 `INDEX(workspace_id, created_at)` |
+| `attribution_skill_package_bindings` | `workspace_id` PK | 空间默认包绑定，一行一个空间 |
+| | `package_id` FK → `attribution_skill_packages.id` ON DELETE CASCADE | 被绑定的包；删除包前必须先解绑 |
+| | `updated_by` / `updated_at` | 操作者与更新时间；索引 `INDEX(package_id)` |
+
+- 包文件只保存元数据与解包内容，不把 ZIP 二进制写入数据库；下载时由服务端按文件清单重新打包。
+- 对象绑定存 `evolution_targets.attribution_package_id`，不复用空间默认绑定行；删除被对象绑定的包返回 409。
+- 内置包 `default-attribute-badcases` 随 API 发布，不在表中建行；列表接口把它与空间上传包合并返回。
 
 ### 5.2 `evolution_runs`
 
@@ -902,16 +930,15 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 | 共享 root 的 `total` | 按空间投影计数：同一 root 被两个空间上报时，每个空间的 `total` 各算一次；V1 的可见空间并集用 `IN` 半连接按根去重，只算一次 |
 | 共享 root 的 `pendingSessions` | 同样按空间各算一次：每个空间都需要自己的轨迹补齐；V1 在可见空间并集内按 root `COUNT(DISTINCT)`，同一根只算一次 |
 | 时间桶 | 按 `bad_cases.created_at`（上报时间）分桶，`day` / `week`（ISO 周一）/ `month`，边界 Asia/Shanghai；空桶由服务端补零 |
-| 对象进入点 | Session 内该对象最早的 `agent_events`：`object_type=skill → kind=skill`，`object_type=agent → kind=agent`，`object_type=knowledge → kind=knowledge`；同时要求 `name == target_name` 且事件 identity 命中目标 revision 候选集。skill/agent/knowledge 的 `targetRevision` 都是归一化 body hash：skill/agent 的裸 tag 由服务端读取该 tag 下的 `SKILL.md`/`AGENT.md` 并用同一归一化函数算出；knowledge 由文档内容归一化或 `defaultRef` digest 给出；已带 `digest:` 原样使用。候选集 = `{targetVersion, targetRevision, legacy object_revision}`；事件侧 `object_version`、`object_revision`、skill/agent/knowledge `definition_hash`/`document_revision` 任一命中即可。无 identity 匹配事件 → 不关联 |
-| Session 关联口径 | 上报根按窗口 `bad_cases` 去重：`reported = associated + versionUnresolved + skipped + pending`。`pending` 是没有 `session_families` 行的根；`versionUnresolved` 是命中名称但事件既无 `object_version`、无可用 `object_revision`，也无 `definition_hash`/`document_revision`（NULL/`unknown`）；`skipped` 是其余已归一化但没有任何 identity 匹配的根（包括 digest/tag/provider 存在但不匹配目标 revision）；只有 `associated` 进列表 |
+| 对象出现与进入点 | Session 内该对象最早的 `agent_events`：`object_type=skill → kind=skill`，`object_type=agent → kind=agent`，`object_type=knowledge → kind=knowledge`，且 `name == target_name`；不要求事件版本/revision 命中目标。缺少调用事件时，Agent 节点的类型（缺失时用名称）或 Skill 名也可作为出现证据。事件观测到的 `object_version/object_revision/definition_hash/document_revision` 原样保留为证据；绑定的 `targetRevision` 只用于读取原文、写报告和确定缓存范围。 |
+| Session 关联口径 | 上报根按窗口 `bad_cases` 去重：`reported = associated + versionUnresolved + skipped + pending`。`pending` 是没有 `session_families` 行的根；`versionUnresolved` 是历史兼容字段，新计算恒为 0；`skipped` 是已有轨迹但没有出现所选类型和名称的根；只有 `associated` 进列表。`objectTriggerAt` 取 `对象出现与进入点` 的时间，缺失时回退 Session `startedAt` |
 | bad case 触发点 | §7.4 锚点事件。`anchorKind=post_process` 时 `eventIndex=INT_MAX`、`triggeredAt=created_at`；`anchorKind=unknown`（上报 agent 本身无法解析）时触发点缺失，不猜测、不降级到主 agent。其他锚点保持事件坐标 |
 | 触发点比较 | 非 `post_process`：双方 `triggered_at` 非空 → 按时间严格大于，否则按 `(agents.tree_index, agent_events.event_index)` 字典序；`post_process` 直接判为「对象之后」，不比较 `created_at`（仅审计/显示），坐标兜底 INT_MAX；`unknown` 或坐标不全 → `order_state=unknown`（不满足「之后」） |
 | 潜在 bad case（默认策略） | 关联 Session 内 `(object_name == target.name AND bad_case_type='self') OR (case_trigger > object_enter)`；`post_process` 锚点直接按「对象之后」命中 `after_object`，候选行同时记录 `case_anchor_kind=post_process` 供审计。custom 取启用规则并集，`sameObjectOnly` 再按 `object_name == target.name` 过滤。`self` 与 `sameObjectOnly` 只比较名称，不比较 `bad_cases.object_type` 或 `object_version`，因此同名 skill/agent 与跨版本 self 会被纳入；合法组合见 [07 §5.12](07-backend-implementation.md) |
 | 潜在集合计数 | `summary.badCases` 是关联 Session 内的候选 case 数（含被排除行），`potential` 是纳入数；`byReason` 为 `self_report|after_object|both|policy_excluded|order_unknown` 五键零填充，排除行只进计数不进分页行 |
 | 预览时间窗 | 按 `bad_cases.created_at` 的 Asia/Shanghai 日边界；无 `from/to` 默认最近 90 天，`from > to` 或跨度超过 366 天 → `WINDOW_INVALID` |
-| 预览缓存口径 | 只读查询既有 `probe_reports.cache_key`：键按解析后的 `targetRevision`（skill 为 body hash）、`policy_version=v1`、归因引擎 `rule-v1` 计算；legacy path+body 键不复用；`cacheEnabled=false` 时 `reused=0`；`nonTargetKnown` 是该对象历史 `non_target` 去重 case 数（按 `targetVersion`/`targetRevision` 两个值查，参考值可与 `reused` 重叠） |
+| 预览缓存口径 | 绑定包模式只读 `bad_case_analysis JOIN probe_reports`：按空间、对象身份、解析版本与候选 Badcase 取 `analyzed_at` 最新的完成报告，再按 `attribution_skill_name` 汇总 `bySkill`；`reused` 是候选中有报告的数，`missing=potential-reused`，`cacheEnabled=false` 时 `reused=0`、`fresh=potential`。legacy rule 模式才读 `probe_reports.cache_key`，键按 `targetRevision`、`policy_version=v1`、`rule-v1` 计算；两种模式都不写预览。`nonTargetKnown` 是该对象历史 `non_target` 去重 case 数（按 `targetVersion`/`targetRevision` 两个值查，参考值可与 `reused` 重叠） |
 | 归因三态 | 潜在集合中按 `bad_case_analysis JOIN probe_reports`（对象·版本）判断：`conclusion=attributed` → 是该对象；`non_target` → 非该对象；无关联行 → 未归因 |
-| 对象出现 | 整棵 Session 树中有目标类型、名称的触发事件即关联。保留事件实测版本作为证据；绑定的目标版本用于原文快照、报告和缓存。 |
 | target 对象类型 | `evolution_targets.object_type` 取 `skill|agent|knowledge`；`bad_cases.object_type` 仍只有 `skill|agent`，`probe_reports.probe_type` 允许 knowledge 值。knowledge target 的 `defaultRef` 接受 revision 形式，创建/更新跳过 git `ls-remote`，`versions` 返回空列表 + `defaultRef`；knowledge 的文件匹配用文档归一化 body hash，target resolver 与 API 启动在 V2 内，向导 catalog 与 target 表单暂不展示 knowledge（无选择器），知识库 UI 选择器另开切片 |
 | 知识事件证据口径 | 归一化一个根会话时，取该根在 `bad_cases` 里所有上报空间的 `workspaces.knowledge_roots` 并集作为证据范围（只去重归一化，不套每空间 20 条上限）；没有 bad case 的本地根为空集合，不产生知识事件。`bad_cases` 表缺失时按空 roots 降级，不让整根重放失败。 |
 | 知识事件的跨空间可见性 | `agent_events` 没有空间列，同一根会话被 A/B 两空间上报时，B 的成员能看到 A 配置根下的 `sourcePath` 与 `retrievalScope`（泄露的是路径与文档存在性，不是正文）。这是 M9 只建证据、查询层裁剪留 M10 的结构性后果 |
@@ -983,6 +1010,7 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 ```
 
 - `0021` 落地归因引擎需要的 run 快照列与 revision 宽度：补 `evolution_runs.potential_policy / cache_enabled / attribution_engine`（旧 run 取 `NULL / false / legacy-probe-import`），并把 `probe_reports.object_version` 从 64 扩到 96，使 `digest:<sha256>` 的 71 字符 identity 可直接落库；两步都按存在性守卫，可重复执行。
+- `0023a–0031` 是对象绑定归因的主线增量：`0023a` 建 Skill revision/绑定/run 快照，`0024a` 建影子评测与质量决策，`0025a` 补任务取消/重试租约，`0026a` 对齐 `bad_cases.trigger_line` 的兼容 revision，`0027` 建空间 Skill 包与默认绑定，`0028/0028a` 对齐 target revision 并补 V2 报告/执行清单字段，`0029` 补对象绑定、可恢复分析意图与报告溯源，`0030` 保存绑定批次的终态错误，`0031` 把旧分支 stamp 收敛到生产 schema。每个 revision 都按存在性判定，允许旧库从任一已发布 stamp 重入。
 
 - **幂等**：可重复执行（`WHERE NOT EXISTS` + 回填只看 NULL），SQLite 测试库与 MySQL 生产库都能二次跑。
 - **回滚**：删除新增列和外键，恢复 `bad_case_analysis` 的 `UNIQUE(bad_case_id)`。降级**有损**：一 case 多归因时只保留 `updated_at` 最新的一行，其余关联直接删除且不生成导出文件；`attribute_type` 的 NULL 会折成 `nonissue`。实际生产回滚以「回退应用版本 + 保留新结构」为主。

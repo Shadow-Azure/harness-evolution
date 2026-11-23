@@ -3695,7 +3695,7 @@ function AttributionReport({ c, a, index, total, onPrev, onNext, onOpenRun }) {
       </div>
       <div className=${"attr-cache " + (a.cached ? "" : "new")}>
         ${a.cached
-          ? html`<span>♻</span><span><b>复用缓存</b>：${a.objectName} ${a.version} 已对 ${c.id} 生成过归因，直接复用最近一次成功结果；缓存键包含工作空间、对象版本、策略版本与归因模型。</span>`
+          ? html`<span>♻</span><span><b>复用缓存</b>：${a.objectName} ${a.version} 已对 ${c.id} 生成过归因，直接复用该对象·版本下最新完成报告；报告保留产出 Skill 与执行清单。</span>`
           : html`<span>＋</span><span><b>本次新增</b>：缓存未命中，本次运行对该 bad case 执行完整归因；结论写回后可供后续运行复用。</span>`}
       </div>
       <div className="attr-block">
@@ -4950,19 +4950,38 @@ function evRunModel(run) {
   potentialRows.forEach((row, idx) => {
     const h = v2Hash(run.id + row.c.id + run.target.name);
     row.attributionId = `AR-${runShort}-${String(idx + 1).padStart(3, '0')}`;
-    const cached = run.cache !== false && (h % 2 === 0);
     const notObject = row.c.objectName !== run.target.name && row.c.type === 'discovery' && (h % 4 === 0);
     row.hasReport = h % 2 === 0;
-    row.cached = cached;
+    row.reportSkill = row.hasReport ? evReportSkill(run, h) : null;
+    row.cached = run.cache !== false && row.hasReport;
+    row.skipped = run.cache !== false && !row.hasReport;
     row.conclusion = notObject ? 'not-object' : 'attributed';
     row.category = notObject ? '非该对象问题' : ['错误', 'prompt缺失某些提示词', '模型问题'][h % 3];
     row.confidence = 0.6 + (h % 35) / 100;
   });
   const attributed = potentialRows.filter(r => r.conclusion === 'attributed');
   const notObject = potentialRows.filter(r => r.conclusion === 'not-object');
-  const reused = potentialRows.filter(r => r.cached && r.conclusion === 'attributed').length;
-  const fresh = attributed.length - reused;
-  return { cases, sessions: assoc, potentialRows, attributed, notObject, reused, fresh };
+  const reused = run.cache !== false ? potentialRows.filter(r => r.hasReport).length : 0;
+  const fresh = run.cache !== false ? 0 : potentialRows.length;
+  const missing = run.cache !== false ? potentialRows.length - reused : 0;
+  return { cases, sessions: assoc, potentialRows, attributed, notObject, reused, fresh, missing };
+}
+
+function evRunSkill(run) {
+  if (run.attributionSkill) return run.attributionSkill;
+  const target = (EV_TARGETS[run.workspace] || []).find(t => t.objectName === run.target.name && t.kind === run.target.kind);
+  if (target?.attributionInline && !target.attributionSkill) return '历史内联提示词';
+  return target?.attributionSkill || 'attribute-badcases';
+}
+function evReportSkill(run, hash) {
+  const fallback = evRunSkill(run);
+  let names = [];
+  try {
+    if (window.V2 && V2.admin && V2.wsId === run.workspace) names = v2SkillState().items.map(item => item.name);
+  } catch {}
+  if (names.length < 2) return fallback;
+  const others = names.filter(name => name !== fallback);
+  return hash % 5 === 0 ? others[hash % others.length] : fallback;
 }
 
 /* 原型打桩：生产由服务端用 git 读取真实仓库；这里用少量示例 ref 模拟存在性校验。 */
@@ -5025,6 +5044,7 @@ function evMakeRun(cfg) {
     failed: cfg.failed === true,
   };
   const cfgTarget = (EV_TARGETS[cfg.workspace] || []).find(t => t.objectName === cfg.target.name && t.kind === cfg.target.kind);
+  run.attributionSkill = cfg.attributionSkill || cfgTarget?.attributionSkill || (cfgTarget?.attributionInline ? '历史内联提示词' : 'attribute-badcases');
   run.worktree = {
     branch: `evo/${cfg.id}`,
     baseRef: cfg.target.version,
@@ -5231,7 +5251,7 @@ function evRunCard(run) {
       <span class="st"><b>${m.cases.length}</b><span>bad case</span></span>
       <span class="st"><b>${m.potentialRows.length}</b><span>潜在 bad case</span></span>
       <span class="st"><b>${m.attributed.length}</b><span>可归因</span></span>
-      <span class="st"><b>${m.reused}</b><span>复用归因</span></span>
+      <span class="st"><b>${m.reused}</b><span>复用缓存</span></span>
       <span class="st"><b>${doneRounds}/${run.clusters.length}</b><span>已跑轮次</span></span>
     </div>
     ${tail}
@@ -5353,9 +5373,9 @@ function evStepAssoc(run) {
     <td class="mono">${a.potential.length}</td>
   </tr>`).join('');
   return `<div class="card panel">
-    <div class="sec-title">第 2 步 · Session 关联 <span class="sub">只展示对象版本出现过的 Session；未出现的 Session 已跳过</span></div>
+    <div class="sec-title">第 2 步 · Session 关联 <span class="sub">只展示对象出现过的 Session；未出现的 Session 已跳过</span></div>
     <div class="f-inline" style="margin-bottom:8px"><span class="v2-badge ok">关联 ${assoc.length}</span><span class="v2-note">时间段内共 ${m.sessions.length} 个 Session；未出现 ${skipped} 个已跳过</span></div>
-    <table class="rep"><thead><tr><th>Session</th><th>对象出现</th><th>对象触发点</th><th>bad case</th><th>潜在 bad case</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="waiting">没有对象版本出现过的 Session；可回第 1 步调整时间段或对象版本</td></tr>'}</tbody></table>
+    <table class="rep"><thead><tr><th>Session</th><th>对象出现</th><th>对象触发点</th><th>bad case</th><th>潜在 bad case</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="waiting">没有对象出现过的 Session；可回第 1 步调整时间段或选择其他对象</td></tr>'}</tbody></table>
     <div class="pager"><button class="btn" data-action="ev-run-page" data-target="assoc" data-id="${run.id}" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button><span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${assoc.length}</b> 个关联 Session</span><button class="btn" data-action="ev-run-page" data-target="assoc" data-id="${run.id}" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button></div>
   </div>`;
 }
@@ -5398,21 +5418,22 @@ function evStepAttr(run) {
       <td class="mono attr-report"><a class="idlink" href="${caseDeepLink(r.c.id, 'attr', null, run.target.name)}" target="_blank" rel="noopener" title="归因报告 ID · 打开归因分析">${r.attributionId}</a></td>
       <td>${evTypeChip(category)}</td>
       <td class="attr-desc"><span title="${evEsc(r.c.detail)}">${evEsc(r.c.detail)}</span></td>
-      <td>${r.cached ? '<span class="v2-badge">缓存</span>' : '<span class="v2-badge">新增</span>'}</td>
+      <td>${r.skipped ? '<span class="v2-badge warn">跳过</span>' : (r.cached ? '<span class="v2-badge">缓存</span>' : '<span class="v2-badge">重算</span>')}</td>
       <td class="mono">${(r.confidence * 100).toFixed(0)}%</td>
     </tr>`;
   }).join('');
   return `<div class="card panel">
-    <div class="sec-title">第 4 步 · 对象归因 <span class="sub">每条结论只作用于 ${evEsc(run.target.name)}@${run.target.version}</span></div>
+    <div class="sec-title">第 4 步 · 对象归因 <span class="sub">每条结论只作用于 ${evEsc(run.target.name)}@${run.target.version} · Skill ${evEsc(evRunSkill(run))}</span></div>
     <div class="wz-stats" style="margin-bottom:10px">
       <span class="st"><b>${m.potentialRows.length}</b><span>潜在 bad case</span></span>
       <span class="st accent"><b>${m.attributed.length}</b><span>可归因</span></span>
       <span class="st"><b>${m.notObject.length}</b><span>非该对象问题</span></span>
       <span class="st"><b>${m.reused}</b><span>复用缓存</span></span>
+      <span class="st"><b>${m.missing}</b><span>尚无报告</span></span>
       <span class="st"><b>${m.fresh}</b><span>本次新增</span></span>
     </div>
     <table class="rep"><thead><tr><th>来源 bad case</th><th>归因报告ID</th><th>分类</th><th>问题现象/描述</th><th>结果来源</th><th>置信度</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="waiting">没有需要归因的潜在 bad case</td></tr>'}</tbody></table>
-    <p class="v2-note" style="margin-top:9px">「非该对象问题」是当前对象版本的一条归因结论，不修改 bad case 本身，也不影响它与其他对象的潜在关系。缓存键：工作空间 + bad case + 对象身份/版本 + 策略版本 + 归因模型版本。</p>
+    <p class="v2-note" style="margin-top:9px">「非该对象问题」是当前对象版本的一条归因结论，不修改 bad case 本身，也不影响它与其他对象的潜在关系。本次使用 ${evEsc(evRunSkill(run))}；缓存开启时复用每例最新完成报告，缺报告项跳过；关闭缓存时按本次所选 Skill 重算。</p>
   </div>`;
 }
 
@@ -5766,7 +5787,8 @@ function evWizardOpen(caseId) {
     step: 1, kind: first?.kind || 'skill', name: first?.objectName || '', version: first?.defaultRef || first?.tags?.[0] || '',
     versionOpen: false,
     from, to, policy: 'default', includeSelf: true, includeAfter: true, sameObject: false,
-    cache: true, focusCase: caseId || null, assocPage: 1, casePage: 1, errors: {}, busy: null,
+    cache: true, attributionSkill: first?.attributionSkill || (first?.attributionInline ? '历史内联提示词' : 'attribute-badcases'),
+    focusCase: caseId || null, assocPage: 1, casePage: 1, errors: {}, busy: null,
   };
   evRenderWizard();
 }
@@ -5843,7 +5865,9 @@ function evWzRun() {
     target: { kind: t.kind, name: t.objectName, version: EV_STATE.wz.version },
     window: [EV_STATE.wz.from, EV_STATE.wz.to], policy: EV_STATE.wz.policy,
     policyRules: { includeSelf: EV_STATE.wz.includeSelf, includeAfter: EV_STATE.wz.includeAfter, sameObject: EV_STATE.wz.sameObject },
-    cache: EV_STATE.wz.cache, progress: 5,
+    cache: EV_STATE.wz.cache,
+    attributionSkill: EV_STATE.wz.attributionSkill || t.attributionSkill || (t.attributionInline ? '历史内联提示词' : 'attribute-badcases'),
+    progress: 5,
   };
 }
 function evWizardModel() { const r = evWzRun(); return { run: r, m: evRunModel(r) }; }
@@ -6055,13 +6079,13 @@ function evRenderWizard() {
         <span class="st"><b>${m.sessions.filter(a => !a.appeared).length}</b><span>未出现 · 跳过</span></span>
         <span class="st"><b>${m.cases.length}</b><span>时间段内 bad case</span></span>
       </div>
-      <table class="rep"><thead><tr><th>Session</th><th>对象出现</th><th>对象触发点</th><th>bad case</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="waiting">没有对象版本出现过的 Session</td></tr>'}</tbody></table>
+      <table class="rep"><thead><tr><th>Session</th><th>对象出现</th><th>对象触发点</th><th>bad case</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="waiting">没有对象出现过的 Session</td></tr>'}</tbody></table>
       <div class="pager">
         <button class="btn" data-action="ev-wz-page" data-target="assoc" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button>
         <span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${assoc.length}</b> 个关联 Session</span>
         <button class="btn" data-action="ev-wz-page" data-target="assoc" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button>
       </div>
-      <div class="wz-note">只展示对象版本出现过的 Session；未出现的 Session 已跳过，下一步再按策略筛选潜在 bad case。</div>`;
+      <div class="wz-note">只展示对象出现过的 Session；未出现的 Session 已跳过，下一步再按策略筛选潜在 bad case。</div>`;
   } else if (wz.step === 3) {
     const pageSize = 5;
     const pages = Math.max(1, Math.ceil(m.potentialRows.length / pageSize));
@@ -6085,20 +6109,30 @@ function evRenderWizard() {
       </div>
       <div class="wz-note">默认策略 = 对象自身 self 上报 或 触发点在对象之后；自定义策略可回第 1 步调整。归因在下一步生成。</div>`;
   } else {
+    const reports = m.potentialRows.filter(r => r.hasReport);
+    const bySkill = {};
+    reports.forEach(r => { const key = r.reportSkill || evRunSkill(run); bySkill[key] = (bySkill[key] || 0) + 1; });
+    const groups = Object.entries(bySkill).map(([key, count]) => `${v2Esc(key)} · ${count} 份`).join(' / ');
+    const missing = m.potentialRows.length - reports.length;
+    const selectedSkill = wz.attributionSkill || t?.attributionSkill || (t?.attributionInline ? '__legacy__' : 'attribute-badcases');
+    const legacyOption = t?.attributionInline && !t.attributionSkill ? '<option value="__legacy__" selected>历史内联提示词（只读）</option>' : '';
     body = `${cond}
       <div class="wz-section-title">第 4 步 · 归因预览与启动 <span>确认缓存策略后启动；归因结果会写回该对象版本</span></div>
       <div class="cache-option"><div><b>复用缓存归因</b><div class="v2-note" style="margin-top:2px">如果该对象版本已经对某个潜在 bad case 做过归因，直接复用最近一次成功结果。</div></div><label class="switch"><input type="checkbox" ${wz.cache ? 'checked' : ''} data-action="ev-wz-cache"><span class="slider"></span></label></div>
       <div class="preview-stats">
         <div class="preview-stat"><strong>${m.potentialRows.length}</strong><span>潜在 bad case</span></div>
-        <div class="preview-stat"><strong>${wz.cache ? m.potentialRows.filter(r => r.hasReport).length : 0}</strong><span>复用缓存</span></div>
+        <div class="preview-stat"><strong>${wz.cache ? reports.length : 0}</strong><span>复用缓存</span></div>
         <div class="preview-stat"><strong>${wz.cache ? 0 : m.potentialRows.length}</strong><span>本次新增归因</span></div>
+        <div class="preview-stat"><strong>${wz.cache ? missing : 0}</strong><span>尚无报告</span></div>
         <div class="preview-stat"><strong>${m.notObject.length}</strong><span>非该对象问题</span></div>
       </div>
-      <div class="notice"><b>已有问题报告</b><p>${v2Esc(t?.attributionSkill || 'attribute-badcases')} · ${m.potentialRows.filter(r => r.hasReport).length} 份</p><p>尚无报告 ${m.potentialRows.filter(r => !r.hasReport).length} 个 Badcase${wz.cache ? '，本次跳过' : ''}。</p></div>
-      ${wz.cache ? '' : `<label class="cache-option">本次重算使用的归因 Skill <select class="inp" id="ev-recompute-skill">${v2SkillOptions(wz.attributionSkill || t?.attributionSkill || 'attribute-badcases')}</select></label>` }`;
+      <div class="notice"><b>已有问题报告</b><p>${groups || '暂无'}</p><p>尚无报告 ${missing} 个 Badcase${wz.cache ? '，本次跳过' : ''}。</p></div>
+      ${wz.cache ? '' : `<label class="cache-option">本次重算使用的归因 Skill <select class="inp" id="ev-recompute-skill">${legacyOption}${v2SkillOptions(selectedSkill)}</select></label>` }`;
   }
 
   const busyLabel = busy ? (busy.failed ? '等待重试' : `正在${busy.stages[busy.stage].label}…`) : '';
+  const reportCount = m.potentialRows.filter(r => r.hasReport).length;
+  const noReusableReports = wz.cache && reportCount === 0;
   let foot = '';
   if (busy && !busy.failed) {
     foot = `<button class="btn" data-action="ev-wz-cancel-busy">取消等待</button>
@@ -6110,7 +6144,7 @@ function evRenderWizard() {
   } else if (wz.step === 3) {
     foot = '<button class="btn" data-action="ev-wz-back">← 上一步</button><button class="btn primary" data-action="ev-wz-next">下一步：归因预览 →</button>';
   } else {
-    foot = '<button class="btn" data-action="ev-wz-back">← 上一步</button><button class="btn primary" data-action="ev-wz-start">启动自进化 →</button>';
+    foot = `<button class="btn" data-action="ev-wz-back">← 上一步</button><button class="btn primary" data-action="ev-wz-start" ${noReusableReports ? 'disabled title="当前没有可复用报告，请关闭缓存后重算"' : ''}>启动自进化 →</button>`;
   }
 
   evWizardHost().innerHTML = `<div class="evov" data-action="ev-wz-close-bg">
@@ -6178,7 +6212,7 @@ document.addEventListener('click', e => {
   else if (a === 'ev-wz-targets') { evWzClearBusy(); evWizardHost().innerHTML = ''; location.hash = '#/targets'; if (window.V2 && window.V2.page !== 'evo') window.V2.setPage('evo'); else evRoute(); }
   else if (a === 'ev-wz-close') { evWzClearBusy(); evWizardHost().innerHTML = ''; }
   else if (a === 'ev-wz-close-bg') { if (e.target === el) { evWzClearBusy(); evWizardHost().innerHTML = ''; } }
-  else if (a === 'ev-wz-kind') { evWzClearBusy(); evSyncWz(); const wz = EV_STATE.wz; wz.kind = el.dataset.v; const t = evWzTargets()[0]; wz.name = t?.objectName || ''; wz.version = t?.defaultRef || t?.tags?.[0] || ''; delete wz.errors.version; wz.versionOpen = false; wz.assocPage = 1; wz.casePage = 1; evRenderWizard(); }
+  else if (a === 'ev-wz-kind') { evWzClearBusy(); evSyncWz(); const wz = EV_STATE.wz; wz.kind = el.dataset.v; const t = evWzTargets()[0]; wz.name = t?.objectName || ''; wz.version = t?.defaultRef || t?.tags?.[0] || ''; wz.attributionSkill = t?.attributionSkill || (t?.attributionInline ? '历史内联提示词' : 'attribute-badcases'); delete wz.errors.version; wz.versionOpen = false; wz.assocPage = 1; wz.casePage = 1; evRenderWizard(); }
   else if (a === 'ev-wz-version-toggle') { evWzClearBusy(); evSyncWz(); EV_STATE.wz.versionOpen = !EV_STATE.wz.versionOpen; evRenderWizard(); }
   else if (a === 'ev-wz-version-pick') { evWzClearBusy(); evSyncWz(); EV_STATE.wz.version = el.dataset.v; EV_STATE.wz.versionOpen = false; delete EV_STATE.wz.errors.version; evRenderWizard(); }
   else if (a === 'ev-wz-range') {
@@ -6218,13 +6252,18 @@ document.addEventListener('click', e => {
     if (!evValidateWz()) { EV_STATE.wz.versionOpen = false; EV_STATE.wz.step = 1; evRenderWizard(); return; }
     const t = evWzTarget();
     if (!t) return;
+    if (EV_STATE.wz.cache && !evRunModel(evWzRun()).potentialRows.some(r => r.hasReport)) {
+      v2Toast('当前没有可复用报告，请关闭缓存后重算');
+      return;
+    }
     const run = evMakeRun({
       id: 'EV-' + Date.now().toString(36), workspace: evCurrentWs(),
       title: `${t.objectName} ${EV_STATE.wz.version} 自进化`,
       target: { kind: t.kind, name: t.objectName, version: EV_STATE.wz.version },
       window: [EV_STATE.wz.from, EV_STATE.wz.to], policy: EV_STATE.wz.policy,
       policyRules: { includeSelf: EV_STATE.wz.includeSelf, includeAfter: EV_STATE.wz.includeAfter, sameObject: EV_STATE.wz.sameObject },
-      cache: EV_STATE.wz.cache, createdAt: '2026-11-10 09:10', progress: 5,
+      cache: EV_STATE.wz.cache, attributionSkill: EV_STATE.wz.attributionSkill || t.attributionSkill || (t.attributionInline ? '历史内联提示词' : 'attribute-badcases'),
+      createdAt: '2026-11-10 09:10', progress: 5,
     });
     EV_RUNS.unshift(run);
     evWizardHost().innerHTML = ''; EV_STATE.expanded.clear(); EV_STATE.selStep = null; EV_STATE.lastDetailId = null;
@@ -6241,7 +6280,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => {
   if (!EV_STATE.wz) return;
-  if (e.target.id === 'ev-wz-name') { evWzClearBusy(); evSyncWz(); const t = evWzTarget(); EV_STATE.wz.version = t?.defaultRef || t?.tags?.[0] || ''; delete EV_STATE.wz.errors.version; EV_STATE.wz.versionOpen = false; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
+  if (e.target.id === 'ev-wz-name') { evWzClearBusy(); evSyncWz(); const t = evWzTarget(); EV_STATE.wz.version = t?.defaultRef || t?.tags?.[0] || ''; EV_STATE.wz.attributionSkill = t?.attributionSkill || (t?.attributionInline ? '历史内联提示词' : 'attribute-badcases'); delete EV_STATE.wz.errors.version; EV_STATE.wz.versionOpen = false; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
   else if (e.target.id === 'ev-wz-version') { if (EV_STATE.wz.busy) { evWzClearBusy(); evRenderWizard(); } evSyncWz(); }
   else if (e.target.id === 'ev-wz-from' || e.target.id === 'ev-wz-to') { evWzClearBusy(); evSyncWz(); evWzSyncRangePresetButtons(); }
 });
@@ -7064,7 +7103,7 @@ function v2RenderTargetsOverview() {
     return `<div class="tg-side-item ${selected.has(t.id) ? 'selected' : ''}" title="${v2Esc(t.objectName)} · 潜在 ${d.potential} · 是 ${c.isTarget} / 非 ${c.notTarget} / 未 ${c.unanalyzed}">
       <div class="tg-side-top"><div class="tg-target-title"><span class="chip kind">${v2Esc(t.kind)}</span><b>${v2Esc(t.objectName)}</b><span class="mono">@${v2Esc(d.version)}</span></div><div class="tg-target-actions"><button class="btn sm" data-v2-tg-edit="${t.id}">编辑</button><button class="btn sm danger" data-v2-tg-remove="${t.id}">移除</button></div></div>
       <div class="tg-side-meta"><span><b>${d.assoc}</b> 关联 Session</span><span><b>${d.potential}</b> 潜在 bad case</span></div>
-      <div class="tg-side-meta">归因 Skill · ${v2Esc(t.attributionSkill || "attribute-badcases")}</div>
+      <div class="tg-side-meta">归因 Skill · ${v2Esc(t.attributionSkill || (t.attributionInline ? "历史内联提示词" : "attribute-badcases"))}</div>
       <div class="tg-side-evolvable">可进化潜在 bad case 数量 <b>${evolvableOf(d)}</b><span>（是问题 ${c.isTarget}；未分析 ${c.unanalyzed}）</span></div>
     </div>`;
   }).join('');
@@ -7257,7 +7296,10 @@ function v2SkillState() {
   return V2.admin.skills.get(V2.wsId);
 }
 function v2BoundTargets(skill) {
-  return (EV_TARGETS[V2.wsId] || []).filter(t => (t.attributionSkill || 'attribute-badcases') === skill);
+  return (EV_TARGETS[V2.wsId] || []).filter(t => {
+    const bound = t.attributionSkill || (t.attributionInline ? null : 'attribute-badcases');
+    return bound === skill;
+  });
 }
 function v2SkillOptions(selected) {
   return v2SkillState().items.map(item => `<option ${item.name === selected ? 'selected' : ''}>${v2Esc(item.name)}</option>`).join('');
@@ -7360,7 +7402,7 @@ function v2RemoveSkill(item, state) {
   dialog.showModal();
 }
 document.addEventListener('change', event => {
-  if (event.target.id === 'ev-recompute-skill') EV_STATE.wz.attributionSkill = event.target.value;
+  if (event.target.id === 'ev-recompute-skill' && EV_STATE.wz) { EV_STATE.wz.attributionSkill = event.target.value; evRenderWizard(); }
   if (event.target.id === 'v2SkillFile') v2UploadSkill(event.target);
 });
 document.addEventListener('click', event => {
@@ -7563,7 +7605,7 @@ function v2TargetModal(id) {
       <div class="f-row"><div class="f-label">默认版本 <span class="req">*</span></div><input class="inp" id="v2TgVersion" value="${t ? v2Esc(t.defaultRef || '') : ''}" placeholder="例如：v1.8.0" style="width:180px"></div>
       <div class="f-row"><div class="f-label">仓库地址</div><input class="inp" id="v2TgRepo" value="${t ? v2Esc(t.repoUrl || '') : ''}" placeholder="https://github.com/acme/agent-skills.git" style="width:100%"></div>
       <div class="f-row"><div class="f-label">子目录</div><input class="inp" id="v2TgSubdir" value="${t ? v2Esc(t.subDir || '') : ''}" placeholder="skills/code-review" style="width:100%"></div>
-      <label class="f-row">归因 Skill <select class="inp" id="v2TgSkill">${v2SkillOptions(t?.attributionSkill || 'attribute-badcases')}</select></label>
+      <label class="f-row">归因 Skill <select class="inp" id="v2TgSkill">${t?.attributionInline && !t.attributionSkill ? '<option value="__legacy__" selected>历史内联提示词（只读）</option>' : ''}${v2SkillOptions(t?.attributionInline && !t.attributionSkill ? '__legacy__' : (t?.attributionSkill || 'attribute-badcases'))}</select></label>
       <div class="notice">保存绑定后，后台会逐条分析当前与该对象关联的 Badcase。</div>
     </div>
     <div class="modal-foot"><button class="btn" data-v2-close>取消</button><button class="btn primary" data-v2-tg-save="${t ? t.id : ''}">${t ? '保存' : '新增对象'}</button></div>
@@ -7571,7 +7613,9 @@ function v2TargetModal(id) {
 }
 function v2SaveTarget(id) {
   const name = (document.getElementById('v2TgName')?.value || '').trim();
-  const attributionSkill = document.getElementById('v2TgSkill').value;
+  const skillValue = document.getElementById('v2TgSkill').value;
+  const keepLegacyInline = skillValue === '__legacy__';
+  const attributionSkill = keepLegacyInline ? null : skillValue;
   const kind = document.getElementById('v2TgKind')?.value || 'skill';
   const version = (document.getElementById('v2TgVersion')?.value || '').trim() || 'v1.0.0';
   const repoUrl = (document.getElementById('v2TgRepo')?.value || '').trim();
@@ -7582,7 +7626,9 @@ function v2SaveTarget(id) {
   if (id) {
     const t = list.find(x => x.id === id);
     if (!t) return;
-    Object.assign(t, { kind, attributionSkill, objectName: name, defaultRef: version, tags: [version], repoUrl, subDir });
+    Object.assign(t, { kind, objectName: name, defaultRef: version, tags: [version], repoUrl, subDir });
+    if (keepLegacyInline) { delete t.attributionSkill; t.attributionInline = true; }
+    else { t.attributionSkill = attributionSkill; delete t.attributionInline; }
   } else {
     const tid = 't-' + Date.now().toString(36);
     list.push({ id: tid, kind, attributionSkill, objectName: name, defaultRef: version, tags: [version], repoUrl, subDir, enabled: true, validationProjectId: 'val-' + tid, testProjectId: 'test-' + tid });
