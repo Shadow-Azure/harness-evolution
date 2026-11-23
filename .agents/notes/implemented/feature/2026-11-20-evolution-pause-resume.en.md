@@ -19,3 +19,5 @@ turn-only pause waits too long. Killing tasks can leave partial state or uncerta
 ## Consequences
 
 All schedulers, conditional writes, restart recovery, evaluation timeouts and workspace retention must agree. Pause cannot guarantee immediate external compute cancellation or allow editing frozen input.
+
+Browser regression protocol requests and HTTP waits require deadlines. Disconnection must settle pending requests and release resources so acceptance cannot wait indefinitely. Stage logs locate timeout boundaries without replacing business assertions. Normal stage images are collected only when retaining artifacts; failure diagnosis remains bounded. Behavioral acceptance does not depend on discarded screenshots that have no image assertions.

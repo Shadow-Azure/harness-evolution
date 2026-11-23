@@ -37,6 +37,8 @@ SHARED_CONFIG_DIR = "config"
 """Subdirectory holding the service-readable settings."""
 SHARED_SETTINGS_MODE = 0o644
 """Settings are readable by the service account and contain no credentials."""
+SERVICE_DIR_MODE = 0o755
+"""Version directories must be traversable by the unprivileged service account."""
 
 
 def decode_entries(lines: list[str]) -> dict[str, str]:
@@ -186,6 +188,39 @@ def write_atomic(
         raise
 
 
+def version_directory(binary: Path, prefix: Path) -> Path:
+    """Return the version directory that owns ``binary`` inside ``prefix``.
+
+    Raises:
+        ValueError: when the binary is not at ``<prefix>/<version>/usr/bin/claude``.
+    """
+    version_dir = binary.parents[2]
+    if not version_dir.is_dir() or version_dir.parent != prefix:
+        raise ValueError(f"binary is not inside a version directory: {binary}")
+    return version_dir
+
+
+def repair_service_access(binary: Path, prefix: Path) -> None:
+    """Make the prefix and version directories traversable by the service user.
+
+    ``tempfile.mkdtemp()`` creates 0700 directories, and ``os.replace()`` keeps
+    that mode for the version directory. The service account is neither the
+    owner nor in the deploy group, so the whole chain from ``prefix`` to the
+    binary needs other-traverse bits. The binary is 0755 in the deb; restoring
+    it here keeps an interrupted or tampered install usable.
+    """
+    version_dir = version_directory(binary, prefix)
+    for directory in (
+        prefix,
+        version_dir,
+        version_dir / "usr",
+        version_dir / "usr/bin",
+    ):
+        os.chmod(directory, SERVICE_DIR_MODE)
+    if binary.is_file():
+        os.chmod(binary, 0o755)
+
+
 def install_from_deb(deb: Path, version: str, prefix: Path, home: Path) -> Path:
     """Extract a deb into ``prefix/version`` and return its ``claude`` binary."""
     prefix.mkdir(parents=True, exist_ok=True)
@@ -200,6 +235,7 @@ def install_from_deb(deb: Path, version: str, prefix: Path, home: Path) -> Path:
             env={**os.environ, "HOME": str(home)},
         )
         if existing.returncode == 0:
+            repair_service_access(binary, prefix)
             return binary
         shutil.rmtree(target, ignore_errors=True)
 
@@ -210,6 +246,11 @@ def install_from_deb(deb: Path, version: str, prefix: Path, home: Path) -> Path:
             check=True,
             timeout=300,
         )
+        # dpkg-deb preserves the archive entries but not the staging root; set
+        # it (and the chain the service traverses) explicitly before the swap.
+        for directory in (staging, staging / "usr", staging / "usr/bin"):
+            if directory.is_dir():
+                os.chmod(directory, SERVICE_DIR_MODE)
         candidate = staging / "usr/bin/claude"
         if not candidate.exists():
             raise RuntimeError("deb does not contain usr/bin/claude")
@@ -227,6 +268,7 @@ def install_from_deb(deb: Path, version: str, prefix: Path, home: Path) -> Path:
         if target.exists():
             shutil.rmtree(target)
         os.replace(staging, target)
+        repair_service_access(binary, prefix)
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
@@ -357,9 +399,7 @@ def configure_shared(entries: dict[str, str], prefix: Path) -> Path:
 
 def switch_current(binary: Path, prefix: Path) -> Path:
     """Atomically point ``prefix/current`` at the binary's version directory."""
-    version_dir = binary.parents[2]
-    if not version_dir.is_dir() or version_dir.parent != prefix:
-        raise ValueError(f"binary is not inside a version directory: {binary}")
+    version_dir = version_directory(binary, prefix)
     current = prefix / "current"
     temporary = prefix / f".current.{os.getpid()}"
     if temporary.exists() or temporary.is_symlink():
@@ -382,9 +422,12 @@ def preflight_shared_access(binary: Path, settings: Path, prefix: Path) -> None:
     """Fail before switching ``current`` when the service cannot use the assets.
 
     The installer runs as ``deploy`` and cannot impersonate ``harness`` without
-    root, so this checks the portable subset: the binary has the other-execute
-    bit, the settings have the other-read bit, and the prefix/config directories
-    are other-traversable. A failure aborts before the symlink switches.
+    root, so this checks the portable subset: every directory from ``prefix`` to
+    the binary is other-traversable, the binary has the other-execute bit, and
+    the settings have the other-read bit. ``mkdtemp()`` used to leave the
+    version directory at 0700, which made ``execve`` fail with EACCES even
+    though deploy could run the same binary. A failure aborts before the symlink
+    switches.
     """
     errors: list[str] = []
     if not binary.is_file():
@@ -397,8 +440,20 @@ def preflight_shared_access(binary: Path, settings: Path, prefix: Path) -> None:
         errors.append(
             f"shared settings are not readable by the service user: {settings}"
         )
-    for directory in (prefix, settings.parent):
-        if not _other_access(directory, 0o001):
+    directories = [prefix]
+    try:
+        version_dir = version_directory(binary, prefix)
+    except ValueError:
+        errors.append(f"binary is not inside a version directory: {binary}")
+    else:
+        directories.extend(
+            (version_dir, version_dir / "usr", version_dir / "usr/bin")
+        )
+    directories.append(settings.parent)
+    for directory in dict.fromkeys(directories):
+        if not directory.is_dir():
+            errors.append(f"directory is missing: {directory}")
+        elif not _other_access(directory, 0o001):
             errors.append(
                 f"directory is not traversable by the service user: {directory}"
             )
@@ -475,6 +530,9 @@ def main(argv: list[str] | None = None) -> int:
             binary if args.deb else (home / ".local" / "bin" / "claude").resolve()
         )
         prefix = Path(args.prefix)
+        # A repeat deployment with need_install=false installs nothing, so the
+        # historical 0700 version directory must be repaired here as well.
+        repair_service_access(active_binary, prefix)
         configure(entries, home)
         shared = configure_shared(entries, prefix)
         # The preflight runs before ``current`` switches, so a broken shared
