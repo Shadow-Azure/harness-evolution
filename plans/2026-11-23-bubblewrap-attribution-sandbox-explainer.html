@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bubblewrap 与归因沙箱：一次归因的完整生命周期</title>
+<style>
+  :root{
+    --bg:#f5f7fb; --card:#ffffff; --ink:#1b2333; --muted:#5c6678;
+    --line:#e2e7f0; --accent:#2f6fed; --accent-soft:#eaf1ff;
+    --green:#0f8a5f; --green-soft:#e7f6ef; --amber:#a15c00; --amber-soft:#fff4e2;
+    --red:#b42318; --red-soft:#fdecea; --code:#141b29; --code-ink:#e8edf7;
+    --radius:14px; --shadow:0 1px 2px rgba(16,24,40,.04),0 10px 30px rgba(16,24,40,.06);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink); line-height:1.75;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1120px;margin:0 auto;padding:36px 22px 90px}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* hero */
+  .hero{
+    position:relative; overflow:hidden; border-radius:22px; padding:44px 44px 38px;
+    background:linear-gradient(135deg,#101a33 0%,#1b2c56 52%,#24437e 100%);
+    color:#fff; box-shadow:var(--shadow);
+  }
+  .hero:after{
+    content:""; position:absolute; right:-120px; top:-120px; width:360px; height:360px;
+    border-radius:50%; background:radial-gradient(circle,rgba(93,158,255,.45),transparent 68%);
+  }
+  .eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#9fb4e6;margin:0 0 12px}
+  h1{font-size:clamp(28px,4vw,44px);line-height:1.2;margin:0 0 14px;font-weight:750;letter-spacing:-.01em}
+  .hero p.lead{font-size:17px;max-width:760px;color:#dbe5fb;margin:0 0 20px}
+  .hero .meta{display:flex;flex-wrap:wrap;gap:10px;font-size:12.5px;color:#c8d6f5}
+  .hero .meta span{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);padding:4px 11px;border-radius:999px}
+
+  /* generic */
+  section{margin-top:44px}
+  h2{font-size:23px;line-height:1.35;margin:0 0 8px;letter-spacing:-.01em}
+  h2 .num{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent);font-size:14px;margin-right:10px;vertical-align:2px}
+  h3{font-size:16.5px;margin:24px 0 8px}
+  p{margin:8px 0 12px}
+  .sub{color:var(--muted);margin:0 0 18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .pad{padding:22px 24px}
+  .grid{display:grid;gap:16px}
+  .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  @media (max-width:820px){.g3,.g2{grid-template-columns:1fr}.hero{padding:30px 22px}}
+  .pill{display:inline-block;font-size:12px;font-weight:650;padding:3px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+  .pill.green{background:var(--green-soft);color:var(--green)}
+  .pill.amber{background:var(--amber-soft);color:var(--amber)}
+  .pill.red{background:var(--red-soft);color:var(--red)}
+  .muted{color:var(--muted)}
+  .small{font-size:13px}
+  .divider{height:1px;background:var(--line);border:0;margin:22px 0}
+
+  /* tldr */
+  .tldr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;overflow:hidden}
+  @media (max-width:820px){.tldr{grid-template-columns:1fr}}
+  .tldr .item{padding:24px;border-right:1px solid var(--line)}
+  .tldr .item:last-child{border-right:0}
+  @media (max-width:820px){.tldr .item{border-right:0;border-bottom:1px solid var(--line)}.tldr .item:last-child{border-bottom:0}}
+  .tldr .k{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .tldr .v{font-size:15px;font-weight:600;line-height:1.6}
+  .tldr .v em{font-style:normal;color:var(--accent)}
+
+  /* lifecycle cards */
+  .life{padding:20px;border-top:4px solid var(--accent)}
+  .life:nth-child(1){border-top-color:#2f6fed}
+  .life:nth-child(2){border-top-color:#0f8a5f}
+  .life:nth-child(3){border-top-color:#a15c00}
+  .life h3{margin:2px 0 6px;font-size:16px}
+  .life .dur{font-size:12px;color:var(--muted);margin-bottom:10px}
+  .life p{font-size:14px;margin:0}
+
+  /* flow */
+  .flow{position:relative;margin-top:12px;padding-left:38px}
+  .flow:before{content:"";position:absolute;left:14px;top:8px;bottom:8px;width:2px;background:linear-gradient(#2f6fed,#0f8a5f,#a15c00)}
+  .step{position:relative;margin:0 0 16px}
+  .step:before{
+    content:attr(data-n); position:absolute; left:-38px; top:4px; width:28px; height:28px;
+    display:grid; place-items:center; border-radius:50%; background:#fff; border:2px solid var(--accent);
+    color:var(--accent); font-size:12.5px; font-weight:700;
+  }
+  .step .box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow)}
+  .step h3{margin:0 0 4px;font-size:15.5px}
+  .step p{margin:0;font-size:14px;color:var(--muted)}
+  .step code{white-space:nowrap}
+
+  /* code */
+  pre{
+    margin:12px 0 0; padding:18px 20px; border-radius:12px; overflow:auto;
+    background:var(--code); color:var(--code-ink); font-size:12.2px; line-height:1.65;
+    font-family:"SF Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    border:1px solid #0b111b;
+  }
+  pre .c{color:#8fa3c8}
+  pre .k{color:#ffcf7a}
+  pre .s{color:#9be7b4}
+  code.inline{
+    background:#eef2f8; color:#24324a; padding:1.5px 6px; border-radius:6px;
+    font-size:12.8px; font-family:"SF Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+
+  /* callouts */
+  .note{border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:0 12px 12px 0;padding:14px 18px;margin:16px 0;font-size:14px}
+  .note.green{border-left-color:var(--green);background:var(--green-soft)}
+  .note.amber{border-left-color:var(--amber);background:var(--amber-soft)}
+  .note.red{border-left-color:var(--red);background:var(--red-soft)}
+  .note b{font-weight:700}
+
+  /* table */
+  .tablewrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;min-width:720px;font-size:13.5px}
+  th,td{padding:12px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+  th{background:#f8fafd;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  tr:last-child td{border-bottom:0}
+  td code{font-size:12.3px}
+
+  /* boundary diagram */
+  .boundary{display:grid;grid-template-columns:1.05fr 1.95fr;gap:14px;align-items:stretch}
+  @media (max-width:820px){.boundary{grid-template-columns:1fr}}
+  .zone{border:1px dashed var(--line);border-radius:14px;padding:16px 18px;background:#fff}
+  .zone h3{margin:0 0 8px;font-size:14px}
+  .zone ul{margin:0;padding-left:18px;font-size:13.5px;color:var(--muted)}
+  .zone li{margin:3px 0}
+  .zone.sandbox{border-color:#b9cdf4;background:linear-gradient(180deg,#f5f9ff,#fff)}
+  .zone .tag{float:right;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+  .zone.system .tag{background:#eef1f6;color:var(--muted)}
+
+  /* toc */
+  .toc{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .toc a{font-size:12.5px;color:var(--muted);border:1px solid var(--line);background:#fff;padding:5px 10px;border-radius:999px}
+  .toc a:hover{color:var(--accent);border-color:#b9cdf4;text-decoration:none}
+
+  /* summary */
+  .summary{background:linear-gradient(135deg,#101a33,#1b2c56);color:#fff;border-radius:18px;padding:28px 30px;box-shadow:var(--shadow)}
+  .summary h2{color:#fff;margin:0 0 10px}
+  .summary p{color:#dbe5fb;margin:6px 0}
+  .summary code{background:rgba(255,255,255,.12);color:#fff}
+
+  footer{margin-top:46px;color:var(--muted);font-size:12.5px;text-align:center}
+  .kbd{font-family:inherit;font-size:12px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:1px 6px;background:#fff}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <p class="eyebrow">维护者说明 · 归因运行时 · 2026-11-23</p>
+    <h1>bubblewrap 与归因沙箱</h1>
+    <p class="lead">一次归因如何创建、使用并清理隔离环境；为什么部署会因为缺少它而中止；以及“执行完就删”的边界到底在哪里。</p>
+    <div class="meta">
+      <span>基于 main <code style="color:#fff;background:rgba(255,255,255,.12);padding:1px 5px;border-radius:4px">2f4bce1d</code></span>
+      <span>bwrap · unprivileged namespaces</span>
+      <span>PR #421 / PR #543</span>
+      <span>只读说明，不含密钥</span>
+    </div>
+  </header>
+
+  <div class="toc">
+    <a href="#tldr">一句话结论</a>
+    <a href="#what">bubblewrap 是什么</a>
+    <a href="#why">为什么归因需要它</a>
+    <a href="#flow">一次归因的 9 步</a>
+    <a href="#lifecycle">创建 / 维护 / 删除</a>
+    <a href="#probe">探针与部署门</a>
+    <a href="#code">代码地图</a>
+  </div>
+
+  <!-- 0 -->
+  <section id="tldr">
+    <div class="tldr card">
+      <div class="item">
+        <div class="k">它不是</div>
+        <div class="v">不是常驻容器，也不是每台机器一个的“沙箱服务”；它只是<em>每次执行时</em>包在 Claude Code 外面的一层进程围栏。</div>
+      </div>
+      <div class="item">
+        <div class="k">一次归因结束时</div>
+        <div class="v">沙箱进程随 CLI 退出而消失，<code class="inline">attempt-&lt;random&gt;</code> 临时目录被删除；<em>报告、日志、快照保留</em>。</div>
+      </div>
+      <div class="item">
+        <div class="k">这台机器现在</div>
+        <div class="v">缺的是系统包 <code class="inline">bubblewrap</code>；PR #543 的发布预检把“缺工具”变成了<em>部署硬失败</em>，装一次即可。</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1 -->
+  <section id="what">
+    <h2><span class="num">1</span>bubblewrap 是什么</h2>
+    <p class="sub">先建立正确的直觉：它是一条命令、一个按次启动的进程包装器，而不是一个需要“维护状态”的服务。</p>
+
+    <div class="grid g2">
+      <div class="card pad">
+        <span class="pill">一句话</span>
+        <p style="margin-top:10px"><b>bubblewrap（命令名 <code class="inline">bwrap</code>）</b>是 Linux 上的轻量沙箱工具，最初为 Flatpak 而生。它用命名空间（namespace）和 bind mount 为一条命令构造一个“最小文件系统视图”，然后执行目标程序。</p>
+        <p>在本项目里，目标程序就是 <b>Claude Code CLI</b>；它被允许看到系统运行时（只读）和一个 <b>本次归因专属的可写目录</b>，看不到其他工作区、<code class="inline">.env</code>、SSH 私钥或宿主机上的其他数据。</p>
+      </div>
+      <div class="card pad">
+        <span class="pill amber">容易误解</span>
+        <ul style="margin:10px 0 0;padding-left:18px">
+          <li><b>不是 Docker/虚拟机</b>：没有镜像、没有守护进程、没有常驻容器；每次调用就是一个进程树。</li>
+          <li><b>不是网络防火墙</b>：这里用 <code class="inline">--share-net</code> 共享宿主网络，因为 CLI 要访问模型 API。出站控制是另一层的事。</li>
+          <li><b>不是密钥保险箱</b>：凭据通过环境变量传入，不 bind 进沙箱；日志侧还有脱敏。</li>
+          <li><b>通常不需要 root</b>：依赖非特权 user namespace；是否需要 setuid 取决于发行版与内核策略，<code class="inline">bwrap</code> 探针就是用来验证这一点的。</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>关键区分：</b>“沙箱”是<b>进程级、按次</b>的；<code class="inline">bubblewrap</code> 是<b>系统级、长期</b>安装的软件包。归因结束时删除的是前者，不是后者。
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section id="why">
+    <h2><span class="num">2</span>为什么归因需要它</h2>
+    <p class="sub">归因不是“读一条日志”那么简单：它把仓库内容、Session trace、Skill Prompt 交给一个会调用工具的模型进程。</p>
+
+    <div class="card pad">
+      <h3 style="margin-top:0">威胁模型</h3>
+      <p>Skill 执行时，Claude Code 在 <code class="inline">--permission-mode bypassPermissions</code> 下运行，模型可以调用 Bash/Read/Write 等工具。输入里包含来自目标仓库和线上 Session 的<b>不可信文本</b>；如果模型被内容诱导（prompt injection）去读取或写入宿主机文件，直接以 <code class="inline">harness</code> 账号运行就会越权。</p>
+      <p>bwrap 的作用不是“让模型更听话”，而是<b>即使模型被诱导，它也只能在单间里活动</b>：系统目录只读，唯一可写的是本次 <code class="inline">attempt</code> 目录。</p>
+    </div>
+
+    <div class="boundary" style="margin-top:16px">
+      <div class="zone system">
+        <span class="tag">宿主 / harness</span>
+        <h3>沙箱外</h3>
+        <ul>
+          <li><code class="inline">/opt/harness/shared/.env</code></li>
+          <li><code class="inline">HE_DATA_DIR</code> 下其他工作区</li>
+          <li>SSH 私钥、共享 settings、数据库</li>
+          <li>其他归因 attempt 的目录</li>
+        </ul>
+      </div>
+      <div class="zone sandbox">
+        <span class="tag">bwrap · 每次调用</span>
+        <h3>沙箱内（Claude Code 能看到的世界）</h3>
+        <ul>
+          <li><b>只读：</b><code class="inline">/usr</code>、<code class="inline">/bin</code>、<code class="inline">/lib*</code>、<code class="inline">/etc/ssl</code>、DNS 与 locale 等运行时文件，以及 Claude 二进制本身</li>
+          <li><b>可写的宿主目录：</b>仅 <code class="inline">attribute_output/&lt;batch&gt;/&lt;case&gt;/attempt-&lt;random&gt;</code>（另有 <code class="inline">/proc</code>、<code class="inline">/dev</code> 合成挂载）</li>
+          <li><b>共享：</b>网络（<code class="inline">--share-net</code>），用于模型 API</li>
+          <li><b>隔离：</b>mount / user / pid / ipc / uts / cgroup 命名空间</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note green">
+      <b>为什么不用 chroot 或容器？</b> 这里需要的是“每条命令、无 root、低开销、按次启动”的隔离。bwrap 正好提供了这个粒度；容器更适合长期服务，反而更重。
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section id="flow">
+    <h2><span class="num">3</span>一次归因的 9 步：从一个 Badcase 到一份报告</h2>
+    <p class="sub">用一个具体例子走一遍。假设批次是 <code class="inline">01M83TWE…</code>，case 是 <code class="inline">case-01</code>，本次 attempt 随机名是 <code class="inline">a1b2c3</code>。</p>
+
+    <div class="flow">
+      <div class="step" data-n="1">
+        <div class="box">
+          <h3>触发：保存绑定，或向导关闭缓存重算</h3>
+          <p><code class="inline">LocalAttribution.attribute(item)</code> 被调用；批次 ID 是绑定代际或本次 Run ID。</p>
+        </div>
+      </div>
+      <div class="step" data-n="2">
+        <div class="box">
+          <h3>准备输出目录</h3>
+          <p>创建 <code class="inline">HE_DATA_DIR/attribute/&lt;workspace&gt;/attribute_output/&lt;batch&gt;/&lt;case&gt;/</code>；后续报告与日志都落在这里。</p>
+        </div>
+      </div>
+      <div class="step" data-n="3">
+        <div class="box">
+          <h3>开一个临时 attempt 目录</h3>
+          <p><code class="inline">tempfile.TemporaryDirectory(prefix="attempt-", dir=output)</code> → <code class="inline">attempt-a1b2c3/</code>。它既是工作目录，也是 bwrap 里<b>唯一可写的宿主目录</b>。</p>
+        </div>
+      </div>
+      <div class="step" data-n="4">
+        <div class="box">
+          <h3>在 attempt 内铺好冻结输入</h3>
+          <p>写入 <code class="inline">.claude/skills/&lt;skill&gt;/</code>（以及兼容入口 <code class="inline">.cac/skills</code>）、<code class="inline">.platform/make_probe_report.py</code>、<code class="inline">input_badcase.json</code>，并创建独立的 <code class="inline">home/</code> 与 <code class="inline">tmp/</code>。</p>
+        </div>
+      </div>
+      <div class="step" data-n="5">
+        <div class="box">
+          <h3>在内存里拼出 bwrap 命令</h3>
+          <p><code class="inline">claude_skill._sandbox(directory, executable)</code> 生成 argv；注意它<b>不创建</b>任何持久对象，只是拼参数。</p>
+        </div>
+      </div>
+      <div class="step" data-n="6">
+        <div class="box">
+          <h3>bwrap 启动 Claude Code</h3>
+          <p><code class="inline">--unshare-all --share-net --die-with-parent --new-session</code>，把系统目录只读 bind 进来，把 attempt 目录读写 bind 进去，然后 <code class="inline">--chdir</code> 到 attempt 并 exec CLI。</p>
+        </div>
+      </div>
+      <div class="step" data-n="7">
+        <div class="box">
+          <h3>模型在单间里工作</h3>
+          <p>Claude 读取五个冻结输入、执行 Skill、调用 <code class="inline">make_probe_report.py</code>，把 <code class="inline">probe_report.json</code> 与 <code class="inline">.platform/receipt.json</code> 写回 attempt 目录。它看不到宿主机的其他数据。</p>
+        </div>
+      </div>
+      <div class="step" data-n="8">
+        <div class="box">
+          <h3>沙箱外校验、发布报告</h3>
+          <p>CLI 退出后，平台读取 receipt、校验 sha256，再用<b>可信 writer</b>在沙箱外按原始输入重跑一遍，确认报告不可被篡改；随后发布 <code class="inline">probe_report.json</code>，把本次日志写到 <code class="inline">logs/a1b2c3/attribute_log.json</code>。</p>
+        </div>
+      </div>
+      <div class="step" data-n="9">
+        <div class="box">
+          <h3>清理 attempt，保留证据</h3>
+          <p><code class="inline">TemporaryDirectory</code> 退出 → 删除 <code class="inline">attempt-a1b2c3/</code>（含独立 HOME）。<code class="inline">probe_report.json</code>、<code class="inline">logs/</code>、<code class="inline">attribute_log.json</code> 都在 attempt 外，继续保留。</p>
+        </div>
+      </div>
+    </div>
+
+    <h3>目录在“执行前 / 执行后”长什么样</h3>
+    <pre><span class="c"># 执行期间</span>
+attribute_output/01M83TWE.../case-01/
+├── <span class="k">attempt-a1b2c3/</span>           <span class="c"># 唯一可写；结束后删除</span>
+│   ├── .claude/skills/...
+│   ├── .cac/skills/... -&gt; ...
+│   ├── .platform/make_probe_report.py
+│   ├── input_badcase.json
+│   ├── home/                <span class="c"># 独立 HOME</span>
+│   ├── tmp/                 <span class="c"># TMPDIR</span>
+│   └── probe_report.json    <span class="c"># Skill 在沙箱内写</span>
+├── logs/a1b2c3/attribute_log.json  <span class="c"># 保留</span>
+├── attribute_log.json              <span class="c"># 保留：最近一次</span>
+└── probe_report.json               <span class="c"># 保留：最终报告</span>
+
+<span class="c"># 执行结束后</span>
+attribute_output/01M83TWE.../case-01/
+├── logs/a1b2c3/attribute_log.json
+├── attribute_log.json
+└── probe_report.json
+<span class="c"># attempt-a1b2c3/ 已被 TemporaryDirectory 删除</span></pre>
+
+    <h3>真实运行时，bwrap 收到的命令（简化）</h3>
+    <pre><span class="c"># 示例用变量让长路径可读；实际参数由 _sandbox() 直接生成 argv 数组</span>
+CLAUDE=/opt/harness/shared/claude-code/current/usr/bin/claude
+ATTEMPT=.../attribute_output/&lt;batch&gt;/&lt;case&gt;/attempt-a1b2c3
+
+bwrap \
+  <span class="k">--unshare-all</span>          <span class="c"># user/mount/pid/net/ipc/uts/cgroup 命名空间</span>
+  <span class="k">--share-net</span>            <span class="c"># 网络仍用宿主：CLI 要访问模型 API</span>
+  <span class="k">--die-with-parent</span>      <span class="c"># API 进程退出，沙箱子进程跟着死</span>
+  <span class="k">--new-session</span>          <span class="c"># 防止 TIOCSTI 终端注入</span>
+  --ro-bind /usr /usr \
+  --ro-bind /bin /bin \
+  --ro-bind /lib /lib \
+  --ro-bind /lib64 /lib64 \
+  --ro-bind /etc/ssl /etc/ssl \
+  --ro-bind /etc/resolv.conf /etc/resolv.conf \
+  --ro-bind /etc/hosts /etc/hosts \
+  --ro-bind /etc/ld.so.cache /etc/ld.so.cache \
+  --ro-bind /etc/nsswitch.conf /etc/nsswitch.conf \
+  --ro-bind /etc/localtime /etc/localtime \
+  --ro-bind "$CLAUDE" "$CLAUDE" \
+  --proc /proc --dev /dev \
+  <span class="k">--bind</span> "$ATTEMPT" "$ATTEMPT" \
+  <span class="k">--chdir</span> "$ATTEMPT" \
+  -- "$CLAUDE" -p --output-format json --bare \
+     --session-id &lt;uuid&gt; --permission-mode bypassPermissions \
+     --allow-dangerously-skip-permissions \
+     "/attribute-badcases input_badcase.json，请分析并生成归因报告"</pre>
+    <p class="small muted">说明：只有存在的系统路径才会被 ro-bind；二进制按 <code class="inline">resolve()</code> 后的真实路径 bind。沙箱不 bind 共享 settings 文件，模型凭据通过环境变量传入。</p>
+
+    <div class="note amber">
+      <b>注意：</b>上面的命令没有 <code class="inline">--clearenv</code>，环境是平台构造后显式传入的；也没有把 <code class="inline">HE_DATA_DIR</code> 整体挂进去。bwrap 隔离的是<b>文件系统视图</b>，不是环境变量或网络。
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section id="lifecycle">
+    <h2><span class="num">4</span>创建、维护、删除：到底删了什么？</h2>
+    <p class="sub">把“bubblewrap”拆成四个层次看，就不会混淆“软件包”和“沙箱”。</p>
+
+    <div class="grid g3">
+      <div class="card life">
+        <span class="pill">长期</span>
+        <h3>bubblewrap 软件包</h3>
+        <div class="dur">生命周期：系统级 / 长期</div>
+        <p>由 bootstrap 的 <code class="inline">apt-get install ... bubblewrap</code> 安装；旧主机手工安装。升级走 apt。归因不会删除它。</p>
+      </div>
+      <div class="card life">
+        <span class="pill green">一次调用</span>
+        <h3>bwrap 沙箱进程</h3>
+        <div class="dur">生命周期：一次 Claude CLI 调用</div>
+        <p>没有常驻守护进程，也没有“容器”需要停止。CLI 退出（或 <code class="inline">--die-with-parent</code> 触发）后，命名空间随进程消失。</p>
+      </div>
+      <div class="card life">
+        <span class="pill amber">一次归因尝试</span>
+        <h3>attempt 临时目录</h3>
+        <div class="dur">生命周期：一次 attempt</div>
+        <p><code class="inline">TemporaryDirectory</code> 创建；正常结束（成功/异常）时删除。报告和日志在它外面，不会被一起删掉。</p>
+      </div>
+    </div>
+
+    <h3 style="margin-top:26px">对照表</h3>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>对象</th><th>谁创建</th><th>生命周期</th><th>归因结束会删吗？</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>bubblewrap</code> 包 / <code>bwrap</code> 二进制</td><td><code>deploy/bootstrap-server.sh</code>（旧主机手工 apt）</td><td>系统级，长期</td><td><b>不会</b></td></tr>
+          <tr><td>bwrap 沙箱（命名空间 + 进程）</td><td>每次 <code>run_skill</code> 调用</td><td>一次 CLI 调用</td><td><b>进程退出即消失</b></td></tr>
+          <tr><td><code>attempt-&lt;random&gt;/</code></td><td><code>tempfile.TemporaryDirectory</code></td><td>一次归因尝试</td><td><b>正常路径删除</b></td></tr>
+          <tr><td><code>attempt/home/</code>、<code>attempt/tmp/</code></td><td><code>claude_skill._environment()</code></td><td>在 attempt 内</td><td><b>随 attempt 删除</b></td></tr>
+          <tr><td><code>logs/&lt;attempt&gt;/attribute_log.json</code></td><td><code>LocalAttribution._write_log()</code></td><td>每次尝试保留</td><td><b>不会</b></td></tr>
+          <tr><td><code>attribute_log.json</code></td><td>最近一次尝试的发布</td><td>覆盖更新</td><td><b>不会</b></td></tr>
+          <tr><td><code>probe_report.json</code></td><td>校验通过后发布</td><td>长期（报告）</td><td><b>不会</b></td></tr>
+          <tr><td>输入归档 / Skill 快照</td><td><code>CaseInputArchive</code> / 快照发布</td><td>长期；重试复用</td><td><b>不会</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <b>“每次归因完就会删除吗？”</b> 删除的是<b>临时 attempt 目录和它里面的独立 HOME</b>；不删除 <code class="inline">bubblewrap</code> 包，也不删除报告/日志/快照。
+    </div>
+
+    <div class="note red">
+      <b>硬杀边界：</b>如果进程被 <code class="inline">SIGKILL</code>，<code class="inline">TemporaryDirectory</code> 的清理逻辑不会执行，可能残留一个 <code class="inline">attempt-*</code> 目录；目前没有自动 sweeper（截至本说明），可以人工清理。由于报告和日志都在 attempt 外，残留不会影响已产出的证据。
+    </div>
+
+    <h3>维护方式</h3>
+    <ul>
+      <li><b>安装：</b>新主机由 <code class="inline">deploy/bootstrap-server.sh</code> 的 apt 列表安装；旧主机执行一次 <code class="inline">sudo apt-get install -y bubblewrap</code>，或在 root 下重跑 bootstrap（幂等）。</li>
+      <li><b>升级：</b>跟随系统 apt；应用本身不下载、不编译、不维护 bwrap。</li>
+      <li><b>健康检查：</b>API 启动与每次发布都会跑一次只读探针；探针不创建沙箱、不写盘、不需要清理。</li>
+      <li><b>清理：</b>旧报告目前没有按次数自动清理的机制；需要时按工作空间保留数据库与共享快照，再清理 <code class="inline">attribute_output</code> 中不再引用的批次。</li>
+    </ul>
+  </section>
+
+  <!-- 5 -->
+  <section id="probe">
+    <h2><span class="num">5</span>探针、失败码与部署门</h2>
+    <p class="sub">为什么“只是缺一个包”会让整个发布在迁移前停住。</p>
+
+    <div class="grid g2">
+      <div class="card pad">
+        <h3 style="margin-top:0">探针（只读，不建沙箱）</h3>
+        <pre>bwrap --unshare-all --share-net --die-with-parent \
+  --ro-bind / / -- /bin/true</pre>
+        <p class="small muted" style="margin-top:10px">把整个根目录<b>只读</b> bind 进来，执行 <code class="inline">/bin/true</code>。能退出 0，说明当前账号能创建命名空间、能完成 mount；它不启动 Claude，也不产生持久对象。</p>
+      </div>
+      <div class="card pad">
+        <h3 style="margin-top:0">在哪跑</h3>
+        <ul style="margin:0;padding-left:18px">
+          <li><b>API 启动：</b><code class="inline">main.py</code> 调 <code class="inline">skill_preflight_error()</code>，日志 <code class="inline">attribution.preflight</code>；失败则 <code class="inline">runtime_enabled=false</code>，绑定 worker 不启动，页面显示“归因未运行”。</li>
+          <li><b>发布：</b><code class="inline">release.sh</code> 在 Alembic 迁移与切换 <code class="inline">current</code> 之前，用候选 API 跑 <code class="inline">app.third_party_api.ai_agent.preflight</code>；失败立即中止并恢复 <code class="inline">.env</code>。</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="tablewrap" style="margin-top:16px">
+      <table>
+        <thead><tr><th>错误码</th><th>含义</th><th>典型处置</th></tr></thead>
+        <tbody>
+          <tr><td><code>ATTRIBUTION_BWRAP_MISSING</code></td><td><code>shutil.which("bwrap")</code> 找不到二进制；包没装或 PATH 不可见</td><td>安装 <code>bubblewrap</code>；用 deploy/harness 账号复跑探针</td></tr>
+          <tr><td><code>ATTRIBUTION_BWRAP_UNUSABLE</code></td><td>找到了二进制，但命名空间探针非 0（权限/内核策略/AppArmor 限制）</td><td>检查 unprivileged user namespace、AppArmor、服务账号权限</td></tr>
+          <tr><td><code>ATTRIBUTION_PROVIDER_UNSUPPORTED</code></td><td>当前 Provider 不实现 Skill 能力</td><td>切到支持 Skill 的 Provider</td></tr>
+          <tr><td><code>ATTRIBUTION_CONFIG_INVALID</code></td><td>Settings 校验失败（不打印环境值）</td><td>检查 <code>AI_AGENT_PROVIDER</code> 等配置</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note amber">
+      <b>为什么当前部署会失败？</b> <code>AI_AGENT_PROVIDER=claude-code</code>，发布预检要求 bwrap；这台机器是 11-09 初始化的旧主机，早于 PR #421 把 <code>bubblewrap</code> 加进 bootstrap，因此从未装过。PR #543 只是把“缺失”从运行时问题提前成了<b>发布门</b>，让旧版本继续服务，而不是带病切换。
+    </div>
+
+    <div class="note green">
+      <b>修复顺序：</b>root 安装 → 用 <code class="inline">deploy</code>（发布预检账号）和 <code class="inline">harness</code>（服务账号）分别跑探针 → 重跑 Deploy。若明确只要“仅缓存”部署，可把 Provider 设为 <code class="inline">fake</code>，预检会以 <code class="inline">cache_only=True</code> 放行，但不会执行真实归因。
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section id="code">
+    <h2><span class="num">6</span>代码地图与来源</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>位置</th><th>职责</th></tr></thead>
+        <tbody>
+          <tr><td><code>apps/api/app/third_party_api/ai_agent/claude_skill.py</code></td><td><code>_sandbox()</code> 拼 bwrap 参数；<code>run()</code> 执行 CLI；<code>sandbox_preflight_error()</code> 跑探针；<code>_environment()</code> 建独立 HOME/TMPDIR</td></tr>
+          <tr><td><code>apps/api/app/service/evolution/local_attribution.py</code></td><td><code>attribute()</code> 建 attempt 临时目录、写日志、校验/发布报告；<code>_stage_attempt()</code> 铺冻结输入</td></tr>
+          <tr><td><code>apps/api/app/third_party_api/ai_agent/preflight.py</code></td><td>发布用预检入口：构造 Provider，输出 <code>ready=True</code> / <code>cache_only=True</code> / 错误码</td></tr>
+          <tr><td><code>deploy/release.sh</code></td><td>迁移与切换前调用预检；失败恢复 <code>.env</code>，不切换、不迁移</td></tr>
+          <tr><td><code>deploy/bootstrap-server.sh</code></td><td>apt 安装列表含 <code>bubblewrap</code>（新主机）</td></tr>
+          <tr><td><code>apps/api/app/main.py</code></td><td>启动预检、<code>attribution.preflight</code> 日志、<code>runtime_enabled</code> 与绑定 worker 门</td></tr>
+          <tr><td><code>attribute/README.md</code></td><td>工作目录布局、attempt/logs/report 的写入与保留约定</td></tr>
+          <tr><td><code>docs/deployment.md</code> / <code>docs/ai-agent.md</code></td><td>部署与 AI Agent 配置的常驻事实</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted" style="margin-top:12px">来源：<a href="https://github.com/Shadow-Azure/harness-evolution/pull/421">PR #421</a> 引入 bwrap 沙箱与 bootstrap 安装；<a href="https://github.com/Shadow-Azure/harness-evolution/pull/543">PR #543</a>（issue #544）引入启动/发布预检。当前 main：<code class="inline">2f4bce1d</code>。</p>
+  </section>
+
+  <section>
+    <div class="summary">
+      <h2>一页总结</h2>
+      <p><b>bubblewrap 是“按次进程沙箱”</b>：每次归因执行 Claude Code 时，把系统目录只读挂入、把 attempt 目录读写挂入，再执行 CLI；不是常驻容器。</p>
+      <p><b>删的是 attempt</b>：正常结束删除 <code>attempt-&lt;random&gt;</code> 与独立 HOME；<code>probe_report.json</code>、<code>logs/</code>、<code>attribute_log.json</code> 保留。bwrap 包本身由 apt 长期维护。</p>
+      <p><b>当前阻塞是主机缺包</b>：PR #543 的发布预检在迁移前拦截；装一次 <code>bubblewrap</code>，用 deploy/harness 验证探针，再重跑 Deploy。</p>
+    </div>
+  </section>
+
+  <footer>
+    维护者说明 · 基于 main <code class="inline">2f4bce1d</code> · 代码路径与行为以仓库为准 · 本页不含密钥或生产凭据
+  </footer>
+</div>
+</body>
+</html>
