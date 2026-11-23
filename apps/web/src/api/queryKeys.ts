@@ -27,6 +27,8 @@ export const queryKeys = {
     ["ws", workspaceId, "admin", "member-candidates", query] as const,
   adminCredentials: (workspaceId: string) =>
     ["ws", workspaceId, "admin", "credentials"] as const,
+  attributionSkillPackages: (workspaceId: string) =>
+    ["ws", workspaceId, "admin", "attribution-skill-packages"] as const,
   users: () => ["users"] as const,
   sessions: (workspaceId: string) => ["ws", workspaceId, "sessions"] as const,
   sessionList: (workspaceId: string, filters: SessionFilters) =>
@@ -80,10 +82,16 @@ export const queryKeys = {
         ] as const),
   evolutionRunEvents: (workspaceId: string, runId: string, level: string) =>
     ["ws", workspaceId, "evolution", "runs", runId, "events", level] as const,
+  attributionJobs: (workspaceId: string, runId: string) =>
+    ["ws", workspaceId, "evolution", "runs", runId, "attribution-jobs"] as const,
   evolutionTargets: (workspaceId: string) =>
     ["ws", workspaceId, "evolution", "targets"] as const,
   evolutionTargetVersions: (workspaceId: string, targetId: string) =>
     ["ws", workspaceId, "evolution", "targets", targetId, "versions"] as const,
+  attributionSkills: (workspaceId: string) =>
+    ["ws", workspaceId, "evolution", "attribution-skills"] as const,
+  targetAttributionSkill: (workspaceId: string, targetId: string) =>
+    ["ws", workspaceId, "evolution", "targets", targetId, "attribution-skill"] as const,
   catalogs: (workspaceId: string) =>
     ["ws", workspaceId, "catalogs"] as const,
   overview: (workspaceId: string) =>

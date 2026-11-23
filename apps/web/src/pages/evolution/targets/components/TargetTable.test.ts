@@ -52,6 +52,20 @@ describe("TargetTable", () => {
     expect(wrapper.find(".target-table-scroll").exists()).toBe(true);
   });
 
+  it.each([[1, true, "等待自动重试"], [3, false, "已停止自动重试"]] as const)(
+    "renders the persisted binding failure after %i attempts",
+    (attempts, willRetry, message) => {
+      const wrapper = mount(TargetTable, {
+        props: {
+          targets: [target({ attributionFailure: { attempts, reason: "invalid_input_or_report", willRetry } })],
+          canWrite: false,
+        },
+      });
+      expect(wrapper.get(".binding-failure").text()).toContain("归因输入或报告校验失败");
+      expect(wrapper.get(".binding-failure").text()).toContain(message);
+    },
+  );
+
   it("shows an explicit empty project value for historical rows", () => {
     const wrapper = mount(TargetTable, {
       props: {

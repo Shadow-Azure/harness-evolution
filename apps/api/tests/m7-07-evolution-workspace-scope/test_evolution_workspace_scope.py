@@ -17,7 +17,7 @@ from app.db.models.domain import evolution_targets
 from app.db.models.evolution import evolution_runs
 from app.db.models.run_events import evolution_run_events
 from app.main import create_app
-from tests.target_content_support import FakeTargetVersionResolver
+from tests.target_content_support import FakeDefinitionSource, FakeTargetVersionResolver
 from tests.workspaces.helpers import create_user, insert_member, insert_workspace
 
 NOW = datetime(2026, 11, 15, 8, 0, tzinfo=UTC)
@@ -127,11 +127,13 @@ async def scope(tmp_path: Path) -> AsyncIterator[ScopeEnvironment]:
         Settings(
             db_dialect=DatabaseDialect.SQLITE,
             data_dir=tmp_path,
+            attribution_package_dir=tmp_path / "attribute",
             jwt_secret=SECRET,
             admin_username="admin",
             admin_password=SecretStr("m7-07-admin-temp-password"),
         ),
         git_remote=FakeGitRemote(),
+        definition_source=FakeDefinitionSource(),
         target_version_resolver=FakeTargetVersionResolver(),
     )
     transport = httpx.ASGITransport(app=app)

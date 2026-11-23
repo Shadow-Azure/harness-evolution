@@ -35,6 +35,15 @@ DEFAULT_TIMEOUT_SECONDS = 20.0
 
 
 @dataclass(frozen=True, slots=True)
+class GitDefinitionRef:
+    """Immutable original file used by one binding batch."""
+
+    key: str
+    commit: str
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
 class ResolvedTargetVersion:
     """The user-facing version and the body-hash revision derived from it."""
 

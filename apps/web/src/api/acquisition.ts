@@ -8,10 +8,12 @@ import { request } from "./http";
 
 /**
  * Read durable acquisition progress.
+ * @param workspaceId Workspace for the attribution counters.
  * @returns Current pending, processed, and latest batch state.
  */
-export function getAcquisitionStatus(): Promise<AcquisitionStatusResponse> {
-  return request<AcquisitionStatusResponse>("/api/acquisition/status");
+export function getAcquisitionStatus(workspaceId?: string): Promise<AcquisitionStatusResponse> {
+  const query = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : "";
+  return request<AcquisitionStatusResponse>(`/api/acquisition/status${query}`);
 }
 
 /**

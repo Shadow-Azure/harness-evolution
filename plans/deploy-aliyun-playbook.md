@@ -51,6 +51,12 @@
 6. 回滚演练：Actions 重跑上一 release 的 Deploy（或在服务器手工软链退回 + `sudo systemctl restart harness-api`）。
 7. Claude Code：`ssh deploy@<IP> '~/.local/bin/claude --version'`；`claude doctor` 应无 settings 错误；把占位 API key 换成 MiniMax 真实 key 后，`claude -p "只回复 OK"` 应返回结果。
 
+### 开启 Skill 归因
+
+设置 `HE_ATTRIBUTION_AGENT=provider` 开启绑定归因，后台任务与向导重算都通过 `AI_AGENT_PROVIDER` 指定的实例执行 Skill。已有 `HE_ATTRIBUTION_AGENT=claude` 显式选择 `claude-code`，旧快照继续按原 Provider 与模型身份回放。留空关闭本地归因。内网 Agent 实现 `AIAgentProvider.run_skill` 并在公共工厂注册一次即可；使用不支持 Skill 的 Provider 启用归因会在 API 启动时明确报错。旧版已安装的 `module:Class` Agent 插件继续可用。`HE_ATTRIBUTION_MODEL` 指定模型，默认 `haiku`；`HE_ATTRIBUTION_LLM` 仍支持自定义 `ModelBackend`。Claude 在每个 Badcase 的隔离目录使用独立会话。上传包、快照、输入和报告持久化在 `HE_DATA_DIR/attribute`，可用 `HE_ATTRIBUTION_PACKAGE_DIR` 改目录。
+
+Worker 依赖 Python 3，Linux 使用 bubblewrap 和可用的用户命名空间，macOS 使用 Seatbelt。新建 Linux 主机由 `deploy/bootstrap-server.sh` 安装 bubblewrap。已有主机开启归因前可用 `sudo -u harness bwrap --unshare-all --share-net --ro-bind / / -- /bin/true` 检查；修改服务环境后重启 API 生效。
+
 ## 6. 常见问题
 
 - **80 访问不了**：安全组没放行 80；`systemctl status nginx`；`nginx -t` 报错按提示改。

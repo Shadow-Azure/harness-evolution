@@ -532,9 +532,9 @@ erDiagram
 
 索引：`INDEX(session_id)`、`INDEX(probe_type, probe_object, object_version)`、`INDEX(attribute_type)`、`INDEX(workspace_id, object_version)`、`INDEX(workspace_id, updated_at)`、`INDEX(conclusion)`。
 
-- **缓存键**：`cache_key` 是七元组的哈希；命中时复用 `probe_id`，更新 `probe_reports` 的 `reused_count / last_reused_run_id / updated_at`，并在候选行记录 `is_cached=true`。这样可以保持既有 `probe_id`、`probe_cluster_probes` 与 `/api/probes/*` 的兼容链。
+- **复用统计**：缓存命中时更新 `reused_count / last_reused_run_id / updated_at`。`analyzed_at` 是产出时间，决定相同对象版本与 Badcase 下的最新报告。
 - **一 case 多归因**：一个 case 可以在 `bad_case_analysis` 中关联多条 `probe_reports`，分别属于不同对象/版本；`non_target` 也保留明细与关联，但不进簇。
-- **写入方**：自进化 run 按缓存键 upsert `probe_reports`，再 upsert `bad_case_analysis` 关联；没有关联行即未归因。
+- **写入方**：目标绑定批次与显式重算写入 `probe_reports` 和 `bad_case_analysis`。运行内的分析还更新候选指针。
 - **历史迁移**：现有 1:1 `bad_case_analysis` 行原样保留；`probe_reports.workspace_id` 取关联 case 的空间，孤立 probe 回退默认空间；再回填 `conclusion`、`cache_key` 与 legacy 引擎标记。`analyzed_nonissue` 只回填为 `non_target` 的兼容行，不迁移成新的问题结论。
 
 ### 4.3 `bad_case_analysis` / `probe_reports` 读写口径
@@ -751,9 +751,9 @@ erDiagram
 
 > 归因明细继续写 `probe_reports`，case 关联继续写 `bad_case_analysis`，不新增平行归因表。本节只记录「run 怎么写它们」的行为约定。
 
-- **缓存键** = `probe_reports.cache_key`，其原值为 `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`。
+- `attribution_skill_name` 记录报告来源。绑定批次额外记录 `binding_generation`，供任务恢复时跳过已完成的 case。
 - 命中且 `cache_enabled`：复用同一 `probe_id`；更新 `probe_reports` 的 `reused_count / last_reused_run_id / updated_at`，候选行 `is_cached=true`，不再调用引擎。
-- `cache_enabled=false`：跳过读，重算并 upsert 同 `cache_key` 行（`created_run_id` 更新）——结论仍是「最新真相」，不按 run 追加历史行。
+- 关闭缓存时，真实执行器按本次快照重新分析。新 Run 有独立的写入身份，历史运行仍指向自己的报告。
 - 并发同键 upsert 用方言语句原子完成（MySQL `ON DUPLICATE KEY UPDATE` / SQLite `ON CONFLICT DO UPDATE`），封装在 repository 内，不先查后写。
 - 结论只作用于该对象·版本：不修改 bad case 本身，不影响它与其它对象的潜在关系。
 - 历史 `non_target` 与历史 `analyzed_nonissue` 是不同谓词：迁移时 `analyzed_nonissue → conclusion='non_target'` 属于**语义重解释**（V1 的「非问题」= 不是问题；V2 的「非该对象问题」= 对当前对象不成立），因此迁移只清 `nonissue` 与空串标记，其余历史 `attribute_type` 原样保留（不把合法分类改写成 NULL），并在 `attribution_engine='legacy-probe-import'` 上可区分来源。
@@ -911,7 +911,7 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 | 预览时间窗 | 按 `bad_cases.created_at` 的 Asia/Shanghai 日边界；无 `from/to` 默认最近 90 天，`from > to` 或跨度超过 366 天 → `WINDOW_INVALID` |
 | 预览缓存口径 | 只读查询既有 `probe_reports.cache_key`：键按解析后的 `targetRevision`（skill 为 body hash）、`policy_version=v1`、归因引擎 `rule-v1` 计算；legacy path+body 键不复用；`cacheEnabled=false` 时 `reused=0`；`nonTargetKnown` 是该对象历史 `non_target` 去重 case 数（按 `targetVersion`/`targetRevision` 两个值查，参考值可与 `reused` 重叠） |
 | 归因三态 | 潜在集合中按 `bad_case_analysis JOIN probe_reports`（对象·版本）判断：`conclusion=attributed` → 是该对象；`non_target` → 非该对象；无关联行 → 未归因 |
-| 对象「出现」的版本口径 | skill/agent 的 `targetVersion` 裸 tag 由服务端读取该 tag 内容并用 `normalize_definition_body` 算出 `targetRevision=digest:<sha256(body)>`；knowledge 由文档内容归一化或 `defaultRef` digest 给出；已带 `digest:` 原样使用。事件 `definition_hash`、`document_revision`、`object_revision` 或 `object_version` 命中候选集即关联；既无 `object_version`、无可用 `object_revision`，也无 `definition_hash`/`document_revision`（NULL/`unknown`）才计入 `versionUnresolved`，有 digest/tag/provider 但不匹配算 `skipped`，不做名称级猜测。`knowledge` 事件通常有 `object_revision=digest:...`，因此按 revision 关联。`probe_reports.object_version` 为 `VARCHAR(96)`；legacy path+body 键不复用，预览只读既有缓存键、不写 probe |
+| 对象出现 | 整棵 Session 树中有目标类型、名称的触发事件即关联。保留事件实测版本作为证据；绑定的目标版本用于原文快照、报告和缓存。 |
 | target 对象类型 | `evolution_targets.object_type` 取 `skill|agent|knowledge`；`bad_cases.object_type` 仍只有 `skill|agent`，`probe_reports.probe_type` 允许 knowledge 值。knowledge target 的 `defaultRef` 接受 revision 形式，创建/更新跳过 git `ls-remote`，`versions` 返回空列表 + `defaultRef`；knowledge 的文件匹配用文档归一化 body hash，target resolver 与 API 启动在 V2 内，向导 catalog 与 target 表单暂不展示 knowledge（无选择器），知识库 UI 选择器另开切片 |
 | 知识事件证据口径 | 归一化一个根会话时，取该根在 `bad_cases` 里所有上报空间的 `workspaces.knowledge_roots` 并集作为证据范围（只去重归一化，不套每空间 20 条上限）；没有 bad case 的本地根为空集合，不产生知识事件。`bad_cases` 表缺失时按空 roots 降级，不让整根重放失败。 |
 | 知识事件的跨空间可见性 | `agent_events` 没有空间列，同一根会话被 A/B 两空间上报时，B 的成员能看到 A 配置根下的 `sourcePath` 与 `retrievalScope`（泄露的是路径与文档存在性，不是正文）。这是 M9 只建证据、查询层裁剪留 M10 的结构性后果 |
@@ -989,4 +989,4 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 - **存量归因映射**（仅开发库与 fixtures；生产无数据）：`probe_id` 保持原值；`workspace_id` 取关联 `bad_cases.workspace_id`，孤立 probe 用默认空间；`conclusion` 按关联行的最新 `analysis_status` 映射（`analyzed_issue → attributed`、`analyzed_nonissue → non_target`、其它 → `attributed`）；`attribute_type` 为 `nonissue` 或空的历史行置 NULL；`object_version` 为空的历史行保持 NULL（不伪造版本）；`confidence=0.8`；`probe_description/probe_analysis` 原样保留；`created_run_id=NULL`、`attribution_engine='legacy-probe-import'`；能关联到 case 的历史 probe 按七元组重新计算 `cache_key`，孤立 probe 留 NULL，并建立 `bad_case_analysis (bad_case_id, probe_id)` 关联。
 - **迁移顺序与守卫**：`0020` 排在 `0019` 之后；`bad_case_analysis` / `probe_reports` 缺失时跳过对应演进，`bad_cases` 缺失时候选表仍建但不加 FK；每个列、索引、外键与回填都按存在性判定，MySQL 半途 DDL 失败后可直接重试。
 - **发布协调**：`0020` 删除 `bad_case_analysis` 的 case 唯一键，必须与外部 `bad_case_analysis` 写入方切到 `(bad_case_id, probe_id)` 键**同批发布**；若外部仍按 case 唯一键 upsert，会退化为每次插入新行，旧读接口只能取最新行。
-- **触发点补齐**：`triggered_at / tree_index / object_version` 依赖 `parser_version` 递增后的重放（`pnpm data:replay:sessions`）才对齐存量；未重放的对象事件版本为空，按 §7.5 跳过并计数，不能静默当作版本精确命中。
+- **触发点补齐**：`triggered_at / tree_index / object_version` 依赖 `parser_version` 递增后的重放（`pnpm data:replay:sessions`）才对齐存量；未重放的对象事件即使版本为空也按类型和名称计入，不能静默当作版本精确命中。

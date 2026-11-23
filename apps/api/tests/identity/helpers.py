@@ -13,6 +13,8 @@ def identity_settings(tmp_path: Path, **overrides: object) -> Settings:
         "db_dialect": DatabaseDialect.SQLITE,
         "data_dir": tmp_path,
         "jwt_secret": "identity-test-signing-secret-with-sufficient-length",
+        "admin_username": None,
+        "admin_password": None,
     }
     values.update(overrides)
     return Settings(**values)  # type: ignore[arg-type]

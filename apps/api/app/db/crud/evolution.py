@@ -68,6 +68,11 @@ class EvolutionRepository:
                 "attribution_engine",
                 "legacy-probe-import",
             ),
+            "attribution_skill_key": values.get("attribution_skill_key"),
+            "attribution_skill_revision": values.get("attribution_skill_revision"),
+            "attribution_skill_content_hash": values.get(
+                "attribution_skill_content_hash",
+            ),
             "target_config_id": values["target_config_id"],
             "target_type": values["target_type"],
             "target_name": values["target_name"],

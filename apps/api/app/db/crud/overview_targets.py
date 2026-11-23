@@ -76,6 +76,7 @@ class AttributionLinkRecord:
     category: str | None
     created_at: datetime
     updated_at: datetime
+    report_schema_version: str | None = None
 
 
 class TargetOverviewRepository:
@@ -244,6 +245,7 @@ class TargetOverviewRepository:
                     probe_reports.c.probe_id,
                     probe_reports.c.object_version,
                     probe_reports.c.conclusion,
+                    probe_reports.c.report_schema_version,
                     probe_reports.c.attribute_type,
                     probe_reports.c.created_at,
                     probe_reports.c.updated_at,
@@ -272,6 +274,7 @@ class TargetOverviewRepository:
                 AttributionLinkRecord(
                     bad_case_id=str(row["bad_case_id"]),
                     attribution_id=str(row["probe_id"]),
+                    report_schema_version=row["report_schema_version"],
                     object_version=(
                         str(row["object_version"]) if row["object_version"] is not None else None
                     ),

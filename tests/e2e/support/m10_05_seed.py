@@ -15,7 +15,8 @@ from app.config import DatabaseDialect, Settings
 from app.db.crud.fixtures import ensure_fixture_external_tables
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
-from app.db.models.domain import agent_events, evolution_targets, session_families
+from app.db.models.domain import agent_events, evolution_targets, probe_reports, session_families
+from app.utils.definition import digest_revision
 from app.utils.time import SHANGHAI
 
 TARGET_ID = "30000000-0000-4000-8000-000000000001"
@@ -51,6 +52,11 @@ async def _seed(data_dir: Path, repo_url: str | None, *, long_title: bool = Fals
                     default_ref=OBJECT_VERSION,
                     **({"repo_url": repo_url} if repo_url else {}),
                 ),
+            )
+            await session.execute(
+                update(probe_reports)
+                .where(probe_reports.c.probe_id == "probe-synthetic-0002")
+                .values(object_version=digest_revision("# synthetic-review"), attribution_skill_name="attribute-badcases"),
             )
             if long_title:
                 await session.execute(

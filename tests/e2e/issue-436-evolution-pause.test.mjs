@@ -235,10 +235,27 @@ async function openLogs(page) {
   await evaluate(page, `document.querySelector("[data-testid='logs-tab']").click()`);
 }
 
-async function openRun(page, runId, query = "") {
-  await page.session.send("Page.navigate", {
-    url: `${baseUrl}${ws}/evolution/runs/${runId}${query}`,
+async function trackNavigation(session) {
+  const loaded = new Set();
+  session.on("Page.lifecycleEvent", ({ name, loaderId }) => {
+    if (name === "DOMContentLoaded") loaded.add(loaderId);
   });
+  await session.send("Page.setLifecycleEventsEnabled", { enabled: true });
+
+  return async function navigate(method, params = {}) {
+    const before = (await session.send("Page.getFrameTree")).frameTree.frame.loaderId;
+    const result = await session.send(method, params);
+    assert.ok(!result.errorText, result.errorText);
+    // Reload acknowledges the command before replacing the document. Its old
+    // "paused" badge must never satisfy the assertion about the restored Run.
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      const { loaderId } = (await session.send("Page.getFrameTree")).frameTree.frame;
+      if (loaderId !== before && loaded.has(loaderId)) return;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error(`new document did not load after ${method}`);
+  };
 }
 
 before(async () => {
@@ -341,7 +358,8 @@ test("issue-436 pauses a run from its card, preserves it across reload, and cont
     await installCookie(page, await loginCookie());
     stage("browser: authenticated");
     await page.session.send("Emulation.setDeviceMetricsOverride", { width: 1408, height: 960, deviceScaleFactor: 1, mobile: false });
-    await page.session.send("Page.navigate", { url: `${baseUrl}${ws}/evolution` });
+    const navigate = await trackNavigation(page.session);
+    await navigate("Page.navigate", { url: `${baseUrl}${ws}/evolution` });
     const card = `[data-run-id="run-v2-completed"]`;
     await waitForUI(page.session, `document.querySelector('${card} .control-button')?.textContent.trim() === '暂停'`);
     stage("control: card rendered; requesting pause");
@@ -352,9 +370,9 @@ test("issue-436 pauses a run from its card, preserves it across reload, and cont
     assert.equal(await evaluate(page, `!!document.querySelector('${card} .pulse')`), false);
     stage("control: card paused");
     await screenshot(page, "01-paused-card.png");
-    await openRun(page, "run-v2-completed");
+    await navigate("Page.navigate", { url: `${baseUrl}${ws}/evolution/runs/run-v2-completed` });
     await waitForUI(page.session, `document.querySelector('.control-button')?.textContent.trim() === '继续执行'`);
-    await page.session.send("Page.reload");
+    await navigate("Page.reload");
     await waitForUI(page.session, `document.querySelector('.detail-head .badge')?.textContent.trim() === '已暂停'`);
     await waitForUI(page.session, `document.querySelector('.control-button')?.textContent.trim() === '继续执行'`);
     stage("control: pause persisted across reload");

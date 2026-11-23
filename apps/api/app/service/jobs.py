@@ -19,6 +19,7 @@ from app.service.evolution.control import EvolutionControlService, PauseAtCheckp
 from app.service.evolution.engine.contracts import RunBlocked
 from app.utils.ids import new_id
 from app.utils.redaction import sanitize_job_error, sanitize_job_payload
+from app.utils.time import now_shanghai
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ __all__ = [
 
 JobHandler = Callable[[JobRunRecord], Awaitable[Mapping[str, Any] | None]]
 TerminalHook = Callable[[JobRunRecord], Awaitable[None]]
-_REUSABLE_DUPLICATE_KINDS = frozenset({"sync", "evolution_retry"})
+_REUSABLE_DUPLICATE_KINDS = frozenset({"sync", "evolution_retry", "attribution_batch"})
 _INTERRUPTIBLE_KINDS = frozenset(
     {
         "sync",
@@ -102,8 +103,9 @@ class JobRunner:
         self._run_events = run_events
         self._on_terminal = on_terminal
         self._handlers: dict[str, JobHandler] = {}
+        self._kind_lanes: dict[str, asyncio.Semaphore] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
-        self._active_task: asyncio.Task[None] | None = None
+        self._active_tasks: set[asyncio.Task[None]] = set()
         self._submit_lock = asyncio.Lock()
         self._worker_lock = asyncio.Lock()
         self._closed = False
@@ -121,9 +123,17 @@ class JobRunner:
         self._control = control
         self._runs = runs
 
-    def register_handler(self, kind: str, handler: JobHandler) -> None:
-        """Register the single callable that owns one durable job kind."""
+    def register_handler(
+        self,
+        kind: str,
+        handler: JobHandler,
+        *,
+        concurrency_limit: int | None = None,
+    ) -> None:
+        """Register a handler and optionally isolate it from the serial lane."""
         self._handlers[kind] = handler
+        if concurrency_limit is not None:
+            self._kind_lanes[kind] = asyncio.Semaphore(max(1, concurrency_limit))
 
     def schedule(self, job_id: str) -> None:
         """Schedule one already-committed queued row for local execution."""
@@ -140,6 +150,7 @@ class JobRunner:
         the stage service can resume from its persisted checkpoint. Sync keeps
         its historical fresh-reference retry because it has no run checkpoint.
         """
+        await self.repository.requeue_running_kind("attribution_batch")
         recovered = await self.repository.mark_running_interrupted("process restarted")
         for job in recovered:
             try:
@@ -263,11 +274,24 @@ class JobRunner:
         return job
 
     async def wait(self, job_id: str) -> JobRunRecord:
-        """Wait for an in-process task and return its latest durable row."""
-        task = self._tasks.get(job_id)
-        if task is not None:
-            await task
-        return await self.get(job_id)
+        """Join local work or follow an attribution child already claimed elsewhere."""
+        while True:
+            task = self._tasks.get(job_id)
+            if task is not None:
+                await asyncio.gather(task, return_exceptions=True)
+            job = await self.get(job_id)
+            if (
+                job.kind != "attribution_batch"
+                or job.status not in {"queued", "running"}
+                or self._closed
+                or job.kind not in self._handlers
+            ):
+                return job
+            if job.status == "queued" or (
+                job.lease_expires_at is None or job.lease_expires_at <= now_shanghai()
+            ):
+                self._schedule(job_id)
+            await asyncio.sleep(0.25)
 
     async def update_progress(
         self,
@@ -279,10 +303,18 @@ class JobRunner:
         stage_label: str | None = None,
         done_rounds: int = 0,
         accepted: int = 0,
+        observation: Mapping[str, Any] | None = None,
     ) -> JobRunRecord:
         """Persist normalized progress and notify the job's run topic."""
         normalized = min(1.0, max(0.0, float(progress)))
-        await self.repository.update_progress(job_id, normalized)
+        metrics = None
+        if observation is not None:
+            metrics = sanitize_job_payload(observation)
+            # Observations carry a usage counter alongside redacted diagnostic fields.
+            count = observation.get("tokenCount")
+            if type(count) is int and count >= 0:
+                metrics["tokenCount"] = count
+        await self.repository.update_progress(job_id, normalized, metrics)
         job = await self.get(job_id)
         if job.ref_id and job.kind != "sync":
             self._bus.publish(
@@ -301,6 +333,44 @@ class JobRunner:
             )
         return job
 
+    async def cancel(self, job_id: str) -> JobRunRecord:
+        """Cancel queued or in-process work and retain its audit row."""
+        job = await self.get(job_id)
+        if job.status not in {"queued", "running"}:
+            return job
+        cancelled = await self.repository.request_cancel(job_id)
+        task = self._tasks.get(job_id)
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        if cancelled is None:
+            return await self.get(job_id)
+        return cancelled
+
+    async def retry(
+        self,
+        job_id: str,
+        *,
+        payload: Mapping[str, Any] | None = None,
+    ) -> JobRunRecord:
+        """Requeue a retryable terminal job on its original handler lane."""
+        existing = await self.get(job_id)
+        retried = await self.repository.retry(job_id, payload=payload)
+        if retried is None:
+            raise AppError(
+                status_code=409,
+                code=ErrorCode.RUN_BUSY,
+                message="job is not retryable",
+                details={
+                    "jobId": job_id,
+                    "status": existing.status,
+                    "attempt": existing.attempt,
+                    "maxAttempts": existing.max_attempts,
+                },
+            )
+        self._schedule(job_id)
+        return retried
+
     async def close(self) -> None:
         """Stop accepting work, drain the active handler, then cancel the rest."""
         if self._closed:
@@ -314,10 +384,10 @@ class JobRunner:
 
     async def _drain_and_cancel(self) -> None:
         """Wait for the active handler, then cancel every remaining local task."""
-        active = self._active_task
-        if active is not None and not active.done():
+        active = set(self._active_tasks)
+        if active:
             _done, pending = await asyncio.wait(
-                {active},
+                active,
                 timeout=self._drain_timeout_seconds,
             )
             if pending:
@@ -332,11 +402,15 @@ class JobRunner:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._tasks.clear()
-        self._active_task = None
+        self._active_tasks.clear()
 
     async def _run(self, job_id: str) -> None:
-        """Execute one claimed job while the global lock serializes all handlers."""
-        async with self._worker_lock:
+        """Claim on the production serial lane or the registered independent lane."""
+        pending = await self.repository.get(job_id)
+        if pending is None:
+            return
+        lane = self._kind_lanes.get(pending.kind, self._worker_lock)
+        async with lane:
             job = await self.repository.claim(
                 job_id,
                 owner=self._owner,
@@ -346,7 +420,8 @@ class JobRunner:
                 return
             handler = self._handlers.get(job.kind)
             current = asyncio.current_task()
-            self._active_task = current
+            if current is not None:
+                self._active_tasks.add(current)
             heartbeat = asyncio.create_task(
                 self._heartbeat(job, current),
                 name=f"job-heartbeat:{job.id}",
@@ -363,11 +438,13 @@ class JobRunner:
                     job.id, {"runId": job.ref_id, "yielded": True}, owner=self._owner
                 )
             except asyncio.CancelledError:
-                await self.repository.interrupt(
+                interrupted = await self.repository.interrupt(
                     job.id,
                     "job cancelled during shutdown",
                     owner=self._owner,
                 )
+                if not interrupted:
+                    raise
                 try:
                     await self._record_interruption(
                         job,
@@ -453,8 +530,8 @@ class JobRunner:
                 heartbeat.cancel()
                 with suppress(asyncio.CancelledError):
                     await heartbeat
-                if current is self._active_task:
-                    self._active_task = None
+                if current is not None:
+                    self._active_tasks.discard(current)
                 terminal = await self.repository.get(job.id)
                 if terminal is not None:
                     await self._notify_terminal(terminal)
@@ -482,6 +559,10 @@ class JobRunner:
             if alive:
                 continue
             current = await self.repository.get(job.id)
+            if current is not None and current.cancel_requested:
+                if owner_task is not None:
+                    owner_task.cancel()
+                return
             if current is None or current.status != "running":
                 # The handler already wrote its terminal row (for example fail()
                 # before recording the blocked event). Do not cancel its

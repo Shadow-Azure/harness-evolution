@@ -79,7 +79,7 @@ describe("useEvolutionTargets", () => {
     await vi.waitFor(() => expect(model.data.value?.items).toEqual([target]));
   });
 
-  it("invalidates target and catalog prefixes after every successful mutation", async () => {
+  it("invalidates target, Skill resource and catalog prefixes after every successful mutation", async () => {
     server.use(
       http.post(base, () => HttpResponse.json(target, { status: 201 })),
       http.put(`${base}/:id`, () =>
@@ -95,7 +95,7 @@ describe("useEvolutionTargets", () => {
     await model.updateTarget(target.id, { ...body, enabled: false });
     await model.deleteTarget(target.id);
 
-    expect(invalidate).toHaveBeenCalledTimes(6);
+    expect(invalidate).toHaveBeenCalledTimes(9);
     expect(
       invalidate.mock.calls.map(([argument]) => {
         const filters = typeof argument === "function" ? argument() : argument;
@@ -103,10 +103,13 @@ describe("useEvolutionTargets", () => {
       }),
     ).toEqual([
       queryKeys.evolutionTargets(workspaceId),
+      ["skill-resource", workspaceId],
       queryKeys.catalogs(workspaceId),
       queryKeys.evolutionTargets(workspaceId),
+      ["skill-resource", workspaceId],
       queryKeys.catalogs(workspaceId),
       queryKeys.evolutionTargets(workspaceId),
+      ["skill-resource", workspaceId],
       queryKeys.catalogs(workspaceId),
     ]);
   });

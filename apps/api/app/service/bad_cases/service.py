@@ -186,9 +186,11 @@ class BadCaseService:
         )
         return result.items[0] if result.items else None
 
-    async def analysis_progress(self) -> AnalysisProgress:
+    async def analysis_progress(
+        self, workspace_ids: tuple[str, ...] | None = None
+    ) -> AnalysisProgress:
         """Return aggregate attribution counts for the sync popover."""
-        return await self._repository.analysis_progress()
+        return await self._repository.analysis_progress(workspace_ids)
 
     async def get_probe(self, probe_id: str) -> ProbeReportReadModel | None:
         """Return one root-cause report with reverse-linked source issues."""
@@ -455,7 +457,7 @@ class BadCaseService:
             return _empty_analysis()
         attribute_type: AttributeType | None = _literal(
             probe.attribute_type,
-            ("model", "prompt", "error"),
+            ("model", "prompt", "error", "flow", "context"),
         )
         if attribute_type is None:
             warnings.append(
@@ -523,7 +525,7 @@ class BadCaseService:
             )
         attribute_type: AttributeType | None = _literal(
             probe.attribute_type,
-            ("model", "prompt", "error"),
+            ("model", "prompt", "error", "flow", "context"),
         )
         if attribute_type is None:
             warnings.append(
@@ -562,7 +564,9 @@ class BadCaseService:
             )
             return ProbeReportLookup(model=None, warnings=(warning,))
         probe_type = _literal(row.probe_type, ("skill", "agent"))
-        attribute_type = _literal(row.attribute_type, ("model", "prompt", "error"))
+        attribute_type = _literal(
+            row.attribute_type, ("model", "prompt", "error", "flow", "context")
+        )
         if probe_type is None:
             warnings.append(
                 _warning(

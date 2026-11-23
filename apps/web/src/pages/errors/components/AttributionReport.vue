@@ -181,7 +181,9 @@ function move(direction: -1 | 1): void {
       <strong>
         {{ attribution.conclusion === "attributed"
           ? "可归因到本对象"
-          : "非该对象问题" }}
+          : attribution.conclusion === "non_target"
+            ? "非该对象问题"
+            : "归因证据不足" }}
       </strong>
       <span
         v-if="attribution.conclusion === 'attributed'"
@@ -425,7 +427,8 @@ function move(direction: -1 | 1): void {
   font-size: 12px;
 }
 
-.conclusion.non_target {
+.conclusion.non_target,
+.conclusion.inconclusive {
   color: var(--orange);
   background: color-mix(in srgb, var(--orange) 5%, var(--bg-card));
 }

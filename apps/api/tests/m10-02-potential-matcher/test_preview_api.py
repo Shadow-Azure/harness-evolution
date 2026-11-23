@@ -160,7 +160,7 @@ async def test_sessions_preview_partitions_and_paginates(preview_api: PreviewApi
         preview_api.database,
         agent_id=skipped_main,
         event_index=0,
-        kind="skill",
+        kind="agent",
         name=TARGET_NAME,
         object_version="v1.0.0",
         triggered_at=OBJECT_ENTRY,
@@ -190,12 +190,12 @@ async def test_sessions_preview_partitions_and_paginates(preview_api: PreviewApi
     payload = first.json()
     assert payload["summary"] == {
         "reported": 9,
-        "associated": 6,
+        "associated": 7,
         "skipped": 1,
-        "versionUnresolved": 1,
+        "versionUnresolved": 0,
         "pending": 1,
     }
-    assert payload["total"] == 6
+    assert payload["total"] == 7
     assert payload["targetRevision"] == "tag:v2.0.0"
     assert len(payload["items"]) == 4
     assert payload["pageSize"] == 4
@@ -210,7 +210,7 @@ async def test_sessions_preview_partitions_and_paginates(preview_api: PreviewApi
         item["title"] for item in payload["items"]
     }
     assert second.status_code == 200
-    assert len(second.json()["items"]) == 2
+    assert len(second.json()["items"]) == 3
 
 
 async def test_sessions_preview_returns_short_title_for_long_prompt(
@@ -338,7 +338,7 @@ async def test_potential_preview_paginates_included_rows_and_reports_reasons(
 async def test_attribution_preview_counts_cache_and_non_target(
     preview_api: PreviewApi,
 ) -> None:
-    """Step 4 reports exact cache reuse and honors cacheEnabled=false."""
+    """Step 4 does not reuse legacy keys that lack an execution manifest."""
     session_id = "session-attribution-api"
     main_id = await seed_associated(preview_api, session_id=session_id)
     await seed_event(
@@ -397,10 +397,14 @@ async def test_attribution_preview_counts_cache_and_non_target(
 
     assert enabled.status_code == 200
     assert enabled.json() == {
+        "canRecompute": False,
+        "usesBoundSkill": False,
         "summary": {
             "potential": 3,
             "reused": 2,
             "fresh": 1,
+            "missing": 0,
+            "bySkill": {},
             "nonTargetKnown": 1,
         },
         "targetRevision": "tag:v2.0.0",

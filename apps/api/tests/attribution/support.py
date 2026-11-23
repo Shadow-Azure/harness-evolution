@@ -194,6 +194,7 @@ async def seed_run(
                 progress_unit=2,
                 potential_policy={
                     "preset": "default",
+                    "legacyRule": False,
                     "includeSelfReport": True,
                     "includeAfterObject": True,
                     "sameObjectOnly": False,

@@ -10,8 +10,8 @@ depends:
   - m24-01
   - m5-09
   - m5-11
-priority: P1
-status: ready
+priority: P2
+status: done
 scope:
   - apps/api/**
   - apps/web/**

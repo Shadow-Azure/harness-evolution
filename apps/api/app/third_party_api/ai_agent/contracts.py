@@ -1,11 +1,8 @@
 """Value objects shared by every AI Agent provider implementation.
 
-The seam has two capability faces: :meth:`AIAgentProvider.analyze` performs a
-side-effect-free structured analysis, and
-:meth:`AIAgentProvider.edit_workspace` returns an edit result for one
-workspace. Results carry the same normalized observability fields (usage,
-session id, latency, retryable) so callers never branch on a vendor. Provider
-failures are folded into :class:`AgentProviderError`.
+Analysis and edit results carry normalized usage, session and latency fields.
+A Skill request points to the caller's isolated workspace. The caller validates
+its output files and retains the provider's per-attempt diagnostics.
 """
 
 from __future__ import annotations
@@ -34,6 +31,16 @@ def _require_non_negative(value: int, name: str) -> None:
     """Reject negative counters that would corrupt normalized usage fields."""
     if value < 0:
         raise ValueError(f"{name} must not be negative")
+
+
+@dataclass(frozen=True, slots=True)
+class SkillRunRequest:
+    """One frozen Skill invocation in a private, already staged working directory."""
+
+    directory: Path
+    prompt: str
+    model: str
+    timeout_seconds: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,5 +282,6 @@ __all__ = [
     "EditRequest",
     "EditResult",
     "ProviderHealth",
+    "SkillRunRequest",
     "SubmissionParsedBy",
 ]

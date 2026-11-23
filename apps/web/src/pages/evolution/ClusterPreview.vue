@@ -185,6 +185,9 @@ async function launchFullRun(): Promise<void> {
       mode: "full",
       policy: condition.policy as PotentialPolicy,
       cacheEnabled: condition.cacheEnabled,
+      ...(!condition.cacheEnabled && condition.attributionPackageId && {
+        attributionPackageId: condition.attributionPackageId,
+      }),
       page: 1,
       pageSize: 5,
     });

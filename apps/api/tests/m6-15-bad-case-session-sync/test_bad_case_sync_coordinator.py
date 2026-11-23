@@ -47,19 +47,19 @@ class FakeRepository:
         self.missing_resets += 1
         return 0
 
-    async def has_report_source(self) -> bool:
+    async def has_report_source(self, workspace_ids: tuple[str, ...] | None = None) -> bool:
         return self.report_source
 
     async def count_candidates(self, now: datetime) -> int:
         return self.candidates
 
-    async def stats(self) -> BadCaseRootSyncStats:
+    async def stats(self, workspace_ids: tuple[str, ...] | None = None) -> BadCaseRootSyncStats:
         return self.stats_value
 
-    async def last_run_at(self) -> datetime | None:
+    async def last_run_at(self, workspace_ids: tuple[str, ...] | None = None) -> datetime | None:
         return self.last_run
 
-    async def last_error(self) -> str | None:
+    async def last_error(self, workspace_ids: tuple[str, ...] | None = None) -> str | None:
         return self.error
 
 

@@ -407,6 +407,8 @@ async def test_cache_reuse_equals_potential_and_non_target_stays_out_of_clusters
     assert preview.json()["summary"] == {
         "potential": POTENTIAL,
         "reused": POTENTIAL,
+        "missing": 0,
+        "bySkill": {},
         "fresh": 0,
         "nonTargetKnown": 1,
     }

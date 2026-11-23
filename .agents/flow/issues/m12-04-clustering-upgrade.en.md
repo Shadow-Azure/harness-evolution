@@ -8,6 +8,7 @@ id: m12-04
 milestone: m12
 depends:
   - m10-04
+  - m12-24
 priority: P1
 status: done
 scope:
@@ -25,91 +26,53 @@ github:
 
 ## Background
 
-This issue continues M6 issue #64 and moved to M12 on 2026-11-15. Closing the old issue only records the milestone rebalance; the work remains active through `m12-04-clustering-upgrade`.
-
-
-
-
-
-m12-04 是可独立合并的垂直切片；实现取舍必须以链接的 fullstack-design 章节为准，不能在 issue 中复制出第二套设计事实。
+M12 carries forward the clustering work scoped in M6 issue #64. The design sections below define the implementation.
 
 ## Goals
 
-
-
-
-
-- 完成 m12-04 声明的交付边界，并让它可通过下列命令独立验收。
-- 保持 contracts、数据库、前端与既有门禁一致。
-- 失败、空态和重复输入都有明确行为。
+- Deliver the declared scope and verify it independently.
+- Keep contracts, the database and the frontend consistent.
+- Define behavior for failures, empty inputs and retries.
 
 ## Design authority
 
-
-
-
-
-- [07 §5.5 占位聚类](../../../plans/fullstack-design/07-backend-implementation.md)
+- [07 §5.5 Clustering](../../../plans/fullstack-design/07-backend-implementation.md)
 - [06 §5.3 probe_clusters](../../../plans/fullstack-design/06-database-design.md)
 - [09 R11](../../../plans/fullstack-design/README.md)
 
 ## Implementation
 
-
-
-
-
-- 升级聚类算法但仍写 probe_clusters/probe_cluster_probes
-- 保证确定性、空输入、单元素和大输入行为
+- Persist cluster assignments in `probe_clusters` and `probe_cluster_probes`.
+- Produce deterministic results for empty, single-item and large inputs.
 
 ## Implementation steps
 
-
-
-
-
-1. 先写算法边界与稳定性失败测试
-2. 实现新算法
-3. 对比占位结果并保留 run 参数
+1. Test boundary cases and stability.
+2. Implement the clustering algorithm.
+3. Compare its output with the baseline and retain the Run parameters.
 
 ## Dependencies and boundary
 
-
-
-
-
-- 依赖：m5-11
-- 交付边界：只交付本 issue 的能力；未列入验收的相邻能力留给依赖或后续 issue。
+- Depends on m10-04 and the V2 attribution report contract (m12-24).
+- This issue covers the clustering algorithm and its existing persistence interface.
 
 ## Verification
-
-
-
-
 
 ```sh
 pnpm test:api -- tests/m12-04-clustering-upgrade
 pnpm test:db
 ```
 
-- 新算法测试通过且表/API 不变
+- Verify the algorithm against the existing tables and API.
 
 ## Acceptance
 
-
-
-
-
-- 结果可复现且迁移无 schema 破坏
+- Results are reproducible, and migrations preserve the database schema used by callers.
 
 ## Gates and CI
 
-
-
-
-
-- algorithm gate、dual-db tests、fixture regression
+- Run the algorithm gate, tests on both supported databases and fixture regression tests.
 
 ## Non-goals
 
-- No scope creep beyond the listed non-goals and acceptance.
+- Guarantees about the accuracy of a diagnosis.

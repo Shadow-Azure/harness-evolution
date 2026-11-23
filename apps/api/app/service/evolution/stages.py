@@ -25,6 +25,7 @@ from app.db.models.evolution import (
     ProbeClusterRecord,
 )
 from app.errors import AppError, ErrorCode
+from app.service.evolution.attribution_contracts import AttributionConclusion
 from app.service.evolution.potential import (
     AnchorSource,
     HitReason,
@@ -52,7 +53,7 @@ StepKey = Literal[
     "final",
 ]
 StepStatus = Literal["done", "active", "pending"]
-ClusterType = Literal["model", "prompt", "error"]
+ClusterType = Literal["model", "prompt", "error", "flow", "context"]
 RoundStatus = Literal[
     "pending",
     "patching",
@@ -67,7 +68,7 @@ RoundStatus = Literal[
 RoundPushStatus = Literal["pending", "pushing", "succeeded", "skipped", "failed"]
 RoundEvalStatus = Literal["pending", "evaluating", "completed", "failed", "timeout"]
 AttributionSource = Literal["cached", "fresh"]
-_CLUSTER_TYPES: tuple[str, ...] = ("model", "prompt", "error")
+_CLUSTER_TYPES: tuple[str, ...] = ("model", "prompt", "error", "flow", "context")
 SESSIONS_PAGE_SIZE = 4
 _SESSION_SHORT_TITLE_LIMIT = 120
 POTENTIAL_PAGE_SIZE = 5
@@ -90,6 +91,7 @@ class StepRangeCondition(IdentityModel):
     window_to: date | None = Field(default=None, alias="to")
     policy: dict[str, Any]
     cache_enabled: bool
+    attribution_package_id: str | None = None
     workspace_id: str
 
 
@@ -191,6 +193,7 @@ class StepAttributionRow(IdentityModel):
     session_id: str
     attribution_id: str
     category: ClusterType | None
+    conclusion: AttributionConclusion | None = None
     description: str
     source: AttributionSource
     confidence: float | None
@@ -613,6 +616,10 @@ class EvolutionStageService:
                 bad_cases=_int_stat(run.stats, "probes"),
                 potential=_int_stat(run.stats, "usedProbes"),
             )
+        policy = dict(run.potential_policy or {"preset": "default"})
+        package_id = policy.pop("attributionPackageId", None)
+        policy.pop("latestReportsOnly", None)
+        policy.pop("legacyRule", None)
         return EvolutionStepRange(
             **self._shell(facts, "range", detail=f"{stats.bad_cases} 个 bad case"),
             payload=StepRangePayload(
@@ -624,7 +631,8 @@ class EvolutionStageService:
                         "targetRevision": run.target_revision,
                         "from": run.window_from,
                         "to": run.window_to,
-                        "policy": dict(run.potential_policy or {"preset": "default"}),
+                        "policy": policy,
+                        "attributionPackageId": package_id,
                         "cacheEnabled": run.cache_enabled,
                         "workspaceId": run.workspace_id,
                     },
@@ -675,16 +683,18 @@ class EvolutionStageService:
     async def _attribution(self, facts: _RunFacts) -> EvolutionStepAttribution:
         """Assemble per-case attribution conclusions and their counts."""
         rows = _legacy_attribution_rows(facts) if facts.legacy else _v2_attribution_rows(facts)
-        potential = len([row for row in rows])
+        potential = len(rows) if facts.legacy else sum(case.included for case in facts.candidates)
         reused = sum(1 for row in rows if row.source == "cached")
-        non_target = sum(1 for row in rows if row.category is None)
+        non_target = sum(
+            row.category is None if facts.legacy else row.conclusion == "non_target" for row in rows
+        )
         return EvolutionStepAttribution(
             **self._shell(facts, "attribution", detail=f"{len(rows)} 条"),
             payload=StepAttributionPayload(
                 summary=StepAttributionSummary(
                     potential=potential,
                     reused=reused,
-                    fresh=potential - reused,
+                    fresh=len(rows) - reused,
                     non_target=non_target,
                 ),
                 rows=rows,
@@ -979,6 +989,7 @@ def _v2_attribution_rows(facts: _RunFacts) -> list[StepAttributionRow]:
                 session_id=candidate.session_id,
                 attribution_id=record.probe_id,
                 category=category,
+                conclusion=cast(AttributionConclusion, record.conclusion),
                 description=record.probe_description,
                 source="cached" if candidate.is_cached else "fresh",
                 confidence=record.confidence,

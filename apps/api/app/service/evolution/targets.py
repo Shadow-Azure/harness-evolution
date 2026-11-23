@@ -18,6 +18,7 @@ from app.db.crud.evolution_targets import (
 )
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.errors import AppError, ErrorCode
+from app.service.evolution.target_definition import TargetDefinitions
 from app.service.identity.schemas import IdentityModel
 from app.third_party_api.git.remote import GitRemote, RepoFailureReason, RepoInvalid
 from app.utils.redaction import redact_command_output
@@ -52,6 +53,7 @@ class EvolutionTargetWrite(IdentityModel):
     default_ref: str
     validation_project_id: str = Field(max_length=128)
     test_project_id: str = Field(max_length=128)
+    attribution_package_id: str | None = Field(default=None, min_length=1, max_length=64)
     enabled: bool = True
 
     @model_validator(mode="before")
@@ -68,10 +70,29 @@ class EvolutionTargetWrite(IdentityModel):
         return values
 
 
+class BindingFailure(IdentityModel):
+    """Last failed background analysis of the current binding."""
+
+    attempts: int
+    reason: str
+    will_retry: bool
+
+
+class TargetDefinitionPreview(IdentityModel):
+    """Source pinned to this target binding."""
+
+    commit: str
+    path: str
+    preview: str
+
+
 class EvolutionTarget(EvolutionTargetWrite):
     """Persisted target returned to clients."""
 
     id: str
+    attribution_skill_name: str | None = None
+    attribution_failure: BindingFailure | None = None
+    definition: TargetDefinitionPreview | None = None
 
 
 class EvolutionTargetList(IdentityModel):
@@ -340,6 +361,7 @@ def _normalize_write(body: EvolutionTargetWrite) -> EvolutionTargetWrite:
             field="testProjectId",
         ),
         enabled=body.enabled,
+        attribution_package_id=body.attribution_package_id,
     )
 
 
@@ -347,6 +369,22 @@ def _public(record: EvolutionTargetRecord) -> EvolutionTarget:
     """Map one persistence row to the public model."""
     return EvolutionTarget(
         id=record.id,
+        attribution_package_id=record.attribution_package_id,
+        attribution_skill_name=record.attribution_skill_name,
+        definition=TargetDefinitionPreview(
+            commit=record.definition["commit"],
+            path=record.definition["path"],
+            preview=record.definition["preview"],
+        )
+        if record.definition
+        else None,
+        attribution_failure=BindingFailure(
+            attempts=record.attribution_failures,
+            reason=record.attribution_error,
+            will_retry=record.attribution_will_retry,
+        )
+        if record.attribution_error
+        else None,
         object_type=record.object_type,
         object_name=record.object_name,
         repo_url=record.repo_url,
@@ -361,10 +399,19 @@ def _public(record: EvolutionTargetRecord) -> EvolutionTarget:
 class EvolutionTargetService:
     """Apply validation and stable error mapping around target persistence."""
 
-    def __init__(self, repository: EvolutionTargetStore, git_remote: GitRemote) -> None:
+    def __init__(
+        self,
+        repository: EvolutionTargetStore,
+        git_remote: GitRemote,
+        definitions: TargetDefinitions | None = None,
+        *,
+        default_package_id: str | None = None,
+    ) -> None:
         """Bind target storage and the sanitized git remote boundary."""
         self._repository = repository
         self._git_remote = git_remote
+        self._definitions = definitions
+        self._default_package_id = default_package_id
 
     async def list(
         self,
@@ -397,11 +444,15 @@ class EvolutionTargetService:
                 code=ErrorCode.TARGET_EXISTS,
                 message="target already exists",
             )
-        await self._validate_remote(values)
+        package = values.attribution_package_id or self._default_package_id
+        values = values.model_copy(update={"attribution_package_id": package})
+        write = await self._prepare_write(
+            workspace_id, values, freeze_definition=package is not None
+        )
         try:
             record = await self._repository.insert(
                 {
-                    **values.model_dump(),
+                    **write,
                     "workspace_id": workspace_id,
                     "created_by": created_by,
                 },
@@ -440,11 +491,15 @@ class EvolutionTargetService:
                 code=ErrorCode.TARGET_EXISTS,
                 message="target already exists",
             )
-        await self._validate_remote(values)
+        write = await self._prepare_write(
+            target.workspace_id,
+            values,
+            freeze_definition=bool(values.attribution_package_id or target.attribution_package_id),
+        )
         try:
             record = await self._repository.update(
                 target_id,
-                values.model_dump(),
+                write,
                 workspace_ids=workspace_ids,
             )
         except EvolutionTargetConflict:
@@ -547,6 +602,17 @@ class EvolutionTargetService:
                 )
             return default
         return enabled[0]
+
+    async def _prepare_write(
+        self, workspace: str, values: EvolutionTargetWrite, *, freeze_definition: bool
+    ) -> dict[str, object]:
+        await self._validate_remote(values)
+        write = values.model_dump()
+        if self._definitions and freeze_definition and values.object_type != "knowledge":
+            write["definition"] = await self._definitions.freeze(
+                workspace, values.object_type, values.repo_url, values.sub_dir, values.default_ref
+            )
+        return write
 
     async def _validate_remote(self, values: EvolutionTargetWrite) -> None:
         """Run network/ref validation with one sanitized failure type.

@@ -19,6 +19,7 @@ async function invalidateTargetDependents(
     queryClient.invalidateQueries({
       queryKey: queryKeys.evolutionTargets(workspaceId),
     }),
+    queryClient.invalidateQueries({ queryKey: ["skill-resource", workspaceId] }),
     queryClient.invalidateQueries({
       queryKey: queryKeys.catalogs(workspaceId),
     }),

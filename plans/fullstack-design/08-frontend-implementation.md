@@ -669,26 +669,26 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 - 时间段：`from/to` 必填，校验 `from <= to`（后端再判 ≤366 天）。
 - **潜在策略**：默认策略单选 + 「自定义」三开关（`includeSelfReport` / `includeAfterObject` / `sameObjectOnly`）；custom 至少勾一条，否则本地拦截（后端 `422 POLICY_INVALID` 兜底）。
 - 从错误详情进入（`focusCaseId`）：第 1 步显示只读提示「以 bad case <id> 启动」，自动带出它的对象/版本线索；不改变潜在判定口径。
-- 「下一步」：字段级校验（对象/版本/时间段缺失、版本 ref 格式非法都标红 `aria-invalid`）→ 服务端 git 存在性校验（tag/分支/commit 必须解析到 commit）→ `POST …/evolution/preview/sessions` → Step 2；ref 不存在或内容解析失败回到第 1 步，`409 NO_ASSOCIATED_SESSIONS` 同样进 Step 2 渲染「没有对象版本出现过的 Session」空态并禁用前进。
+- 「下一步」：字段级校验（对象/版本/时间段缺失、版本 ref 格式非法都标红 `aria-invalid`）→ 服务端 git 存在性校验（tag/分支/commit 必须解析到 commit）→ `POST …/evolution/preview/sessions` → Step 2；ref 不存在或内容解析失败回到第 1 步，`409 NO_ASSOCIATED_SESSIONS` 同样进 Step 2 渲染「没有对象出现过的 Session」空态并禁用前进。
 
 **Step 2 Session 关联**
 
-- 条件摘要 chip + 「修改条件」（条件同时展示 `targetVersion` ref 与解析后的 `targetRevision` body hash）；统计：上报过 bad case 的 Session / 关联 / 跳过 / 版本未知 / 待轨迹同步。
+- 条件摘要 chip + 「修改条件」（条件同时展示 `targetVersion` ref 与解析后的 `targetRevision` body hash）；统计：上报过 bad case 的 Session / 关联 / 跳过 / 待轨迹同步。
 - 表格 4 条/页：Session 短标签 / 对象出现标记 / 对象触发点时间 / 该 Session 的 bad case 数；Session 单元格用 `short`（来源 `session_families.short_title`）单行省略，`title` 提供完整标题悬停，表格固定布局保证四列同屏；只列**对象出现过**的 Session，本步只做关联、不计算潜在数；未出现的只进「跳过」统计，不入表。skill/agent/knowledge 目标的“出现”都按归一化 body hash 匹配，tag 只用于解析内容 hash。
-- 空态：「没有对象版本出现过的 Session；可回第 1 步调整时间段或对象版本」+ 前进禁用。
+- 空态：「没有对象出现过的 Session；可回第 1 步调整时间段或选择其他对象」+ 前进禁用。
 - 分页只重新请求 `preview/sessions` 的 `page`，不重算匹配（服务端已按条件稳定排序）。
 
 **Step 3 潜在 bad case**
 
 - 统计：时间段内 bad case 总数 / 潜在数 / 按命中原因分布（`self_report` / `after_object` / `both`）。
-- 表格 5 条/页：bad case ID（深链）/ 上报来源 `object_name` / 类型 / 触发点时间 / 来源 Session / **命中原因** / **锚点来源**；`orderState=unknown` 显示“触发点顺序待轨迹时间戳重放”；`anchorSource=post_process` 显示“后处理上报”徽标，`eventIndex=INT_MAX` 不直接显示数字。对象版本未知的 Session 已在第 2 步跳过并计数，不进入本表。
+- 表格 5 条/页：bad case ID（深链）/ 上报来源 `object_name` / 类型 / 触发点时间 / 来源 Session / **命中原因** / **锚点来源**；`orderState=unknown` 显示“触发点顺序待轨迹时间戳重放”；`anchorSource=post_process` 显示“后处理上报”徽标，`eventIndex=INT_MAX` 不直接显示数字。
 - 空态：「当前策略没有命中潜在 bad case；可返回调整时间段或策略」+ 前进禁用（`409 NO_POTENTIAL_MATCHED`）。
 - 「上一步」回到 Step 2；修改策略需回 Step 1（策略影响潜在集合，前端不就地重算）。
 
 **Step 4 归因预览与启动**
 
 - 开关「复用缓存归因」（默认开）：切换即重新请求 `preview/attribution`。
-- 四个数字（副标题写清语义）：潜在 / 复用 / 新增 / 历史非该对象；后两者是推算值（新增 = 潜在 − 复用；历史非该对象是参考值）。
+- 展示对象版本的潜在 Badcase 数、按 Skill 分组的已有报告数、缺报告数、预计复用与重算数。每个候选最多计一份。缓存开启且零命中时禁用启动。关闭缓存时展示空间包选择器，所选包只用于本次启动。
 - 条件摘要 + 策略 badge + 缓存开关状态。
 - 两个出口：
   - 「仅聚类」→ `POST …/evolution/cluster-previews`（`mode:"cluster_only"`）→ 路由 `/workspaces/:wid/evolution/cluster/:runId`，先显示「准备中」
@@ -776,7 +776,7 @@ RunDetail.vue
 └── （iteration step 内）ClusterCard.vue → DiffView / EvalCompare / CommitBlock
 ```
 
-**目标与输入口径**：4 列依次为进化对象 / 版本 / 时间段 / 工作空间，然后是关联 Session、时间段内 bad case、潜在 bad case、可归因 / 非该对象；「模型（多选）」不在详情页。分布标题固定为「潜在 bad case 的归因结论分布（N 条）」，N 取潜在 bad case 数，图例含非该对象、错误 / prompt / 模型与「＝ 归因 · 复用缓存 · 本次新增」。关联 Session 显示 `已关联 / 版本未知`；非该对象、复用缓存与本次新增按 attribution step 的 rows 行级统计（`category` 为空即非该对象，`source` 为 `cached` / `fresh`；「本次新增」只计可归因的 fresh 行，与原型一致），策略与缓存开关取 range step 的 condition，接口契约不新增字段。归因尚未完成时复用缓存与本次新增显示 `—`，分布条以「未归因」余量补齐，归因完成后显示最终值。工作区折叠区包含 run 分支（可复制）、基线 ref / commit、仓库、子目录、推送状态与时间、评测状态、脱敏推送错误与本地路径。
+**目标与输入口径**：4 列依次为进化对象 / 版本 / 时间段 / 工作空间，然后是关联 Session、时间段内 bad case、潜在 bad case、可归因 / 非该对象；「模型（多选）」不在详情页。分布标题固定为「潜在 bad case 的归因结论分布（N 条）」，N 取潜在 bad case 数，图例含非该对象、错误 / prompt / 模型与「＝ 归因 · 复用缓存 · 本次新增」。关联 Session 显示 `已关联 / 版本未知`；非该对象、复用缓存与本次新增按 attribution step 的 rows 行级统计（`category` 为空即非该对象，`source` 为 `cached` / `fresh`；「本次新增」只计可归因的 fresh 行，与原型一致），策略与缓存开关取 range step 的 condition，接口契约不新增字段。归因运行中按已关联报告更新分类、缓存与新增数量，分布条以入选候选数减去已出报告数补齐「未归因」。工作区折叠区包含 run 分支（可复制）、基线 ref / commit、仓库、子目录、推送状态与时间、评测状态、脱敏推送错误与本地路径。
 
 **单一 schema**：`run.steps` 恒为七步，`steps[].key` 由后端给定，前端按 key 渲染，不推算回退。
 

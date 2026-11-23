@@ -359,6 +359,13 @@ probe_reports = Table(
         server_default="legacy-probe-import",
     ),
     Column("cache_key", CHAR(64), nullable=True),
+    Column("report_schema_version", String(32), nullable=True),
+    Column("report_payload", JSON, nullable=True),
+    Column("execution_manifest", JSON, nullable=True),
+    Column("attribution_skill_name", String(128), nullable=True),
+    Column("analyzed_at", DateTime(timezone=True), nullable=True),
+    Column("binding_generation", String(36), nullable=True),
+    Column("execution_manifest_hash", CHAR(64), nullable=True),
     # ``created_run_id`` / ``last_reused_run_id`` carry migration-owned foreign
     # keys. Declaring them here would require the evolution metadata during
     # external-table bootstrap, so they stay plain strings in the query model.
@@ -378,6 +385,7 @@ probe_reports = Table(
     Index("ix_probe_reports_workspace_object", "workspace_id", "object_version"),
     Index("ix_probe_reports_workspace_updated", "workspace_id", "updated_at"),
     Index("ix_probe_reports_conclusion", "conclusion"),
+    Index("ix_probe_reports_manifest_hash", "execution_manifest_hash"),
     Index("uq_probe_reports_cache_key", "cache_key", unique=True),
 )
 
@@ -467,6 +475,15 @@ evolution_targets = Table(
         nullable=False,
         server_default=DEFAULT_WORKSPACE_ID,
     ),
+    Column("attribution_package_id", String(64), nullable=True),
+    Column("attribution_skill_name", String(128), nullable=True),
+    Column("attribution_generation", String(36), nullable=True),
+    Column("attribution_owner", String(36), nullable=True),
+    Column("attribution_failures", Integer, nullable=False, server_default="0"),
+    Column("attribution_error", String(64), nullable=True),
+    Column("attribution_snapshot", JSON, nullable=True),
+    Column("attribution_due", DateTime(timezone=True), nullable=True),
+    Column("attribution_cutoff", DateTime(timezone=True), nullable=True),
     Column("object_type", String(16), nullable=False),
     Column("object_name", String(128), nullable=False),
     Column("repo_url", String(1024), nullable=False),
@@ -496,4 +513,152 @@ evolution_targets = Table(
     ),
     Index("ix_evolution_targets_enabled", "enabled"),
     Index("ix_evolution_targets_workspace", "workspace_id"),
+)
+
+
+attribution_skills = Table(
+    "attribution_skills",
+    DOMAIN_METADATA,
+    Column("id", String(36), primary_key=True),
+    Column("workspace_id", String(36), nullable=True),
+    Column("skill_key", String(128), nullable=False),
+    Column("display_name", String(255), nullable=False),
+    Column("description", Text, nullable=False),
+    Column("built_in", Boolean, nullable=False, server_default=text("0")),
+    Column("enabled", Boolean, nullable=False, server_default=true()),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("skill_key", name="uq_attribution_skills_key"),
+    Index("ix_attribution_skills_workspace", "workspace_id"),
+)
+
+
+attribution_skill_revisions = Table(
+    "attribution_skill_revisions",
+    DOMAIN_METADATA,
+    Column("id", String(36), primary_key=True),
+    Column(
+        "skill_id",
+        String(36),
+        ForeignKey("attribution_skills.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("revision", Integer, nullable=False),
+    Column("content", JSON, nullable=False),
+    Column("content_hash", CHAR(64), nullable=False),
+    Column("executor_type", String(32), nullable=False),
+    Column("output_schema_version", String(32), nullable=False),
+    Column("status", String(16), nullable=False),
+    Column(
+        "quality_status",
+        String(24),
+        nullable=False,
+        server_default=text("'candidate'"),
+    ),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("skill_id", "revision", name="uq_attribution_skill_revision"),
+    UniqueConstraint("skill_id", "content_hash", name="uq_attribution_skill_content"),
+    Index("ix_attribution_skill_revisions_status", "skill_id", "status"),
+)
+
+
+attribution_skill_quality_events = Table(
+    "attribution_skill_quality_events",
+    DOMAIN_METADATA,
+    Column("id", String(36), primary_key=True),
+    Column("workspace_id", String(36), nullable=False),
+    Column(
+        "skill_revision_id",
+        String(36),
+        ForeignKey("attribution_skill_revisions.id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("event_type", String(24), nullable=False),
+    Column("evaluation_hash", CHAR(64), nullable=True),
+    Column("payload", JSON, nullable=False),
+    Column("actor_id", String(36), nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Index(
+        "ix_attribution_skill_quality_revision",
+        "skill_revision_id",
+        "created_at",
+    ),
+    Index("ix_attribution_skill_quality_workspace", "workspace_id", "created_at"),
+)
+
+
+attribution_skill_bindings = Table(
+    "attribution_skill_bindings",
+    DOMAIN_METADATA,
+    Column("id", String(36), primary_key=True),
+    Column("workspace_id", String(36), nullable=False),
+    Column("binding_key", String(64), nullable=False),
+    Column(
+        "target_id",
+        String(36),
+        ForeignKey("evolution_targets.id", ondelete="CASCADE"),
+        nullable=True,
+    ),
+    Column(
+        "skill_revision_id",
+        String(36),
+        ForeignKey("attribution_skill_revisions.id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("workspace_id", "binding_key", name="uq_attribution_skill_binding"),
+    Index("ix_attribution_skill_bindings_target", "target_id"),
+)
+
+
+attribution_skill_packages = Table(
+    "attribution_skill_packages",
+    DOMAIN_METADATA,
+    Column("id", String(36), primary_key=True),
+    Column("workspace_id", String(36), nullable=False),
+    Column("skill_name", String(128), nullable=False),
+    Column(
+        "uploader_id",
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("uploader_name", String(255), nullable=False),
+    Column("archive_name", String(255), nullable=False),
+    Column("file_count", Integer, nullable=False),
+    Column("size_bytes", BigInteger, nullable=False),
+    Column("content_hash", CHAR(64), nullable=False),
+    Column("storage_path", String(512), nullable=False),
+    Column("skill_md_path", String(512), nullable=False),
+    Column("prompt_text", Text().with_variant(LONGTEXT, "mysql"), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint(
+        "workspace_id",
+        "skill_name",
+        name="uq_attribution_skill_packages_workspace_name",
+    ),
+    Index("ix_attribution_skill_packages_workspace", "workspace_id", "created_at"),
+)
+
+
+attribution_skill_package_bindings = Table(
+    "attribution_skill_package_bindings",
+    DOMAIN_METADATA,
+    Column("workspace_id", String(36), primary_key=True),
+    Column(
+        "package_id",
+        String(36),
+        ForeignKey("attribution_skill_packages.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "updated_by",
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Index("ix_attribution_skill_package_bindings_package", "package_id"),
 )

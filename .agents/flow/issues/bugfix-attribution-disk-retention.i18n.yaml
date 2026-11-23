@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/bugfix-attribution-disk-retention.md
+bugfix-attribution-disk-retention.md: d3120690b44ac776b38ef09d6bce09f2e94030d3
+bugfix-attribution-disk-retention.en.md: 33eeebe8870a4e83ad8ebc9f0265bd5b9fbbe06a

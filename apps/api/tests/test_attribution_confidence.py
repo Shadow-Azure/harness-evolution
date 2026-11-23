@@ -229,11 +229,11 @@ async def test_engine_lowers_confidence_for_contradictory_identity() -> None:
 
 
 @pytest.mark.asyncio
-async def test_engine_non_target_confidence_uses_the_complement() -> None:
-    """A non-target conclusion is less certain when attribution evidence is strong."""
+async def test_engine_keeps_missing_report_text_inconclusive() -> None:
+    """An empty report cannot establish a conclusion even with a matching identity."""
     result = await RuleBasedEngine().attribute(
         attribution_input(title="   ", description="  "),
     )
 
-    assert result.conclusion == "non_target"
-    assert result.confidence == pytest.approx(0.1)
+    assert result.conclusion == "inconclusive"
+    assert result.confidence == 0.0

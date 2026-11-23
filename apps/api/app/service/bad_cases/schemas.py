@@ -10,7 +10,7 @@ from typing import Literal
 BadCaseType = Literal["self", "discovery"]
 BadCaseObjectType = Literal["skill", "agent"]
 AnalysisStatus = Literal["unanalyzed", "analyzed_nonissue", "analyzed_issue"]
-AttributeType = Literal["model", "prompt", "error"]
+AttributeType = Literal["model", "prompt", "error", "flow", "context"]
 DisplayState = Literal[
     "unanalyzed",
     "analyzed_nonissue",

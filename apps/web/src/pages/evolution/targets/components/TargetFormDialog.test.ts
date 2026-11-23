@@ -85,14 +85,54 @@ describe("TargetFormDialog", () => {
     expect(wrapper.find(".target-dialog-foot .form-actions").exists()).toBe(true);
   });
 
+  it.each([
+    { previous: "legacy-prompt", label: "legacy-prompt" },
+    { previous: null, label: "未绑定" },
+  ])("preserves the original Skill selection $label when editing a target", async ({ previous, label }) => {
+    const wrapper = await mountDialog({
+      target: { ...target, attributionSkillName: previous, attributionPackageId: null },
+    });
+    expect(wrapper.get("select[aria-label='归因 Skill'] option:checked").text()).toBe(label);
+    await wrapper.get("form").trigger("submit");
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({ attributionPackageId: null });
+  });
+
+  it("can create an unbound rule target or prebind a Skill while the Agent is disabled", async () => {
+    const wrapper = await mountDialog({ runtimeEnabled: false });
+    await fillRequired(wrapper);
+    const select = wrapper.get("select[aria-label='归因 Skill']");
+    expect(select.get("option:checked").text()).toContain("内置归因规则");
+    await wrapper.get("form").trigger("submit");
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({ attributionPackageId: null });
+    await select.setValue("default-attribute-badcases");
+    expect(wrapper.text()).toContain("启用后开始后台归因");
+    await wrapper.get("form").trigger("submit");
+    expect(wrapper.emitted("submit")?.[1]?.[0]).toMatchObject({ attributionPackageId: "default-attribute-badcases" });
+    wrapper.unmount();
+  });
+
+  it("selects the default after runtime capability loads without resetting other fields", async () => {
+    const wrapper = await mountDialog({ packagesLoading: true });
+    await fillRequired(wrapper);
+    await wrapper.get("form").trigger("submit");
+    expect(wrapper.emitted("submit")).toBeUndefined();
+    await wrapper.setProps({ runtimeEnabled: true, packagesLoading: false });
+    await wrapper.get("form").trigger("submit");
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
+      attributionPackageId: "default-attribute-badcases", objectName: "deep-research",
+    });
+    wrapper.unmount();
+  });
+
   it("submits trimmed create values", async () => {
-    const wrapper = await mountDialog();
+    const wrapper = await mountDialog({ runtimeEnabled: true });
     await fillRequired(wrapper);
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
     expect(wrapper.emitted("submit")).toEqual([[
       {
+        attributionPackageId: "default-attribute-badcases",
         objectType: "skill",
         objectName: "deep-research",
         repoUrl: "https://example.com/skills.git",
@@ -241,12 +281,21 @@ describe("TargetFormDialog", () => {
     expect(block.get("pre").text()).toContain("Could not resolve host");
   });
 
-  it("explains when subdirectory existence is validated", async () => {
-    const wrapper = await mountDialog();
+  it("shows definition snapshot guidance only when the target is bound", async () => {
+    const wrapper = await mountDialog({ runtimeEnabled: false });
+    const guidance = "保存绑定时从指定版本读取此目录的对象定义";
+    expect(wrapper.text()).not.toContain(guidance);
+    await wrapper.get("select[aria-label='归因 Skill']").setValue("default-attribute-badcases");
+    expect(wrapper.text()).toContain(guidance);
+    wrapper.unmount();
+  });
 
-    expect(wrapper.text()).toContain(
-      "目录是否存在在启动运行时校验",
-    );
+  it("shows the pinned commit, definition path and preview on edit", async () => {
+    const definition = { commit: "a".repeat(40), path: "agents/example/AGENT.md", preview: "Agent instructions" };
+    const wrapper = await mountDialog({ target: { ...target, definition } });
+    expect(wrapper.text()).toContain(definition.commit);
+    expect(wrapper.text()).toContain(definition.path);
+    expect(wrapper.get(".definition-preview").text()).toBe(definition.preview);
   });
 
   it("prefills edits, exposes remote suggestions and submits disabled state", async () => {

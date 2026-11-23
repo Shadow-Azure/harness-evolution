@@ -12,7 +12,6 @@ from app.db.base import Database
 from app.db.crud.attributions import (
     AttributionRepository,
     EvolutionRunCandidateRepository,
-    attribution_cache_key,
 )
 from app.db.crud.evolution import EvolutionRepository
 from app.db.models.domain import bad_cases, probe_reports
@@ -25,7 +24,9 @@ from app.service.evolution.attribution import (
     AttributionInput,
     AttributionResult,
     AttributionRunner,
+    AttributionRunProgress,
 )
+from app.service.evolution.attribution_contracts import default_execution_manifest
 from app.service.evolution.engine.contracts import RunBlocked
 from app.utils.time import SHANGHAI
 from tests.attribution.support import (
@@ -69,6 +70,7 @@ class CountingEngine:
             confidence=0.8,
             reason=f"第 {len(self.calls)} 次归因",
             reasoning="reasoning",
+            token_count=7,
         )
 
 
@@ -97,6 +99,25 @@ async def candidate(
     return next(record for record in records if record.bad_case_id == case_id)
 
 
+def runner_cache_key(case_id: str = CASE_ID) -> str:
+    """Return the V2 manifest cache identity for one seeded candidate."""
+    item = potential_case(case_id)
+    return default_execution_manifest(
+        workspace_id="ws-default",
+        bad_case_id=case_id,
+        target_type="skill",
+        target_name="deep-research",
+        target_version=TARGET_REVISION,
+        policy_version="v1",
+        engine="rule-v1",
+        session_id=item.session_id,
+        hit_reason=item.hit_reason,
+        order_state=item.order_state,
+        object_trigger_at=item.object_trigger.triggered_at,
+        case_trigger_at=(item.case_trigger.triggered_at if item.case_trigger is not None else None),
+    ).content_hash
+
+
 async def test_runner_writes_revision_scoped_probe_and_candidate(
     attribution_harness: Harness,
     attribution_repository: AttributionRepository,
@@ -108,31 +129,37 @@ async def test_runner_writes_revision_scoped_probe_and_candidate(
         attribution_repository,
         engine_factory=lambda key: engine,
     )
+    progress_rows = []
+
+    async def observe(progress: AttributionRunProgress) -> None:
+        progress_rows.append((progress.completed, progress.total))
+        if progress.completed == 0:
+            assert not engine.calls
+
     summary = await runner.run(
         run,
         (potential_case(), potential_case(OTHER_CASE_ID)),
         cache_enabled=True,
+        on_progress=observe,
     )
 
+    assert progress_rows == [(0, 2), (1, 2), (2, 2)]
     assert summary.processed == 2
     assert summary.created == 2
     assert summary.reused == 0
     assert summary.non_target == 1
     assert summary.skipped == 0
+    assert summary.token_count == 7
+    assert summary.context_hash is not None
     first = await attribution_repository.get_probe_by_cache_key(
-        attribution_cache_key(
-            "ws-default",
-            CASE_ID,
-            "skill",
-            "deep-research",
-            TARGET_REVISION,
-            "v1",
-            "rule-v1",
-        ),
+        runner_cache_key(),
     )
     assert first is not None
     assert first.created_run_id == RUN_ID
     assert first.conclusion == "attributed"
+    assert first.report_schema_version == "probe-report/v2"
+    assert first.report_payload is not None
+    assert first.execution_manifest_hash == first.cache_key
     linked = await attribution_repository.linked_probe_ids(RUN_ID)
     assert set(linked) == {CASE_ID, OTHER_CASE_ID}
     assert linked[CASE_ID] == first.probe_id
@@ -154,15 +181,7 @@ async def test_second_run_reuses_the_cache_and_counts_once(
     assert summary.reused == 1
     assert summary.created == 0
     cached = await attribution_repository.get_probe_by_cache_key(
-        attribution_cache_key(
-            "ws-default",
-            CASE_ID,
-            "skill",
-            "deep-research",
-            TARGET_REVISION,
-            "v1",
-            "rule-v1",
-        ),
+        runner_cache_key(),
     )
     assert cached is not None
     assert cached.reused_count == 1
@@ -341,18 +360,7 @@ async def test_rule_engine_scores_evidence_completeness_from_persisted_rows(
         cache_enabled=True,
     )
 
-    cached = await attribution_repository.get_probe_by_cache_key(
-        attribution_cache_key(
-            "ws-default",
-            CASE_ID,
-            "skill",
-            "deep-research",
-            TARGET_REVISION,
-            "v1",
-            "rule-v1",
-        ),
-    )
-    assert cached is not None
+    (cached,) = await attribution_repository.list_attributions(CASE_ID)
     assert cached.confidence == pytest.approx(0.9)
 
 
@@ -381,18 +389,7 @@ async def test_rule_engine_matches_a_bare_body_hash_against_a_digest_revision(
         cache_enabled=True,
     )
 
-    cached = await attribution_repository.get_probe_by_cache_key(
-        attribution_cache_key(
-            "ws-default",
-            CASE_ID,
-            "skill",
-            "deep-research",
-            f"digest:{digest}",
-            "v1",
-            "rule-v1",
-        ),
-    )
-    assert cached is not None
+    (cached,) = await attribution_repository.list_attributions(CASE_ID)
     assert cached.confidence == pytest.approx(0.9)
 
 

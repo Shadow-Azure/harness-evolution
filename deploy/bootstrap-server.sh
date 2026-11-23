@@ -14,7 +14,7 @@ fi
 echo "[bootstrap] 1/7 基础包"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y ca-certificates curl git rsync nginx mysql-server
+apt-get install -y ca-certificates curl git rsync nginx mysql-server bubblewrap
 
 echo "[bootstrap] 2/7 Python 3.12"
 PY=python3.12

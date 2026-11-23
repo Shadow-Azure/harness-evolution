@@ -1,10 +1,11 @@
 """Authenticated acquisition status and administrator sync trigger."""
 
 from datetime import datetime
-from typing import Literal, cast
+from typing import Annotated, Literal, cast
 
-from fastapi import APIRouter, Request, Response, Security
+from fastapi import APIRouter, Query, Request, Response, Security
 
+from app.api.deps import authorize_workspace, visible_workspace_ids
 from app.api.security import BEARER_AUTH
 from app.db.crud.bad_cases import AnalysisProgress
 from app.errors import AppError, ErrorCode, ErrorResponse
@@ -233,13 +234,23 @@ def _trigger_response(result: SyncTriggerResult) -> SyncTriggerResponse:
         403: {"model": ErrorResponse, "description": "Password change is required"},
     },
 )
-async def acquisition_status(request: Request) -> AcquisitionStatusResponse:
-    """Return durable acquisition progress for all authenticated users."""
+async def acquisition_status(
+    request: Request,
+    workspace_id: Annotated[
+        str | None, Query(alias="workspaceId", min_length=1, max_length=36)
+    ] = None,
+) -> AcquisitionStatusResponse:
+    """Return platform counters and scoped trace and attribution progress."""
+    if workspace_id is not None:
+        await authorize_workspace(request, workspace_id, "viewer")
+        workspace_ids: tuple[str, ...] | None = (workspace_id,)
+    else:
+        workspace_ids = await visible_workspace_ids(request)
     return _status_response(
         await sync_from(request).status(),
-        await bad_case_sync_from(request).status(),
+        await bad_case_sync_from(request).status(workspace_ids),
         await catalog_sync_from(request).status(),
-        await problems_from(request).analysis_progress(),
+        await problems_from(request).analysis_progress(workspace_ids),
     )
 
 

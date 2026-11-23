@@ -51,9 +51,11 @@ class ProblemService:
         self._bad_cases = bad_cases
         self._source_available = source_available
 
-    async def analysis_progress(self) -> AnalysisProgress:
+    async def analysis_progress(
+        self, workspace_ids: tuple[str, ...] | None = None
+    ) -> AnalysisProgress:
         """Return overall attribution progress for the sync popover."""
-        return await self._bad_cases.analysis_progress()
+        return await self._bad_cases.analysis_progress(workspace_ids)
 
     async def list_for_session(
         self,

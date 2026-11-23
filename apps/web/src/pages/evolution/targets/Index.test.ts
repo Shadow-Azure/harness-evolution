@@ -11,6 +11,7 @@ import type { Component } from "vue";
 import {
   afterAll,
   afterEach,
+  beforeEach,
   beforeAll,
   describe,
   expect,
@@ -45,6 +46,11 @@ const target: EvolutionTarget = {
   testProjectId: "test-deep-research",
   enabled: true,
 };
+
+const skillPackages = [
+  { id: "default-attribute-badcases", skillName: "attribute-badcases" },
+  { id: "package-review", skillName: "review-attribution" },
+];
 
 async function mountPage(
   role: "admin" | "member",
@@ -86,6 +92,13 @@ async function mountPage(
 }
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+beforeEach(() => {
+  server.use(
+    http.get(`/api/workspaces/${workspaceId}/attribution-skill-packages`, () =>
+      HttpResponse.json({ items: skillPackages, runtimeEnabled: true }),
+    ),
+  );
+});
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
   server.resetHandlers();
@@ -168,6 +181,7 @@ describe("target configuration page", () => {
     expect(wrapper.text()).toContain("deep-research");
     expect(wrapper.find(".target-create").exists()).toBe(false);
     expect(wrapper.find(".row-actions").exists()).toBe(false);
+    expect(wrapper.text()).toContain("未绑定");
   });
 
   it("retries a failed target query without replacing the page", async () => {
@@ -210,6 +224,8 @@ describe("target configuration page", () => {
     const wrapper = await mountPage("admin");
 
     await wrapper.get(".target-create").trigger("click");
+    await vi.waitFor(() => expect(wrapper.get("select.skill-select").text()).toContain("review-attribution"));
+    await wrapper.get("select.skill-select").setValue("package-review");
     await wrapper.get('input[name="objectName"]').setValue("deep-research");
     await wrapper
       .get('input[name="repoUrl"]')
@@ -227,6 +243,7 @@ describe("target configuration page", () => {
     await flushPromises();
 
     expect(submitted).toEqual({
+      attributionPackageId: "package-review",
       objectType: "skill",
       objectName: "deep-research",
       repoUrl: "https://example.com/skills.git",

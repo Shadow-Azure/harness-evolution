@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Literal
 
-ClusterType = Literal["model", "prompt", "error"]
+ClusterType = Literal["model", "prompt", "error", "flow", "context"]
 
 LEXICAL_ALGORITHM = "lexical-jaccard-v1"
 """Stable algorithm identity for the deterministic lexical grouping layer."""
@@ -24,7 +24,7 @@ CLUSTER_ALGORITHM = LEXICAL_ALGORITHM
 SIMILARITY_THRESHOLD = 0.3
 """Jaccard similarity at or above which two probes join the same cluster."""
 
-TYPE_ORDER: tuple[ClusterType, ...] = ("model", "prompt", "error")
+TYPE_ORDER: tuple[ClusterType, ...] = ("model", "prompt", "error", "flow", "context")
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9_]+|[\u3400-\u4dbf\u4e00-\u9fff]+")
 
@@ -48,10 +48,10 @@ class ClusterDraft:
 
 
 TYPE_IMPACT: Mapping[str, int] = MappingProxyType(
-    {"error": 9, "prompt": 7, "model": 5},
+    {"error": 9, "prompt": 7, "model": 5, "flow": 7, "context": 7},
 )
 TYPE_CONFIDENCE: Mapping[str, float] = MappingProxyType(
-    {"error": 0.82, "prompt": 0.74, "model": 0.66},
+    {"error": 0.82, "prompt": 0.74, "model": 0.66, "flow": 0.74, "context": 0.74},
 )
 """Cluster-level placeholder confidence by category."""
 
