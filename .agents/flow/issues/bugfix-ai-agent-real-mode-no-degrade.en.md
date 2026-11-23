@@ -19,6 +19,7 @@ scope:
   - apps/api/app/config.py
   - apps/api/app/main.py
   - apps/api/tests/**
+  - tests/e2e/**
   - packages/contracts/**
   - apps/web/**
   - deploy/**
