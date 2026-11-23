@@ -16,6 +16,8 @@ The target overview combines observed-version candidates with completed V2 repor
 
 Record visible agent interactions per attempt and link the original Badcase through its input manifest. Keep execution logs separate from validated reports because the Skill can write files inside its working directory.
 
+The report records the actual attribution target in `probe_type`. New reports use `agent` for agents and accept the legacy input `agents`. The platform validates frozen writer output before normalizing the target type and preserves the original reporter type in `from_bad_cases`.
+
 ## Alternatives considered
 
 Workspace-wide activation changes unrelated targets. Counting every historical report inflates case counts after recomputation. Deduplicate by case and resolved target revision before grouping by Skill.

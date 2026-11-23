@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import runpy
 import sys
 import zipfile
 from dataclasses import replace
@@ -218,3 +219,56 @@ def test_handwritten_report_has_no_writer_receipt(tmp_path: Path) -> None:
     (tmp_path / "probe_report.json").write_text("{}")
     with pytest.raises(ValueError, match="did not invoke"):
         LocalAttribution._read_emission(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected"),
+    [
+        ("skill", "skill"),
+        ("agent", "agent"),
+        ("agents", "agent"),
+        ("knowledge", "knowledge"),
+    ],
+)
+def test_writer_target_type_preserves_reported_source(kind: str, expected: str) -> None:
+    writer = Settings().attribution_default_skill_path.with_name("make_probe_report.py")
+    report = runpy.run_path(str(writer))["build_report"](
+        session_id="root",
+        bad_case={"bad_case_id": "case", "type": "skill", "object": "reporter"},
+        probe_object="owner",
+        object_version="v1",
+        attribute_type="flow",
+        probe_description="test",
+        probe_analysis="test",
+        probe_type=kind,
+        detail_description=None,
+        proposal=None,
+    )
+    assert report["probe_type"] == expected
+    assert report["from_bad_cases"][0]["type"] == "skill"
+
+
+def test_frozen_plural_writer_is_validated_before_normalization(tmp_path: Path) -> None:
+    original = json.dumps({"bad_cases": [{"bad_case_id": "case"}]})
+    draft = {
+        "probe_id": "immutable-id",
+        "probe_type": "agents",
+        "probe_object": "owner",
+        "object_version": "v1",
+        "attribute_type": "flow",
+        "probe_description": "test",
+        "probe_analysis": "test",
+        "from_bad_cases": [{"bad_case_id": "case", "type": "skill"}],
+    }
+    writer = tmp_path / "frozen.py"
+    writer.write_text(
+        "import pathlib,sys\npathlib.Path(sys.argv[-1]).write_text(" + repr(json.dumps(draft)) + ")"
+    )
+    with pytest.raises(ValueError, match="provenance"):
+        canonical_report(writer, original, {**draft, "probe_id": "tampered"}, tmp_path)
+    report = canonical_report(writer, original, draft, tmp_path)
+    assert (
+        json.loads((tmp_path / "probe_report.json").read_bytes())
+        == report
+        == {**draft, "probe_type": "agent"}
+    )

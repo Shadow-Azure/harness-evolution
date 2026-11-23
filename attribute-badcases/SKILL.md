@@ -326,7 +326,7 @@ user-invocable: true
 ```
 {
   "probe_id": "xxxxx-xxxxx", // 按照 session_id + probe_object 的规则命名, 以下划线链接
-  "probe_type": "skill", // skill/agents 归因对象类型
+  "probe_type": "skill", // skill/agent/knowledge 归因对象类型
   "probe_object": "code-review",  // 实际归因到的归因对象, 不一定是输入 object (real_target_object)
   "object_version": "x.xx.x", // probe_object 自身的版本, 不是输入 object_version; 两者对象不同时必须显式给出
   "attribute_type": "prompt",  // model/prompt/error/flow/context/unknown，描述问题性质
@@ -361,7 +361,7 @@ user-invocable: true
 python3 .claude/skills/attribute-badcases/make_probe_report.py \
   --input-badcase input_badcase.json \
   --bad-case-id "<badcase_id>" \
-  --probe_type "<skill|agents|knowledge>" \
+  --probe_type "<skill|agent|knowledge>" \
   --probe_object "<实际归因对象>" \
   --object-version "<实际归因对象的版本>" \
   --attribute-type "<prompt|model|error|flow|context|unknown>" \

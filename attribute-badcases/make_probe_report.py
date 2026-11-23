@@ -15,7 +15,7 @@ Model-provided fields (via CLI arguments):
   whenever `probe_object` differs from the reported `object`: the reported
   version belongs to the reporting object, so inheriting it would file the
   discovery under a version its target never had.
-- `probe_type`        `skill` / `agents`
+- `probe_type`        `skill` / `agent` / `knowledge`
 - `attribute_type`    one of a closed enum
 - `probe_description`
 - `probe_analysis`
@@ -147,6 +147,10 @@ def build_report(
     the real defect owner is upstream. The reported `object` and its version
     are preserved verbatim inside `from_bad_cases`.
     """
+    if probe_type == "agents":
+        probe_type = "agent"
+    if probe_type not in ("skill", "agent", "knowledge"):
+        raise ValidationError(f"invalid --probe_type: {probe_type}")
     if not probe_object:
         raise ValidationError("--probe_object is required (the actual attribution target)")
     bad_case_id = _text(bad_case.get("bad_case_id"))
@@ -208,7 +212,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
                         help="The actual attribution target's version; required when "
                             "--probe_object differs from the reported object")
     parser.add_argument("--probe_type", default=DEFAULT_BAD_CASE_TYPE,
-                        help="Probe kind: 'skill' or 'agents' (default 'skill')")
+                        help="Probe kind: 'skill', 'agent' or 'knowledge' (default 'skill')")
     parser.add_argument("--attribute-type", required=True, choices=ATTRIBUTE_TYPES,
                         help="Closed attribution category (prompt/model/error/flow/context/unknown)")
     parser.add_argument("--probe-description", required=True,

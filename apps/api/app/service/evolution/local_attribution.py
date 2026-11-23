@@ -422,7 +422,7 @@ class LocalAttribution:
         for path, digest in manifest["files"].items():
             content = (snapshot / "skill" / path).read_bytes()
             if _digest(content) != digest:
-                raise ValueError("frozen Skill file checksum mismatch")
+                raise ValueError(f"frozen Skill file checksum mismatch: {path}")
             dest = skill / path
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(content)
@@ -551,7 +551,7 @@ class LocalAttribution:
         category = report["attribute_type"]
         same_target = (
             report["probe_object"] == item.probe_object
-            and report["probe_type"].removesuffix("s") == item.probe_type
+            and report["probe_type"] == item.probe_type
             and report["object_version"]
             in {
                 item.object_version,
@@ -661,5 +661,12 @@ def canonical_report(
         canonical = json.loads(report_file.read_bytes())
         if canonical != draft:
             raise ValueError("report disagrees with canonical case provenance or schema")
+        # Frozen writers may still echo the legacy spelling. Verify the original
+        # emission first; only normalize the published report's target type.
+        if canonical["probe_type"] == "agents":
+            canonical["probe_type"] = "agent"
+            report_file.write_text(
+                json.dumps(canonical, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
         os.replace(report_file, output / "probe_report.json")
         return cast(dict[str, Any], canonical)
