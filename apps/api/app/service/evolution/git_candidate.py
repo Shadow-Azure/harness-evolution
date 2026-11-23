@@ -12,7 +12,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
-from typing import NoReturn, cast
+from typing import NoReturn
 from urllib.parse import urlsplit
 
 from app.db.crud.evolution import EvolutionRepository
@@ -34,9 +34,9 @@ from app.service.evolution.patch_source import (
     PatchSource,
     default_patch_source_factory,
 )
+from app.service.evolution.round_patch import stored_bundle
 from app.service.evolution.state import StageConflict
 from app.third_party_api.ai_agent.contracts import AgentProviderError
-from app.third_party_api.ai_agent.edits import EditPlan, EditStatus, EditStatusKind
 from app.third_party_api.git.workspace import (
     CandidateWorkspace,
     GitOperationError,
@@ -227,7 +227,7 @@ class EvolutionCandidateService:
             started_at=round_.started_at or self._now(),
         )
         saved = current.patch
-        bundle = _stored_bundle(saved)
+        bundle = stored_bundle(saved)
         if bundle is None:
             patch_source = self._patch_source_factory(run)
             try:
@@ -1034,7 +1034,7 @@ def _with_patch_file(
 
 def _patch_file(round_: EvolutionRoundRecord) -> str:
     """Read the applied file (or comma-joined files) from one stored patch."""
-    bundle = _stored_bundle(round_.patch)
+    bundle = stored_bundle(round_.patch)
     if bundle is None:
         return ".harness-evolution.md"
     return ", ".join(patch.file for patch in bundle.files)
@@ -1050,7 +1050,7 @@ def _patch_note(round_: EvolutionRoundRecord) -> str:
 
 def _patch_hash(round_: EvolutionRoundRecord) -> str:
     """Recompute the stored bundle digest for accepted-message reproduction."""
-    bundle = _stored_bundle(round_.patch)
+    bundle = stored_bundle(round_.patch)
     if bundle is None:
         return Patch(file=_patch_file(round_), lines=()).sha256
     return bundle.sha256
@@ -1066,90 +1066,6 @@ def _last_ai_call(source: PatchSource) -> AiAgentCall | None:
     """
     call = getattr(source, "last_ai_call", None)
     return call if isinstance(call, AiAgentCall) else None
-
-
-def _stored_bundle(raw: object) -> PatchBundle | None:
-    """Rebuild a persisted bundle, including the legacy single-file shape."""
-    if not isinstance(raw, Mapping):
-        return None
-    note = raw.get("note")
-    if not isinstance(note, str) or not note.strip():
-        note = PLACEHOLDER_PATCH_NOTE
-    intent = _stored_intent(raw.get("intent"))
-    report = _stored_report(raw.get("report"))
-    files: list[Patch] = []
-    raw_files = raw.get("files")
-    if isinstance(raw_files, list):
-        for item in raw_files:
-            patch = _stored_patch_file(item)
-            if patch is not None:
-                files.append(patch)
-    if not files:
-        legacy = _stored_patch_file(raw)
-        if legacy is not None:
-            files.append(legacy)
-    if not files:
-        return None
-    try:
-        return PatchBundle(
-            files=tuple(files),
-            note=note,
-            intent=intent,
-            report=report,
-        )
-    except ValueError:
-        return None
-
-
-def _stored_patch_file(raw: object) -> Patch | None:
-    """Rebuild one Patch from a stored mapping, rejecting malformed entries."""
-    if not isinstance(raw, Mapping):
-        return None
-    file = raw.get("file")
-    lines = raw.get("lines")
-    if not isinstance(file, str) or not file:
-        return None
-    if not isinstance(lines, (list, tuple)):
-        return None
-    overwrite = raw.get("overwrite", False)
-    return Patch(
-        file=file,
-        lines=tuple(line for line in lines if isinstance(line, str)),
-        overwrite=bool(overwrite),
-    )
-
-
-def _stored_intent(raw: object) -> EditPlan | None:
-    """Rebuild the persisted EditPlan when it is present and valid."""
-    if not isinstance(raw, Mapping):
-        return None
-    try:
-        return EditPlan.model_validate(dict(raw))
-    except ValueError:
-        return None
-
-
-def _stored_report(raw: object) -> tuple[EditStatus, ...]:
-    """Rebuild the persisted per-edit report when it is present and valid."""
-    if not isinstance(raw, list):
-        return ()
-    statuses: list[EditStatus] = []
-    for item in raw:
-        if not isinstance(item, Mapping):
-            continue
-        try:
-            statuses.append(
-                EditStatus(
-                    index=int(item["index"]),
-                    op=str(item["op"]),
-                    file=str(item["file"]),
-                    status=cast("EditStatusKind", str(item["status"])),
-                    message=str(item.get("message", "")),
-                ),
-            )
-        except (KeyError, TypeError, ValueError):
-            continue
-    return tuple(statuses)
 
 
 def _stored_patch(bundle: PatchBundle) -> dict[str, object]:

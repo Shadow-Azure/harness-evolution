@@ -31,6 +31,7 @@ from app.service.evolution.potential import (
     OrderState,
     PotentialReasonCounts,
 )
+from app.service.evolution.round_patch import stored_bundle
 from app.service.evolution.state import (
     STEP_KEYS,
     STEP_TITLES,
@@ -241,17 +242,24 @@ class StepCandidate(IdentityModel):
     message: str
 
 
-class StepRoundPatch(IdentityModel):
-    """Patch preview stored with the round.
-
-    ``note`` carries the patch source's one-line change description (for the
-    minimal-config source it starts with "最小配置变更"). Rounds published
-    before the patch-source seam persist only ``file``/``lines``, so the field
-    stays optional and older snapshots keep rendering unchanged.
-    """
+class StepRoundFilePatch(IdentityModel):
+    """One file inside a round's patch preview."""
 
     file: str
     lines: list[str]
+    overwrite: bool = False
+
+
+class StepRoundPatch(IdentityModel):
+    """Patch preview projected from the round's stored bundle.
+
+    The durable shape carries ``files[]`` plus ``note``/``intent``/``report``,
+    and single-file rounds also keep the legacy ``file``/``lines`` keys. This
+    read model is built from :func:`stored_bundle` instead of validating the
+    raw dictionary, so a later writer field cannot break step 6 again.
+    """
+
+    files: list[StepRoundFilePatch]
     note: str | None = None
 
 
@@ -1028,6 +1036,29 @@ def _cluster_item(facts: _RunFacts, cluster: ProbeClusterRecord) -> StepCluster:
     )
 
 
+def _round_patch(raw: object) -> StepRoundPatch | None:
+    """Project one stored round patch into the read DTO.
+
+    Only the fields this step exposes are read from the restored bundle; the
+    persisted dictionary is never fed to a closed model directly.
+    """
+    bundle = stored_bundle(raw)
+    if bundle is None:
+        return None
+    note = raw.get("note") if isinstance(raw, Mapping) else None
+    return StepRoundPatch(
+        files=[
+            StepRoundFilePatch(
+                file=patch.file,
+                lines=list(patch.lines),
+                overwrite=patch.overwrite,
+            )
+            for patch in bundle.files
+        ],
+        note=note if isinstance(note, str) and note.strip() else None,
+    )
+
+
 def _round_item(
     facts: _RunFacts,
     round_: EvolutionRoundRecord,
@@ -1035,7 +1066,6 @@ def _round_item(
 ) -> StepRound:
     """Render one persisted round with its cluster facts and outcomes."""
     cases = _cluster_cases(facts, round_.probe_cluster_id)
-    patch = round_.patch
     return StepRound(
         round_id=round_.id,
         cluster_id=round_.probe_cluster_id,
@@ -1055,7 +1085,7 @@ def _round_item(
             if round_.candidate_ref is not None
             else None
         ),
-        patch=StepRoundPatch.model_validate(patch) if isinstance(patch, dict) else None,
+        patch=_round_patch(round_.patch),
         push=StepRoundPush(
             status=cast(RoundPushStatus, round_.push_status),
             attempts=round_.push_attempts,

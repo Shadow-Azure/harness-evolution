@@ -543,21 +543,39 @@ describe("run detail conformance", () => {
     expect(commit.text()).toContain(finalCommit.slice(0, 12));
   });
 
-  it("colors added, deleted, hunk and context diff lines", () => {
+  it("renders one diff block per stored file and colors patch lines", () => {
     const wrapper = mount(DiffView, {
       props: {
         patch: {
-          file: "SKILL.md",
-          lines: ["@@ -1 +1 @@", "-old", "+new", " context"],
+          files: [
+            {
+              file: "SKILL.md",
+              lines: ["@@ -1 +1 @@", "-old", "+new", " context"],
+              overwrite: false,
+            },
+            {
+              file: "config/synthetic-review.json",
+              lines: ["- 10", "+ 60"],
+              overwrite: true,
+            },
+          ],
+          note: "多文件修复",
         },
       },
     });
 
+    expect(wrapper.findAll(".fhead").map((node) => node.text())).toEqual([
+      "SKILL.md",
+      "config/synthetic-review.json",
+    ]);
     const lines = wrapper.findAll(".dline");
+    expect(lines).toHaveLength(6);
     expect(lines[0]?.classes()).toContain("hunk");
     expect(lines[1]?.classes()).toContain("del");
     expect(lines[2]?.classes()).toContain("add");
     expect(lines[3]?.classes()).toContain("ctx");
+    expect(lines[4]?.classes()).toContain("del");
+    expect(lines[5]?.classes()).toContain("add");
   });
 
   it("renders attribution summary rows with cached and fresh sources", () => {

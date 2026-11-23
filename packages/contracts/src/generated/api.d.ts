@@ -4475,19 +4475,32 @@ export interface components {
             status: "pending" | "evaluating" | "completed" | "failed" | "timeout";
         };
         /**
-         * StepRoundPatch
-         * @description Patch preview stored with the round.
-         *
-         *     ``note`` carries the patch source's one-line change description (for the
-         *     minimal-config source it starts with "最小配置变更"). Rounds published
-         *     before the patch-source seam persist only ``file``/``lines``, so the field
-         *     stays optional and older snapshots keep rendering unchanged.
+         * StepRoundFilePatch
+         * @description One file inside a round's patch preview.
          */
-        StepRoundPatch: {
+        StepRoundFilePatch: {
             /** File */
             file: string;
             /** Lines */
             lines: string[];
+            /**
+             * Overwrite
+             * @default false
+             */
+            overwrite: boolean;
+        };
+        /**
+         * StepRoundPatch
+         * @description Patch preview projected from the round's stored bundle.
+         *
+         *     The durable shape carries ``files[]`` plus ``note``/``intent``/``report``,
+         *     and single-file rounds also keep the legacy ``file``/``lines`` keys. This
+         *     read model is built from :func:`stored_bundle` instead of validating the
+         *     raw dictionary, so a later writer field cannot break step 6 again.
+         */
+        StepRoundPatch: {
+            /** Files */
+            files: components["schemas"]["StepRoundFilePatch"][];
             /** Note */
             note?: string | null;
         };

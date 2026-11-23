@@ -714,8 +714,21 @@ async def main() -> None:
                     "seq": 1,
                     "status": "accepted",
                     "patch": {
-                        "file": "SKILL.md",
-                        "lines": ["@@ -1 +1 @@", "- 读取索引", "+ 读取索引前校验快照字段"],
+                        "files": [
+                            {
+                                "file": "SKILL.md",
+                                "lines": ["@@ -1 +1 @@", "- 读取索引", "+ 读取索引前校验快照字段"],
+                                "overwrite": False,
+                            },
+                            {
+                                "file": "config/synthetic-review.json",
+                                "lines": ["-  \"requestTimeoutSeconds\": 30", "+  \"requestTimeoutSeconds\": 60"],
+                                "overwrite": True,
+                            },
+                        ],
+                        "note": "启用快照字段校验并放宽请求超时",
+                        "intent": None,
+                        "report": [],
                     },
                     "candidate_ref": "evo/run-v2-completed/candidate/r1",
                     "candidate_commit": "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12",
