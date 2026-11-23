@@ -457,11 +457,17 @@ jobs:
         run: |
           set -euo pipefail
           LOG="$RUNNER_TEMP/release.log"
-          CODES="$(grep -Eo 'ATTRIBUTION_(BWRAP_MISSING|BWRAP_UNUSABLE|PROVIDER_UNSUPPORTED|CONFIG_INVALID)' "$LOG" 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/ $//' || true)"
+          # 只匹配 preflight 真正输出的 error_code= 行；release.sh 自己的提示文案里
+          # 也提到两个 BWRAP 错误码，直接 grep 全文会把两个都匹配进来。
+          CODES="$(grep -Eo 'error_code=ATTRIBUTION_[A-Z_]+' "$LOG" 2>/dev/null | sed 's/^error_code=//' | sort -u | tr '\n' ' ' | sed 's/ $//' || true)"
           {
             echo "## Deploy 失败"
             echo
-            echo "错误码：\`${CODES:-未识别}\`。release.sh 在迁移、切换 \`current\` 和重启之前退出，旧 release 继续服务。"
+            if [ -n "$CODES" ]; then
+              echo "归因预检错误码：\`$CODES\`。release.sh 在迁移、切换 \`current\` 和重启之前退出，旧 release 继续服务。"
+            else
+              echo "release 在迁移、切换 \`current\` 或重启/探活阶段失败；请核对上方日志与 \`current\` 软链，必要时按部署文档回滚。"
+            fi
             echo
             case "$CODES" in
               *ATTRIBUTION_BWRAP_MISSING*)
@@ -470,14 +476,15 @@ jobs:
               *ATTRIBUTION_BWRAP_UNUSABLE*)
                 echo "\`bubblewrap\` 存在但以 \`harness\` 身份运行命名空间探针失败。检查主机命名空间/seccomp 策略；Ubuntu 24.04 可先用 Provision 的 \`install\` 安装 AppArmor profile。"
                 ;;
-              *ATTRIBUTION_PROVIDER_UNSUPPORTED*)
-                echo "公共 Provider 缺少 Skill 能力；检查 \`AI_AGENT_PROVIDER\` 与 Provider 配置。"
-                ;;
               *ATTRIBUTION_CONFIG_INVALID*)
                 echo "归因配置非法；检查 \`AI_AGENT_PROVIDER\` 与相关 Secrets，日志不会输出具体值。"
                 ;;
               *)
-                echo "查看上方 release 日志；归因前置的排查入口见 [部署文档](https://github.com/${{ github.repository }}/blob/main/docs/deployment.md#provision-入口)。"
+                if [ -n "$CODES" ]; then
+                  echo "归因前置的排查入口见 [部署文档](https://github.com/${{ github.repository }}/blob/main/docs/deployment.md#provision-入口)。"
+                else
+                  echo "查看上方 release 日志；归因前置的排查入口见 [部署文档](https://github.com/${{ github.repository }}/blob/main/docs/deployment.md#provision-入口)。"
+                fi
                 ;;
             esac
             echo

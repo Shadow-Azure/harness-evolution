@@ -30,11 +30,11 @@ Bootstrap is done by [deploy/bootstrap-server.sh](../deploy/bootstrap-server.sh)
 
 ## Provision entry
 
-The attribution Skill's `bubblewrap` is a system package; the `deploy` user has no apt/dpkg rights, and routine releases only use `attribution.preflight` as the gate. Existing hosts use a standalone [Provision workflow](../.github/workflows/provision.yml): `workflow_dispatch` + `environment: production` (required reviewers can be configured), triggerable only from `main`, with `check` / `install` / `dry-run` modes. It calls [provision-bubblewrap.sh](../deploy/provision-bubblewrap.sh), which only verifies when installed, installs when missing, and runs a minimal namespace probe as `harness`; on Ubuntu 24.04 the AppArmor userns restriction is opened by the profile the script installs at `/etc/apparmor.d/bwrap-userns-restrict` (only for `/usr/bin/bwrap`, not the host-wide sysctl); `ATTRIBUTION_BWRAP_MISSING` / `ATTRIBUTION_BWRAP_UNUSABLE` match the preflight codes. The credentials are the `production` environment's `PROVISION_SSH_KEY` (dedicated root private key) and the optional `PROVISION_SSH_USER` (default `root`), and they serve Provision only; setup, rotation, and the first enablement live in the [deployment playbook](../plans/deploy-aliyun-playbook.md#4-github-仓库配置网页粘贴).
+The attribution Skill's `bubblewrap` is a system package; the `deploy` user has no apt/dpkg rights, and routine releases only use `attribution.preflight` as the gate. Existing hosts use a standalone [Provision workflow](../.github/workflows/provision.yml): `workflow_dispatch` + `environment: production`; only a dispatch from `main` runs; modes are `check` / `install` / `dry-run`. It calls [provision-bubblewrap.sh](../deploy/provision-bubblewrap.sh), which only verifies when installed, installs when missing, and runs a namespace probe as `harness`; on Ubuntu 24.04 the AppArmor userns restriction is opened by the profile the script installs at `/etc/apparmor.d/bwrap-userns-restrict` (only for the resolved bwrap path, not the host-wide sysctl); `ATTRIBUTION_BWRAP_MISSING` / `ATTRIBUTION_BWRAP_UNUSABLE` match the preflight codes. The credentials are the `production` environment's `PROVISION_SSH_KEY` (dedicated root private key) and the optional Variable `PROVISION_SSH_USER` (default `root`); see the [deployment playbook](../plans/deploy-aliyun-playbook.md#4-github-仓库配置网页粘贴) for the secret read scope and rotation.
 
 ## New-host cloud-init
 
-When creating an ECS instance, use [deploy/cloud-init.yaml](../deploy/cloud-init.yaml) to install `bubblewrap` at creation; `bootstrap-server.sh` remains the source of truth for the base package list, and bootstrap still needs one root run after creation. The Provision entry remains the verification and recovery path.
+When creating an ECS instance, use [deploy/cloud-init.yaml](../deploy/cloud-init.yaml) to install `bubblewrap` at creation; Ubuntu 24.04 still needs one Provision `install` after creation for the profile. `bootstrap-server.sh` remains the source of truth for the base package list, and bootstrap still needs one root run after creation.
 
 ## GitHub configuration
 
@@ -44,8 +44,8 @@ When creating an ECS instance, use [deploy/cloud-init.yaml](../deploy/cloud-init
 | `ALIYUN_USER` | Secret | SSH user (`deploy`) |
 | `ALIYUN_SSH_KEY` | Secret | deploy user's ed25519 private key |
 | `ALIYUN_SSH_PORT` | Variable | SSH port (default 22) |
-| `PROVISION_SSH_KEY` | Environment Secret | Dedicated root private key for the `production` environment, readable only by the Provision job |
-| `PROVISION_SSH_USER` | Environment Secret | Optional; Provision SSH user (default `root`) |
+| `PROVISION_SSH_KEY` | Environment Secret | Dedicated root private key for the `production` environment; see the playbook for its read scope |
+| `PROVISION_SSH_USER` | Variable | Optional; Provision SSH user (default `root`, must be root) |
 | `HE_DATA_DIR` | Variable | Absolute data-directory path; empty uses `/var/lib/harness-evolution/data` |
 | `XRAY_CONFIG` | Environment Secret | Optional: complete Xray JSON (VLESS outbound plus loopback mixed inbound), see [Git egress proxy](git-proxy.en.md) |
 | `production` | Environment | Protective environment for the deploy job; can require approval |
@@ -64,7 +64,7 @@ Model review and patch generation take Secrets `AI_AGENT_PROVIDER`, `HE_AI_AGENT
 
 ### Attribution runtime
 
-Binding attribution and wizard recomputation share the provider and model. Linux Claude needs `bubblewrap`: existing hosts install it through the [Provision entry](deployment.en.md#provision-entry), and new hosts get it from cloud-init. Deployment checks before migration and the API checks again on startup. Read the reason with `journalctl -u harness-api -g attribution.preflight`. Restart after recovery to resume the original binding. See the [service-account probe and report verification](../plans/deploy-aliyun-playbook.md#验证-skill-归因).
+Binding attribution and wizard recomputation share the provider and model. Linux Claude needs `bubblewrap`: existing hosts install it through the [Provision entry](deployment.en.md#provision-entry), and new hosts run Provision `install` once after cloud-init. Deployment checks before migration and the API checks again on startup. Read the reason with `journalctl -u harness-api -g attribution.preflight`. Restart after recovery to resume the original binding. See the [service-account probe and report verification](../plans/deploy-aliyun-playbook.md#验证-skill-归因).
 
 ## Claude Code
 

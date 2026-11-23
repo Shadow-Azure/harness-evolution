@@ -41,6 +41,7 @@ USAGE
 require_root() {
   if [ "$(id -u)" -ne 0 ]; then
     log "需要 root 运行（sudo bash $0 --${MODE}）"
+    emit not-root PROVISION_NOT_ROOT
     exit "$EXIT_USAGE"
   fi
 }
@@ -79,27 +80,45 @@ apparmor_userns_restricted() {
 }
 
 install_apparmor_profile() {
+  local binary="$1"
   local parser profile
+  case "$binary" in
+    /*) ;;
+    *)
+      log "bwrap 路径不是绝对路径，拒绝写 AppArmor profile: $binary"
+      return 1
+      ;;
+  esac
+  case "$binary" in
+    *[[:space:]]*)
+      log "bwrap 路径含空白，拒绝写 AppArmor profile: $binary"
+      return 1
+      ;;
+  esac
   parser="$(command -v apparmor_parser 2>/dev/null || true)"
   if [ -z "$parser" ]; then
     log "主机启用了 AppArmor userns 限制，但缺少 apparmor_parser"
     return 1
   fi
   profile=/etc/apparmor.d/bwrap-userns-restrict
-  log "安装 bwrap 专用 AppArmor profile: $profile"
-  cat > "$profile" <<'PROFILE'
-# 只放行 /usr/bin/bwrap 的 unprivileged user namespace 创建。
-# Ubuntu 24.04+ 默认由 AppArmor 限制 userns；主机级 kernel.apparmor_restrict_unprivileged_userns
-# 保持为 1，不扩大到其他程序。
-abi <abi/4.0>,
-include <tunables/global>
-
-profile bwrap /usr/bin/bwrap flags=(unconfined) {
-  userns,
-
-  include if exists <local/bwrap>
-}
-PROFILE
+  if command -v dpkg-query >/dev/null 2>&1 && dpkg-query -S "$profile" >/dev/null 2>&1; then
+    log "profile 已由系统包管理，拒绝覆盖: $profile"
+    return 1
+  fi
+  log "安装 bwrap 专用 AppArmor profile: $profile（binary: $binary）"
+  {
+    echo "# 只放行指定 bwrap 路径的 unprivileged user namespace 创建。"
+    echo "# Ubuntu 24.04+ 默认由 AppArmor 限制 userns；主机级 kernel.apparmor_restrict_unprivileged_userns"
+    echo "# 保持为 1，不扩大到其他程序。"
+    echo "abi <abi/4.0>,"
+    echo "include <tunables/global>"
+    echo
+    echo "profile bwrap $binary flags=(unconfined) {"
+    echo "  userns,"
+    echo
+    echo "  include if exists <local/bwrap>"
+    echo "}"
+  } > "$profile"
   chmod 644 "$profile"
   "$parser" -r "$profile"
 }
@@ -137,7 +156,7 @@ verify_bubblewrap() {
 
 # install 模式专用：先验证；若只因 AppArmor userns 限制失败，安装专用 profile 后重试。
 probe_or_fix() {
-  local status
+  local binary status
   if verify_bubblewrap; then
     return 0
   else
@@ -149,8 +168,13 @@ probe_or_fix() {
   if ! apparmor_userns_restricted; then
     return "$status"
   fi
+  binary="$(bwrap_binary)"
+  if [ -z "$binary" ] || ! check_version "$binary"; then
+    # 二进制损坏/不可执行时，AppArmor profile 不能解决问题。
+    return "$status"
+  fi
   log "检测到 AppArmor unprivileged userns 限制；安装 bwrap 专用 profile 后重试"
-  if ! install_apparmor_profile; then
+  if ! install_apparmor_profile "$binary"; then
     emit unusable ATTRIBUTION_BWRAP_UNUSABLE
     return "$EXIT_BWRAP_UNUSABLE"
   fi
@@ -170,7 +194,7 @@ dry_run() {
   fi
   log "服务账号: $SERVICE_USER"
   log "dry-run 未改动主机"
-  emit dry-run NONE
+  emit dry-run PROVISION_DRY_RUN
   return 0
 }
 

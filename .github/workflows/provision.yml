@@ -1,7 +1,7 @@
 # 生产机 OS 包 provisioning：安装/验证归因 Skill 的 bubblewrap 前置。
 # 独立手动入口，避免把 apt 权限交给 deploy，也避免每次发布携带 root。
 # 前置：Secret ALIYUN_HOST / production Environment Secret PROVISION_SSH_KEY
-#       （专用 root 私钥），可选 Environment Secret PROVISION_SSH_USER（默认 root）；
+#       （专用 root 私钥），可选 Variable PROVISION_SSH_USER（默认 root）；
 #       Variable ALIYUN_SSH_PORT（默认 22）。
 #       production environment 可配置 required reviewers 作为人工审批。
 # 安全：只允许从 main 触发（脚本以 root 执行，必须来自已合并代码）；私钥只写
@@ -35,7 +35,7 @@ jobs:
     env:
       SSH_HOST: ${{ secrets.ALIYUN_HOST }}
       SSH_PORT: ${{ vars.ALIYUN_SSH_PORT || '22' }}
-      SSH_USER: ${{ secrets.PROVISION_SSH_USER || 'root' }}
+      SSH_USER: ${{ vars.PROVISION_SSH_USER || 'root' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -124,6 +124,12 @@ jobs:
                 ;;
               PROVISION_SSH_FAILED)
                 echo "SSH 连接或认证失败；检查 ALIYUN_HOST / PROVISION_SSH_USER / PROVISION_SSH_KEY 与主机 authorized_keys 是否一致。"
+                ;;
+              PROVISION_NOT_ROOT)
+                echo "SSH 用户不是 root；把 Variable \`PROVISION_SSH_USER\` 设为 \`root\`（或具备等价 root 权限的账号）。"
+                ;;
+              PROVISION_DRY_RUN)
+                echo "dry-run 只打印计划，未验证主机；运行 \`check\` 或 \`install\` 获取真实状态。"
                 ;;
               *)
                 echo "未识别结果；查看上方 Provision 日志与 [部署文档](https://github.com/${{ github.repository }}/blob/main/docs/deployment.md#provision-入口)。"

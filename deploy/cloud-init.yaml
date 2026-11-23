@@ -3,7 +3,8 @@
 # 用法：购买 ECS 时把本文件作为「用户数据 / cloud-init」传入（或等价 Ansible base role）。
 # 边界：bootstrap-server.sh 仍是全部基础包的 source of truth，本文件只提前保证
 #       bubblewrap 存在，避免首次 Deploy 被 attribution.preflight 拦下。
-#       创建后仍需以 root 执行 bootstrap-server.sh 完成用户/MySQL/nginx/systemd。
+#       创建后仍需以 root 执行 bootstrap-server.sh 完成用户/MySQL/nginx/systemd；
+#       Ubuntu 24.04 还需跑一次 Provision install 应用 AppArmor userns profile。
 package_update: true
 package_upgrade: false
 packages:
