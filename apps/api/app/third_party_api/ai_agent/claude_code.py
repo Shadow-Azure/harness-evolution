@@ -87,19 +87,27 @@ ANALYZE_TOOLS: Final = ("Read", "Write")
 """The exact built-in tool set one analyze call may use.
 
 ``--bare`` narrows the CLI tool set to ``Bash``/``Edit``/``Read`` and therefore
-removes ``Write`` entirely, so analyze cannot use ``--bare``. Naming the set
-explicitly keeps the surface at the two tools the submission contract needs:
-read the schema and write the result literal.
+removes ``Write`` entirely, so neither phase passes it. Naming the set
+explicitly keeps analyze at the two tools the submission contract needs: read
+the schema and write the result literal.
 """
 
 SUBMISSION_TOOL: Final = "Write"
-"""Tool that performs the single write the analyze submission channel accepts."""
+"""Tool that performs the single submission write both phases accept."""
+
+EDIT_TOOLS: Final = (*READ_ONLY_TOOLS, SUBMISSION_TOOL)
+"""The exact built-in tool set one edit call may use.
+
+A real edit session explores before it submits, so it keeps the read-only tools
+and adds the submission write. ``Bash`` and the ``Edit`` tool stay out:
+exploration is read-only and the plan is the only write (07 §5.5.4).
+"""
 
 _MAX_TOOLS_DETAIL_CHARS: Final = 240
 """Upper bound for the tool list and denial summary kept on a failure detail."""
 
-EDIT_MAX_TURNS: Final = 40
-"""Turn cap for one edit call; the process timeout is the other spend guard."""
+EDIT_MAX_TURNS: Final = 120
+"""Turn cap for one edit call; ``EDIT_TIMEOUT_SECONDS`` stays the wall-clock guard."""
 
 HEALTH_TIMEOUT_SECONDS: Final = 10.0
 """Upper bound for the ``--version`` health probe."""
@@ -134,6 +142,16 @@ class _ParsedCliResult:
     def is_error(self) -> bool:
         """Return whether the CLI marked its result as an application error."""
         return self.result is not None and self.result.get("is_error") is True
+
+
+@dataclass(frozen=True, slots=True)
+class _HeadlessProfile:
+    """The per-phase parts of one headless CLI invocation."""
+
+    prompt: str
+    tools: tuple[str, ...]
+    rules: tuple[str, ...]
+    max_turns: int | None = None
 
 
 class ClaudeCodeProvider(AIAgentProvider):
@@ -233,8 +251,15 @@ class ClaudeCodeProvider(AIAgentProvider):
             argv,
             cwd=directory,
             timeout_seconds=ANALYZE_TIMEOUT_SECONDS,
+            started=started,
         )
-        self._ensure_submission_tool(parsed, attempts=1, outcomes=(), started=started)
+        self._ensure_submission_tool(
+            parsed,
+            attempts=1,
+            outcomes=(),
+            started=started,
+            phase="analysis",
+        )
 
         outcomes: list[SubmissionOutcome] = [
             self._submission.collect(prep, request.output_model.model_validate),
@@ -276,6 +301,7 @@ class ClaudeCodeProvider(AIAgentProvider):
                     retry_argv,
                     cwd=directory,
                     timeout_seconds=ANALYZE_TIMEOUT_SECONDS,
+                    started=started,
                 )
             except AgentProviderError as exc:
                 # The retry process failed before it could submit anything, so
@@ -287,6 +313,7 @@ class ClaudeCodeProvider(AIAgentProvider):
                 attempts=2,
                 outcomes=tuple(outcomes),
                 started=started,
+                phase="analysis",
             )
             outcomes.append(
                 self._submission.collect(prep, request.output_model.model_validate),
@@ -326,26 +353,49 @@ class ClaudeCodeProvider(AIAgentProvider):
         attempts: int,
         outcomes: Sequence[SubmissionOutcome],
         started: float,
+        phase: str = "analysis",
     ) -> None:
         """Fail immediately when the CLI tool set cannot perform the submission.
 
         The allow rule is not a tool provider: naming ``Write`` in
-        ``--allowed-tools`` cannot bring it back after ``--bare`` removed it. A
+        ``--allowed-tools`` cannot bring it back after the CLI removed it. A
         ``system/init`` document makes that mismatch visible before the retry.
         """
         if not parsed.tools or SUBMISSION_TOOL in parsed.tools:
             return
         raise AgentProviderError(
-            "claude-code analysis tool set does not include Write",
+            f"claude-code {phase} tool set does not include Write",
             retryable=False,
             provider_id=self.provider_id,
-            detail=_bounded_detail(
-                f"submission tool {SUBMISSION_TOOL} is missing; "
-                f"tools={_tool_list_detail(parsed.tools)}",
-            ),
+            detail=_missing_submission_tool_detail(parsed.tools),
             trace=AgentCallTrace(attempts=attempts, submission_rounds=len(outcomes)),
             usage=parsed.usage,
             latency_ms=_elapsed_ms(started, self._clock),
+        )
+
+    def _missing_submission_tool_error(
+        self,
+        phase: str,
+        parsed: _ParsedCliResult,
+        *,
+        started: float | None,
+    ) -> AgentProviderError:
+        """Build the terminal error for a tool set that cannot submit.
+
+        The non-zero exit path and the exit-0 ``is_error`` path both land here,
+        so the missing tool, its ``tools=`` detail, and the call provenance stay
+        identical no matter how the CLI reported the failure. ``started`` is
+        ``None`` only when the caller did not measure the call, in which case
+        the latency stays unknown (``0``) rather than invented.
+        """
+        return AgentProviderError(
+            f"claude-code {phase} tool set does not include Write",
+            retryable=False,
+            provider_id=self.provider_id,
+            detail=_missing_submission_tool_detail(parsed.tools),
+            trace=AgentCallTrace(attempts=1),
+            usage=parsed.usage,
+            latency_ms=_elapsed_ms(started, self._clock) if started is not None else 0,
         )
 
     async def edit_workspace(self, request: EditRequest) -> EditResult:
@@ -363,22 +413,49 @@ class ClaudeCodeProvider(AIAgentProvider):
             filename=EDIT_PLAN_FILENAME,
         )
         prompt = _compose_prompt(request.prompt, prep.prompt_addendum)
-        argv = self._edit_argv(prompt, prep, settings_file=self._settings_file())
+        # The workspace is resolved once and used for both ``cwd`` and the
+        # permission rules, mirroring analyze: the CLI compares the requested
+        # path with the path the symlinks resolve to.
+        directory = _resolved_directory(request.workspace)
+        argv = self._edit_argv(
+            prompt,
+            prep,
+            directory=directory,
+            settings_file=self._settings_file(),
+        )
         _, parsed = await self._call(
             "edit",
             argv,
-            cwd=request.workspace,
+            cwd=directory,
             timeout_seconds=EDIT_TIMEOUT_SECONDS,
+            started=started,
+        )
+        self._ensure_submission_tool(
+            parsed,
+            attempts=1,
+            outcomes=(),
+            started=started,
+            phase="edit",
         )
         outcome = self._submission.collect(prep, EditPlan.model_validate)
         trace = _call_trace((outcome,))
         validated = outcome.validated
         if not outcome.is_ok or not isinstance(validated, EditPlan):
+            # A denied submission path is the concrete reason; the bare collect
+            # status would hide it behind ``missing``.
+            parts: list[str] = []
+            denial = _submission_denial_detail(parsed)
+            if denial is not None:
+                parts.append(denial)
+            parts.append(_submission_detail(outcome))
+            diagnostics = _cli_result_diagnostics(parsed)
+            if diagnostics:
+                parts.append(diagnostics)
             raise AgentProviderError(
                 "claude-code edit submission failed validation",
                 retryable=False,
                 provider_id=self.provider_id,
-                detail=_submission_detail(outcome),
+                detail=_bounded_detail("; ".join(parts)),
                 trace=trace,
                 usage=parsed.usage,
                 latency_ms=_elapsed_ms(started, self._clock),
@@ -450,6 +527,7 @@ class ClaudeCodeProvider(AIAgentProvider):
         *,
         cwd: Path,
         timeout_seconds: float,
+        started: float | None = None,
     ) -> tuple[ClaudeCliResult, _ParsedCliResult]:
         """Invoke the transport and normalize cancellation, exit, and output errors."""
         try:
@@ -474,12 +552,22 @@ class ClaudeCodeProvider(AIAgentProvider):
         parsed = _parse_cli_stdout(result.stdout, fallback_model=self.provider_id)
         if parsed.capabilities:
             self._capabilities = parsed.capabilities
+        # A tool set that cannot write ends the call no matter how the CLI
+        # reported it; name the missing tool instead of burning a retry against
+        # the same surface. The exit-0 non-error shape stays with
+        # ``_ensure_submission_tool`` in the caller, which knows the attempts.
+        if (
+            parsed.tools
+            and SUBMISSION_TOOL not in parsed.tools
+            and (result.returncode != 0 or parsed.is_error)
+        ):
+            raise self._missing_submission_tool_error(phase, parsed, started=started)
         if result.returncode != 0:
             raise AgentProviderError(
                 f"claude-code {phase} call exited unsuccessfully",
                 retryable=True,
                 provider_id=self.provider_id,
-                detail=_bounded_detail(_diagnostics(result)),
+                detail=_failure_detail(result, parsed),
             )
         if parsed.result is None:
             raise AgentProviderError(
@@ -531,6 +619,67 @@ class ClaudeCodeProvider(AIAgentProvider):
             detail=detail,
         )
 
+    def _headless_argv(
+        self,
+        profile: _HeadlessProfile,
+        *,
+        settings_file: Path,
+    ) -> tuple[str, ...]:
+        """Build the one headless ``-p`` invocation shape both phases use.
+
+        ``--bare`` is deliberately absent: it removes ``Write`` from the tool
+        set, so neither submission file could ever be produced. The hardened
+        flags keep its context minimization (no CLAUDE.md auto-discovery, hooks
+        and plugins from user/project settings ignored, MCP closed, no
+        command-running tools) while ``--tools`` limits the built-in set and
+        ``--allowed-tools`` grants the absolute paths the phase needs. Writes
+        are permission-checked against ``Edit`` rules, not ``Write`` rules.
+        """
+        argv = [
+            self._binary(),
+            "--safe-mode",
+            "--restricted",
+            "--strict-mcp-config",
+            "-p",
+            profile.prompt,
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--permission-mode",
+            PERMISSION_MODE,
+            "--tools",
+            ",".join(profile.tools),
+            "--allowed-tools",
+            ",".join(profile.rules),
+            "--no-session-persistence",
+        ]
+        if profile.max_turns is not None:
+            argv.extend(("--max-turns", str(profile.max_turns)))
+        if settings_file.is_file():
+            argv.extend(("--settings", str(settings_file)))
+        return tuple(argv)
+
+    def _submission_rules(
+        self,
+        *,
+        directory: Path,
+        result_path: Path,
+        read_tree: bool,
+    ) -> tuple[str, ...]:
+        """Build the absolute allow rules one phase needs for its submission.
+
+        The submission write is the same in both phases: Claude Code matches
+        file writes only against ``Edit(path)`` rules naming the absolute path.
+        Analyze only reads the derived schema beside its result, while edit
+        explores the prepared workspace and therefore needs the tree-scoped
+        ``Read`` rule.
+        """
+        if read_tree:
+            read_rule = f"Read({_permission_rule_path(directory)}/**)"
+        else:
+            read_rule = f"Read({_permission_rule_path(directory / SCHEMA_FILENAME)})"
+        return (read_rule, f"Edit({_permission_rule_path(result_path)})")
+
     def _analyze_argv(
         self,
         prompt: str,
@@ -539,77 +688,49 @@ class ClaudeCodeProvider(AIAgentProvider):
         directory: Path,
         settings_file: Path,
     ) -> tuple[str, ...]:
-        """Build one analyze argv; analyze is stateless and never resumes a session.
+        """Build one analyze argv from the shared headless shape.
 
-        ``--bare`` is deliberately absent: it removes ``Write`` from the tool
-        set, so the submission file could never be produced. The hardened flags
-        keep its context minimization (no CLAUDE.md auto-discovery, hooks and
-        plugins from user/project settings ignored, MCP closed, no
-        command-running tools) while ``--tools`` limits the built-in set to the
-        two tools the submission needs. Writes are permission-checked against
-        ``Edit`` rules, not ``Write`` rules, so the one write target is granted
-        through an absolute ``Edit(//...)`` rule.
+        Analyze assembles only its phase differences: the two-tool set and the
+        schema-plus-result rules. The binary, output format, permission mode,
+        and session policy live in :meth:`_headless_argv`.
         """
-        rules = ",".join(
-            (
-                f"Read({_permission_rule_path(directory / SCHEMA_FILENAME)})",
-                f"Edit({_permission_rule_path(prep.result_path)})",
+        profile = _HeadlessProfile(
+            prompt=prompt,
+            tools=ANALYZE_TOOLS,
+            rules=self._submission_rules(
+                directory=directory,
+                result_path=prep.result_path,
+                read_tree=False,
             ),
         )
-        argv = [
-            self._binary(),
-            "--safe-mode",
-            "--restricted",
-            "--strict-mcp-config",
-            "-p",
-            prompt,
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            "--permission-mode",
-            PERMISSION_MODE,
-            "--tools",
-            ",".join(ANALYZE_TOOLS),
-            "--allowed-tools",
-            rules,
-            "--no-session-persistence",
-        ]
-        if settings_file.is_file():
-            argv.extend(("--settings", str(settings_file)))
-        return tuple(argv)
+        return self._headless_argv(profile, settings_file=settings_file)
 
     def _edit_argv(
         self,
         prompt: str,
         prep: SubmissionPrep,
         *,
+        directory: Path,
         settings_file: Path,
     ) -> tuple[str, ...]:
-        """Build one edit argv; exploration is read-only and stateless.
+        """Build one edit argv from the shared headless shape.
 
-        ``--max-turns`` bounds one call's spend; the timeout constant bounds its
-        wall clock. ``--no-session-persistence`` matches analyze (#488): an edit
-        call is a single request, so the shared settings directory never needs
-        to be writable by the service user.
+        Edit adds the read-only exploration tools, the tree-scoped read rule,
+        and the turn cap; everything else is the analyze-verified headless
+        shape. ``--no-session-persistence`` keeps an edit call a single request,
+        so the shared settings directory never needs to be writable.
         """
-        argv = [
-            self._binary(),
-            "--bare",
-            "-p",
-            prompt,
-            "--output-format",
-            "json",
-            "--permission-mode",
-            PERMISSION_MODE,
-            "--max-turns",
-            str(EDIT_MAX_TURNS),
-            "--allowed-tools",
-            ",".join((*READ_ONLY_TOOLS, *prep.allowed_tools)),
-            "--no-session-persistence",
-        ]
-        if settings_file.is_file():
-            argv.extend(("--settings", str(settings_file)))
-        return tuple(argv)
+        profile = _HeadlessProfile(
+            prompt=prompt,
+            tools=EDIT_TOOLS,
+            rules=self._submission_rules(
+                directory=directory,
+                result_path=prep.result_path,
+                read_tree=True,
+            ),
+            max_turns=EDIT_MAX_TURNS,
+        )
+        return self._headless_argv(profile, settings_file=settings_file)
 
     def _binary(self) -> str:
         return claude_binary(self.settings)
@@ -1019,10 +1140,62 @@ def _cli_result_diagnostics(parsed: _ParsedCliResult) -> str:
 def _diagnostics(result: ClaudeCliResult) -> str:
     """Render a bounded, redacted stderr diagnostic without echoing stdout."""
     parts = [f"exit_code={result.returncode}"]
-    stderr = sanitize_detail(result.stderr, limit=600)
-    if stderr is not None and stderr.strip():
-        parts.append(f"stderr={stderr.strip()}")
+    stderr = _stderr_diagnostic(result)
+    if stderr is not None:
+        parts.append(stderr)
     return "; ".join(parts)
+
+
+def _stderr_diagnostic(result: ClaudeCliResult) -> str | None:
+    """Render the bounded, redacted stderr segment one failure detail may carry."""
+    stderr = sanitize_detail(result.stderr, limit=600)
+    if stderr is None or not stderr.strip():
+        return None
+    return f"stderr={stderr.strip()}"
+
+
+def _missing_submission_tool_detail(tools: Sequence[str]) -> str:
+    """Render the missing-tool detail shared by every fast-fail path."""
+    return _bounded_detail(
+        f"submission tool {SUBMISSION_TOOL} is missing; tools={_tool_list_detail(tools)}",
+    )
+
+
+def _failure_detail(result: ClaudeCliResult, parsed: _ParsedCliResult) -> str:
+    """Render one non-zero exit with the CLI's structured evidence first.
+
+    The result document is the actionable evidence — whether the call was an
+    application error, why it stopped, and how many turns it used — while stderr
+    is often only a diagnostic line. The model's result text is never echoed.
+    """
+    parts = [
+        f"exit_code={result.returncode}",
+        f"is_error={'true' if parsed.is_error else 'false'}",
+    ]
+    subtype = _non_blank_text(parsed.result, "subtype")
+    if subtype is not None:
+        parts.append(f"subtype={sanitize_message(subtype, limit=80)}")
+    status = _api_error_status(parsed.result)
+    if status is not None:
+        parts.append(f"api_error_status={status}")
+    diagnostics = _cli_result_diagnostics(parsed)
+    if diagnostics:
+        parts.append(diagnostics)
+    stderr = _stderr_diagnostic(result)
+    if stderr is not None:
+        parts.append(stderr)
+    return _bounded_detail("; ".join(parts))
+
+
+def _api_error_status(payload: Mapping[str, Any] | None) -> str | None:
+    """Render a concrete HTTP status from an error result, bounded."""
+    if payload is None:
+        return None
+    status = payload.get("api_error_status")
+    if not isinstance(status, (int, float, str)) or isinstance(status, bool):
+        return None
+    text = str(status).strip()[:40]
+    return text or None
 
 
 def _error_result_detail(payload: Mapping[str, Any], result: ClaudeCliResult) -> str:
@@ -1037,11 +1210,9 @@ def _error_result_detail(payload: Mapping[str, Any], result: ClaudeCliResult) ->
     subtype = payload.get("subtype")
     if isinstance(subtype, str) and subtype.strip():
         parts.append(f"subtype={subtype.strip()}")
-    status = payload.get("api_error_status")
-    if isinstance(status, (int, float, str)) and not isinstance(status, bool):
-        status_text = str(status).strip()
-        if status_text:
-            parts.append(f"api_error_status={status_text[:40]}")
+    status = _api_error_status(payload)
+    if status is not None:
+        parts.append(f"api_error_status={status}")
     parts.append(f"exit_code={result.returncode}")
     return "; ".join(parts)
 
@@ -1099,6 +1270,7 @@ def _version_line(stdout: str) -> str:
 __all__ = [
     "ANALYZE_TOOLS",
     "EDIT_PLAN_FILENAME",
+    "EDIT_TOOLS",
     "READ_ONLY_TOOLS",
     "SUBMISSION_TOOL",
     "AsyncioClaudeCliRunner",
