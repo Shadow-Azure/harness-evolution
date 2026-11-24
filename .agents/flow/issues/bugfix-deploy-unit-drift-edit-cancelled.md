@@ -40,6 +40,8 @@ github:
 
 用户看到的是：第 1 轮改动与评测都成功，页面随后在第 6 步报「补丁生成失败」，文案只有 `claude-code edit call was cancelled`；run 没有进入 `blocked`，页面也没有「重试」入口，剩余两个簇永远不会再被处理。这不是模型拒绝、权限拒绝或评测失败，因为同一个 run 的三次 analyze 调用和第 1 轮 edit 调用都成功且有完整 token/费用记录。
 
+2026-11-24 18:20（+08）以 admin 登录生产前端复核：运行页顶部显示「失败」徽标与红色错误条 `patch` / `claude-code edit call was cancelled` / `2026-11-24T16:55:06+08:00`；第 5 步「聚类与严重度」已完成，第 6 步「迭代优化」不可点击，页面没有重试入口；执行日志 22 条，最后两条是 seq 21/22 的 `run_failed`。这与 API/DB 的 `error_stage=patch`、`error_message`、`error_at` 完全一致。
+
 持久事件与 job 记录显示这是一次与部署同秒发生的中断：
 
 | 时间（+08） | 事实 |
@@ -85,7 +87,7 @@ github:
 ### 分析过程
 
 1. **从运行详情读取失败事实**：`evolution_runs` 的 `error_stage=patch` 与 `error_message=claude-code edit call was cancelled`；`evolution_rounds` 第 2 行 `started_at=16:41:32`、`finished_at=16:55:06`、`patch=NULL`；`job_runs` 的 `01M86BF9RNZN7KAMRA95P4Y055` 同为 `failed`，`error` 与 run 完全一致，`cancel_requested=0`。排除人工取消。
-2. **对齐部署时间线**：`journalctl -u harness-api` 显示 16:55:05 `Stopping harness-api.service`，同秒记录 `job execution failed error_type='ConfigError'`，16:55:07 新进程启动；release 目录 `6d11b30` 的 mtime 为 16:54。失败与 `systemctl restart` 同秒，而不是业务超时或外部评测。
+2. **对齐部署时间线**：`journalctl -u harness-api` 显示 16:55:05 `Stopping harness-api.service`，同秒记录 `job execution failed error_type='ConfigError'`，16:55:07 新进程启动；release 目录 `6d11b30` 的 mtime 为 16:54。事件 seq 22 的 traceback 仍指向 `/opt/harness/releases/9377dfd7.../api/...`，说明处理该 job 的进程是部署前启动的旧 release；`current` 在 16:55 才切到 `6d11b30`。失败与 `systemctl restart` 同秒，而不是业务超时或外部评测。
 3. **读取消分类代码**：`AsyncioClaudeCliRunner` 只有在自身超时或任务被 cancel 时才置 `cancelled=True`；本次运行 814 秒小于 1800 秒，且 handler 没有被 cancel（否则 job 会走 `_run()` 的 `CancelledError` 分支并标记 `interrupted`）。剩下的唯一路径是子进程返回 `143`，由 `_is_cancelled()` 命中 `CANCELLED_EXIT_CODE`。
 4. **确认 143 的来源**：`systemctl show harness-api -p KillMode` 返回 `KillMode=control-group`；`/etc/systemd/system/harness-api.service` 的 mtime 是 2026-11-19 23:22；与 `/opt/harness/shared/config/harness-api.service` 做 diff，只差 `KillMode=mixed` 与 `TimeoutStopSec=45` 两行（外加上方注释）。`git log deploy/harness-api.service` 显示这两行由 `#474`（2026-11-21）加入，因此生产 unit 从那天起就没有随发布更新。
 5. **确认部署链路不安装 unit**：`deploy/release.sh` 的顺序是 preflight → Alembic → 切换 `current` → `systemctl restart harness-api` → 健康检查；没有任何 `install` 或 `daemon-reload`。`deploy/bootstrap-server.sh` 才会安装 unit，但它是 root 手动执行的一次性初始化；`deploy.yml` 只调用 `release.sh`。因此 `/opt/harness/shared/config/` 的 unit 是新的，`/etc/` 的 unit 是旧的。
