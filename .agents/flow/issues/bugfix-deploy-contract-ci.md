@@ -8,7 +8,7 @@ id: bugfix-45
 milestone: bugfix
 depends: [bugfix-33]
 priority: P2
-status: ready
+status: done
 scope:
   - deploy/**
   - apps/api/tests/deploy/**
