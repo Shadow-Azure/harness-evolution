@@ -4,7 +4,7 @@ English | [中文](bugfix-deploy-unit-drift-edit-cancelled.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-48
+id: bugfix-49
 milestone: bugfix
 depends:
   - bugfix-11
@@ -30,15 +30,15 @@ github:
 
 ### Problem context
 
-At 2026-11-24 16:55:06 (+08), production evolution run `01M86AXB7180YHS9XY6D67KEG0` (target `codespec-subagent-driven-development@openspec-cn-main-copy-ar-a7ec200-claude-core`, workspace `OpenSpec-cn_SWE-bench`) failed terminally during patch generation of round 2 in step 6/7 "iteration":
+At 2026-11-24 16:55:06 (+08), production evolution run `01M86AXB7180YHS9XY6D67KEG0` (target `codespec-subagent-driven-development@openspec-cn-main-copy-ar-a7ec200-claude-core`, workspace `OpenSpec-cn_SWE-bench`) failed terminally during patch generation of turn 2 in step 6/7 "iteration":
 
 - Run page: `http://8.149.232.63/workspaces/01M7KJ05ENF9784GPBDV544VB0/evolution/runs/01M86AXB7180YHS9XY6D67KEG0`
 - Database: `status=failed`, `error_stage=patch`, `error_message=claude-code edit call was cancelled`, `error_at=2026-11-24 16:55:06`, `blocked_stage=NULL`, `retry_attempts=0`.
-- Rounds: round 1 was accepted (candidate 85.0 vs baseline 80.0, final commit `c4d3262`); round 2 is `failed` (started 16:41:32, finished 16:55:06, `patch=NULL`); round 3 is still `pending`.
+- Turns: turn 1 was accepted (candidate 85.0 vs baseline 80.0, final commit `c4d3262`); turn 2 is `failed` (started 16:41:32, finished 16:55:06, `patch=NULL`); turn 3 is still `pending`.
 
 ### What the user saw
 
-The first round's change and evaluation succeeded; the page then reported "patch generation failed" in step 6 with only `claude-code edit call was cancelled`. The run did not become `blocked` and the page exposes no retry action, so the remaining two clusters will never be processed. This is not a model refusal, permission denial, or evaluation failure: all three analyze calls and the first edit call in the same run succeeded with non-zero token and cost records.
+The first turn's change and evaluation succeeded; the page then reported "patch generation failed" in step 6 with only `claude-code edit call was cancelled`. The run did not become `blocked` and the page exposes no retry action, so the remaining two clusters will never be processed. This is not a model refusal, permission denial, or evaluation failure: all three analyze calls and the first edit call in the same run succeeded with non-zero token and cost records.
 
 At 2026-11-24 18:20 (+08), the production front end was checked with the admin account: the run page shows the "failed" badge and a red error bar with `patch`, `claude-code edit call was cancelled`, and `2026-11-24T16:55:06+08:00`; step 5 "clusters and severity" is done, step 6 "iteration" is not clickable, and there is no retry action; the execution log has 22 entries, the last two being `run_failed` at seq 21/22. This matches the API/DB `error_stage=patch`, `error_message`, and `error_at` exactly.
 
@@ -48,17 +48,17 @@ Durable events and job rows show an interruption in the same second as a deploym
 |---|---|
 | 16:31:44 | Run created, prepare starts |
 | 16:32:41 | Three clusters created |
-| 16:36:01 | Round 1 `agent.edit` succeeds (`latencyMs=192147`, 86020 tokens, cost 1.2078755) |
+| 16:36:01 | Turn 1 `agent.edit` succeeds (`latencyMs=192147`, 86020 tokens, cost 1.2078755) |
 | 16:36:06 | Candidate pushed, evaluation submitted |
 | 16:41:17 | Evaluation completes: 80.0 → 85.0, `externalVerdict=accept` |
-| 16:41:32 | Round 1 accepted; round 2 job `01M86BF9RNZN7KAMRA95P4Y055` (`evolution_advance`) starts |
+| 16:41:32 | Turn 1 accepted; turn 2 job `01M86BF9RNZN7KAMRA95P4Y055` (`evolution_advance`) starts |
 | 16:54:00 | New release `6d11b30` lands under `/opt/harness/releases/` |
 | 16:55:05 | `systemctl restart harness-api`: `Stopping harness-api.service`, process shutdown begins |
 | 16:55:05 | The same job fails with `ConfigError: claude-code edit call was cancelled`; `cancel_requested=0` |
-| 16:55:06 | Run becomes `failed`; round 2 becomes `failed` |
+| 16:55:06 | Run becomes `failed`; turn 2 becomes `failed` |
 | 16:55:07 | New process finishes startup |
 
-Round 2 ran for 814 seconds, well below `EDIT_TIMEOUT_SECONDS=1800`, so this is not a timeout; `cancel_requested=0`, so it is not a user cancellation. The failure coincides to the second with the deploy restart.
+Turn 2 ran for 814 seconds, well below `EDIT_TIMEOUT_SECONDS=1800`, so this is not a timeout; `cancel_requested=0`, so it is not a user cancellation. The failure coincides to the second with the deploy restart.
 
 ## Goals
 
@@ -70,9 +70,9 @@ Round 2 ran for 814 seconds, well below `EDIT_TIMEOUT_SECONDS=1800`, so this is 
 ## Design authority
 
 - [01 §6 Deployment shape and expansion path](../../../plans/fullstack-design/01-architecture.md): single ECS, release directory, rollback and release boundary.
-- [docs/deployment.md](../../../docs/deployment.md): current release order, rollback, shutdown drain and `HE_JOB_DRAIN_TIMEOUT_SECONDS`.
-- [bugfix-11 deploy restart interruption](../../../.agents/flow/issues/bugfix-deploy-interrupt-recovery.md): leases, heartbeats, drain and the origin of `KillMode=mixed` / `TimeoutStopSec`; this issue fixes the deployment-side installation contract it did not fulfill.
-- [bugfix-45 deploy provisioning contract in CI](../../../.agents/flow/issues/bugfix-deploy-contract-ci.md): the existing pattern of static contract tests under `apps/api/tests/deploy/` and ordering assertions on `release.sh`.
+- [docs/deployment.md](../../../docs/deployment.en.md): current release order, rollback, shutdown drain and `HE_JOB_DRAIN_TIMEOUT_SECONDS`.
+- [bugfix-11 deploy restart interruption](../../../.agents/flow/issues/bugfix-deploy-interrupt-recovery.en.md): leases, heartbeats, drain and the origin of `KillMode=mixed` / `TimeoutStopSec`; this issue fixes the deployment-side installation contract it did not fulfill.
+- [bugfix-45 deploy provisioning contract in CI](../../../.agents/flow/issues/bugfix-deploy-contract-ci.en.md): the existing pattern of static contract tests under `apps/api/tests/deploy/` and ordering assertions on `release.sh`.
 - [systemd.kill](https://www.freedesktop.org/software/systemd/man/latest/systemd.kill.html): the default `KillMode=control-group` sends SIGTERM to every process in the cgroup; `mixed` signals only the main process first and SIGKILLs the rest after the timeout.
 - [Claude Code provider cancellation classification](../../../apps/api/app/third_party_api/ai_agent/claude_code.py): `CANCELLED_EXIT_CODE=143` is classified as `cancelled` with `retryable=False`.
 
@@ -92,7 +92,7 @@ The deeper contract gap is that **a release only updates the `current` symlink a
 4. **Confirm where 143 came from**: `systemctl show harness-api -p KillMode` returns `KillMode=control-group`; `/etc/systemd/system/harness-api.service` has mtime 2026-11-19 23:22; a diff against `/opt/harness/shared/config/harness-api.service` shows only `KillMode=mixed` and `TimeoutStopSec=45` plus the comment above them. `git log deploy/harness-api.service` shows those lines were added by `#474` on 2026-11-21, so the production unit has not been updated by any release since then.
 5. **Confirm the deploy pipeline does not install the unit**: `deploy/release.sh` runs preflight → Alembic → switch `current` → `systemctl restart harness-api` → health check, with no `install` or `daemon-reload`. Only `deploy/bootstrap-server.sh` installs the unit, and that is a one-time root bootstrap; `deploy.yml` only invokes `release.sh`. The staged unit under `/opt/harness/shared/config/` is current, but `/etc/` is stale.
 6. **Connect the failure chain**: at 16:55:05 systemd sends SIGTERM to the whole service cgroup → the `claude` child receives SIGTERM and exits 143 → `_call()` takes `_is_cancelled(result)` → `_cancelled_error("edit")` builds `retryable=False` `AgentProviderError` → `_handle_provider_failure()` calls `_fail_patch_generation()` because the error is not retryable → `ConfigError("claude-code edit call was cancelled")` → run `failed`. Because the handler was not cancelled, `JobRunner._run()` never reached its `interrupted` branch.
-7. **Exclusions**: not the 1800-second timeout (814 seconds); not model or auth (three analyze calls and round 1 edit all succeeded with non-zero tokens/cost in the same run); not user cancellation (`cancel_requested=0`); not Git/workspace (round 1 candidate was pushed; round 2 failed inside the edit call); not evaluation (round 1 was already accepted).
+7. **Exclusions**: not the 1800-second timeout (814 seconds); not model or auth (three analyze calls and turn 1 edit all succeeded with non-zero tokens/cost in the same run); not user cancellation (`cancel_requested=0`); not Git/workspace (turn 1 candidate was pushed; turn 2 failed inside the edit call); not evaluation (turn 1 was already accepted).
 
 ### Why it looked like the AI edit was cancelled
 
@@ -172,7 +172,7 @@ Release-behavior check (test host):
 # 3. After restart, check run / job:
 #    - job.status = interrupted, error = job cancelled during shutdown
 #    - no run error_stage=patch / claude-code edit call was cancelled
-#    - if #578 is merged, job_recovered appears and round 2 continues
+#    - if #578 is merged, job_recovered appears and turn 2 continues
 ```
 
 - Expected: if unit installation fails, the release exits before switching and the old process keeps serving; when the unit is correct, no child exits 143 during restart and the job takes the `interrupted` path.

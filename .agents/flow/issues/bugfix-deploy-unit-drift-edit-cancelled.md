@@ -4,7 +4,7 @@
 
 ```yaml flow
 kind: issue
-id: bugfix-48
+id: bugfix-49
 milestone: bugfix
 depends:
   - bugfix-11
@@ -69,7 +69,7 @@ github:
 
 ## 设计依据
 
-- [01 §6 部署形态与扩展路径](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/fullstack-design/01-architecture.md)：单 ECS、release 目录、回滚与发布边界。
+- [01 §6 部署形态与扩展路径](../../../plans/fullstack-design/01-architecture.md)：单 ECS、release 目录、回滚与发布边界。
 - [docs/deployment.md](../../../docs/deployment.md)：发布顺序、回滚、重启排水与 `HE_JOB_DRAIN_TIMEOUT_SECONDS` 的现状说明。
 - [bugfix-11 部署重启中断自进化 run](../../../.agents/flow/issues/bugfix-deploy-interrupt-recovery.md)：租约、心跳、drain 与 `KillMode=mixed` / `TimeoutStopSec` 的设计来源；本 issue 修复它未兑现的部署侧安装契约。
 - [bugfix-45 部署 provisioning 契约进入 CI](../../../.agents/flow/issues/bugfix-deploy-contract-ci.md)：`apps/api/tests/deploy/` 静态契约测试与 `release.sh` 顺序断言的既有模式。
@@ -157,22 +157,22 @@ pnpm lint:docs
 
 ```sh
 systemctl show harness-api -p KillMode -p TimeoutStopSec
-# 修复前：KillMode=control-group，TimeoutStopSec=90（默认）
-# 修复后：KillMode=mixed，TimeoutStopSec=45
+# Before: KillMode=control-group, TimeoutStopSec=90 (default)
+# After:  KillMode=mixed, TimeoutStopSec=45
 
 diff -u /etc/systemd/system/harness-api.service /opt/harness/shared/config/harness-api.service
-# 修复后：无差异
+# After: no differences
 ```
 
 部署行为验证（测试机）：
 
 ```sh
-# 1. 启动一次跨发布窗口的 evolution edit 调用
-# 2. 在 edit 进行中执行 deploy/release.sh
-# 3. 重启完成后检查 run / job：
-#    - job.status = interrupted，error = job cancelled during shutdown
-#    - run 不出现 error_stage=patch / claude-code edit call was cancelled
-#    - 若 #578 已合并，启动后出现 job_recovered 并继续第 2 轮
+# 1. Start an evolution edit call that spans a release window
+# 2. Run deploy/release.sh while the edit is in flight
+# 3. After restart, check run / job:
+#    - job.status = interrupted, error = job cancelled during shutdown
+#    - no run error_stage=patch / claude-code edit call was cancelled
+#    - if #578 is merged, job_recovered appears and turn 2 continues
 ```
 
 - 预期：unit 安装失败时 release 在切换前退出、旧进程继续服务；unit 正常时重启不产生 143 子进程退出；job 走 `interrupted`。
