@@ -4,7 +4,7 @@ English | [中文](bugfix-claude-edit-tool-surface.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-45
+id: bugfix-46
 milestone: bugfix
 depends: []
 priority: P2
