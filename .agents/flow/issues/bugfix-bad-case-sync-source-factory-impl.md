@@ -8,7 +8,7 @@ id: bugfix-50
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - .agents/flow/issues/bugfix-bad-case-sync-source-factory-impl*
   - .agents/notes/**
