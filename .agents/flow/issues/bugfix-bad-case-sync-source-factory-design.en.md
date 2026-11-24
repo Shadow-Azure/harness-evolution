@@ -8,7 +8,7 @@ id: bugfix-42
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - plans/fullstack-design/16-bad-case-sync-source-factory.md
   - plans/fullstack-design/README.md

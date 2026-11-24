@@ -37,13 +37,19 @@
    - Variable `ALIYUN_SSH_PORT` = 22。
 2. Settings → Environments → 新建 `production`（可加 required reviewers）。
 3. （可选）环境变量 `HE_DATA_DIR`：留空即用默认 `/var/lib/harness-evolution/data`；自定义时必须绝对路径、不在发布目录下且由 bootstrap/StateDirectory 授权。`gh variable set HE_DATA_DIR --env production --body /var/lib/harness-evolution/data`。
-4. （可选）接真实评测平台时（#244）：`gh secret set HE_EVAL_MODE`（填 `http`）、`gh secret set HE_EVAL_BASE_URL`、`gh secret set HE_EVAL_API_KEY`；`Deploy` 流水线会把它们注入 `/opt/harness/shared/.env`，未配置时跳过、不影响发布。注入细节：值 base64 传输，服务器侧 `deploy/inject-config.py` 解码后整文件临时文件+替换原子重写（无半写入、重跑幂等），`&`/`$`/反引号/`|`/引号等特殊字符均安全；单键解码失败（含解码结果含换行）告警跳过、不阻塞发布，SSH 或写盘失败则中止发布，重跑部署幂等修复。`HE_EVAL_API_KEY` 走 `gh secret set HE_EVAL_API_KEY --body "<密钥>"` 直推，不在聊天或截图出现。
+4. 存量机首次 Provision（一次性 root 授权，之后由 workflow 执行）：
+   - 生成专用密钥：`ssh-keygen -t ed25519 -f ~/.ssh/harness-provision -N "" -C harness-provision`；
+   - 把公钥追加到生产机 root：`ssh root@<IP> "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys" < ~/.ssh/harness-provision.pub`（也可在阿里云 Cloud Assistant / VNC 执行同样内容）；
+   - `gh secret set PROVISION_SSH_KEY --env production < ~/.ssh/harness-provision`（Environment Secret；`production` 环境的 job 都能读，Deploy 也声明该环境但代码不引用它。要按 workflow 收窄，需单独的 environment 或 required reviewers）；`PROVISION_SSH_USER` 是可选 Variable，默认 `root`，自定义时必须是 root；
+   - Actions → `Provision` → `check`（缺包时应输出 `ATTRIBUTION_BWRAP_MISSING`）→ `install`，直到 `state=ready`。该密钥只用于 Provision，不用于 Deploy；轮换时替换 `production` 环境 Secret 并删除主机旧公钥。
 
-5. （可选）Claude Code（#376）：`gh secret set CLAUDE_CODE_MODEL`（MiniMax 国内版填 `MiniMax-M3.1-Flash[1m]`）；`gh secret set CLAUDE_CODE_BASE_URL`（国内版 `https://api.minimax.cn/anthropic`）；`gh secret set CLAUDE_CODE_API_KEY`（先填占位，之后换真实 key）。版本可选用 `gh variable set CLAUDE_CODE_VERSION --body 2.1.311-1`。`Deploy` 会在发布前安装并写入服务器 `~/.claude`；三个 Secret 全未配置时该步骤跳过。
+5. （可选）接真实评测平台时（#244）：`gh secret set HE_EVAL_MODE`（填 `http`）、`gh secret set HE_EVAL_BASE_URL`、`gh secret set HE_EVAL_API_KEY`；`Deploy` 流水线会把它们注入 `/opt/harness/shared/.env`，未配置时跳过、不影响发布。注入细节：值 base64 传输，服务器侧 `deploy/inject-config.py` 解码后整文件临时文件+替换原子重写（无半写入、重跑幂等），`&`/`$`/反引号/`|`/引号等特殊字符均安全；单键解码失败（含解码结果含换行）告警跳过、不阻塞发布，SSH 或写盘失败则中止发布，重跑部署幂等修复。`HE_EVAL_API_KEY` 走 `gh secret set HE_EVAL_API_KEY --body "<密钥>"` 直推，不在聊天或截图出现。
+
+6. （可选）Claude Code（#376）：`gh secret set CLAUDE_CODE_MODEL`（MiniMax 国内版填 `MiniMax-M3.1-Flash[1m]`）；`gh secret set CLAUDE_CODE_BASE_URL`（国内版 `https://api.minimax.cn/anthropic`）；`gh secret set CLAUDE_CODE_API_KEY`（先填占位，之后换真实 key）。版本可选用 `gh variable set CLAUDE_CODE_VERSION --body 2.1.311-1`。`Deploy` 会在发布前安装并写入服务器 `~/.claude`；三个 Secret 全未配置时该步骤跳过。
 
 ## 5. 首次发布与验收
 
-1. 本分支 PR 合并后（或在 Actions 页手动 `workflow_dispatch` 触发 Deploy）。
+1. 存量机先在 Actions 运行 `Provision`（`install`，确认 `state=ready`）。新机先确认 cloud-init 已安装 bubblewrap，再跑一次 Provision `install` 应用 Ubuntu 24.04 的 AppArmor profile。然后在本分支 PR 合并后（或在 Actions 页手动 `workflow_dispatch` 触发 Deploy）。
 2. 观察 `Deploy` job 全绿；失败看日志定位（常见：Secrets 值粘贴带空行、known_hosts 未收录）。
 3. 服务器探活：`ssh deploy@<IP> "curl -sf http://127.0.0.1:8787/api/health"`，响应应含 `"data":{"ok":true}`。
 4. 启动向导选择 skill 版本 `v7.0.2`，应能解析成功、不再出现「目标文件暂时不可读取」。
@@ -55,10 +61,9 @@
 
 对象绑定与向导重算共用 `AI_AGENT_PROVIDER`、CLI、服务 settings 和密钥。默认 `claude-code`，显式 `fake` 可用缓存。Claude 使用 `ANTHROPIC_MODEL`、共享 settings 和 CLI 默认模型，已冻结的批次保留原快照。上传包与产物位于 `HE_DATA_DIR/attribute`，可用 `HE_ATTRIBUTION_PACKAGE_DIR` 指定持久卷。
 
-Ubuntu 首次 bootstrap 会安装 bubblewrap。旧主机由管理员安装并用 API 服务账号运行最小命名空间探针。退出码 0 表示该账号可以启动沙箱。
+Ubuntu 首次 bootstrap 与新建 ECS 的 cloud-init 会安装 bubblewrap。存量机不再手工 SSH 装包：在 Actions 运行 `Provision`，先用 `check` 确认缺包并输出 `ATTRIBUTION_BWRAP_MISSING`，再以 `install` 安装并验证；`state=ready` 表示 `harness` 的最小命名空间探针已退出 0。Ubuntu 24.04 默认用 AppArmor 限制 unprivileged userns；Provision 会安装只放行 bwrap 可执行路径的 `/etc/apparmor.d/bwrap-userns-restrict` 并重试探针，不关闭主机级 `kernel.apparmor_restrict_unprivileged_userns`。仅 `main` 的 dispatch 会通过 job 内检查；使用专用 `PROVISION_SSH_KEY`，deploy 用户仍没有 apt/dpkg 权限。每次运行记录在 Actions run history；脚本只输出固定文案、路径和错误码，不打印环境变量或凭据。排障时可在主机上用服务账号复核同一条探针：
 
 ```sh
-sudo apt-get install bubblewrap
 sudo -u harness bwrap --unshare-all --share-net --die-with-parent --ro-bind / / -- /bin/true
 ```
 

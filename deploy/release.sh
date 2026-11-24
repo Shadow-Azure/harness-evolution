@@ -140,7 +140,7 @@ echo "[release] 安装 API 依赖（共享 venv: $VENV）"
 
 # Use the candidate API and the shared service environment, including the provider default.
 (cd "$API_DIR" && "$VENV/bin/python" -m app.third_party_api.ai_agent.preflight) ||
-  fail "归因运行时预检失败，尚未执行迁移或切换 current。请检查上方错误码与服务账号的 bubblewrap 权限。"
+  fail "归因运行时预检失败，尚未执行迁移或切换 current。ATTRIBUTION_BWRAP_MISSING 表示主机缺 bubblewrap，运行 Actions → Provision（mode=install）；ATTRIBUTION_BWRAP_UNUSABLE 表示 harness 命名空间探针失败；其余错误码见 Deploy job summary 与 docs/deployment.md 的故障排查。旧 release 继续服务。"
 
 echo "[release] 数据库迁移（Alembic upgrade head）"
 # ini 中 sqlalchemy.url 为空，发布时注入 HE_DB_URL；转义替换串里的 & 与 |
