@@ -24,7 +24,7 @@ Deploy 以 `deploy` 安装 Claude Code 并用 GitHub Secrets 写入模型配置�
 
 ## 工具面与权限
 
-analyze 与 edit 共用 `_headless_argv()`：`--safe-mode`、`--restricted`、`--strict-mcp-config`、`--output-format stream-json --verbose`、`--permission-mode dontAsk`、`--no-session-persistence`，不用 `--bare`。`--tools` 取 analyze `Read,Write`、edit `Read,Grep,Glob,Write`；规则为绝对 `Read(//<task>/schema.json)` + `Edit(//<task>/result.json5)`（analyze）与 `Read(//<workspace>/**)` + `Edit(//<workspace>/.harness-evolution/edits.json5)`、`--max-turns 120`（edit）。文件写只认 `Edit(path)`，`Bash`、`Edit` 与规则外写入被 `dontAsk` 拒绝。失败证据为 `system/init.tools` 与 result 的 `is_error`/`subtype`/`num_turns`/`stop_reason`/`permission_denials`：工具缺少或写被拒即失败，非零退出附有界 stderr。
+analyze/edit 共用无头构造函数：`--safe-mode`、`--restricted`、`--strict-mcp-config`、`--output-format stream-json --verbose`、`--permission-mode dontAsk`、`--no-session-persistence`，无 `--bare`。`--tools` analyze `Read,Write`、edit `Read,Grep,Glob,Write`；绝对规则：analyze `Read(//<task>/schema.json)` + `Edit(//<task>/result.json5)`、edit `Read(//<workspace>/**)` + `Edit(//<workspace>/.harness-evolution/edits.json5)`、`--max-turns 120`。写只认 `Edit(path)`，`Bash`、`Edit` 与规则外写入被 `dontAsk` 拒绝。证据：`system/init.tools` 与 result 的 `is_error`/`subtype`/`num_turns`/`stop_reason`/`permission_denials`；缺 `Write` 或写被拒在调用结束时（进程退出后）判失败，不重试。
 
 验收：
 
@@ -48,4 +48,4 @@ ssh deploy@<host> 'sudo -u harness /opt/harness/shared/claude-code/current/usr/b
 
 ## 回滚
 
-把 `current` 指回上一版本目录，或重跑带所需 `CLAUDE_CODE_VERSION` 的 `Deploy`。共享 settings 与 `.env` 原子写入，失败保留上一份；`current` 与 `HE_AI_AGENT_CLAUDE_BIN` 解耦。步骤见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)。
+`current` 指回上一版本，或重跑带所需 `CLAUDE_CODE_VERSION` 的 `Deploy`。settings 与 `.env` 原子写入，失败保留上一份；`current` 与 `HE_AI_AGENT_CLAUDE_BIN` 解耦，回滚不改 `.env`。步骤见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)。

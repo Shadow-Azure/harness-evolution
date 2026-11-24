@@ -1374,6 +1374,42 @@ async def test_edit_nonzero_exit_without_write_fails_fast(tmp_path: Path) -> Non
     assert len(runner.calls) == 1
 
 
+async def test_edit_error_result_without_write_fails_fast(tmp_path: Path) -> None:
+    """An exit-0 ``is_error`` edit still names the missing tool, with provenance."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    init = {"type": "system", "subtype": "init", "tools": ["Bash", "Edit", "Read"]}
+    runner = MockRunner(
+        ClaudeCliResult(
+            returncode=0,
+            stdout="\n".join(
+                (
+                    json.dumps(init),
+                    json.dumps({"type": "result", "is_error": True}),
+                ),
+            ),
+            stderr="",
+        ),
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    with pytest.raises(AgentProviderError) as caught:
+        await provider.edit_workspace(EditRequest(workspace=workspace, prompt="edit"))
+
+    error = caught.value
+    assert error.message == "claude-code edit tool set does not include Write"
+    assert error.detail is not None
+    assert "tools=Bash,Edit,Read" in error.detail
+    assert error.retryable is False
+    assert error.trace.attempts == 1
+    assert error.latency_ms >= 0
+    assert len(runner.calls) == 1
+
+
 async def test_edit_nonzero_exit_keeps_the_result_evidence(tmp_path: Path) -> None:
     """A non-zero edit exit reports the result's structured evidence, not model text."""
     workspace = tmp_path / "workspace"

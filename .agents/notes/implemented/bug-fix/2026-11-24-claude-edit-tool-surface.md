@@ -16,7 +16,7 @@ edit 与 analyze 共用同一个无头调用构造函数 `_headless_argv(_Headle
 
 `EDIT_MAX_TURNS` 从 40 提到 120，`EDIT_TIMEOUT_SECONDS=1800` 不动。40 轮对真实会话偏紧（本次 644 秒 ≈ 40 轮 × 16 秒），120 轮按同一观测约 32 分钟会先撞上 1800s 墙钟，所以墙钟仍是主护栏，轮次上限退化为安全网：健康会话有余量，退化会话最迟在 1800s 被 SIGINT→SIGKILL 收口。
 
-失败证据统一在 `_call()`：非零退出先用 result 的结构化字段（`is_error`/`subtype`/`api_error_status`/`tools`/`stop_reason`/`num_turns`/`permission_denials`）再附有界 stderr；`system/init.tools` 缺 `Write` 在退出 0 与非零两条路径都立即以 `retryable=False` 失败；edit 的 `collect` 失败时把 `permission denied:` 的路径并进 detail，而不是只报 `missing`。
+失败证据统一在 `_call()`：非零退出先用 result 的结构化字段（`is_error`/`subtype`/`api_error_status`/`tools`/`stop_reason`/`num_turns`/`permission_denials`）再附有界 stderr；`system/init.tools` 缺 `Write` 在退出 0 与非零两条路径都在调用结束时（进程退出后）以 `retryable=False` 失败、不重试，运行中提前判定需要流式传输，超出本 issue 范围；edit 的 `collect` 失败时把 `permission denied:` 的路径并进 detail，而不是只报 `missing`。
 
 部署机取证（CLI 2.1.325，`/opt/harness/shared/claude-code/current/usr/bin/claude`，服务用户 `harness`）钉住了三个实现前提：`--tools Read,Grep,Glob,Write` 的 `system/init.tools` 返回 `Glob,Grep,Read,Write`（Linux 上确实有 `Grep`/`Glob`）；`Edit(//<abs>)` 规则能写出提交文件，`.harness-evolution/` 目录由 CLI 自动创建；`Read(//<abs workspace>/**)` 树范围只读规则被接受，6 轮、0 denial。`health_check()`（只有 `--version`，没有 prompt）与 `run_skill()`（沙箱、私有 HOME、固定 session、stdout 取结果）保持例外，只共用 `_binary()`、`_settings_file()` 与失败证据归一。
 

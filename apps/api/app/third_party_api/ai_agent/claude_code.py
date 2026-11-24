@@ -251,6 +251,7 @@ class ClaudeCodeProvider(AIAgentProvider):
             argv,
             cwd=directory,
             timeout_seconds=ANALYZE_TIMEOUT_SECONDS,
+            started=started,
         )
         self._ensure_submission_tool(
             parsed,
@@ -300,6 +301,7 @@ class ClaudeCodeProvider(AIAgentProvider):
                     retry_argv,
                     cwd=directory,
                     timeout_seconds=ANALYZE_TIMEOUT_SECONDS,
+                    started=started,
                 )
             except AgentProviderError as exc:
                 # The retry process failed before it could submit anything, so
@@ -371,6 +373,31 @@ class ClaudeCodeProvider(AIAgentProvider):
             latency_ms=_elapsed_ms(started, self._clock),
         )
 
+    def _missing_submission_tool_error(
+        self,
+        phase: str,
+        parsed: _ParsedCliResult,
+        *,
+        started: float | None,
+    ) -> AgentProviderError:
+        """Build the terminal error for a tool set that cannot submit.
+
+        The non-zero exit path and the exit-0 ``is_error`` path both land here,
+        so the missing tool, its ``tools=`` detail, and the call provenance stay
+        identical no matter how the CLI reported the failure. ``started`` is
+        ``None`` only when the caller did not measure the call, in which case
+        the latency stays unknown (``0``) rather than invented.
+        """
+        return AgentProviderError(
+            f"claude-code {phase} tool set does not include Write",
+            retryable=False,
+            provider_id=self.provider_id,
+            detail=_missing_submission_tool_detail(parsed.tools),
+            trace=AgentCallTrace(attempts=1),
+            usage=parsed.usage,
+            latency_ms=_elapsed_ms(started, self._clock) if started is not None else 0,
+        )
+
     async def edit_workspace(self, request: EditRequest) -> EditResult:
         """Collect one EditPlan for the workspace.
 
@@ -401,6 +428,7 @@ class ClaudeCodeProvider(AIAgentProvider):
             argv,
             cwd=directory,
             timeout_seconds=EDIT_TIMEOUT_SECONDS,
+            started=started,
         )
         self._ensure_submission_tool(
             parsed,
@@ -499,6 +527,7 @@ class ClaudeCodeProvider(AIAgentProvider):
         *,
         cwd: Path,
         timeout_seconds: float,
+        started: float | None = None,
     ) -> tuple[ClaudeCliResult, _ParsedCliResult]:
         """Invoke the transport and normalize cancellation, exit, and output errors."""
         try:
@@ -523,18 +552,17 @@ class ClaudeCodeProvider(AIAgentProvider):
         parsed = _parse_cli_stdout(result.stdout, fallback_model=self.provider_id)
         if parsed.capabilities:
             self._capabilities = parsed.capabilities
+        # A tool set that cannot write ends the call no matter how the CLI
+        # reported it; name the missing tool instead of burning a retry against
+        # the same surface. The exit-0 non-error shape stays with
+        # ``_ensure_submission_tool`` in the caller, which knows the attempts.
+        if (
+            parsed.tools
+            and SUBMISSION_TOOL not in parsed.tools
+            and (result.returncode != 0 or parsed.is_error)
+        ):
+            raise self._missing_submission_tool_error(phase, parsed, started=started)
         if result.returncode != 0:
-            # A tool set that cannot write ends the call no matter what else the
-            # process reported; name the missing tool instead of burning a
-            # retry against the same surface.
-            if parsed.tools and SUBMISSION_TOOL not in parsed.tools:
-                raise AgentProviderError(
-                    f"claude-code {phase} tool set does not include Write",
-                    retryable=False,
-                    provider_id=self.provider_id,
-                    detail=_missing_submission_tool_detail(parsed.tools),
-                    usage=parsed.usage,
-                )
             raise AgentProviderError(
                 f"claude-code {phase} call exited unsuccessfully",
                 retryable=True,

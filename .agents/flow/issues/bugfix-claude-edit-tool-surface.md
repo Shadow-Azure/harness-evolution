@@ -58,7 +58,7 @@ stderr=[claude-code:unrecognized_model] {"model":"MiniMax-M3.1-Flash[1m]","query
 
 1. **读生产证据**：上面的错误来自 `ClaudeCodeProvider._call()` 的 `claude-code {phase} call exited unsuccessfully` 分支（`claude_code.py:477-483`），`phase="edit"`，`detail` 由 `_diagnostics(result)` 只拼 `exit_code` 与**有界 stderr**（`claude_code.py:1019-1025`）。CLI 的 JSON stdout（`--output-format json` 的 result 文档）在这条路径上被整体丢弃。
 2. **读 edit argv**：`_edit_argv()`（`claude_code.py:581-612`）仍然是 `--bare … --allowed-tools Read,Grep,Glob,Write(./.harness-evolution/edits.json5)`；allow 规则来自 `SubmissionPrep.allowed_tools`，固定派生为 `Write(./<relative>)`（`submission.py:262`）；`collect()` 只读这个文件（`submission.py:267-296`）。
-3. **对照同仓已修的 analyze 路径**：提交工具面在 #537（提交 `de7128c9`）已经修过一次，`_analyze_argv()` 现在是 `--safe-mode --restricted --strict-mcp-config --tools Read,Write --allowed-tools Read(//<abs>),Edit(//<abs>) --output-format stream-json --verbose`，并且 `_ensure_submission_tool()` 会在 `system/init.tools` 缺少 `Write` 时立即失败。那次 Agent Note 明确写着「edit 通道不在本 issue 的契约内，argv 保持原样」，`bugfix-cluster-review-file-submission` 的非目标也写了「edit 通道若启用仍需单独验证其工具面」。
+3. **对照同仓已修的 analyze 路径**：提交工具面在 #537（提交 `de7128c9`）已经修过一次，`_analyze_argv()` 现在是 `--safe-mode --restricted --strict-mcp-config --tools Read,Write --allowed-tools Read(//<abs>),Edit(//<abs>) --output-format stream-json --verbose`，并且 `_ensure_submission_tool()` 会在 `system/init.tools` 缺少 `Write` 时直接失败（不重试）。那次 Agent Note 明确写着「edit 通道不在本 issue 的契约内，argv 保持原样」，`bugfix-cluster-review-file-submission` 的非目标也写了「edit 通道若启用仍需单独验证其工具面」。
 4. **工具面**：#537 在同一台部署机、同一 CLI `2.1.323` 上实测：`--bare` 把可用工具收窄为 `Bash/Edit/Read`，**没有 `Write`**；`--bare --tools "Read,Write"` 也只返回 `Read`，加不回来。edit 路径同样带 `--bare`，所以它同样写不出提交文件。
 5. **权限规则**：即使去掉 `--bare`，`Write(./relative)` 也不参与 Claude Code 的文件写权限匹配——文件写只认 `Edit(path)` 规则，并且要匹配本次调用的绝对路径。#537 的对照实验已经证明「相对路径 + Write 规则」两个面都不成立。
 6. **为什么 644 秒后 exit 1**：模型没有可用的写工具，只能反复尝试被 `dontAsk` 拒绝的 `Bash`/`Edit`、或反复读文件，直到 `--max-turns 40` 用尽；print 模式下轮次用尽是 `is_error=true` 的 result，CLI 以退出码 1 结束。精确的 `subtype`（`error_max_turns` 或其它）今天无法取证，正是因为第 1 步发现的 stdout 被丢弃；但无论具体 subtype 是哪一种，**没有写工具就意味着 `edits.json5` 永远写不出来，这条通道必然失败**，644 秒只是它失败的耗时形态。
@@ -76,7 +76,7 @@ stderr=[claude-code:unrecognized_model] {"model":"MiniMax-M3.1-Flash[1m]","query
 - 让 edit 通道在生产 CLI 上真正可用：模型能在工具集中看到并调用写工具，权限规则能匹配本次 workspace 的提交路径，`edits.json5` 被写出并通过 `submission.collect` 校验。
 - 让 edit 与 analyze 共用**同一套已验证的调用形状**，并且由同一个子类私有函数 `_headless_argv()` 构造 argv、同一套规则构造与失败证据；不再维护第二套 argv 与第二套权限规则。
 - 其它调用点（`health_check()`、`run_skill()`）保持有据可查的例外，但共用 binary / settings / 失败证据这些适配层规则。
-- 让 edit 的失败在数秒内可诊断：缺 `Write`、提交路径被拒、轮次用尽都要指出具体原因，而不是 644 秒后只给一行模型诊断。
+- 让 edit 的失败在调用结束时即可诊断（进程退出后）：缺 `Write`、提交路径被拒、轮次用尽都要指出具体原因，而不是 644 秒后只给一行模型诊断。
 - 把 edit 的轮次预算调到真实会话够用的水平（`EDIT_MAX_TURNS` 40 → 120），同时保留 `EDIT_TIMEOUT_SECONDS=1800` 作为墙钟上限，花费防护不因此移除。
 - 生产验收：一次真实 full run 的第 6 步进入 candidate，`agent.edit` 为 `outcome=ok`、tokens>0、model 非 `unknown`。
 
@@ -94,7 +94,7 @@ stderr=[claude-code:unrecognized_model] {"model":"MiniMax-M3.1-Flash[1m]","query
 
 1. **argv 与工具面**：`_edit_argv()` 去掉 `--bare`，改成与 `_analyze_argv()` 相同的硬化参数——`--safe-mode --restricted --strict-mcp-config`，用 `--tools Read,Write` 把内置工具收缩到「读工作区 + 写提交文件」两项；`--output-format stream-json --verbose` 取代 `json`，以便拿到 `system/init.tools` 与 result 的 `is_error`/`subtype`/`num_turns`/`stop_reason`/`permission_denials`；`--no-session-persistence`、`--permission-mode dontAsk` 与 `--settings` 保持现状；`--max-turns` 按第 4 点提高。`Grep`/`Glob` 只有在 init 工具列表证明存在时才加进 `--tools`（Linux 默认集不含这两个），不靠 allowlist 猜。
 2. **提交权限**：edit 的 `--allowed-tools` 不再使用 `prep.allowed_tools` 的 `Write(./…)`，改由 `prep.result_path` 的绝对路径构造 `Edit(//<abs>/.harness-evolution/edits.json5)`（复用 `_permission_rule_path()`），需要读的路径同法给 `Read(//<abs>)`。`submission.py` 的 schema/collect/retry 契约不动，只换 provider 适配层传给 CLI 的规则。
-3. **失败证据**：`_call()` 在 `returncode != 0` 时先用已解析的 result 组装 detail——`is_error`/`subtype`/`api_error_status`/`num_turns`/`stop_reason`/`permission_denials`，再附有界 stderr；复用 `_ensure_submission_tool()`，在 `system/init.tools` 缺 `Write` 时立即抛错（数秒内、`retryable=false`），不再烧满 40 轮。`_diagnostics()` 不再把 stderr 当唯一证据。
+3. **失败证据**：`_call()` 在 `returncode != 0` 时先用已解析的 result 组装 detail——`is_error`/`subtype`/`api_error_status`/`num_turns`/`stop_reason`/`permission_denials`，再附有界 stderr；复用 `_ensure_submission_tool()`，在 `system/init.tools` 缺 `Write` 时于调用结束时（进程退出后）抛错（`retryable=false`、不重试），不再烧满 40 轮。`_diagnostics()` 不再把 stderr 当唯一证据。
 4. **轮次预算**：`EDIT_MAX_TURNS` 从 40 提到 120（常量在 `claude_code.py:101`，argv 在 `:605` 使用）。40 轮对真实 edit 会话偏紧——本次 644 秒就是 40 轮 × 约 16 秒打满；120 轮按同一观测约 32 分钟，会先撞上**未改动的** `EDIT_TIMEOUT_SECONDS=1800`，所以墙钟仍是主护栏，轮次上限退化为安全网：健康会话有足够余量，退化会话最迟在 1800s 被 SIGINT→SIGKILL 收口。提上限只增加容量，不能替代第 1、2 点——工具面不可用时轮次再多也写不出提交文件。
 
 **调用形状统一（同一个子类私有函数）**：把 `-p` 无头调用的形状收进 `ClaudeCodeProvider._headless_argv()`，`_analyze_argv()` / `_edit_argv()` 只装配各自的参数差异，不再各自拼 argv：
@@ -146,7 +146,7 @@ HE_AI_AGENT_CLAUDE_BIN=/opt/harness/shared/claude-code/current/usr/bin/claude \
 - 单测与静态检查全绿；edit argv 不再出现 `--bare`，`--tools` 含 `Write`，规则是绝对 `Edit(//…)`，`--max-turns` 为 120。
 - 单测直接对同一个 `_headless_argv()` 断言 analyze / edit 两个 profile：公共段（硬化参数、`stream-json`、`dontAsk`、`--settings`）只在一处产生，差异段只有 `--tools`、规则、`--max-turns` 与 cwd。
 - `EDIT_TIMEOUT_SECONDS` 保持 1800：轮次预算提高后墙钟仍是唯一硬上限，退化会话不会无限延长。
-- 真实 CLI e2e：edit 冒烟在 60s 内写出 `.harness-evolution/edits.json5` 并通过 `collect`；越界写入被拒；工具集缺 `Write` 的用例在数秒内失败且 detail 带 `tools=…`。
+- 真实 CLI e2e：edit 冒烟在 60s 内写出 `.harness-evolution/edits.json5` 并通过 `collect`；越界写入被拒；工具集缺 `Write` 的用例在调用结束时（进程退出后）失败、不重试，且 detail 带 `tools=…`。
 - 生产验收：新建一次真实 run，按 `/api/evolution/runs/{id}/events` 检查 `agent.edit`：`outcome=ok`、`inputTokens+outputTokens>0`、`model != "unknown"`、`submissionRounds>=1`；run 进入第 6 步 candidate 并继续 push/eval。
 
 ## 验收标准
@@ -154,7 +154,7 @@ HE_AI_AGENT_CLAUDE_BIN=/opt/harness/shared/claude-code/current/usr/bin/claude \
 - 生产 edit 调用能写出并收集 EditPlan；`ai_agent_call` 的 `agent.edit` 为 `outcome=ok`、tokens>0、model 非 `unknown`。
 - edit 与 analyze 使用同一套硬化参数与同一种绝对 `Edit(//…)` 提交规则；`--bare` 不再出现在任何 provider argv 里。
 - analyze 与 edit 的 argv 都由同一个 `_headless_argv()` 产生；`claude_code.py` 内不存在第二处手拼 `-p` 无头 argv。
-- 工具集缺 `Write` 或提交路径被拒时，调用在数秒内失败并指出缺失工具/被拒路径，不再以 644s + 一行模型诊断收场。
+- 工具集缺 `Write` 或提交路径被拒时，调用结束时（进程退出后）即判失败并指出缺失工具/被拒路径、不重试，不再以 644s + 一行模型诊断收场。
 - 非零退出的 detail 必须带上 CLI result 的结构化证据（`subtype`/`num_turns`/`stop_reason`/`permission_denials`），不再让 stderr 诊断行冒充原因。
 - 一次健康的 edit 调用在生产负载下不出现 `error_max_turns`；`ai_agent_call` 记录真实的 `num_turns`，且 120 轮预算下仍以未改动的 `EDIT_TIMEOUT_SECONDS=1800` 为最终上限。
 - 权限仍是最小面：Bash、workspace 外写入、未声明工具都被拒；`submission.py` 与基类契约不变。

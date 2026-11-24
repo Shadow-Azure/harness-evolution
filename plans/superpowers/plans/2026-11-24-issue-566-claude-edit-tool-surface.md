@@ -4,7 +4,7 @@
 
 **Goal:** 让生产的 `agent.edit` 调用在真实 CLI 上写出 `.harness-evolution/edits.json5` 并通过 `submission.collect`，且 edit 与 analyze 共用同一个无头调用构造函数、同一套绝对权限规则与同一套失败证据。
 
-**Architecture:** `ClaudeCodeProvider` 内部新增唯一的 `-p` 无头 argv 构造函数 `_headless_argv()` 与唯一的提交规则构造函数 `_submission_rules()`；`_analyze_argv()` / `_edit_argv()` 退化为「装配 profile 差异」。edit 去掉 `--bare`，改用与 analyze 相同的 `--safe-mode --restricted --strict-mcp-config --output-format stream-json --verbose --permission-mode dontAsk`，把 `--max-turns` 从 40 提到 120，并用绝对路径 `Read(//<workspace>/**)` 与 `Edit(//<workspace>/.harness-evolution/edits.json5)` 表达读写权限。`_call()` 在非零退出时保留 CLI result 的结构化证据（`is_error` / `subtype` / `api_error_status` / `num_turns` / `stop_reason` / `permission_denials` / `tools`），并在 `system/init.tools` 缺 `Write` 时立即以 `retryable=false` 失败。
+**Architecture:** `ClaudeCodeProvider` 内部新增唯一的 `-p` 无头 argv 构造函数 `_headless_argv()` 与唯一的提交规则构造函数 `_submission_rules()`；`_analyze_argv()` / `_edit_argv()` 退化为「装配 profile 差异」。edit 去掉 `--bare`，改用与 analyze 相同的 `--safe-mode --restricted --strict-mcp-config --output-format stream-json --verbose --permission-mode dontAsk`，把 `--max-turns` 从 40 提到 120，并用绝对路径 `Read(//<workspace>/**)` 与 `Edit(//<workspace>/.harness-evolution/edits.json5)` 表达读写权限。`_call()` 在非零退出时保留 CLI result 的结构化证据（`is_error` / `subtype` / `api_error_status` / `num_turns` / `stop_reason` / `permission_denials` / `tools`），并在 `system/init.tools` 缺 `Write` 时于调用结束时（进程退出后）以 `retryable=false` 失败。
 
 **Scope:** `apps/api/app/third_party_api/ai_agent/claude_code.py`、`apps/api/tests/**`、`docs/**`、`plans/**`、`.agents/**`。不碰 `AIAgentProvider` 基类、`submission.py`、`claude_cli.py`、`Settings`/`config.py`、`deploy/**` 与 workflow。
 
@@ -24,7 +24,7 @@
 |---|---|---|
 | edit 的探索面要不要保留 `Grep`/`Glob`？ | [07 §5.5.4](../../fullstack-design/07-backend-implementation.md)「edit 的只读探索」+ 取证 C | 保留；三者都是只读工具，`Bash`/`Edit` 仍被排除 |
 | 提交通道是否换成 `--json-schema`？ | [07 §5.5.3](../../fullstack-design/07-backend-implementation.md)「自建字面量通道是默认且唯一路径」 | 不换；文件通道保留 |
-| 缺少 `Write` 时是重试还是立即失败？ | [07 §5.5.3](../../fullstack-design/07-backend-implementation.md) 六层防线的第 4 层「不静默降级」+ issue 验收 | 立即失败、`retryable=false`，detail 带 `tools=` |
+| 缺少 `Write` 时是重试还是立即失败？ | [07 §5.5.3](../../fullstack-design/07-backend-implementation.md) 六层防线的第 4 层「不静默降级」+ issue 验收 | 调用结束时（进程退出后）判定失败、`retryable=false`，detail 带 `tools=` |
 | `--max-turns` 提到多少？ | issue「实现内容」第 4 点 + 07 §5.5.4 的 `--max-turns` 花费防护 | 120；`EDIT_TIMEOUT_SECONDS=1800` 不动，墙钟仍是主护栏 |
 | 是否改 edit prompt / EditPlan 语义？ | issue 非目标 + [07 §5.5.4](../../fullstack-design/07-backend-implementation.md) | 不改；只换 provider 适配层的 argv 与规则 |
 | 要不要新增 UI / 对齐原型？ | issue 非目标「不改 UI」 | 不改；冒烟报告只做后端与事件面，不涉及 `harness-evolution.html` 原型 |
@@ -53,7 +53,7 @@
 
 - [x] edit argv 断言：无 `--bare`、四个硬化参数、`stream-json`、`--tools` 含 `Write`、规则为 `Read(//<ws>/**)` + `Edit(//<abs edits.json5>)`、`--max-turns 120`。
 - [x] 同一个 `_headless_argv()` 产出 analyze/edit 两个 profile：公共段只在构造函数里出现，差异段只有 tools、rules、`--max-turns` 与 cwd。
-- [x] 缺 `Write`（非零退出与退出 0 两种）都在数秒内失败且 detail 带 `tools=`；非零退出 detail 含 `subtype`/`num_turns`。
+- [x] 缺 `Write`（非零退出与退出 0 两种）都在调用结束时（进程退出后）判定失败、不重试，且 detail 带 `tools=`；非零退出 detail 含 `subtype`/`num_turns`。
 - [x] 真实 CLI e2e 扩到 edit 通道：写成功并被 `collect`、越界写入被拒；仍由 `HE_AI_AGENT_CLAUDE_E2E=1` 开关控制，不进 CI。
 
 ### Task 4: 文档与决策记录
