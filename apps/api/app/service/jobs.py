@@ -52,7 +52,7 @@ _RECOVERABLE_INTERRUPTED_KINDS = (
     "evolution_finalize",
     "evolution_retry",
 )
-_ACTIVE_INTERRUPTED_RUN_STATUSES = frozenset({"preparing", "running", "interrupted"})
+_ATTRIBUTION_RECOVERY_RUN_STATUSES = frozenset({"preparing", "running", "interrupted"})
 _KIND_TO_STAGE = {
     "evolution_prepare": "prepare",
     "evolution_advance": "step",
@@ -254,7 +254,8 @@ class JobRunner:
         return (
             run is not None
             and run.control_state == "running"
-            and run.status in _ACTIVE_INTERRUPTED_RUN_STATUSES
+            and run.status in _ATTRIBUTION_RECOVERY_RUN_STATUSES
+            and run.progress_unit == 3
         )
 
     async def _requeue_interrupted(self, job: JobRunRecord) -> JobRunRecord | None:

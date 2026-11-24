@@ -14,6 +14,7 @@ scope:
   - apps/api/**
   - tests/**
   - docs/**
+  - plans/**
   - .agents/**
 adr: []
 github:

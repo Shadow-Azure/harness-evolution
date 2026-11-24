@@ -20,6 +20,7 @@ from app.db.crud.jobs import JobRepository
 from app.db.crud.run_events import SqlRunEventStore
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
+from app.db.models.evolution import evolution_runs
 from app.db.models.jobs import job_runs
 from app.service.events import EventBus
 from app.service.evolution.control import EvolutionControlService
@@ -298,3 +299,23 @@ async def test_interrupted_batch_is_requeued_without_control_service(state: Stat
 async def test_latest_interrupted_without_kinds_returns_nothing(state: State) -> None:
     """An empty selection is a cheap no-op for callers that disable recovery."""
     assert await state.jobs.latest_interrupted(()) == []
+
+
+async def test_attribution_batch_past_the_attribution_stage_is_not_recovered(state: State) -> None:
+    """A batch left behind after the run advanced is stale recovery work."""
+    await _create_run(state, "run-advanced")
+    async with state.database.transaction() as session:
+        await session.execute(
+            update(evolution_runs)
+            .where(evolution_runs.c.id == "run-advanced")
+            .values(progress_unit=4),
+        )
+    job_id = await _interrupt(state, run_id="run-advanced", kind="attribution_batch")
+    runner = _runner(state)
+    try:
+        await runner.recover()
+        stale = await state.jobs.get(job_id)
+        assert stale is not None and stale.status == "interrupted"
+        assert await state.jobs.list_queued() == []
+    finally:
+        await runner.close()
