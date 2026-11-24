@@ -1207,19 +1207,23 @@
   .admin-table td.actions { text-align: right; white-space: nowrap; }
   .admin-table td.actions button { margin-left: 4px; }
   .admin-table td button + button { margin-left: 4px; }
-  .skill-tab { display: grid; gap: 14px; }
-  .skill-tab .admin-head { margin: 0; }
-  .skill-panel { min-width: 0; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
-  .skill-panel-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; padding: 12px; }
-  .skill-panel-head h3 { font-size: 13px; }
-  .skill-table-scroll { overflow-x: auto; }
+  .admin-content:has(> .skill-tab) { min-width: 0; }
+  .skill-help { margin: 0 0 12px; }
+  .skill-help a { color: var(--blue); }
+  .skill-error { margin: 0 0 12px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border)); border-radius: 8px; background: color-mix(in srgb, var(--red) 6%, var(--bg-card)); color: var(--red); font-size: 11px; }
+  .skill-list-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+  .skill-list-head h3, .skill-detail h3 { font-size: 12px; font-weight: 650; }
+  .skill-table-scroll { min-width: 0; overflow-x: auto; }
   .skill-table-scroll th:last-child { text-align: right; }
   .skill-name { white-space: nowrap; font-family: var(--mono); }
-  .skill-prompt { max-height: 420px; overflow: auto; padding: 12px; background: var(--bg-inset); color: var(--text-dim); font: 12px/1.65 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
-  .skill-help, .skill-error { padding: 9px 11px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-panel); }
-  .skill-help a, .skill-download, .skill-activate { color: var(--blue); }
-  .skill-error, .skill-remove { color: var(--red); }
-  .skill-action { background: none; border: 0; padding: 4px; font: inherit; cursor: pointer; }
+  .skill-tab .btn.sm { text-decoration: none; }
+  .skill-tab .btn[aria-pressed="true"] { border-color: color-mix(in srgb, var(--blue) 35%, var(--border)); background: color-mix(in srgb, var(--blue) 8%, var(--bg-card)); color: var(--blue); }
+  .skill-tab .btn.danger { color: var(--red); }
+  .skill-detail { min-width: 0; margin-top: 14px; padding: 12px 13px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-panel); }
+  .skill-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 12px; margin: 12px 0; }
+  .skill-detail h4 { font-size: 11px; font-weight: 650; color: var(--text-dim); }
+  .skill-detail-grid p { margin: 4px 0 0; font-size: 11.5px; color: var(--text-dim); overflow-wrap: anywhere; }
+  .skill-detail .codebox { margin-top: 5px; overflow-wrap: anywhere; }
   .skill-confirm { inset: 0; margin: auto; width: min(420px, calc(100% - 32px)); padding: 18px; color: var(--text); }
   .skill-confirm::backdrop { background: rgb(0 0 0 / 35%); }
   .skill-confirm form { display: grid; gap: 12px; }
@@ -7316,10 +7320,10 @@ function v2AdminSkills() {
     return `<tr>
       <td><strong class="skill-name">${v2Esc(item.name)}</strong> ${builtIn ? v2Badge('平台默认', '') : ''}</td>
       <td>${v2Esc(item.uploader)}</td><td>1</td><td>${item.bytes} B</td>
-      <td><button class="skill-action" data-v2-skill-inspect="${item.name}">查看详情</button></td>
+      <td><button type="button" class="btn sm" aria-pressed="${effective === item}" data-v2-skill-inspect="${item.name}">查看详情</button></td>
       <td class="actions">
-        ${v2SkillDownload(item, '下载', 'skill-download')}
-        ${canManage && !builtIn ? `<button type="button" class="skill-action skill-remove" data-v2-skill-remove="${item.name}">删除</button>` : ''}
+        ${v2SkillDownload(item, '下载', 'btn sm')}
+        ${canManage && !builtIn ? `<button type="button" class="btn sm danger" data-v2-skill-remove="${item.name}">删除</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -7330,16 +7334,20 @@ function v2AdminSkills() {
     </div>
     ${canManage ? `<div class="skill-help v2-note">上传 Skill 文件夹的 ZIP 包。最多 200 个文件，ZIP 不超过 10 MiB，解压后不超过 20 MiB。包内须有一个不超过 512 KiB 的 <code>SKILL.md</code>。<br>演示上传请使用${v2SkillDownload(V2_SKILL_FIXTURES.upload, '示例 ZIP', 'skill-download')}。</div>
     <p class="skill-error" id="v2SkillError" role="alert" hidden></p>` : ''}
-    <section class="skill-panel">
-      <div class="skill-panel-head"><div><h3>已上传归因 Skill</h3><p class="v2-note">${state.items.length} 个包。平台默认包始终可用。</p></div>${canManage ? '' : v2Badge('只读', 'viewer')}</div>
+    <section>
+      <div class="skill-list-head"><div><h3>已上传归因 Skill</h3><p class="v2-note">${state.items.length} 个包。平台默认包始终可用。</p></div>${canManage ? '' : v2Badge('只读', 'viewer')}</div>
       <div class="skill-table-scroll"><table class="admin-table">
         <thead><tr><th scope="col">Skill 名</th><th scope="col">上传者</th><th scope="col">文件数</th><th scope="col">大小</th><th scope="col">资源详情</th><th scope="col">操作</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
     </section>
-    <section class="skill-panel">
-      <div class="skill-panel-head"><div><h3>${v2Esc(effective.name)}</h3><p class="v2-note"><strong>${v2Esc(effective.name)}</strong> · SKILL.md 原文</p></div></div>
-      <h4>已绑定进化对象</h4><p>${v2BoundTargets(effective.name).map(t => v2Esc(t.objectName)).join("、") || "暂无绑定对象"}</p><h4>目录结构</h4><pre>${v2Esc(effective.name)}/SKILL.md</pre><h4>SKILL.md</h4><pre class="skill-prompt" tabindex="0">${v2Esc(effective.prompt)}</pre>
+    <section class="skill-detail">
+      <h3>${v2Esc(effective.name)}</h3><p class="v2-note">SKILL.md 原文</p>
+      <div class="skill-detail-grid">
+        <div><h4>已绑定进化对象</h4><p>${v2BoundTargets(effective.name).map(t => v2Esc(t.objectName)).join("、") || "暂无绑定对象"}</p></div>
+        <div><h4>目录结构</h4><pre class="codebox" tabindex="0">${v2Esc(effective.name)}/SKILL.md</pre></div>
+      </div>
+      <h4>SKILL.md</h4><pre class="codebox" tabindex="0">${v2Esc(effective.prompt)}</pre>
     </section>
     <dialog class="card skill-confirm" id="v2SkillRemove" aria-labelledby="v2SkillRemoveTitle">
       <form method="dialog">

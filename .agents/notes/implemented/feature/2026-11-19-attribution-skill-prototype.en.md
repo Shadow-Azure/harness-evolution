@@ -12,9 +12,13 @@ Workspace attribution Skill packages have distinct upload and activation actions
 
 Show package management within the existing V2 prototype's workspace administration page. The example ZIP, package list, and prompt share the same fixtures. The prototype keeps changes in memory per workspace. A read-only deep link lets reviewers verify download access and the visibility of write controls.
 
+The library uses Workspace Admin’s compact tables and buttons. Resource details use the inset code preview from Ingest. Admins and read-only members can inspect the selected package in the same tab as the list.
+
 ## Alternatives considered
 
 A static page would leave activation, deletion, and fallback transitions untested. Connecting the live package API and validating arbitrary ZIP archives would bring server-side dependencies into an interaction prototype.
+
+A separate list frame duplicates the Workspace Admin content boundary and separates the table typography and control density from sibling tabs.
 
 ## Consequences
 
