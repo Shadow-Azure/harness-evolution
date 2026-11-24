@@ -16,6 +16,7 @@ from typing import Any, Literal, cast
 from pydantic import Field
 
 from app.db.crud.attributions import AttributionRecord, EvolutionRunCandidateRepository
+from app.db.crud.bad_cases import BadCaseRepository
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.probe_query import ProbeHitRow, ProbeQueryRepository
 from app.db.models.evolution import (
@@ -432,14 +433,16 @@ class _RunFacts:
         candidates: Sequence[EvolutionRunCandidateRecord],
         attributions: Sequence[AttributionRecord],
         probes: Sequence[ProbeHitRow],
+        case_titles: Mapping[str, str],
         cluster_links: dict[str, tuple[str, ...]],
     ) -> None:
-        """Store the run and its candidate/attribution/probe snapshot."""
+        """Store the run and its candidate/attribution/probe/title snapshot."""
         self.run = run
         self.clusters = clusters
         self.candidates = candidates
         self.attributions = attributions
         self.probes = probes
+        self.case_titles = case_titles
         self.cluster_links = cluster_links
         self.legacy = is_legacy_run(run.attribution_engine)
 
@@ -477,12 +480,14 @@ class EvolutionStageService:
         probes: ProbeQueryRepository,
         candidates: EvolutionRunCandidateRepository,
         attributions: Any,
+        bad_cases: BadCaseRepository,
     ) -> None:
-        """Bind the run, probe, candidate, and attribution readers."""
+        """Bind the run, probe, candidate, attribution, and bad-case readers."""
         self._runs = runs
         self._probes = probes
         self._candidates = candidates
         self._attributions = attributions
+        self._bad_cases = bad_cases
 
     async def step(
         self,
@@ -527,15 +532,18 @@ class EvolutionStageService:
         run: EvolutionRunRecord,
         clusters: Sequence[ProbeClusterRecord],
     ) -> _RunFacts:
-        """Load the candidate, attribution, and legacy probe snapshot."""
+        """Load the candidate, attribution, legacy probe, and case-title snapshot."""
         candidates = await self._candidates.list(run.id)
         attributions = await self._attributions.list_run_attributions(run.id) if candidates else ()
         if candidates:
             probes: Sequence[ProbeHitRow] = ()
+            case_ids = tuple(dict.fromkeys(candidate.bad_case_id for candidate in candidates))
         else:
             links = await self._runs.list_cluster_probes(run.id)
             probe_ids = tuple(dict.fromkeys(link.probe_id for link in links))
             probes = await self._probes.list_rows_by_ids(probe_ids) if probe_ids else ()
+            case_ids = tuple(dict.fromkeys(row.bad_case_id for row in probes))
+        case_titles = await self._bad_cases.titles_by_ids(case_ids)
         links = await self._runs.list_cluster_probes(run.id)
         cluster_links: dict[str, tuple[str, ...]] = {}
         for link in links:
@@ -544,7 +552,15 @@ class EvolutionStageService:
                 *cluster_links[link.probe_cluster_id],
                 link.probe_id,
             )
-        return _RunFacts(run, clusters, candidates, attributions, probes, cluster_links)
+        return _RunFacts(
+            run,
+            clusters,
+            candidates,
+            attributions,
+            probes,
+            case_titles,
+            cluster_links,
+        )
 
     async def build_step_payload(
         self,
@@ -1033,7 +1049,7 @@ def _cluster_cases(facts: _RunFacts, cluster_id: str) -> list[StepClusterCase]:
         return [
             StepClusterCase(
                 bad_case_id=row.bad_case_id,
-                title=row.probe_description,
+                title=facts.case_titles.get(row.bad_case_id) or row.bad_case_id,
                 object_name=row.probe_object,
                 bad_case_type="self" if row.probe_object == facts.run.target_name else "discovery",
                 trigger_at=row.probe_started_at,
@@ -1049,11 +1065,7 @@ def _cluster_cases(facts: _RunFacts, cluster_id: str) -> list[StepClusterCase]:
     return [
         StepClusterCase(
             bad_case_id=candidate.bad_case_id,
-            title=(
-                facts.attribution_by_case[candidate.bad_case_id].probe_description
-                if candidate.bad_case_id in facts.attribution_by_case
-                else candidate.bad_case_id
-            ),
+            title=facts.case_titles.get(candidate.bad_case_id) or candidate.bad_case_id,
             object_name=facts.run.target_name,
             bad_case_type=(
                 "self" if candidate.included_reason in {"self_report", "both"} else "discovery"

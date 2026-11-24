@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -269,6 +270,26 @@ class BadCaseRepository:
                 tuple(case.bad_case_id for case in cases),
             )
         return BadCaseSnapshot(cases=cases, analyses=analyses, probes=probes)
+
+    @read_only_guard("bad_cases")
+    async def titles_by_ids(self, case_ids: Sequence[str]) -> dict[str, str]:
+        """Return the short title of each requested case in one SELECT.
+
+        Args:
+            case_ids: Case identifiers referenced by one run's candidates or probes.
+
+        Returns:
+            Case-id to short-title map; unknown ids are absent so callers can fall back.
+        """
+        unique = tuple(dict.fromkeys(case_ids))
+        if not unique:
+            return {}
+        statement = select(bad_cases.c.bad_case_id, bad_cases.c.title).where(
+            bad_cases.c.bad_case_id.in_(unique),
+        )
+        async with self._database.session() as session:
+            rows = (await session.execute(statement)).all()
+        return {str(row[0]): str(row[1]) for row in rows}
 
     @read_only_guard("bad_cases")
     async def get_case(self, case_id: str) -> BadCaseRow | None:
