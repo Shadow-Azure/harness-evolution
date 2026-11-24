@@ -13,8 +13,19 @@ fi
 
 echo "[bootstrap] 1/7 基础包"
 export DEBIAN_FRONTEND=noninteractive
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME_PREREQUISITES="$SCRIPT_DIR/attribution-runtime-prerequisites.list"
+if [ ! -f "$RUNTIME_PREREQUISITES" ]; then
+  echo "[bootstrap] 缺少 $RUNTIME_PREREQUISITES：请把 deploy/ 下的清单与脚本一起上传" >&2
+  exit 1
+fi
+mapfile -t RUNTIME_PACKAGES < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$RUNTIME_PREREQUISITES")
+if [ "${#RUNTIME_PACKAGES[@]}" -eq 0 ]; then
+  echo "[bootstrap] $RUNTIME_PREREQUISITES 没有包名" >&2
+  exit 1
+fi
 apt-get update -y
-apt-get install -y ca-certificates curl git rsync nginx mysql-server bubblewrap
+apt-get install -y ca-certificates curl git rsync nginx mysql-server "${RUNTIME_PACKAGES[@]}"
 
 echo "[bootstrap] 2/7 Python 3.12"
 PY=python3.12
