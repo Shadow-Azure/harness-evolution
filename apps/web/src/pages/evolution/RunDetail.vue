@@ -29,6 +29,7 @@ import RunStepContent from "./components/RunStepContent.vue";
 import RunStepper from "./components/RunStepper.vue";
 import RunLogPanel from "./components/RunLogPanel.vue";
 import {
+  caseSessionMap,
   formatLocalDateTime,
   resolveRunStepKey,
   workspacePushStatusLabel,
@@ -203,6 +204,11 @@ const { data: attributionData, refetch: refetchAttribution } = useEvolutionRunSt
   computed(
     () => activeTab.value === "steps" && attributionStep.value?.clickable === true,
   ),
+);
+// Steps 5 and 6 deep-link source cases by Session; attribution rows cover
+// every selected case and are not paginated.
+const caseSessions = computed(() =>
+  caseSessionMap(attributionData.value),
 );
 
 // The run's REST fallback also refreshes partial reports when SSE is disconnected.
@@ -962,6 +968,7 @@ function clearMissingClusterFocus(): void {
           :is-unreached="selectedStep?.clickable !== true"
           :focus-cluster="focusCluster"
           :can-write="canManage"
+          :case-sessions="caseSessions"
           @page-change="stepPage = $event"
           @missing-cluster-focus="clearMissingClusterFocus"
         />

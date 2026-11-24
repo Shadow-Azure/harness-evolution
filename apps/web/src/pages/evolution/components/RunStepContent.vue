@@ -21,6 +21,7 @@ defineProps<{
   isUnreached: boolean;
   focusCluster?: string;
   canWrite?: boolean;
+  caseSessions?: Record<string, string>;
 }>();
 defineEmits<{
   "missing-cluster-focus": [];
@@ -70,6 +71,7 @@ defineEmits<{
     :wid="wid"
     :step="step"
     :focus-cluster="focusCluster"
+    :case-sessions="caseSessions"
     @missing-focus="$emit('missing-cluster-focus')"
   />
   <StepIterations
@@ -77,6 +79,7 @@ defineEmits<{
     :wid="wid"
     :step="step"
     :blocked-stage="run.blockedStage"
+    :case-sessions="caseSessions"
   />
   <StepFinal
     v-else-if="step?.key === 'final'"

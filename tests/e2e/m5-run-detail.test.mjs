@@ -329,7 +329,13 @@ test("m5 run detail exposes seven steps, candidate state, blocked state and fina
     assert.match(clusterDeepLink.text, /标题/);
     assert.match(clusterDeepLink.text, /deep-research/);
     assert.equal(clusterDeepLink.sourceRows, 1);
-    assert.equal(clusterDeepLink.sourceLinks.length, 0);
+    assert.equal(clusterDeepLink.sourceLinks.length, 1);
+    assert.equal(
+      clusterDeepLink.sourceLinks[0].href,
+      `${baseUrl}/workspaces/ws-default/sessions/session-run-running-1/errors?case=case-run-running-1&tab=attr`,
+    );
+    assert.equal(clusterDeepLink.sourceLinks[0].target, "_blank");
+    assert.match(clusterDeepLink.sourceLinks[0].rel, /noopener/);
 
     await installCookie(page, await currentLoginCookie());
     await page.session.send("Page.navigate", {

@@ -1,4 +1,8 @@
-import type { EvolutionRunStep, EvolutionStepKey } from "@harness/contracts";
+import type {
+  EvolutionRunStep,
+  EvolutionStep,
+  EvolutionStepKey,
+} from "@harness/contracts";
 
 /** Backend-emitted stepper node; `clickable` gates query and step requests. */
 export type RunStep = EvolutionRunStep;
@@ -65,4 +69,21 @@ export function workspacePushStatusLabel(status: string): string {
     default:
       return status;
   }
+}
+
+/**
+ * Fold attribution rows into the source-case → Session lookup shared by the
+ * step 5, step 6 and cluster-only deep links.
+ * @param step Loaded attribution step, or undefined while it is unreachable.
+ * @returns First Session per bad case; empty when attribution is not loaded.
+ */
+export function caseSessionMap(
+  step: EvolutionStep | undefined,
+): Record<string, string> {
+  if (step?.key !== "attribution") return {};
+  const sessions: Record<string, string> = {};
+  for (const row of step.payload.rows) {
+    sessions[row.badCaseId] ??= row.sessionId;
+  }
+  return sessions;
 }
