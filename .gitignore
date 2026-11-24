@@ -45,3 +45,6 @@ claude-code-sessions
 *.heic
 *.heif
 *.apng
+
+# pytest writes its temp root into the repo because %TEMP% is unusable in this sandbox
+pytest-of-*/
