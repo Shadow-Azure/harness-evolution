@@ -8,7 +8,7 @@ id: bugfix-33
 milestone: bugfix
 depends: []
 priority: P2
-status: ready
+status: done
 scope:
   - deploy/**
   - .github/workflows/provision.yml
@@ -19,7 +19,8 @@ scope:
   - plans/**
   - scripts/doc-budgets.manifest.json
   - .agents/**
-adr: []
+adr:
+  - ../../notes/implemented/process/2026-11-23-provision-bubblewrap-pipeline.md
 github:
   number: 553
   url: https://github.com/Shadow-Azure/harness-evolution/issues/553
