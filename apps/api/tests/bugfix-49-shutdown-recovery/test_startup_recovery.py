@@ -241,6 +241,7 @@ async def test_interrupted_attribution_batch_keeps_progress_and_identity(state: 
         assert recovered.status == "queued"
         assert recovered.attempt == 1
         assert recovered.error is None
+        assert recovered.started_at is None
         assert recovered.result == {"processed": 9, "total": 22}
         assert recovered.progress == 9 / 22
         assert [row.id for row in await state.jobs.list_queued()] == [job_id]
@@ -283,15 +284,16 @@ async def test_attribution_batch_of_completed_run_is_not_recovered(state: State)
         await runner.close()
 
 
-async def test_interrupted_batch_is_requeued_without_control_service(state: State) -> None:
-    """A runner without the evolution control still recovers an interrupted batch."""
+async def test_interrupted_batch_is_held_without_run_repository(state: State) -> None:
+    """Without the run repository the batch fence fails closed instead of guessing."""
     await _create_run(state, "run-unwired")
     job_id = await _interrupt(state, run_id="run-unwired", kind="attribution_batch")
     runner = JobRunner(state.jobs, state.bus, run_events=state.events)
     try:
         await runner.recover()
-        recovered = await state.jobs.get(job_id)
-        assert recovered is not None and recovered.status == "queued"
+        held = await state.jobs.get(job_id)
+        assert held is not None and held.status == "interrupted"
+        assert await state.jobs.list_queued() == []
     finally:
         await runner.close()
 
@@ -317,5 +319,25 @@ async def test_attribution_batch_past_the_attribution_stage_is_not_recovered(sta
         stale = await state.jobs.get(job_id)
         assert stale is not None and stale.status == "interrupted"
         assert await state.jobs.list_queued() == []
+    finally:
+        await runner.close()
+
+
+async def test_only_the_newest_interrupted_stage_per_run_is_recovered(state: State) -> None:
+    """Two interrupted stages of one run cannot race for the single active slot."""
+    await _create_run(state, "run-two-stages")
+    await state.runs.mark_interrupted(
+        "run-two-stages",
+        stage="prepare",
+        message="job interrupted during shutdown",
+    )
+    await _interrupt(state, run_id="run-two-stages", kind="evolution_prepare")
+    await _interrupt(state, run_id="run-two-stages", kind="evolution_advance")
+    runner = _runner(state)
+    try:
+        await runner.recover()
+        queued = await state.jobs.list_queued()
+        assert [row.kind for row in queued] == ["evolution_advance"]
+        assert queued[0].ref_id == "run-two-stages"
     finally:
         await runner.close()

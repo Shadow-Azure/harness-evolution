@@ -44,13 +44,10 @@ _INTERRUPTIBLE_KINDS = frozenset(
     },
 )
 _ATTRIBUTION_KIND = "attribution_batch"
+_EVOLUTION_RECOVERABLE_KINDS = frozenset(_INTERRUPTIBLE_KINDS - {"sync"})
 _RECOVERABLE_INTERRUPTED_KINDS = (
-    "attribution_batch",
-    "evolution_prepare",
-    "evolution_advance",
-    "evolution_apply",
-    "evolution_finalize",
-    "evolution_retry",
+    *sorted(_EVOLUTION_RECOVERABLE_KINDS),
+    _ATTRIBUTION_KIND,
 )
 _ATTRIBUTION_RECOVERY_RUN_STATUSES = frozenset({"preparing", "running", "interrupted"})
 _KIND_TO_STAGE = {
@@ -200,10 +197,39 @@ class JobRunner:
             )
             if job.id not in restarted_ids
         ]
-        attribution = [job for job in shutdown_interrupted if job.kind == _ATTRIBUTION_KIND]
-        evolution = [job for job in shutdown_interrupted if job.kind != _ATTRIBUTION_KIND]
+        attribution: list[JobRunRecord] = []
+        evolution: dict[str, JobRunRecord] = {}
+        for job in shutdown_interrupted:
+            if job.kind == _ATTRIBUTION_KIND:
+                attribution.append(job)
+            elif job.ref_id is None:
+                logger.warning(
+                    "skipping shutdown-recovered evolution job without a run id",
+                    extra={"job_id": job.id, "kind": job.kind},
+                )
+            else:
+                current = evolution.get(job.ref_id)
+                if current is None or (job.created_at, job.id) > (
+                    current.created_at,
+                    current.id,
+                ):
+                    evolution[job.ref_id] = job
+                else:
+                    logger.info(
+                        "dropping stale interrupted evolution stage for run",
+                        extra={
+                            "job_id": job.id,
+                            "kind": job.kind,
+                            "keptJobId": current.id,
+                            "keptKind": current.kind,
+                            "runId": job.ref_id,
+                        },
+                    )
         recovered: list[tuple[str, str | None]] = []
-        for job in (*attribution, *evolution):
+        for job in (
+            *attribution,
+            *sorted(evolution.values(), key=lambda item: (item.ref_id or "", item.kind)),
+        ):
             if job.kind == _ATTRIBUTION_KIND:
                 queued = await self._recover_attribution_batch(job)
             else:
@@ -249,7 +275,11 @@ class JobRunner:
     async def _attribution_run_active(self, job: JobRunRecord) -> bool:
         """Only recover a batch while its owning run is active and unpaused."""
         if self._runs is None or job.ref_id is None:
-            return True
+            logger.warning(
+                "cannot verify interrupted attribution batch without its run",
+                extra={"job_id": job.id, "kind": job.kind, "refId": job.ref_id},
+            )
+            return False
         run = await self._runs.get_run(job.ref_id)
         return (
             run is not None

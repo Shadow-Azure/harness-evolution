@@ -479,6 +479,7 @@ class JobRepository:
                     status="queued",
                     **_LEASE_CLEARED,
                     error=None,
+                    started_at=None,
                     finished_at=None,
                     updated_at=now,
                 ),
