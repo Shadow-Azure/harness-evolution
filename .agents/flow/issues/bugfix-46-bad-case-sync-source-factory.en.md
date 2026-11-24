@@ -15,6 +15,7 @@ scope:
   - apps/api/tests/**
   - tests/e2e/**
   - .env.example
+  - .gitignore
   - docs/architecture.md
   - docs/architecture.en.md
   - docs/architecture.i18n.yaml
