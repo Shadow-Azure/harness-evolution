@@ -311,6 +311,7 @@ bad_cases = Table(
     Column("title", String(255), nullable=False),
     Column("bad_case_description", Text, nullable=False),
     Column("meta_data", JSON, nullable=True),
+    Column("catalog_label", String(128), nullable=True),
     Column("source", String(64), nullable=True),
     Column("session_source", JSON, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
@@ -326,6 +327,38 @@ bad_cases = Table(
     ),
     Index("ix_bad_cases_workspace_object", "workspace_id", "object_name"),
     Index("ix_bad_cases_workspace_type", "workspace_id", "bad_case_type"),
+    Index("ix_bad_cases_catalog_label", "catalog_label"),
+)
+
+
+workspace_bad_case_labels = Table(
+    "workspace_bad_case_labels",
+    DOMAIN_METADATA,
+    # The migration owns the cross-metadata workspace foreign key.
+    Column("workspace_id", String(36), primary_key=True),
+    Column("label", String(128), primary_key=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Index("ix_workspace_bad_case_labels_label", "label"),
+)
+
+
+workspace_bad_cases = Table(
+    "workspace_bad_cases",
+    DOMAIN_METADATA,
+    # The migration owns the cross-metadata workspace foreign key.
+    Column("workspace_id", String(36), primary_key=True),
+    Column(
+        "bad_case_id",
+        String(64),
+        ForeignKey("bad_cases.bad_case_id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("assignment_source", String(24), primary_key=True),
+    Column("label", String(128), nullable=True),
+    Column("assigned_at", DateTime(timezone=True), nullable=False),
+    Index("ix_workspace_bad_cases_bad_case", "bad_case_id"),
+    Index("ix_workspace_bad_cases_label", "label"),
 )
 
 
