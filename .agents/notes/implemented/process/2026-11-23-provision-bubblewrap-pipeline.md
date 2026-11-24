@@ -14,7 +14,7 @@ Status: implemented
 
 - `.github/workflows/provision.yml` 只由 `workflow_dispatch` 触发，绑定 `production` 环境，只允许从 `main` 运行；使用 `production` 环境的专用 root 凭据 `PROVISION_SSH_KEY` / `PROVISION_SSH_USER`，复用 `ALIYUN_HOST`、`ALIYUN_SSH_PORT`。
 - `deploy/provision-bubblewrap.sh` 以 root 幂等执行：先检测，已安装时只验证，缺失时才 `apt-get update` + 安装；最后以 `harness` 身份运行最小命名空间探针。Ubuntu 24.04 的 AppArmor 默认限制 unprivileged userns，探针失败时脚本安装只放行 bwrap 可执行路径的 `/etc/apparmor.d/bwrap-userns-restrict` 并重试，不改主机级 `kernel.apparmor_restrict_unprivileged_userns`。`--check` 只读，`--dry-run` 只打印计划；错误码与 `attribution.preflight` 的 `ATTRIBUTION_BWRAP_MISSING` / `ATTRIBUTION_BWRAP_UNUSABLE` 对齐。
-- 新机由 `deploy/cloud-init.yaml` 在创建阶段安装 `bubblewrap`；Ubuntu 24.04 仍需在创建后跑一次 Provision `install` 应用 AppArmor profile。`bootstrap-server.sh` 仍是基础包清单的 source of truth。
+- 新机由 `deploy/cloud-init.yaml` 在创建阶段安装 `bubblewrap`；Ubuntu 24.04 仍需在创建后跑一次 Provision `install` 应用 AppArmor profile。归因运行时前置的 source of truth 是 `deploy/attribution-runtime-prerequisites.list`，bootstrap 读取它安装，cloud-init 镜像它。
 - `release.sh` 的 preflight 保留为门禁；Deploy 失败摘要把错误码映射到 Provision 入口与 runbook。deploy 的 sudoers 不变。
 
 ## Alternatives considered

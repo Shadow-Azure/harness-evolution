@@ -94,6 +94,9 @@ GROUP BY attribution_skill_name;
 - **迁移失败**：确认 RDS/自建 MySQL 已启动、账号能连；`alembic.ini.release` 在 release 目录内可查注入结果。
 - **切换版本报「目标文件暂时不可读取」**：`/api/health` 的 `data.ok` 为 false，或 `HE_DATA_DIR` 落到了发布目录；检查 `vars.HE_DATA_DIR` 与 `/var/lib/harness-evolution` 属主，必要时重跑 bootstrap。
 - **发布在切换 current 前失败**：看 `release.sh` 输出的 `HE_DATA_DIR` 路径与原因；修复后重跑 Deploy，`.env` 已自动恢复。
+- **PR 的 `deploy-contract` 红**：job 日志里先看 `state=` 与 `error_code=`；缺包是 `ATTRIBUTION_BWRAP_MISSING`，探针失败是 `ATTRIBUTION_BWRAP_UNUSABLE`。在目标机按 Provision `check` → `install` 复核，不要改 preflight 或给 deploy 加 apt。
+- **新增部署运行时前置**：先改 `deploy/attribution-runtime-prerequisites.list`，再在 bootstrap/cloud-init 与 Provision 路径提供安装/验证，更新 `docs/deployment.md` 与 `attribution.preflight`；API 套件与 `deploy-contract` 会指出漏改的文件。
+- **required check**：Settings → Branches → `main` 的保护规则只要求 `ci-ok`；`deploy-contract` 已进入 `ci-ok.needs`，不需要在分支保护里单独添加。
 - **Actions SSH 卡住**：ECS 安全组 22 端口来源是否放行 GitHub Actions runner（runner IP 段动态，先放行 0.0.0.0/0 并禁密码登录）。
 - **Claude Code 未安装或 401**：看 Deploy 的“准备/安装并配置 Claude Code”步骤；`CLAUDE_CODE_MODEL` 与 `CLAUDE_CODE_API_KEY` 必须同时存在；服务器 `~/.claude/settings.json` 的 base URL 要与 key 的区域一致（国内版 `.cn`，国际版 `.io`）。
 - **换绑域名**：A 记录指向 IP → 备案完成 → 免费证书签发 → nginx 加 443 server 块 + `HE_WEB_BASE_URL`/`HE_CORS_ORIGINS` 改域名。

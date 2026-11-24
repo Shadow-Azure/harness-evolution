@@ -34,7 +34,13 @@ The attribution Skill's `bubblewrap` is a system package; the `deploy` user has 
 
 ## New-host cloud-init
 
-When creating an ECS instance, use [deploy/cloud-init.yaml](../deploy/cloud-init.yaml) to install `bubblewrap` at creation; Ubuntu 24.04 still needs one Provision `install` after creation for the profile. `bootstrap-server.sh` remains the source of truth for the base package list, and bootstrap still needs one root run after creation.
+When creating an ECS instance, use [deploy/cloud-init.yaml](../deploy/cloud-init.yaml) to install the runtime prerequisites at creation; Ubuntu 24.04 still needs one Provision `install` after creation for the profile. The attribution runtime prerequisites live in [deploy/attribution-runtime-prerequisites.list](../deploy/attribution-runtime-prerequisites.list); bootstrap reads it and cloud-init mirrors it.
+
+## CI gate: deployment provisioning contract
+
+`deploy-contract` runs [verify_provisioning_contract.sh](../apps/api/tests/deploy/verify_provisioning_contract.sh) in a clean `ubuntu:24.04` container: the missing-package negative case, the provision install, the `harness` probe, and `attribution.preflight` must pass in order. [test_provisioning_contract.py](../apps/api/tests/deploy/test_provisioning_contract.py) runs with the API suite and statically asserts the prerequisite list, bootstrap/cloud-init/Provision consistency, and the `release.sh` preflight order. `deploy-contract` is in `ci-ok.needs`; branch protection only needs `ci-ok`.
+
+Adding a deployment runtime prerequisite and gate triage are covered in the [deployment playbook](../plans/deploy-aliyun-playbook.md#6-常见问题).
 
 ## GitHub configuration
 

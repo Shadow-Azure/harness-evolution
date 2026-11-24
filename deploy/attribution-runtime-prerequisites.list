@@ -1,0 +1,10 @@
+# 归因运行时在每台主机上需要的 OS 包（source of truth）。
+#
+# - bootstrap-server.sh 读取本清单并安装；
+# - deploy/cloud-init.yaml 在机器创建阶段镜像同一清单，deploy-contract 门禁校验两边一致；
+# - 存量机用 deploy/provision-bubblewrap.sh 幂等补齐 bubblewrap；
+# - 新增运行时前置时先改这里，再同步 cloud-init 与 Provision 路径，PR CI 的
+#   deploy-contract 会阻止只改代码、不记录 provisioning 契约的变更。
+#
+# 格式：每行一个 apt 包名，允许 # 注释与空行。
+bubblewrap

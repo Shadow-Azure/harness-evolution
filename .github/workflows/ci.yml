@@ -315,6 +315,34 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: node scripts/verify-flow-online.mjs
 
+  deploy-contract:
+    # 部署 provisioning 契约：干净 Ubuntu 容器里先验证缺包负例，再跑真实 provision
+    # 脚本、服务账号命名空间探针与 attribution.preflight。与 Provision workflow
+    # 共用 deploy/provision-bubblewrap.sh，避免 CI 与生产走两条安装路径。
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: ubuntu:24.04
+      # bwrap 需要创建 unprivileged user namespace；GitHub 的 Docker 默认
+      # seccomp/AppArmor 会拒绝。这里只对一次性、无 secret 的 PR job 放开这两项，
+      # 容器仍是非 privileged，且不挂载宿主目录或凭据。
+      options: --security-opt seccomp=unconfined --security-opt apparmor=unconfined
+    steps:
+      - name: 安装最小依赖
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl git python3 python3-pip python3-venv
+      - uses: actions/checkout@v6
+      - name: Python 环境
+        run: |
+          python3 -m venv apps/api/.venv
+          apps/api/.venv/bin/python -m pip install -e 'apps/api[dev]'
+      - name: 静态 provisioning 契约
+        run: apps/api/.venv/bin/python -m pytest apps/api/tests/deploy/test_provisioning_contract.py -q
+      - name: 干净主机 provisioning 契约
+        run: bash apps/api/tests/deploy/verify_provisioning_contract.sh
+
   # 聚合 lane：分支保护唯一 required check。skipped（flow-online 在 push 事件）
   # 放行；failure / cancelled 一票否决。
   ci-ok:
@@ -330,6 +358,7 @@ jobs:
         docs-flow,
         mysql,
         flow-online,
+        deploy-contract,
       ]
     if: always()
     runs-on: ubuntu-latest
