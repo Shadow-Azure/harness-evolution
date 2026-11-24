@@ -535,16 +535,15 @@ class EvolutionStageService:
         """Load the candidate, attribution, legacy probe, and case-title snapshot."""
         candidates = await self._candidates.list(run.id)
         attributions = await self._attributions.list_run_attributions(run.id) if candidates else ()
+        links = await self._runs.list_cluster_probes(run.id)
         if candidates:
             probes: Sequence[ProbeHitRow] = ()
             case_ids = tuple(dict.fromkeys(candidate.bad_case_id for candidate in candidates))
         else:
-            links = await self._runs.list_cluster_probes(run.id)
             probe_ids = tuple(dict.fromkeys(link.probe_id for link in links))
             probes = await self._probes.list_rows_by_ids(probe_ids) if probe_ids else ()
             case_ids = tuple(dict.fromkeys(row.bad_case_id for row in probes))
         case_titles = await self._bad_cases.titles_by_ids(case_ids)
-        links = await self._runs.list_cluster_probes(run.id)
         cluster_links: dict[str, tuple[str, ...]] = {}
         for link in links:
             cluster_links.setdefault(link.probe_cluster_id, ())
