@@ -32,8 +32,9 @@ from app.service.acquisition.parsers import (
 )
 from app.service.acquisition.parsers.base import _dict, _string
 from app.third_party_api.session_query.models import SessionTrajectory
-from app.third_party_api.session_source import SessionInfo
+from app.third_party_api.session_source import SessionInfo, SessionSourceSnapshot
 from app.utils.time import now_shanghai
+from tests.bad_case_sync_fakes import StubBadCaseSyncSource
 
 ROOT = "root-session-1"
 CHILD = "agent-child-1"
@@ -206,21 +207,29 @@ class FakeFetcher:
 
 
 @dataclass
-class FakeGlobalSource:
-    """Legacy global query source that must not be called for report roots."""
+class FakeGlobalSource(StubBadCaseSyncSource):
+    """Global sync source that must not be called for report roots."""
 
+    provider = "fake"
     calls: list[str] = field(default_factory=list)
 
-    async def list_children(self, session_id: str) -> tuple[str, ...]:
+    async def fetch_session(
+        self,
+        *,
+        session_id: str,
+        expected_parent_id: str | None,
+        snapshot: SessionSourceSnapshot,
+    ) -> SessionInfo:
         self.calls.append(session_id)
-        return ()
-
-    async def fetch_trajectory(self, session_id: str) -> SessionTrajectory:
         self.calls.append(session_id)
-        return SessionTrajectory(content=jsonl({"type": "user"}), line_count=1)
-
-    async def close(self) -> None:
-        return None
+        return SessionInfo(
+            runtime_key="claude-code",
+            agent_kind="main" if expected_parent_id is None else "subagent",
+            parent_agent_id=expected_parent_id,
+            child_session_ids=(),
+            agent_meta=None,
+            trajectory=SessionTrajectory(content=jsonl({"type": "user"}), line_count=1),
+        )
 
 
 def service(
@@ -321,7 +330,7 @@ async def test_global_fallback_keeps_the_existing_claude_path(database: Database
     state = await BadCaseRootSyncRepository(database).get(ROOT)
     assert state is not None
     assert state.source_kind == "global"
-    assert state.source_snapshot == {"kind": "global"}
+    assert state.source_snapshot == {"kind": "global", "provider": "fake"}
 
 
 @pytest.mark.asyncio

@@ -140,15 +140,15 @@ from app.service.workspaces.ingest import BadCaseIngestService
 from app.service.workspaces.service import WorkspaceService
 from app.third_party_api.ai_agent.base import AIAgentProvider
 from app.third_party_api.ai_agent.factory import build_agent_provider
-from app.third_party_api.bad_case_query.http import HttpBadCaseCatalogSource
-from app.third_party_api.bad_case_query.models import BadCaseCatalogSource
+from app.third_party_api.bad_case_sync_source import (
+    BadCaseSyncSourceFactory,
+    BaseBadCaseSyncSource,
+)
 from app.third_party_api.git.content import SubprocessGitContent
 from app.third_party_api.git.provider import GitPushProviderFactory
 from app.third_party_api.git.proxy import GitProxyController, ProxyAwareGitRunner
 from app.third_party_api.git.remote import GitRemote, SubprocessGitRemote
 from app.third_party_api.git.workspace import GitWorkspaceManager
-from app.third_party_api.session_query.http import HttpSessionQuerySource
-from app.third_party_api.session_query.models import SessionQuerySource
 from app.third_party_api.session_source import HttpSessionSourceClient
 from app.third_party_api.trajectory.http import HttpTrajectorySource
 from app.third_party_api.trajectory.source import TrajectorySource
@@ -196,8 +196,7 @@ def create_app(
     settings: Settings | None = None,
     database: Database | None = None,
     trajectory_source: TrajectorySource | None = None,
-    session_query_source: SessionQuerySource | None = None,
-    bad_case_catalog_source: BadCaseCatalogSource | None = None,
+    bad_case_sync_source: BaseBadCaseSyncSource | None = None,
     git_remote: GitRemote | None = None,
     git_workspaces: WorkspacePreparer | None = None,
     target_version_resolver: TargetVersionResolver | None = None,
@@ -267,22 +266,10 @@ def create_app(
         )
     pull_service = UpstreamPullService(resolved_database, jobs, resolved_source)
     jobs.register_handler("pull", pull_service.handle)
-    session_query_client: httpx.AsyncClient | None = None
-    resolved_session_query_source = session_query_source
-    if resolved_session_query_source is None and resolved_settings.session_query_configured:
-        query_token = resolved_settings.session_query_token
-        if query_token is None:
-            raise RuntimeError("session query configuration lost its token")
-        session_query_client = httpx.AsyncClient(
-            base_url=resolved_settings.session_query_base_url or "",
-            headers={"Authorization": f"Bearer {query_token.get_secret_value()}"},
-            timeout=resolved_settings.session_query_timeout_seconds,
-            follow_redirects=False,
-        )
-        resolved_session_query_source = HttpSessionQuerySource(
-            session_query_client,
-            max_retries=resolved_settings.session_query_retry_attempts,
-            backoff_seconds=resolved_settings.session_query_retry_backoff_seconds,
+    resolved_bad_case_sync_source = bad_case_sync_source
+    if resolved_bad_case_sync_source is None:
+        resolved_bad_case_sync_source = BadCaseSyncSourceFactory.from_settings(
+            resolved_settings,
         )
     session_source_http_client = httpx.AsyncClient(
         timeout=resolved_settings.session_query_timeout_seconds,
@@ -297,7 +284,7 @@ def create_app(
     bad_case_sync_service = BadCaseRootSyncService.from_settings(
         resolved_database,
         bad_case_sync_repository,
-        resolved_session_query_source,
+        resolved_bad_case_sync_source,
         resolved_settings,
         session_source_fetcher=session_source_fetcher,
     )
@@ -305,28 +292,13 @@ def create_app(
         jobs,
         bad_case_sync_repository,
         resolved_settings,
+        available=resolved_bad_case_sync_source is not None,
     )
     jobs.register_handler(BAD_CASE_ROOT_SYNC_KIND, bad_case_sync_service.handle)
-    resolved_catalog_source = bad_case_catalog_source
-    if resolved_catalog_source is None and resolved_settings.bad_case_query_configured:
-        catalog_token = resolved_settings.bad_case_query_token
-        if catalog_token is None:
-            raise RuntimeError("bad-case query configuration lost its token")
-        catalog_client = httpx.AsyncClient(
-            base_url=resolved_settings.bad_case_query_base_url or "",
-            headers={"Authorization": f"Bearer {catalog_token.get_secret_value()}"},
-            timeout=resolved_settings.bad_case_query_timeout_seconds,
-            follow_redirects=False,
-        )
-        resolved_catalog_source = HttpBadCaseCatalogSource(
-            catalog_client,
-            max_retries=resolved_settings.bad_case_query_retry_attempts,
-            backoff_seconds=resolved_settings.bad_case_query_retry_backoff_seconds,
-        )
     catalog_repository = BadCaseCatalogSyncRepository(resolved_database)
     catalog_service = BadCaseCatalogSyncService.from_settings(
         catalog_repository,
-        resolved_catalog_source,
+        resolved_bad_case_sync_source,
         resolved_settings,
     )
     catalog_sync = BadCaseCatalogSyncCoordinator(
@@ -334,6 +306,7 @@ def create_app(
         catalog_repository,
         resolved_settings,
         catalog_service,
+        available=resolved_bad_case_sync_source is not None,
     )
     jobs.register_handler(BAD_CASE_CATALOG_SYNC_KIND, catalog_service.handle)
     sync = SyncCoordinator(
@@ -691,20 +664,16 @@ def create_app(
                                             await resolved_source.close()
                                     finally:
                                         try:
-                                            if resolved_session_query_source is not None:
-                                                await resolved_session_query_source.close()
+                                            if resolved_bad_case_sync_source is not None:
+                                                await resolved_bad_case_sync_source.close()
                                         finally:
                                             try:
-                                                if resolved_catalog_source is not None:
-                                                    await resolved_catalog_source.close()
+                                                await session_source_http_client.aclose()
                                             finally:
                                                 try:
-                                                    await session_source_http_client.aclose()
+                                                    await event_bus.close()
                                                 finally:
-                                                    try:
-                                                        await event_bus.close()
-                                                    finally:
-                                                        await resolved_database.dispose()
+                                                    await resolved_database.dispose()
 
     docs_url = "/api/docs" if resolved_settings.docs_enabled else None
     openapi_url = "/api/openapi.json" if resolved_settings.docs_enabled else None

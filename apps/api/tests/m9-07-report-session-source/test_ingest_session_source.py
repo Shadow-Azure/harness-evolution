@@ -56,6 +56,7 @@ async def test_session_source_is_persisted_with_camel_case_keys(
     row = await fetch_case(app.state.database, "BC-HC-021")
     assert row is not None
     assert row["session_source"] == SOURCE
+    assert row["origin"] == "report"
 
 
 async def test_omitting_session_source_stays_backward_compatible(
@@ -88,6 +89,7 @@ async def test_re_report_without_source_replaces_it_with_null(
     row = await fetch_case(app.state.database, "BC-HC-021")
     assert row is not None
     assert row["session_source"] is None
+    assert row["origin"] == "report"
 
 
 @pytest.mark.parametrize(

@@ -8,7 +8,7 @@ from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import ValidationError
 
@@ -21,10 +21,7 @@ from app.errors import AppError, ErrorCode
 from app.service.acquisition.local_sessions import LocalAgentPayload
 from app.service.acquisition.parsers import UnsupportedTraceRuntime
 from app.service.acquisition.replay import replay_pending_payloads
-from app.third_party_api.session_query.models import (
-    SessionQuerySource,
-    SessionTrajectory,
-)
+from app.third_party_api.bad_case_sync_source import BaseBadCaseSyncSource
 from app.third_party_api.session_source import (
     SessionInfo,
     SessionSourceFetcher,
@@ -58,6 +55,75 @@ class RootSyncProgress:
     updated: int = 0
 
 
+class SessionFetcher(Protocol):
+    """One signature shared by the report and global session readers."""
+
+    async def fetch(
+        self,
+        *,
+        session_id: str,
+        expected_parent_id: str | None,
+        snapshot: SessionSourceSnapshot,
+    ) -> SessionInfo:
+        """Return one runtime-agnostic session projection for a frozen source."""
+
+
+@dataclass(frozen=True, slots=True)
+class ReportSessionFetcher:
+    """Adapt the report URL-template client to the unified fetcher signature."""
+
+    fetcher: SessionSourceFetcher
+    session_url_template: str
+
+    async def fetch(
+        self,
+        *,
+        session_id: str,
+        expected_parent_id: str | None,
+        snapshot: SessionSourceSnapshot,
+    ) -> SessionInfo:
+        """Fetch through the frozen report template and declared runtime."""
+        return await self.fetcher.fetch(
+            session_url_template=self.session_url_template,
+            session_id=session_id,
+            expected_parent_id=expected_parent_id,
+            declared_runtime=snapshot.runtime,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class GlobalSessionFetcher:
+    """Read a global root through the factory-produced sync source."""
+
+    source: BaseBadCaseSyncSource | None
+
+    async def fetch(
+        self,
+        *,
+        session_id: str,
+        expected_parent_id: str | None,
+        snapshot: SessionSourceSnapshot,
+    ) -> SessionInfo:
+        """Fetch one session or report the same unavailable error as before."""
+        if self.source is None:
+            raise AppError(
+                status_code=503,
+                code=ErrorCode.SESSION_QUERY_UNAVAILABLE,
+                message="bad-case sync source is not configured",
+            )
+        if snapshot.provider is not None and self.source.provider != snapshot.provider:
+            raise AppError(
+                status_code=503,
+                code=ErrorCode.SESSION_QUERY_UNAVAILABLE,
+                message="frozen bad-case sync provider is not configured",
+            )
+        return await self.source.fetch_session(
+            session_id=session_id,
+            expected_parent_id=expected_parent_id,
+            snapshot=snapshot,
+        )
+
+
 def _retry_delay(attempts: int) -> timedelta:
     """Return the documented 1m/5m/15m/1h retry ladder."""
     if attempts <= 1:
@@ -85,7 +151,7 @@ class BadCaseRootSyncService:
         self,
         database: Database,
         repository: BadCaseRootSyncRepository,
-        source: SessionQuerySource | None,
+        source: BaseBadCaseSyncSource | None,
         *,
         session_source_fetcher: SessionSourceFetcher | None = None,
         batch_size: int = 20,
@@ -112,7 +178,7 @@ class BadCaseRootSyncService:
         cls,
         database: Database,
         repository: BadCaseRootSyncRepository,
-        source: SessionQuerySource | None,
+        source: BaseBadCaseSyncSource | None,
         settings: Settings,
         session_source_fetcher: SessionSourceFetcher | None = None,
     ) -> BadCaseRootSyncService:
@@ -261,11 +327,17 @@ class BadCaseRootSyncService:
         if state is not None and state.source_snapshot is not None:
             return state.source_kind, state.source_snapshot
         if state is not None and state.attempts > 0:
-            return "global", {"kind": "global"}
+            return "global", self._global_snapshot()
         report = await self._repository.latest_report_source(root_session_id)
         if report is not None:
             return "report", report.snapshot()
-        return "global", {"kind": "global"}
+        return "global", self._global_snapshot()
+
+    def _global_snapshot(self) -> dict[str, object]:
+        """Freeze the current provider when one is configured."""
+        if self._source is None:
+            return {"kind": "global"}
+        return {"kind": "global", "provider": self._source.provider}
 
     @staticmethod
     def _selection(state: BadCaseRootSyncRow | None) -> SessionSourceSnapshot:
@@ -310,101 +382,7 @@ class BadCaseRootSyncService:
         deadline: float,
         selection: SessionSourceSnapshot,
     ) -> None:
-        if selection.kind == "report":
-            await self._sync_report_root(
-                root_session_id,
-                now,
-                progress,
-                owner=owner,
-                deadline=deadline,
-                selection=selection,
-            )
-            return
-        await self._sync_global_root(
-            root_session_id,
-            now,
-            progress,
-            owner=owner,
-            deadline=deadline,
-        )
-
-    async def _sync_global_root(
-        self,
-        root_session_id: str,
-        now: datetime,
-        progress: RootSyncProgress,
-        *,
-        owner: str,
-        deadline: float,
-    ) -> None:
-        source = self._source
-        if source is None:
-            raise AppError(
-                status_code=503,
-                code=ErrorCode.SESSION_QUERY_UNAVAILABLE,
-                message="session query service is not configured",
-            )
-        queue: deque[tuple[str, str | None, int]] = deque([(root_session_id, None, 0)])
-        visited: set[str] = {root_session_id}
-        while queue:
-            self._check_deadline(deadline)
-            session_id, parent_id, depth = queue.popleft()
-            self._check_limits(depth, progress)
-            trajectory = await source.fetch_trajectory(session_id)
-            written = await write_local_payloads(
-                self._database,
-                (
-                    _payload(
-                        root_session_id=root_session_id,
-                        session_id=session_id,
-                        parent_id=parent_id,
-                        trajectory=trajectory,
-                        now=now,
-                    ),
-                ),
-                source_type="http_api",
-            )
-            progress.agent_count += 1
-            progress.inserted += written.inserted_payloads
-            progress.updated += written.updated_payloads
-            await self._repository.renew_lease(
-                root_session_id,
-                owner=owner,
-                lease_seconds=self._root_lease_seconds,
-                now=self._clock(),
-            )
-            self._enqueue_children(
-                queue,
-                visited,
-                await source.list_children(session_id),
-                parent_id=session_id,
-                depth=depth,
-            )
-
-    async def _sync_report_root(
-        self,
-        root_session_id: str,
-        now: datetime,
-        progress: RootSyncProgress,
-        *,
-        owner: str,
-        deadline: float,
-        selection: SessionSourceSnapshot,
-    ) -> None:
-        fetcher = self._session_source_fetcher
-        template = selection.session_url_template
-        if fetcher is None:
-            raise AppError(
-                status_code=503,
-                code=ErrorCode.SESSION_QUERY_UNAVAILABLE,
-                message="session source client is not configured",
-            )
-        if template is None:
-            raise AppError(
-                status_code=502,
-                code=ErrorCode.SESSION_SOURCE_INVALID_RESPONSE,
-                message="root sync source snapshot has no session URL template",
-            )
+        fetcher = self._fetcher_for(selection)
         queue: deque[tuple[str, str | None, int]] = deque([(root_session_id, None, 0)])
         visited: set[str] = {root_session_id}
         while queue:
@@ -412,10 +390,9 @@ class BadCaseRootSyncService:
             session_id, parent_id, depth = queue.popleft()
             self._check_limits(depth, progress)
             info = await fetcher.fetch(
-                session_url_template=template,
                 session_id=session_id,
                 expected_parent_id=parent_id,
-                declared_runtime=selection.runtime,
+                snapshot=selection,
             )
             written = await write_local_payloads(
                 self._database,
@@ -445,6 +422,36 @@ class BadCaseRootSyncService:
                 parent_id=session_id,
                 depth=depth,
             )
+
+    def _fetcher_for(self, selection: SessionSourceSnapshot) -> SessionFetcher:
+        """Map one frozen source kind to its unified fetcher."""
+        fetchers: dict[str, Callable[[SessionSourceSnapshot], SessionFetcher]] = {
+            "report": self._report_fetcher,
+            "global": self._global_fetcher,
+        }
+        return fetchers[selection.kind](selection)
+
+    def _report_fetcher(self, selection: SessionSourceSnapshot) -> SessionFetcher:
+        """Build the report fetcher or preserve the established error codes."""
+        fetcher = self._session_source_fetcher
+        if fetcher is None:
+            raise AppError(
+                status_code=503,
+                code=ErrorCode.SESSION_QUERY_UNAVAILABLE,
+                message="session source client is not configured",
+            )
+        template = selection.session_url_template
+        if template is None:
+            raise AppError(
+                status_code=502,
+                code=ErrorCode.SESSION_SOURCE_INVALID_RESPONSE,
+                message="root sync source snapshot has no session URL template",
+            )
+        return ReportSessionFetcher(fetcher, template)
+
+    def _global_fetcher(self, selection: SessionSourceSnapshot) -> SessionFetcher:
+        """Build the global fetcher; it reports an absent source when invoked."""
+        return GlobalSessionFetcher(self._source)
 
     @staticmethod
     def _check_deadline(deadline: float) -> None:
@@ -483,28 +490,6 @@ class BadCaseRootSyncService:
                 )
             visited.add(child)
             queue.append((child, parent_id, depth + 1))
-
-
-def _payload(
-    *,
-    root_session_id: str,
-    session_id: str,
-    parent_id: str | None,
-    trajectory: SessionTrajectory,
-    now: datetime,
-) -> LocalAgentPayload:
-    encoded = trajectory.content.encode("utf-8")
-    return LocalAgentPayload(
-        root_session_id=root_session_id,
-        agent_id=session_id,
-        agent_kind="main" if session_id == root_session_id else "subagent",
-        content=trajectory.content,
-        content_hash=hashlib.sha256(encoded).hexdigest(),
-        line_count=trajectory.line_count,
-        agent_meta=None if session_id == root_session_id else {"parentAgentId": parent_id},
-        source_updated_at=now,
-        discovered_at=now,
-    )
 
 
 def _payload_from_info(

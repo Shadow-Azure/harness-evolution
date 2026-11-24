@@ -442,6 +442,7 @@ erDiagram
 |---|---|---|---|
 | `bad_case_id` | `VARCHAR(64)` | PK | 外部生成的稳定 id；上报接口可携带做 upsert 幂等键 |
 | `workspace_id` | `VARCHAR(36)` | NOT NULL FK → `workspaces.id` | V2：归属空间；上报路由与总览/归因范围都按它过滤 |
+| `origin` | `VARCHAR(16)` | NOT NULL DEFAULT `catalog` | 写者归属：`report`（凭据上报）或 `catalog`（目录同步）；首次写入决定，后续只允许同一写者更新 |
 | `bad_case_session_id` | `VARCHAR(36)` | NOT NULL | 所属根会话（Claude Code `sessionId`） |
 | `bad_case_type` | `VARCHAR(16)` | NOT NULL | `self` / `discovery` |
 | `object_name` | `VARCHAR(128)` | NOT NULL | 上报/发现问题的 skill 或 agent 名 |
@@ -458,9 +459,9 @@ erDiagram
 
 索引：`INDEX(workspace_id, bad_case_session_id)`、`INDEX(bad_case_session_id)`、`INDEX(bad_case_agent_id)`、`INDEX(object_type, object_name, object_version)`、`INDEX(workspace_id, created_at)`、`INDEX(workspace_id, object_name)`、`INDEX(workspace_id, bad_case_type)`。
 
-> 自动入库由 `bad_case_catalog_sync` 定时任务完成：按 `bad_case_id` 游标分页拉取上游，命中已有 id 时更新全部上游字段，缺失时插入；不触碰 `bad_case_analysis` 与 `probe_reports`。前端“已同步”取 `COUNT(bad_cases)`，“未同步”取上游剩余量。
+> 自动入库由 `bad_case_catalog_sync` 定时任务完成：按 `bad_case_id` 游标分页拉取上游，缺失时插入 `origin="catalog"`；命中 `catalog` 行时更新上游字段，命中 `report` 行时跳过并计入 `skipped`；不触碰 `bad_case_analysis` 与 `probe_reports`。前端“已同步”取 `COUNT(bad_cases)`，“未同步”取上游剩余量。
 >
-> **V2 写入边界**：目录同步默认停用（`HE_BAD_CASE_CATALOG_SYNC_ENABLED=false`），主通道是空间上报接口（§4.1 的 `workspace_id` 由 URL + 凭据决定，body 不含空间字段）；启用 legacy 目录同步时只写 `HE_DEFAULT_WORKSPACE_ID`，不能绕过空间凭据给其它空间写数据。upsert 同 `bad_case_id` 更新上游字段、不重复计数。
+> **V2 写入边界**：目录同步默认停用（`HE_BAD_CASE_CATALOG_SYNC_ENABLED=false`），主通道是空间上报接口（§4.1 的 `workspace_id` 由 URL + 凭据决定，body 不含空间字段）；启用 legacy 目录同步时只写 `HE_DEFAULT_WORKSPACE_ID`，不能绕过空间凭据给其它空间写数据。同 `bad_case_id` 只更新目录自有行、不重复计数；已上报行由 `origin="report"` 保护。
 >
 > **`quota` 的语义**：`quota` 只约束凭据上报路径——额度在插入前按 `COUNT(bad_cases WHERE workspace_id)` 判定，超限 `409 QUOTA_EXCEEDED`。legacy 目录同步不查 `quota`、也不参与空间行锁，只写默认空间，因此它可以把默认空间推过 `quota`：此时默认空间的 `workspaceUsed`（以及新建上报的判定）会如实反映超限状态，新 ID 上报继续 `409` 直至既有行被清理。这是有意的边界——`quota` 是“凭据上报的准入上限”，不是“空间容量的硬上限”；默认空间上并发的上报仍可能读到目录任务提交前的计数。
 

@@ -99,6 +99,7 @@ EXTERNAL_TABLES: tuple[TableContract, ...] = (
         columns=(
             ColumnContract("bad_case_id", "varchar", False, 64),
             ColumnContract("workspace_id", "varchar", False, 36),
+            ColumnContract("origin", "varchar", False, 16),
             ColumnContract("bad_case_session_id", "varchar", False, 36),
             ColumnContract("bad_case_type", "varchar", False, 16),
             ColumnContract("object_name", "varchar", False, 128),

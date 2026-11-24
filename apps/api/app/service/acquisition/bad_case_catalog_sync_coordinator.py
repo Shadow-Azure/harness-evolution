@@ -56,6 +56,7 @@ class BadCaseCatalogSyncCoordinator:
         settings: Settings,
         service: BadCaseCatalogSyncService,
         *,
+        available: bool,
         clock: Callable[[], datetime] = now_shanghai,
     ) -> None:
         """Bind the process-scoped runner, state repository, and schedule."""
@@ -63,14 +64,15 @@ class BadCaseCatalogSyncCoordinator:
         self._repository = repository
         self._settings = settings
         self._service = service
+        self._available = available
         self._clock = clock
         self._scheduler_task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
 
     @property
     def available(self) -> bool:
-        """Return whether the catalog query service is configured."""
-        return bool(self._settings.bad_case_query_configured)
+        """Return whether the factory produced a catalog sync source."""
+        return self._available
 
     async def trigger(self, source: str) -> CatalogSyncTriggerResult:
         """Submit one job unless unavailable or already active."""

@@ -159,6 +159,7 @@ before(async () => {
       HE_BAD_CASE_QUERY_BASE_URL: mockUrl,
       HE_BAD_CASE_QUERY_RETRY_ATTEMPTS: "0",
       HE_BAD_CASE_QUERY_TOKEN: "mock-token",
+      HE_BAD_CASE_SYNC_PROVIDER: "claude-upstream",
       HE_BAD_CASE_SYNC_INTERVAL_SECONDS: "1",
       HE_DATA_DIR: dataDir,
       HE_DB_DIALECT: "sqlite",

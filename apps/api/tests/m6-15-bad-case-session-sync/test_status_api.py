@@ -18,23 +18,44 @@ from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
 from app.db.crud.fixtures import ensure_fixture_external_tables
 from app.db.models.domain import bad_cases
 from app.main import create_app
+from app.third_party_api.bad_case_query.models import BadCasePage
 from app.third_party_api.session_query.models import SessionTrajectory
+from app.third_party_api.session_source import SessionInfo, SessionSourceSnapshot
 from app.utils.time import now_shanghai
+from tests.bad_case_sync_fakes import StubBadCaseSyncSource
 
 ROOT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 ROOT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 ROOT_C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 
 
-class FakeSource:
-    async def list_children(self, session_id: str) -> tuple[str, ...]:
-        return ()
+class FakeSource(StubBadCaseSyncSource):
+    provider = "fake"
 
-    async def fetch_trajectory(self, session_id: str) -> SessionTrajectory:
-        return SessionTrajectory(content='{"type":"assistant"}', line_count=1)
+    async def fetch_page(
+        self,
+        *,
+        after_id: int,
+        offset: int,
+        limit: int,
+    ) -> BadCasePage:
+        return BadCasePage(total=0, offset=offset, limit=limit, items=())
 
-    async def close(self) -> None:
-        return None
+    async def fetch_session(
+        self,
+        *,
+        session_id: str,
+        expected_parent_id: str | None,
+        snapshot: SessionSourceSnapshot,
+    ) -> SessionInfo:
+        return SessionInfo(
+            runtime_key="claude-code",
+            agent_kind="main" if expected_parent_id is None else "subagent",
+            parent_agent_id=expected_parent_id,
+            child_session_ids=(),
+            agent_meta=None,
+            trajectory=SessionTrajectory(content='{"type":"assistant"}', line_count=1),
+        )
 
 
 def _settings(tmp_path: Path, *, configured: bool = True) -> Settings:
@@ -82,7 +103,7 @@ async def _authenticate_admin(client: httpx.AsyncClient) -> dict[str, str]:
 async def app_client(
     tmp_path: Path,
 ) -> AsyncIterator[tuple[httpx.AsyncClient, dict[str, str], FastAPI]]:
-    app = create_app(_settings(tmp_path), session_query_source=FakeSource())
+    app = create_app(_settings(tmp_path), bad_case_sync_source=FakeSource())
     transport = httpx.ASGITransport(app=app)
     async with (
         app.router.lifespan_context(app),
@@ -175,7 +196,7 @@ async def test_status_aggregates_synced_failed_and_orphan_rows(
 @pytest.mark.asyncio
 async def test_status_tolerates_missing_external_bad_cases_table(tmp_path: Path) -> None:
     """A deployment without the external table still returns acquisition status."""
-    app = create_app(_settings(tmp_path), session_query_source=FakeSource())
+    app = create_app(_settings(tmp_path), bad_case_sync_source=FakeSource())
     transport = httpx.ASGITransport(app=app)
     async with (
         app.router.lifespan_context(app),
