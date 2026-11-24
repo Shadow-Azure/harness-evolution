@@ -35,7 +35,7 @@ class WorkspaceBadCaseLabelRepository:
     async def get(self, workspace_id: str) -> WorkspaceBadCaseLabelRecord:
         """Return sorted rules and the distinct assigned badcase count."""
         async with self._database.session() as session:
-            labels: list[str] = (
+            labels: Sequence[str] = (
                 (
                     await session.execute(
                         select(workspace_bad_case_labels.c.label)

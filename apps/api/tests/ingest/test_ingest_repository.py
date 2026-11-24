@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
@@ -20,7 +20,7 @@ from app.db.crud.bad_case_sync import (
     BadCaseRootSyncRepository,
     insert_pending_root,
 )
-from app.db.models.domain import bad_case_root_sync
+from app.db.models.domain import bad_case_root_sync, workspace_bad_cases
 from app.errors import AppError, ErrorCode
 from app.service.workspaces.ingest import BadCaseIngest, BadCaseIngestService
 from app.service.workspaces.service import WorkspaceCredentialAccess
@@ -181,6 +181,60 @@ async def test_repository_reports_created_flag_and_live_usage(
     stored = await repository.read("BC-REPO-1")
     assert stored is not None
     assert stored.title == "第二版标题"
+
+
+async def test_direct_ingest_replaces_legacy_and_preserves_catalog_assignment(
+    ingest_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """A repeat report converges ownership without deleting label visibility."""
+    app, client = ingest_client
+    workspace = await create_ingest_workspace(app, client, name="Repo Assignment", quota=4)
+    repository = BadCaseIngestRepository(app.state.database)
+    await repository.ingest(workspace.workspace_id, ingest_row())
+    now = now_shanghai()
+    async with app.state.database.transaction() as session:
+        await session.execute(
+            insert(workspace_bad_cases),
+            [
+                {
+                    "workspace_id": workspace.workspace_id,
+                    "bad_case_id": "BC-REPO-1",
+                    "assignment_source": "legacy_owner",
+                    "label": None,
+                    "assigned_at": now,
+                },
+                {
+                    "workspace_id": workspace.workspace_id,
+                    "bad_case_id": "BC-REPO-1",
+                    "assignment_source": "catalog_label",
+                    "label": "review",
+                    "assigned_at": now,
+                },
+            ],
+        )
+
+    repeated = await repository.ingest(
+        workspace.workspace_id,
+        ingest_row(title="direct update"),
+    )
+
+    async with app.state.database.session() as session:
+        sources = (
+            (
+                await session.execute(
+                    select(workspace_bad_cases.c.assignment_source)
+                    .where(
+                        workspace_bad_cases.c.workspace_id == workspace.workspace_id,
+                        workspace_bad_cases.c.bad_case_id == "BC-REPO-1",
+                    )
+                    .order_by(workspace_bad_cases.c.assignment_source),
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert repeated.workspace_used == 1
+    assert sources == ["catalog_label", "direct_ingest"]
 
 
 async def test_ensure_pending_inserts_once_and_never_resets_state(

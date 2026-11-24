@@ -24,6 +24,7 @@ from app.db.models.domain import (
     sync_runs,
     trajectory_payloads,
     user_turns,
+    workspace_bad_cases,
 )
 from app.db.models.jobs import JobRunRecord, job_runs, record_from_row
 from app.db.models.workspace import workspaces
@@ -328,8 +329,11 @@ async def list_workspace_knowledge_roots(
         select(workspaces.c.id, workspaces.c.knowledge_roots)
         .select_from(
             bad_cases.join(
+                workspace_bad_cases,
+                workspace_bad_cases.c.bad_case_id == bad_cases.c.bad_case_id,
+            ).join(
                 workspaces,
-                workspaces.c.id == bad_cases.c.workspace_id,
+                workspaces.c.id == workspace_bad_cases.c.workspace_id,
             ),
         )
         .where(bad_cases.c.bad_case_session_id == root_session_id)

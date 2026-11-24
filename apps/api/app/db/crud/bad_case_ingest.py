@@ -8,14 +8,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
 from app.db.crud.bad_case_sync import insert_pending_root
 from app.db.crud.integrity import is_unique_violation
-from app.db.models.domain import bad_cases
+from app.db.models.domain import bad_cases, workspace_bad_cases
 from app.db.models.workspace import workspaces
 from app.utils.time import as_shanghai, now_shanghai
 
@@ -170,14 +170,21 @@ class BadCaseIngestRepository:
             existing = await self._existing_owner(session, row.bad_case_id)
             if existing is not None and existing != workspace_id:
                 raise BadCaseIdConflict(row.bad_case_id)
-            if existing is None:
+            already_assigned = await self._workspace_has_case(
+                session,
+                workspace_id,
+                row.bad_case_id,
+            )
+            if not already_assigned:
                 used = await self._used(session, workspace_id)
                 if used >= quota:
                     raise QuotaExceeded(quota=quota, used=used)
+            if existing is None:
                 created = await self._insert(session, workspace_id, values, now=now)
             else:
                 created = False
                 await self._update(session, row.bad_case_id, values, now=now)
+            await self._assign_direct(session, workspace_id, row.bad_case_id, now=now)
             workspace_used = await self._used(session, workspace_id)
             await insert_pending_root(
                 session,
@@ -298,13 +305,67 @@ class BadCaseIngestRepository:
         )
 
     async def _used(self, session: AsyncSession, workspace_id: str) -> int:
-        """Return the live count of cases owned by the workspace."""
+        """Return the distinct live assignment count for one workspace."""
         return int(
             (
                 await session.execute(
-                    select(func.count())
-                    .select_from(bad_cases)
-                    .where(bad_cases.c.workspace_id == workspace_id),
+                    select(func.count(func.distinct(workspace_bad_cases.c.bad_case_id))).where(
+                        workspace_bad_cases.c.workspace_id == workspace_id,
+                    ),
                 )
             ).scalar_one(),
         )
+
+    async def _workspace_has_case(
+        self,
+        session: AsyncSession,
+        workspace_id: str,
+        bad_case_id: str,
+    ) -> bool:
+        """Return whether any assignment source already exposes this case."""
+        return (
+            await session.execute(
+                select(workspace_bad_cases.c.bad_case_id)
+                .where(
+                    workspace_bad_cases.c.workspace_id == workspace_id,
+                    workspace_bad_cases.c.bad_case_id == bad_case_id,
+                )
+                .limit(1),
+            )
+        ).scalar_one_or_none() is not None
+
+    async def _assign_direct(
+        self,
+        session: AsyncSession,
+        workspace_id: str,
+        bad_case_id: str,
+        *,
+        now: datetime,
+    ) -> None:
+        """Converge legacy ownership to direct ingest without touching catalog rows."""
+        await session.execute(
+            delete(workspace_bad_cases).where(
+                workspace_bad_cases.c.workspace_id == workspace_id,
+                workspace_bad_cases.c.bad_case_id == bad_case_id,
+                workspace_bad_cases.c.assignment_source == "legacy_owner",
+            ),
+        )
+        direct_exists = (
+            await session.execute(
+                select(workspace_bad_cases.c.bad_case_id).where(
+                    workspace_bad_cases.c.workspace_id == workspace_id,
+                    workspace_bad_cases.c.bad_case_id == bad_case_id,
+                    workspace_bad_cases.c.assignment_source == "direct_ingest",
+                ),
+            )
+        ).scalar_one_or_none()
+        if direct_exists is None:
+            await session.execute(
+                insert(workspace_bad_cases).values(
+                    workspace_id=workspace_id,
+                    bad_case_id=bad_case_id,
+                    assignment_source="direct_ingest",
+                    label=None,
+                    assigned_at=now,
+                ),
+            )

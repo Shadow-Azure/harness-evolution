@@ -8,7 +8,7 @@ from sqlalchemy import insert
 
 from app.api.deps import require_workspace_role
 from app.db.base import Database
-from app.db.models.domain import bad_cases
+from app.db.models.domain import bad_cases, workspace_bad_cases
 from app.db.models.users import users
 from app.db.models.workspace import workspace_members, workspaces
 from app.service.workspaces.service import WorkspaceAccess
@@ -111,6 +111,15 @@ async def insert_bad_case(
                 bad_case_description="Seeded only for workspace aggregate tests.",
                 created_at=now,
                 updated_at=now,
+            ),
+        )
+        await session.execute(
+            insert(workspace_bad_cases).values(
+                workspace_id=workspace_id,
+                bad_case_id=bad_case_id,
+                assignment_source="legacy_owner",
+                label=None,
+                assigned_at=now,
             ),
         )
 

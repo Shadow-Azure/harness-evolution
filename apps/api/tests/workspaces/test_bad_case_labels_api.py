@@ -160,6 +160,10 @@ async def test_replacement_reassigns_history_to_every_matching_workspace(
         "items": ["tool-use"],
         "assignedBadCaseCount": 2,
     }
+    listed = await client.get("/api/workspaces", headers=headers)
+    usage = {item["id"]: item["used"] for item in listed.json()["items"]}
+    assert usage[first_workspace] == 2
+    assert usage[second_workspace] == 1
 
 
 async def test_label_request_rejects_duplicates_whitespace_and_oversize(
