@@ -22,9 +22,9 @@ Service settings live in `/opt/harness/shared/claude-code/config/settings.json` 
 
 Before switching `current`, the installer checks that the binary is other-executable, the settings other-readable, and every path level other-traversable; failure aborts and keeps the old release. Deploy rechecks with `stat` and runs `sudo -u harness ... --version` when permitted. If all Secrets are absent the step warns and skips; a partial configuration fails.
 
-## analyze tool surface and permissions
+## Tool surface and permissions
 
-Analyze does not use `--bare`; it always passes `--safe-mode`, `--restricted`, `--strict-mcp-config`, and `--tools Read,Write`. Permission rules use absolute task-directory paths: `Read(//<task>/schema.json)` and `Edit(//<task>/result.json5)`; file writes are governed only by `Edit(path)` rules, while `Bash`, the `Edit` tool, and writes outside the task directory remain denied by `dontAsk`. `--output-format stream-json --verbose` reads the tool list and `permission_denials`/`stop_reason`/`num_turns`; a missing tool or denied write fails immediately.
+Analyze and edit share one headless constructor: `--safe-mode`, `--restricted`, `--strict-mcp-config`, `--output-format stream-json --verbose`, `--permission-mode dontAsk`, `--no-session-persistence`, and never `--bare`. `--tools` is per phase: analyze `Read,Write`, edit `Read,Grep,Glob,Write`. Permission rules are absolute: analyze `Read(//<task>/schema.json)` + `Edit(//<task>/result.json5)`, edit `Read(//<workspace>/**)` + `Edit(//<workspace>/.harness-evolution/edits.json5)` plus `--max-turns 120`. File writes are governed only by `Edit(path)`, while `Bash`, the `Edit` tool, and writes outside the rules remain denied by `dontAsk`. Failure evidence comes from `system/init.tools` and the result's `is_error`/`subtype`/`num_turns`/`stop_reason`/`permission_denials`: a missing tool or denied write fails as soon as the call ends (after the process exits), with no retry.
 
 Acceptance:
 

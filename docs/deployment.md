@@ -34,7 +34,13 @@
 
 ## 新机 cloud-init
 
-新建 ECS 时用 [deploy/cloud-init.yaml](../deploy/cloud-init.yaml) 在创建阶段安装 `bubblewrap`；Ubuntu 24.04 仍需在创建后跑一次 Provision `install` 应用 profile。`bootstrap-server.sh` 仍是基础包清单的 source of truth，创建后仍需 root 执行一次 bootstrap。
+新建 ECS 时用 [deploy/cloud-init.yaml](../deploy/cloud-init.yaml) 在创建阶段安装运行时前置；Ubuntu 24.04 仍需在创建后跑一次 Provision `install` 应用 profile。运行时前置以 [attribution-runtime-prerequisites.list](../deploy/attribution-runtime-prerequisites.list) 为准，bootstrap 读取它安装，cloud-init 镜像同一清单。
+
+## CI 门禁：部署 provisioning 契约
+
+`deploy-contract` 在干净 `ubuntu:24.04` 容器里运行 [verify_provisioning_contract.sh](../apps/api/tests/deploy/verify_provisioning_contract.sh)：缺包负例、provision 安装、`harness` 探针与 `attribution.preflight` 依次通过。[test_provisioning_contract.py](../apps/api/tests/deploy/test_provisioning_contract.py) 随 API 套件静态断言前置清单、bootstrap/cloud-init/Provision 一致与 `release.sh` 的 preflight 顺序。`deploy-contract` 已加入 `ci-ok.needs`，分支保护只要求 `ci-ok`。
+
+新增部署运行时前置与门禁排障见[部署手册](../plans/deploy-aliyun-playbook.md#6-常见问题)。
 
 ## GitHub 配置
 
