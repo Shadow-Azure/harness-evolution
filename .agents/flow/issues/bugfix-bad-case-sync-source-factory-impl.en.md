@@ -4,11 +4,11 @@ English | [中文](bugfix-bad-case-sync-source-factory-impl.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-47
+id: bugfix-50
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - .agents/flow/issues/bugfix-bad-case-sync-source-factory-impl*
   - .agents/notes/**
