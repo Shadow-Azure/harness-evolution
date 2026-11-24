@@ -25,7 +25,7 @@ github:
 
 ### 问题场景
 
-2026-11-24 在生产「自进化 → 运行详情」第 6 步「迭代优化」中，用户展开 #1 轮次（12 个来源 bad case）后，红框标出的 bad case ID 全部是纯文本：`swe-12a7bc0ee36f3dc94a22`、`swe-1444a4e1d1e064e1570a`、`swe-1969b8b81bb2e989e027` 等。ID 有颜色强调，视觉上像链接；但悬停没有指针与下划线，点击后浏览器地址与页面内容都不变。用户预期与 V2 原型一致：点 ID 跳到该 bad case 的错误详情。
+2026-11-24 在生产「自进化 → 运行详情」第 6 步「迭代优化」中，用户展开 #1 轮次（12 个来源 bad case）后，红框标出的 bad case ID 全部是纯文本：`swe-12a7bc0ee36f3dc94a22`、`swe-1444a4e1d1e064e1570a`、`swe-1969b8b81bb2e989e027` 等。ID 是普通文本，悬停没有指针与下划线，点击后浏览器地址与页面内容都不变。用户预期与 V2 原型一致：点 ID 跳到该 bad case 的错误详情。
 
 生产现场（红框为用户标注的不可点击区域）：
 
@@ -36,7 +36,7 @@ github:
 ### 现场观察
 
 - 第 1 轮表头为「来源 bad case（12 个 · 由归因结论聚类而来）」，12 行 ID 全部是文本节点，表格内 `a` 数量为 0。
-- ID 单元格套用了 `.id` 的颜色（`var(--blue)`），但没有锚点语义、没有 `cursor: pointer`，键盘也无法聚焦。
+- ID 单元格没有锚点、`cursor` 为 `auto`、`tabIndex` 为 `-1`，键盘无法聚焦。
 - 第 5 步的簇内来源表同样没有锚点；只有「仅聚类」预览页（`ClusterPreview.vue`）的同一张表能点。
 
 ### V2 原型对照
@@ -57,7 +57,7 @@ V2 原型同位置（第 5/6 步共用的来源 bad case 表，1500×950 视口�
 
 结论：**运行详情页没有把第 4 步归因行里的 `badCaseId → sessionId` 映射接到共用的 `StepCaseTable`，链接分支永远拿不到 Session，组件静默退化为纯文本；第 5、6 步同因。**
 
-1. `StepCaseTable` 只有在 `wid` 与 `caseSessions[badCaseId]` 同时存在时才渲染 `<a>`；否则走 `v-else` 文本分支（`apps/web/src/pages/evolution/components/StepCaseTable.vue#L26-L32`、`#L57-L68`）。文本分支仍套用 `.id` 的蓝色（同文件样式段），于是出现「有颜色但不可点」。
+1. `StepCaseTable` 只有在 `wid` 与 `caseSessions[badCaseId]` 同时存在时才渲染 `<a>`；否则走 `v-else` 文本分支（`apps/web/src/pages/evolution/components/StepCaseTable.vue#L26-L32`、`#L57-L68`）。文本分支没有锚点语义，点击无反应。
 2. 第 6 步没有传映射：`StepIterations.vue#L213` 只写 `<StepCaseTable :cases="round.cases" />`，组件 props（`#L10-L14`）没有 `caseSessions`；`RunStepContent.vue#L75-L80` 也没有向它传。第 5 步的 `StepClusters.vue` 虽然声明并下传了 `caseSessions`（`#L13`、`#L191-L194`），但运行详情里的 `RunStepContent.vue#L68-L74` 没有传值，所以同样为空。
 3. 运行详情页本来就有映射原料：`RunDetail.vue` 已按 `attributionStep.clickable` 读取 `steps/attribution`（`#L199-L205`），但没有像 `ClusterPreview.vue#L70-L76` 那样把 `payload.rows` 折成 `badCaseId → sessionId`，也没有把结果向下传（`RunDetail.vue#L956-L967`）。`ClusterPreview.vue#L330` 传了 `:case-sessions`，所以只有「仅聚类」预览页的链接是通的，运行详情页缺同一段接线。
 4. 契约侧不需要新增字段：生产 `steps/iteration` 实测 12 条来源项只有 `badCaseId/title/objectName/badCaseType/triggerAt/createdAt`，没有 Session；`plans/fullstack-design/08-frontend-implementation.md#L870` 已明确选择「页面并行读取 `steps/attribution` 得到 `badCaseId → sessionId` 映射，不在 `steps/clusters` 契约里新增 session 字段」。缺的是页面接线，不是 API。
@@ -74,9 +74,9 @@ V2 原型同位置（第 5/6 步共用的来源 bad case 表，1500×950 视口�
 
 ## 设计依据
 
-- [08 §10.3 Step6 迭代卡](../../../plans/fullstack-design/08-frontend-implementation.md#L834)：展开内容顺序为来源 bad case → patch → candidate → 推送 → 评测 → 最终 commit。
-- [08 §10 第 5 步](../../../plans/fullstack-design/08-frontend-implementation.md#L808)：簇内来源 bad case 表「ID 可深链错误详情」。
-- [08 §11 簇深链数据来源](../../../plans/fullstack-design/08-frontend-implementation.md#L870)：来源 bad case 的深链由页面读取 `steps/attribution` 得到 `badCaseId → sessionId`，不在契约新增 session 字段。
+- [08 §10.3 Step6 迭代卡](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/fullstack-design/08-frontend-implementation.md#L834)：展开内容顺序为来源 bad case → patch → candidate → 推送 → 评测 → 最终 commit。
+- [08 §10 第 5 步](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/fullstack-design/08-frontend-implementation.md#L808)：簇内来源 bad case 表「ID 可深链错误详情」。
+- [08 §11 簇深链数据来源](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/fullstack-design/08-frontend-implementation.md#L870)：来源 bad case 的深链由页面读取 `steps/attribution` 得到 `badCaseId → sessionId`，不在契约新增 session 字段。
 - [V2 原型 `evCaseLink`](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/ui-prototype-v2/harness-evolution.html#L5187-L5189) 与 [`evCaseTable`](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/ui-prototype-v2/harness-evolution.html#L5453-L5461)：第一列是 `<a class="idlink" target="_blank">`。
 - [m21-01 运行详情重排](https://github.com/Shadow-Azure/harness-evolution/blob/main/.agents/flow/issues/m21-run-detail-prototype-alignment.md)：第 5、6 步沿用原型结构；本 issue 只补链接接线。
 
