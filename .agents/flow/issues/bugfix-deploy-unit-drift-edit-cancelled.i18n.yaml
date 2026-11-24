@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/bugfix-deploy-unit-drift-edit-cancelled.md
+bugfix-deploy-unit-drift-edit-cancelled.md: d2b39333ae00484adfbb101f29ee375dd4b5cc98
+bugfix-deploy-unit-drift-edit-cancelled.en.md: 618bf4fa7f998ac6994e0bd8d0737975c82e3fc3
