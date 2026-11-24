@@ -9,7 +9,7 @@ milestone: bugfix
 depends:
   - m12-23
 priority: P2
-status: ready
+status: done
 scope:
   - plans/ui-prototype-v2/harness-evolution.html
   - plans/ui-prototype-v2/evidence/attribution-skill-style/**
