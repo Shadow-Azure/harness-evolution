@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-deploy-contract-ci.md
-bugfix-deploy-contract-ci.md: 9e927c53ece5186dd8541093f9231382d7edba89
-bugfix-deploy-contract-ci.en.md: 85501251cfce2fa9fe2cff15d0a9ca96243c4004
+bugfix-deploy-contract-ci.md: b733f7e178a46440b89ec8aeab1d907fc2d39377
+bugfix-deploy-contract-ci.en.md: fa0fbbad09363150e36e7c98054988c3b161a937
