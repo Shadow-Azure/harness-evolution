@@ -1,6 +1,6 @@
 # Agent Note: Bad Case 同步源工厂化——父类、工厂与 ClaudeUpstream 子类
 
-Status: proposed
+Status: implemented
 
 [English](2026-11-23-bad-case-sync-source-factory.en.md) | 中文
 
@@ -33,7 +33,7 @@ bad case 的 global 源线在代码里不是「一个源」，而是两个互不
 - 新增上游 = 一个 `BaseBadCaseSyncSource` 子类 + `@BadCaseSyncSourceFactory.register`；服务层、`main.py`、DB 零改动。遍历/租约/重试策略仍在 `BadCaseRootSyncService`，子类不感知遍历。
 - `SessionSourceSnapshot` 需扩展可选 `provider`（仅 global 允许）：旧快照 `{"kind":"global"}` 仍合法；带 `provider` 的新快照在回滚到旧代码时被 `extra="forbid"` 拒绝并以 `SESSION_SOURCE_INVALID_RESPONSE` 停车，启动钩子 `reset_deterministic_failures` 负责清快照 re-arm。
 - global 线开关语义变为显式：现网若已配端点凭据但未加 `HE_BAD_CASE_SYNC_PROVIDER`，升级后 global 线关闭，部署清单须加一行；装配期对「有凭据无 provider」打 warning。
-- payload 产出与现状 `_payload()` 逐字段相同（main → `agent_meta=None`；subagent → `{"parentAgentId": …}`；`runtime_key="claude-code"`），实现须以 parity 测试锁定；错误码 `SESSION_QUERY_UNAVAILABLE` / `BAD_CASE_QUERY_UNAVAILABLE` 与 `_NON_RETRYABLE_ERRORS` 不变。
-- 目录同步跨方言的 `_upsert_statement` 被显式 `INSERT` + 条件 `UPDATE … WHERE origin = "catalog"` 取代；`PageCounts` 新增 `skipped`，job 结果多一个字段，状态接口是否暴露 `skippedBadCases` 留给实现 issue 决定。
+- payload 产出与现状 `_payload()` 逐字段相同（main → `agent_meta=None`；subagent → `{"parentAgentId": …}`；`runtime_key="claude-code"`），parity 测试已锁定；错误码 `SESSION_QUERY_UNAVAILABLE` / `BAD_CASE_QUERY_UNAVAILABLE` 与 `_NON_RETRYABLE_ERRORS` 不变。
+- 目录同步跨方言的 `_upsert_statement` 被显式 `INSERT` + 条件 `UPDATE … WHERE origin = "catalog"` 取代；`PageCounts` 新增 `skipped`，job 结果多一个字段，实现 issue 决定不在状态接口暴露 `skippedBadCases`。
 - `create_app` 的 `session_query_source=` / `bad_case_catalog_source=` 注入缝收敛为 `bad_case_sync_source=`，相关测试夹具需改名；新增 `bad_cases.origin` 迁移与回填规则见设计文档 §7.4。
 - 工厂层只支持单部署单 provider（与 [Git 推送提供者](../../implemented/architecture/2026-11-21-git-push-provider.md) 一致）；多 provider 并存、`kind="global"` 标签改名均不在本决策内。

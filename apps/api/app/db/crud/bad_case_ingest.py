@@ -98,6 +98,7 @@ def _values(row: BadCaseIngestRow) -> dict[str, Any]:
     """Map one ingest row onto the `bad_cases` column names."""
     return {
         "bad_case_id": row.bad_case_id,
+        "origin": "report",
         "bad_case_session_id": row.session_id,
         "bad_case_type": row.bad_case_type,
         "object_name": row.object_name,

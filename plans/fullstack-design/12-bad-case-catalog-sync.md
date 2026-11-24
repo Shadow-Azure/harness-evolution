@@ -162,35 +162,36 @@ loop:
 
 ### 4.3 已存在记录的更新
 
-upsert 是唯一写路径：`bad_case_id` 命中则更新 §3.2 的全部字段，不新增行，不触碰 `bad_case_analysis`、`probe_reports` 等关联表。更新路径在以下场景真实发生：
+写者归属是唯一写路径：`bad_cases.origin ∈ {report, catalog}` 由首次写入者决定，之后的更新只允许同一写者进行。目录同步只更新 `origin="catalog"` 的行，`origin="report"` 的行跳过并计入 `skipped`；不新增行，不触碰 `bad_case_analysis`、`probe_reports` 等关联表。更新路径在以下场景真实发生：
 
-- 首次部署（状态表无行、游标从 0）时全量刷新存量。
+- 首次部署（状态表无行、游标从 0）时刷新目录自有的存量。
 - 同一页因失败回滚后重试（理论上同页重复提交）。
 - 人工重置状态表游标后的重放。
 
 游标只增不减；任何情况下不把 `last_bad_case_id` 写小。
 
-## 5. 写入：upsert 与事务
+## 5. 写入：归属分流与事务
 
-### 5.1 方言实现
+### 5.1 归属分流
 
-| 方言 | 语句 |
-|---|---|
-| SQLite | `insert(bad_cases).on_conflict_do_update(index_elements=["bad_case_id"], set_=...)` |
-| MySQL | `insert(bad_cases).on_duplicate_key_update(...)` |
+一页在一个事务内先读取已有 id 的 `origin`，再分三路写入：
 
-仓储按 `database.dialect` 分支，业务层只调用 `upsert_many(rows)`。每页一次批量语句，不做逐行 select-then-write，避免与外部写入方竞态。
+- 不存在 → 显式 `INSERT`，写入 `origin="catalog"` 与默认 `workspace_id`。
+- `origin="catalog"` → `UPDATE ... WHERE bad_case_id IN (...) AND origin="catalog"`，只改 §3.2 的上游字段。
+- `origin="report"` → 不动该行，计入 `skipped`。
+
+并发插入触发主键冲突时，经保存点回滚该次插入、重查归属后重试；重新归类为 `report` 的行同样计入 `skipped`。两种方言使用同一组 `INSERT` / `UPDATE`，不再维护 `ON CONFLICT DO UPDATE` / `ON DUPLICATE KEY UPDATE` 两套语句。
 
 ### 5.2 事务边界
 
-- 一页 = 一个事务：`upsert_many` + 状态表更新（游标、计数、时间）同事务提交。
+- 一页 = 一个事务：归属分流写入 + 状态表更新（游标、计数、时间）同事务提交。
 - 页内任一条失败 → 整页回滚，游标不动，状态记 `failed` 与稳定错误码；下次从同一游标重试。
 - 不使用部分成功：避免"数据进了表、游标没动"导致重复拉取，或"游标动了、数据没进"导致永久空洞。
-- 任务结果记录 `pages`、`inserted`、`updated`、`lastBadCaseId`。
+- 任务结果记录 `pages`、`inserted`、`updated`、`skipped`、`lastBadCaseId`。
 
 ### 5.3 与外部写入方共存
 
-`bad_cases` 可能仍有外部系统直写。本特性的 upsert 只覆盖上游接口返回的字段，按主键合并；不做全表删除、不做 `TRUNCATE`。若上游接口删除了记录，本服务保留该行（见非目标）。
+`bad_cases` 可能仍有外部系统直写。本特性只按主键更新目录自有行；不做全表删除、不做 `TRUNCATE`。若上游接口删除了记录，本服务保留该行（见非目标）。上报线显式写 `origin="report"`；没有显式归属的既有行由迁移按 workspace 与 `session_source` 回填，迁移后新增行依赖列默认值 `catalog`。
 
 ## 6. 状态表与统计
 

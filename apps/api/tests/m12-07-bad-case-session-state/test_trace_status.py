@@ -24,7 +24,9 @@ from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.fixture_corpus import load_fixture_corpus
 from app.main import create_app
 from app.service.bad_cases.session_status import classify_trace_status
+from app.third_party_api.bad_case_query.models import BadCasePage
 from app.utils.time import now_shanghai
+from tests.bad_case_sync_fakes import StubBadCaseSyncSource
 
 ROOT = Path(__file__).resolve().parents[4]
 READY_SESSION = "10000000-0000-4000-8000-000000000001"
@@ -166,6 +168,21 @@ async def _seed_status_rows(database: Database) -> None:
         )
 
 
+class _FakeSyncSource(StubBadCaseSyncSource):
+    """Keep the trace-status fixture independent of any upstream HTTP call."""
+
+    provider = "fake"
+
+    async def fetch_page(
+        self,
+        *,
+        after_id: int,
+        offset: int,
+        limit: int,
+    ) -> BadCasePage:
+        return BadCasePage(total=0, offset=offset, limit=limit, items=())
+
+
 @pytest_asyncio.fixture
 async def trace_status(tmp_path: Path) -> AsyncIterator[StatusEnvironment]:
     """Seed the corpus plus the five derived trace states as a global admin."""
@@ -181,7 +198,7 @@ async def trace_status(tmp_path: Path) -> AsyncIterator[StatusEnvironment]:
     )
     corpus = load_fixture_corpus(ROOT / "fixtures" / "m2-synthetic" / "corpus.json")
     await run_corpus_seed(settings, corpus)
-    app = create_app(settings)
+    app = create_app(settings, bad_case_sync_source=_FakeSyncSource())
     transport = httpx.ASGITransport(app=app)
     async with (
         app.router.lifespan_context(app),

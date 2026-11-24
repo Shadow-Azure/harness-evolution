@@ -113,6 +113,7 @@ def _coordinator(
         cast(JobRunner, jobs),
         cast(Any, repository),
         settings,
+        available=settings.session_query_configured,
     )
 
 

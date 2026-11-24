@@ -94,7 +94,7 @@ async def test_commit_page_inserts_then_updates(database: Database) -> None:
         pending_count=2,
         now=now,
     )
-    assert (first.inserted, first.updated) == (1, 0)
+    assert (first.inserted, first.updated, first.skipped) == (1, 0, 0)
 
     async with database.transaction() as session:
         await session.execute(
@@ -113,7 +113,7 @@ async def test_commit_page_inserts_then_updates(database: Database) -> None:
         pending_count=0,
         now=now,
     )
-    assert (second.inserted, second.updated) == (0, 1)
+    assert (second.inserted, second.updated, second.skipped) == (0, 1, 0)
 
     async with database.session() as session:
         rows = (await session.execute(select(bad_cases))).mappings().all()

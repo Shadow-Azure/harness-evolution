@@ -21,10 +21,13 @@ from app.db.migrate import upgrade_database
 from app.db.models.domain import bad_case_analysis
 from app.main import create_app
 from app.third_party_api.bad_case_query.models import BadCaseItem, BadCasePage
+from tests.bad_case_sync_fakes import StubBadCaseSyncSource
 
 
-class FakeCatalogSource:
+class FakeCatalogSource(StubBadCaseSyncSource):
     """Deterministic paginated catalog source for the status API."""
+
+    provider = "fake"
 
     def __init__(self, items: tuple[BadCaseItem, ...]) -> None:
         self.items = sorted(items, key=lambda item: item.bad_case_id)
@@ -43,9 +46,6 @@ class FakeCatalogSource:
             limit=limit,
             items=tuple(remaining[offset : offset + limit]),
         )
-
-    async def close(self) -> None:
-        return None
 
 
 def _item(case_id: int) -> BadCaseItem:
@@ -137,7 +137,7 @@ async def configured_client(
     app = create_app(
         settings,
         database=database,
-        bad_case_catalog_source=FakeCatalogSource((_item(1), _item(2))),
+        bad_case_sync_source=FakeCatalogSource((_item(1), _item(2))),
     )
     transport = httpx.ASGITransport(app=app)
     async with (
@@ -244,7 +244,7 @@ async def test_empty_catalog_finishes_without_error(tmp_path: Path) -> None:
     app = create_app(
         settings,
         database=database,
-        bad_case_catalog_source=FakeCatalogSource(()),
+        bad_case_sync_source=FakeCatalogSource(()),
     )
     transport = httpx.ASGITransport(app=app)
     async with (

@@ -24,10 +24,13 @@ from app.service.acquisition.bad_case_catalog_sync import (
 )
 from app.third_party_api.bad_case_query.models import BadCaseItem, BadCasePage
 from app.utils.time import now_shanghai
+from tests.bad_case_sync_fakes import StubBadCaseSyncSource
 
 
-class FakeSource:
+class FakeSource(StubBadCaseSyncSource):
     """In-memory paginated source that mirrors the upstream cursor contract."""
+
+    provider = "fake"
 
     def __init__(self, items: list[BadCaseItem]) -> None:
         self.items = sorted(items, key=lambda item: item.bad_case_id)
@@ -53,9 +56,6 @@ class FakeSource:
             limit=limit,
             items=tuple(remaining[offset : offset + limit]),
         )
-
-    async def close(self) -> None:
-        return None
 
 
 def _item(
