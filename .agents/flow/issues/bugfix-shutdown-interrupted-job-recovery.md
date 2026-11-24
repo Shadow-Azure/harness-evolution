@@ -9,7 +9,7 @@ milestone: bugfix
 depends:
   - bugfix-11
 priority: P2
-status: ready
+status: in-progress
 scope:
   - apps/api/**
   - tests/**

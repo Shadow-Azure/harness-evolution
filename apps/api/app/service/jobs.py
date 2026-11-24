@@ -43,6 +43,16 @@ _INTERRUPTIBLE_KINDS = frozenset(
         "evolution_retry",
     },
 )
+_ATTRIBUTION_KIND = "attribution_batch"
+_RECOVERABLE_INTERRUPTED_KINDS = (
+    "attribution_batch",
+    "evolution_prepare",
+    "evolution_advance",
+    "evolution_apply",
+    "evolution_finalize",
+    "evolution_retry",
+)
+_ACTIVE_INTERRUPTED_RUN_STATUSES = frozenset({"preparing", "running", "interrupted"})
 _KIND_TO_STAGE = {
     "evolution_prepare": "prepare",
     "evolution_advance": "step",
@@ -146,13 +156,15 @@ class JobRunner:
     async def recover(self) -> None:
         """Recover interrupted rows and requeue resumable work without dispatching.
 
-        Every residual running evolution job is requeued as the same stage so
-        the stage service can resume from its persisted checkpoint. Sync keeps
-        its historical fresh-reference retry because it has no run checkpoint.
+        Residual running rows are interrupted first; rows already written as
+        ``interrupted`` by a graceful shutdown are recovered next. Sync keeps
+        its historical fresh-reference retry because it has no run checkpoint;
+        evolution stages and attribution batches resume from persisted facts.
         """
-        await self.repository.requeue_running_kind("attribution_batch")
-        recovered = await self.repository.mark_running_interrupted("process restarted")
-        for job in recovered:
+        await self.repository.requeue_running_kind(_ATTRIBUTION_KIND)
+        restarted = await self.repository.mark_running_interrupted("process restarted")
+        restarted_ids = {job.id for job in restarted}
+        for job in restarted:
             try:
                 await self._record_interruption(
                     job,
@@ -181,9 +193,69 @@ class JobRunner:
             if queued is not None and job.kind != "sync":
                 await self._record_recovery(job, queued.id)
 
+        shutdown_interrupted = [
+            job
+            for job in await self.repository.latest_interrupted(
+                _RECOVERABLE_INTERRUPTED_KINDS,
+            )
+            if job.id not in restarted_ids
+        ]
+        attribution = [job for job in shutdown_interrupted if job.kind == _ATTRIBUTION_KIND]
+        evolution = [job for job in shutdown_interrupted if job.kind != _ATTRIBUTION_KIND]
+        recovered: list[tuple[str, str | None]] = []
+        for job in (*attribution, *evolution):
+            if job.kind == _ATTRIBUTION_KIND:
+                queued = await self._recover_attribution_batch(job)
+            else:
+                try:
+                    queued = await self._requeue_interrupted(job)
+                except Exception:
+                    logger.exception(
+                        "failed to requeue shutdown-interrupted job",
+                        extra={"job_id": job.id, "kind": job.kind},
+                    )
+                    continue
+                if queued is not None and job.kind != "sync":
+                    await self._record_recovery(job, queued.id)
+            if queued is not None:
+                recovered.append((job.kind, job.ref_id))
+        if recovered:
+            logger.info(
+                "startup recovery requeued shutdown-interrupted jobs",
+                extra={
+                    "recoveredCount": len(recovered),
+                    "recoveredKinds": sorted({kind for kind, _ in recovered}),
+                    "recoveredRunIds": sorted({ref for _, ref in recovered if ref}),
+                },
+            )
+
         if self._control:
             for run_id in await self._control.repository.pending_acknowledgements():
                 await self._control.acknowledge(run_id)
+
+    async def _recover_attribution_batch(self, job: JobRunRecord) -> JobRunRecord | None:
+        """Requeue one shutdown-interrupted attribution batch while its run still waits."""
+        try:
+            if not await self._attribution_run_active(job):
+                return None
+            return await self.repository.requeue_interrupted(job.id)
+        except Exception:
+            logger.exception(
+                "failed to requeue interrupted attribution batch",
+                extra={"job_id": job.id, "kind": job.kind},
+            )
+            return None
+
+    async def _attribution_run_active(self, job: JobRunRecord) -> bool:
+        """Only recover a batch while its owning run is active and unpaused."""
+        if self._runs is None or job.ref_id is None:
+            return True
+        run = await self._runs.get_run(job.ref_id)
+        return (
+            run is not None
+            and run.control_state == "running"
+            and run.status in _ACTIVE_INTERRUPTED_RUN_STATUSES
+        )
 
     async def _requeue_interrupted(self, job: JobRunRecord) -> JobRunRecord | None:
         """Persist the replacement row for one resumable interrupted job."""
