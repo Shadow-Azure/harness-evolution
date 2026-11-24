@@ -328,9 +328,10 @@ def create_app(
         BadCaseIngestRepository(resolved_database),
         workspaces,
     )
+    bad_case_repository = BadCaseRepository(resolved_database)
     problems = ProblemService(
         ProblemRepository(resolved_database),
-        BadCaseService(BadCaseRepository(resolved_database)),
+        BadCaseService(bad_case_repository),
         source_available=bad_case_sync.source_available,
     )
     attribution_read = AttributionReadService(
@@ -423,6 +424,7 @@ def create_app(
         probe_query_repository,
         run_candidate_repository,
         attribution_repository,
+        bad_case_repository,
     )
     evolution_launch = EvolutionLaunchService(
         evolution_targets,

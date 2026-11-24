@@ -366,11 +366,17 @@ async def test_poller_completed_saves_result_once_and_submits_apply(
             del run_id
             return ()
 
+    class EmptyCaseTitles:
+        async def titles_by_ids(self, case_ids: tuple[str, ...]) -> dict[str, str]:
+            del case_ids
+            return {}
+
     step = await EvolutionStageService(
         repository,
         cast(Any, EmptyProbes()),
         cast(Any, EmptyCandidates()),
         cast(Any, object()),
+        cast(Any, EmptyCaseTitles()),
     ).step("run-eval", "iteration")
     assert step.key == "iteration"
     assert step.payload.rounds[0].eval.current == 80.0

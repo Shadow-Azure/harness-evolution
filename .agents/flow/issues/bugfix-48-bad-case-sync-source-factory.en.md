@@ -1,10 +1,10 @@
 # Implement the bad case sync-source factory: base class + factory + ClaudeUpstream subclass with writer ownership
 
-English | [中文](bugfix-46-bad-case-sync-source-factory.md)
+English | [中文](bugfix-48-bad-case-sync-source-factory.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-46
+id: bugfix-48
 milestone: bugfix
 depends: [bugfix-42]
 priority: P2
@@ -78,7 +78,7 @@ github:
 ## Verification
 
 ```sh
-pnpm test:api -- tests/m6-15-bad-case-session-sync tests/m6-16-bad-case-catalog-sync tests/m9-07-report-session-source tests/bugfix-46-bad-case-sync-source-factory
+pnpm test:api -- tests/m6-15-bad-case-session-sync tests/m6-16-bad-case-catalog-sync tests/m9-07-report-session-source tests/bugfix-48-bad-case-sync-source-factory
 pnpm lint:api
 pnpm typecheck:api
 pnpm contract:check
@@ -101,7 +101,7 @@ pnpm verify:docs
 
 ## Gates and CI
 
-- `pnpm test:api -- tests/m6-15-bad-case-session-sync tests/m6-16-bad-case-catalog-sync tests/m9-07-report-session-source tests/bugfix-46-bad-case-sync-source-factory`
+- `pnpm test:api -- tests/m6-15-bad-case-session-sync tests/m6-16-bad-case-catalog-sync tests/m9-07-report-session-source tests/bugfix-48-bad-case-sync-source-factory`
 - `pnpm lint:api`, `pnpm typecheck:api`, `pnpm contract:check`
 - `pnpm verify:flow`, `pnpm lint:docs`, `pnpm verify:docs`, `pnpm test:gates`
 - Commit and PR titles carry `(#N)`; the PR description lists the migration, parity, and writer-ownership evidence.

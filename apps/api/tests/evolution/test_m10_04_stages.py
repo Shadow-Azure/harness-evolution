@@ -9,8 +9,10 @@ from sqlalchemy import update
 
 from app.db.base import Database
 from app.db.crud.attributions import AttributionRepository, EvolutionRunCandidateRepository
+from app.db.crud.bad_cases import BadCaseRepository
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.probe_query import ProbeQueryRepository
+from app.db.models.domain import bad_cases, probe_reports
 from app.db.models.evolution import evolution_runs
 from app.errors import AppError
 from app.service.evolution.attribution import AttributionRunner, RuleBasedEngine
@@ -20,6 +22,7 @@ from app.service.evolution.stages import (
     EvolutionStageService,
     StepAttributionPayload,
     StepClustersPayload,
+    StepIterationPayload,
     StepSessionRow,
 )
 from app.service.evolution.state import STEP_KEYS
@@ -47,6 +50,7 @@ def _stage_service(database: Database) -> EvolutionStageService:
         ProbeQueryRepository(database),
         EvolutionRunCandidateRepository(database),
         AttributionRepository(database),
+        BadCaseRepository(database),
     )
 
 
@@ -125,10 +129,6 @@ async def test_unreported_candidate_counts_as_potential_but_not_fresh(harness: H
 
 async def test_step_keeps_inconclusive_reports_out_of_non_target_count(harness: Harness) -> None:
     """A V2 insufficient-evidence report is completed and distinct from a negative result."""
-    from sqlalchemy import update
-
-    from app.db.models.domain import probe_reports
-
     await _seed_self_case(harness)
     await _create_run(harness.database)
     await _prepare_service(harness.database, harness).handle(_job())
@@ -258,3 +258,90 @@ async def test_failed_cluster_step_reports_the_strict_failure(harness: Harness) 
     assert payload.clusters == []
     assert payload.degraded == []
     assert payload.algorithm is None
+
+
+async def test_v2_cluster_cases_use_bad_case_short_title(harness: Harness) -> None:
+    """Steps 5/6 title source cases from bad_cases.title, while step 4 keeps the prose."""
+    await _seed_self_case(harness)
+    await _create_run(harness.database)
+    await _prepare_service(harness.database, harness).handle(_job())
+    long_description = "七步投影归因摘要" * 80
+    async with harness.database.transaction() as session:
+        await session.execute(
+            update(bad_cases)
+            .where(bad_cases.c.bad_case_id == "case-m10-04")
+            .values(title="短标题：七步投影"),  # noqa: RUF001
+        )
+        await session.execute(
+            update(probe_reports)
+            .where(probe_reports.c.created_run_id == "run-m10-04")
+            .values(probe_description=long_description),
+        )
+
+    service = _stage_service(harness.database)
+    clusters = await service.step("run-m10-04", "clusters")
+    cluster_cases = cast(StepClustersPayload, clusters.payload).clusters[0].cases
+    assert cluster_cases[0].title == "短标题：七步投影"  # noqa: RUF001
+
+    iteration = await service.step("run-m10-04", "iteration")
+    round_cases = cast(StepIterationPayload, iteration.payload).rounds[0].cases
+    assert round_cases[0].title == "短标题：七步投影"  # noqa: RUF001
+
+    attribution = await service.step("run-m10-04", "attribution")
+    attribution_rows = cast(StepAttributionPayload, attribution.payload).rows
+    assert attribution_rows[0].description == long_description
+    assert len(attribution_rows[0].description) > 600
+
+    # An abnormal empty title must degrade to the stable case id, never the prose.
+    async with harness.database.transaction() as session:
+        await session.execute(
+            update(bad_cases).where(bad_cases.c.bad_case_id == "case-m10-04").values(title=""),
+        )
+    fallback = await service.step("run-m10-04", "clusters")
+    fallback_cases = cast(StepClustersPayload, fallback.payload).clusters[0].cases
+    assert fallback_cases[0].title == "case-m10-04"
+    assert len(fallback_cases[0].title) < 600
+
+
+async def test_legacy_cluster_cases_use_bad_case_short_title(harness: Harness) -> None:
+    """The legacy probe projection also titles source cases from bad_cases.title."""
+    await seed_external_corpus(harness.database)
+    data = load_fixture("clusters")
+    data["rounds"] = load_fixture("iteration")["rounds"]
+    await seed_fixture(harness.database, data)
+    long_description = "旧版归因摘要" * 120
+    async with harness.database.transaction() as session:
+        await session.execute(
+            update(bad_cases)
+            .where(bad_cases.c.bad_case_id == "bc-050b-03")
+            .values(title="短标题：七步投影"),  # noqa: RUF001
+        )
+        await session.execute(
+            update(probe_reports)
+            .where(probe_reports.c.probe_id == "pr-050b-03")
+            .values(probe_description=long_description),
+        )
+
+    service = _stage_service(harness.database)
+    run_id = data["run"]["id"]
+    clusters = await service.step(run_id, "clusters")
+    cluster_cases = cast(StepClustersPayload, clusters.payload).clusters[0].cases
+    assert cluster_cases[0].title == "短标题：七步投影"  # noqa: RUF001
+
+    iteration = await service.step(run_id, "iteration")
+    round_cases = cast(StepIterationPayload, iteration.payload).rounds[0].cases
+    assert round_cases[0].title == "短标题：七步投影"  # noqa: RUF001
+
+    attribution = await service.step(run_id, "attribution")
+    attribution_rows = cast(StepAttributionPayload, attribution.payload).rows
+    assert attribution_rows[0].description == long_description
+    assert len(attribution_rows[0].description) > 600
+
+    async with harness.database.transaction() as session:
+        await session.execute(
+            update(bad_cases).where(bad_cases.c.bad_case_id == "bc-050b-03").values(title=""),
+        )
+    fallback = await service.step(run_id, "clusters")
+    fallback_cases = cast(StepClustersPayload, fallback.payload).clusters[0].cases
+    assert fallback_cases[0].title == "bc-050b-03"
+    assert len(fallback_cases[0].title) < 600
