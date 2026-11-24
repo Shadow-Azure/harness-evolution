@@ -4,6 +4,7 @@ import type {
   EvolutionStepAttribution,
   EvolutionStepClusters,
   EvolutionStepFinal,
+  EvolutionStepIteration,
   EvolutionStepPotential,
   EvolutionStepRange,
   EvolutionStepSessions,
@@ -16,6 +17,7 @@ import StepAttribution from "./StepAttribution.vue";
 import StepCaseTable from "./StepCaseTable.vue";
 import StepClusters from "./StepClusters.vue";
 import StepFinal from "./StepFinal.vue";
+import StepIterations from "./StepIterations.vue";
 import StepPotential from "./StepPotential.vue";
 import StepRange from "./StepRange.vue";
 import StepSessions from "./StepSessions.vue";
@@ -168,6 +170,52 @@ const attributionStep = {
     ],
   },
 } satisfies EvolutionStepAttribution;
+
+const iterationStep = {
+  key: "iteration",
+  index: 5,
+  title: "迭代优化",
+  status: "active",
+  clickable: true,
+  payload: {
+    rounds: [
+      {
+        roundId: "round-1",
+        clusterId: "C1",
+        title: "检索索引读取失败",
+        category: "error",
+        caseCount: 1,
+        confidence: 0.82,
+        severity: 7.4,
+        cases: [caseItem],
+        status: "evaluating",
+        candidate: {
+          ref: "evo/run/candidate/r1",
+          commit: "abc123",
+          message: "candidate",
+        },
+        patch: {
+          files: [
+            {
+              file: "SKILL.md",
+              lines: ["@@ -1 +1 @@", "- 读取索引", "+ 读取索引前校验快照"],
+              overwrite: false,
+            },
+          ],
+        },
+        push: { status: "succeeded", attempts: 1, error: null },
+        eval: {
+          status: "evaluating",
+          current: 84.6,
+          candidate: null,
+          nextPollAt: null,
+        },
+        accepted: false,
+        finalCommit: null,
+      },
+    ],
+  },
+} satisfies EvolutionStepIteration;
 
 const finalStep = {
   key: "final",
@@ -404,6 +452,50 @@ describe("evolution step content", () => {
     await wrapper.get(".cluster-head").trigger("click");
     expect(wrapper.get(".cluster-head").attributes("aria-expanded")).toBe("false");
     expect(wrapper.text()).not.toContain("bc-1");
+  });
+
+  it("deep-links step 5 source cases to their Session error detail", () => {
+    const wrapper = mount(StepClusters, {
+      props: {
+        wid: "ws-test",
+        step: clustersStep,
+        caseSessions: { "bc-1": "session-9" },
+      },
+    });
+
+    const link = wrapper.get("td.id a");
+    expect(link.attributes("href")).toBe(
+      "/workspaces/ws-test/sessions/session-9/errors?case=bc-1&tab=attr",
+    );
+    expect(link.attributes("target")).toBe("_blank");
+    expect(link.attributes("rel")).toBe("noopener noreferrer");
+    expect(link.text()).toBe("bc-1");
+  });
+
+  it("deep-links step 6 source cases to their Session error detail", () => {
+    const wrapper = mount(StepIterations, {
+      props: {
+        wid: "ws-test",
+        step: iterationStep,
+        caseSessions: { "bc-1": "session-9" },
+      },
+    });
+
+    const link = wrapper.get("td.id a");
+    expect(link.attributes("href")).toBe(
+      "/workspaces/ws-test/sessions/session-9/errors?case=bc-1&tab=attr",
+    );
+    expect(link.attributes("target")).toBe("_blank");
+    expect(link.attributes("rel")).toBe("noopener noreferrer");
+  });
+
+  it("falls back to plain text when a source case has no Session mapping", () => {
+    const wrapper = mount(StepIterations, {
+      props: { wid: "ws-test", step: iterationStep },
+    });
+
+    expect(wrapper.find("td.id a").exists()).toBe(false);
+    expect(wrapper.get("td.id").text()).toBe("bc-1");
   });
 
   it("shows the algorithm, fallback tasks and strict failure reason", () => {

@@ -835,6 +835,7 @@ RunDetail.vue
 
 - 卡片头：排名、`category` chip、来源 bad case 数、状态 badge（待执行 / 生成 patch 中 / 推送中 / 评测中 / 决策中 / 已接纳 Δ / 未接纳 Δ / 阻塞）。
 - 展开内容顺序：簇内来源 bad case 列表 → patch diff → candidate ref/commit → 推送状态 → 评测对比 → 最终 commit / 拒绝说明。
+- 展开内容第一段的来源 bad case 表与第 5 步共用 `StepCaseTable`；第一列 ID 可深链错误详情（新窗口打开 `/workspaces/{wid}/sessions/{sid}/errors?case={badCaseId}&tab=attr`），Session 映射由页面读取 `steps/attribution` 的 `badCaseId → sessionId` 得到（[§11](#11-仅聚类页pagesevolutionclusterpreviewvue)）。
 - 生成 patch 中：展示“正在生成/应用 patch、commit candidate”，不显示 candidate ref。
 - 评测中：展示 **candidate ref + commit**（如 `.../candidate/r2`），表示已 push、等待评测；显示 `evalStatus` 与下一次轮询时间。
 - 本地模式：`HE_GIT_PUSH=false` 时 candidate 只存在本地；卡片显示“本地候选（未推送）”，candidate 标签显示“已生成 · 未推送”，推送状态显示“已跳过（本地模式）”，不进入评测。
