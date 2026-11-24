@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import Database
 from app.db.crud.bad_case_sync import insert_pending_root
 from app.db.crud.integrity import is_unique_violation
-from app.db.models.domain import bad_cases
+from app.db.models.domain import BAD_CASE_ORIGIN_REPORT, bad_cases
 from app.db.models.workspace import workspaces
 from app.utils.time import as_shanghai, now_shanghai
 
@@ -266,6 +266,7 @@ class BadCaseIngestRepository:
                 insert(bad_cases).values(
                     **values,
                     workspace_id=workspace_id,
+                    origin=BAD_CASE_ORIGIN_REPORT,
                     updated_at=now,
                 ),
             )
@@ -290,6 +291,8 @@ class BadCaseIngestRepository:
         now: datetime,
     ) -> None:
         """Replace every upstream field of one owned case; never move its workspace."""
+        # ``origin`` is deliberately absent from ``_UPSTREAM_COLUMNS``: the first
+        # writer keeps owning the row, so a re-report never rewrites the origin.
         upstream = {column: values[column] for column in _UPSTREAM_COLUMNS}
         await session.execute(
             update(bad_cases)

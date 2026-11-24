@@ -2,7 +2,7 @@
 
 > 本文回答：bad case 的 global 源线如何从「两个平级 HTTP 客户端 + 过程式装配 + 内联 if/else」收敛为「工厂按 .env 初始化子类，获取全部走父类模板方法、子类实现」；上报线与 global 线如何保持开关独立；已上报 bad case 如何不被目录同步覆盖；`_sync_root` 的两条取数路径如何合并为一个循环。
 > 前置：[04 后端架构](04-backend-architecture.md) · [06 数据库设计](06-database-design.md) · [07 后端实现](07-backend-implementation.md) · [11 根会话轨迹定时同步](11-bad-case-session-sync.md) · [12 目录数据定时同步](12-bad-case-catalog-sync.md)。
-> 状态：设计定稿（2026-11-23，issue #548 / bugfix-42，依据 main @ 2f4bce1d），待实现 issue 落地；实现冲突时以本文对应小节为准。决策记录见 Agent Note [`.agents/notes/proposed/architecture/2026-11-23-bad-case-sync-source-factory.md`](../../.agents/notes/proposed/architecture/2026-11-23-bad-case-sync-source-factory.md)。
+> 状态：设计定稿（2026-11-23，issue #548 / bugfix-42，依据 main @ 2f4bce1d），待实现 issue 落地；实现冲突时以本文对应小节为准。决策记录见 Agent Note [`.agents/notes/implemented/architecture/2026-11-23-bad-case-sync-source-factory.md`](../../.agents/notes/implemented/architecture/2026-11-23-bad-case-sync-source-factory.md)。
 
 <a id="s1"></a>
 ## 1. 现状盘点

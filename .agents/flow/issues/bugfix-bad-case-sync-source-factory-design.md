@@ -14,7 +14,7 @@ scope:
   - plans/fullstack-design/README.md
   - .agents/**
 adr:
-  - ../../notes/proposed/architecture/2026-11-23-bad-case-sync-source-factory.md
+  - ../../notes/implemented/architecture/2026-11-23-bad-case-sync-source-factory.md
 github:
   number: 548
   url: https://github.com/Shadow-Azure/harness-evolution/issues/548
@@ -43,7 +43,7 @@ bad case 有两条互相独立的来源线：接口上报（workspace 凭据 `PO
 ## 实现内容
 
 - 新增 `plans/fullstack-design/16-bad-case-sync-source-factory.md`（第 16 章，纯设计文档，本 issue 唯一交付物）与 `plans/fullstack-design/README.md` 索引行。
-- 新增 Agent Note 三件套 `.agents/notes/proposed/architecture/2026-11-23-bad-case-sync-source-factory.*`：记录命名（弃 `Global*` 用 `BadCaseSync*`）、if/else 收敛（弃保留骨架）、目录同步去重（弃无条件覆盖）三项决策与被否方案。
+- 新增 Agent Note 三件套 `.agents/notes/implemented/architecture/2026-11-23-bad-case-sync-source-factory.*`：记录命名（弃 `Global*` 用 `BadCaseSync*`）、if/else 收敛（弃保留骨架）、目录同步去重（弃无条件覆盖）三项决策与被否方案。
 - 新增本 issue 三件套，挂 bugfix milestone（常驻桶），不新开 milestone。
 
 ## 实施步骤

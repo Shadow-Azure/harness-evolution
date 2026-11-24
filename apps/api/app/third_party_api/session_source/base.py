@@ -55,12 +55,17 @@ class SessionSourceSnapshot(BaseModel):
     kind: Literal["report", "global"]
     runtime: str | None = Field(default=None, pattern=RUNTIME_PATTERN)
     session_url_template: str | None = Field(default=None, max_length=2048)
+    # Only the global line names the source that fetched the root: the provider
+    # is frozen at first claim so a later `.env` change cannot re-route a root.
+    provider: str | None = Field(default=None, pattern=RUNTIME_PATTERN)
 
     @model_validator(mode="after")
     def _require_report_template(self) -> SessionSourceSnapshot:
         """Require a template exactly for report sources and nowhere else."""
         if self.kind == "report" and not self.session_url_template:
             raise ValueError("report source snapshot requires sessionUrlTemplate")
+        if self.kind == "report" and self.provider is not None:
+            raise ValueError("report source snapshot cannot carry a provider")
         if self.kind == "global" and (
             self.runtime is not None or self.session_url_template is not None
         ):

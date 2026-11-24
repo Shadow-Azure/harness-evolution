@@ -131,6 +131,7 @@ class Settings(BaseSettings):
     bad_case_sync_max_agents: int = Field(default=200, ge=1, le=10_000)
     bad_case_sync_max_depth: int = Field(default=10, ge=0, le=100)
     bad_case_sync_lease_seconds: int = Field(default=900, ge=30, le=86_400)
+    bad_case_sync_provider: str | None = None
     bad_case_query_base_url: str | None = None
     bad_case_query_token: SecretStr | None = None
     bad_case_query_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
@@ -242,6 +243,15 @@ class Settings(BaseSettings):
     def validate_bad_case_query_url(cls, value: str | None) -> str | None:
         """Allow only explicit HTTP(S) endpoints without embedded credentials."""
         return _validate_http_url(value, "HE_BAD_CASE_QUERY_BASE_URL")
+
+    @field_validator("bad_case_sync_provider")
+    @classmethod
+    def validate_bad_case_sync_provider(cls, value: str | None) -> str | None:
+        """Treat a blank global-line switch as unset; unknown values fail at the factory."""
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
 
     @field_validator("web_base_url")
     @classmethod

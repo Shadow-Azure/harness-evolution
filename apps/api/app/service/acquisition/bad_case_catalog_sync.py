@@ -16,10 +16,8 @@ from app.db.crud.bad_case_catalog_sync import (
 )
 from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
-from app.third_party_api.bad_case_query.models import (
-    BadCaseCatalogSource,
-    BadCaseItem,
-)
+from app.third_party_api.bad_case_query.models import BadCaseItem
+from app.third_party_api.bad_case_sync_source import BaseBadCaseSyncSource
 from app.utils.time import now_shanghai
 
 logger = logging.getLogger(__name__)
@@ -39,6 +37,7 @@ class CatalogSyncResult:
     pages: int
     inserted: int
     updated: int
+    skipped: int
     last_bad_case_id: int
     pending: int
     exhausted: bool
@@ -85,14 +84,14 @@ class BadCaseCatalogSyncService:
     def __init__(
         self,
         repository: BadCaseCatalogSyncRepository,
-        source: BadCaseCatalogSource | None,
+        source: BaseBadCaseSyncSource | None,
         *,
         page_size: int = 200,
         max_pages: int = 100,
         time_budget_seconds: float = 300.0,
         clock: Callable[[], datetime] = now_shanghai,
     ) -> None:
-        """Bind storage, the read source, and bounded-run policy."""
+        """Bind storage, the sync source, and bounded-run policy."""
         self._repository = repository
         self._source = source
         self._page_size = max(1, min(page_size, 200))
@@ -104,7 +103,7 @@ class BadCaseCatalogSyncService:
     def from_settings(
         cls,
         repository: BadCaseCatalogSyncRepository,
-        source: BadCaseCatalogSource | None,
+        source: BaseBadCaseSyncSource | None,
         settings: Settings,
     ) -> BadCaseCatalogSyncService:
         """Build the service from environment-backed bounds."""
@@ -123,6 +122,7 @@ class BadCaseCatalogSyncService:
             "pages": result.pages,
             "inserted": result.inserted,
             "updated": result.updated,
+            "skipped": result.skipped,
             "lastBadCaseId": result.last_bad_case_id,
             "pending": result.pending,
             "exhausted": result.exhausted,
@@ -151,6 +151,7 @@ class BadCaseCatalogSyncService:
         pages = 0
         inserted = 0
         updated = 0
+        skipped = 0
         exhausted = False
         deadline = time.monotonic() + self._time_budget_seconds
         logger.debug(
@@ -160,7 +161,7 @@ class BadCaseCatalogSyncService:
 
         try:
             while pages < self._max_pages and time.monotonic() < deadline:
-                page = await self._source.fetch_page(
+                page = await self._source.fetch_bad_case_page(
                     after_id=cursor,
                     offset=0,
                     limit=self._page_size,
@@ -187,6 +188,7 @@ class BadCaseCatalogSyncService:
                 pages += 1
                 inserted += counts.inserted
                 updated += counts.updated
+                skipped += counts.skipped
                 cursor = max_id
                 pending = remaining
                 if len(page.items) >= page.total:
@@ -204,6 +206,7 @@ class BadCaseCatalogSyncService:
             pages=pages,
             inserted=inserted,
             updated=updated,
+            skipped=skipped,
             last_bad_case_id=cursor,
             pending=pending,
             exhausted=exhausted,

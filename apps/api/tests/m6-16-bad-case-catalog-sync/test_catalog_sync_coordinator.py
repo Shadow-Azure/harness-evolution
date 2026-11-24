@@ -106,11 +106,14 @@ def _coordinator(
     repository = BadCaseCatalogSyncRepository(database)
     service = BadCaseCatalogSyncService(repository, None)
     fake = FakeJobs()
+    # Assembly decides availability from the factory product; these tests mirror
+    # that decision from the legacy endpoint credentials.
     coordinator = BadCaseCatalogSyncCoordinator(
         cast(JobRunner, fake),
         repository,
         settings,
         service,
+        available=settings.bad_case_query_configured,
     )
     return coordinator, fake
 

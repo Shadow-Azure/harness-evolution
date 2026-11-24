@@ -34,7 +34,7 @@ The session page uses a 360px list plus overview, defaults to the latest 10 and 
 
 - Production MySQL 8, local/test SQLite; `HE_DB_DIALECT` is the only selection point. `Database` owns connections, read sessions, write transactions, and health; Alembic maintains dual-dialect migrations, and business code depends only on `db/crud/` and `Database`.
 - Workspaces: `workspaces`, `workspace_members`, `workspace_ingest_credentials`; bad cases, target configuration, and runs carry `workspace_id`. Traces are global, and workspace Sessions are projected from bad cases.
-- Ingest: a credential writes only the URL workspace, quota is checked inside the write transaction, and re-reporting an ID upserts idempotently without double counting.
+- Ingest: a credential writes only the URL workspace, quota is checked inside the write transaction, and re-reporting an ID upserts idempotently without double counting. Assembly decides whether the global sync source exists from `HE_BAD_CASE_SYNC_PROVIDER` (the factory returns one `BaseBadCaseSyncSource`), and catalog sync updates only rows whose `origin="catalog"`.
 - A bound target starts background attribution. The wizard can reuse its latest per-case reports or recompute with a chosen Skill. [Attribution files](../attribute/README.en.md)
 - Attribution: `bad_case_analysis` links multiple rows by `(bad_case_id, probe_id)`; `probe_reports` stores the conclusion, cache key, and reuse count; the cache key covers workspace, case, object identity, version, policy, and engine.
 - External problem tables follow the 06 §4 contract; schema/row drift emits structured logs, read failures map to stable codes, and the path issues SELECT only.

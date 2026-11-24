@@ -154,3 +154,38 @@ async def test_invalid_session_source_is_422(
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION_INVALID"
     assert await fetch_case(app.state.database, "BC-HC-021") is None
+
+
+async def test_report_owns_the_row_and_a_re_report_keeps_the_origin(
+    ingest_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """A reported row is report-owned and a re-report replaces upstream columns only."""
+    app, client = ingest_client
+    workspace = await create_ingest_workspace(app, client, name="Source Origin")
+    first = await report(client, workspace, ingest_body(sessionSource=SOURCE))
+    assert first.status_code == 201
+    created = await fetch_case(app.state.database, "BC-HC-021")
+    assert created is not None
+    assert created["origin"] == "report"
+
+    second = await report(
+        client,
+        workspace,
+        ingest_body(
+            title="重报标题",
+            reason="重报描述",
+            metaData={"revision": 2},
+            source="re-report",
+        ),
+    )
+
+    assert second.status_code == 200
+    replaced = await fetch_case(app.state.database, "BC-HC-021")
+    assert replaced is not None
+    assert replaced["origin"] == "report"
+    assert replaced["workspace_id"] == workspace.workspace_id
+    assert replaced["title"] == "重报标题"
+    assert replaced["bad_case_description"] == "重报描述"
+    assert replaced["meta_data"] == {"revision": 2}
+    assert replaced["source"] == "re-report"
+    assert replaced["session_source"] is None

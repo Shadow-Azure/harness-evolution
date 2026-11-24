@@ -26,6 +26,11 @@ from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 
 DOMAIN_METADATA = MetaData()
 
+# Writer ownership of a bad case: the report line and the catalog sync each
+# write only the rows they created, and every row names its first writer.
+BAD_CASE_ORIGIN_CATALOG = "catalog"
+BAD_CASE_ORIGIN_REPORT = "report"
+
 
 trajectory_payloads = Table(
     "trajectory_payloads",
@@ -300,6 +305,14 @@ bad_cases = Table(
         String(36),
         nullable=False,
         server_default=DEFAULT_WORKSPACE_ID,
+    ),
+    # The first writer owns the row: the report line writes ``report``, the
+    # catalog sync writes ``catalog`` and only updates the rows it owns.
+    Column(
+        "origin",
+        String(16),
+        nullable=False,
+        server_default=BAD_CASE_ORIGIN_CATALOG,
     ),
     Column("bad_case_session_id", String(36), nullable=False),
     Column("bad_case_type", String(16), nullable=False),

@@ -14,7 +14,7 @@ scope:
   - plans/fullstack-design/README.md
   - .agents/**
 adr:
-  - ../../notes/proposed/architecture/2026-11-23-bad-case-sync-source-factory.md
+  - ../../notes/implemented/architecture/2026-11-23-bad-case-sync-source-factory.md
 github:
   number: 548
   url: https://github.com/Shadow-Azure/harness-evolution/issues/548
@@ -43,7 +43,7 @@ Bad cases have two independent source lines: API reporting (workspace credential
 ## Implementation
 
 - Add `plans/fullstack-design/16-bad-case-sync-source-factory.md` (chapter 16, a pure design document and the only deliverable of this issue) plus its row in the `plans/fullstack-design/README.md` index.
-- Add the Agent Note trio `.agents/notes/proposed/architecture/2026-11-23-bad-case-sync-source-factory.*`: record the three decisions—naming (`BadCaseSync*` over `Global*`), if/else collapse (over keeping the skeleton), and catalog-sync de-duplication (over unconditional overwrite)—together with the rejected alternatives.
+- Add the Agent Note trio `.agents/notes/implemented/architecture/2026-11-23-bad-case-sync-source-factory.*`: record the three decisions—naming (`BadCaseSync*` over `Global*`), if/else collapse (over keeping the skeleton), and catalog-sync de-duplication (over unconditional overwrite)—together with the rejected alternatives.
 - Add this issue's trio, filed under the bugfix milestone (the standing bucket) without opening a new milestone.
 
 ## Implementation steps

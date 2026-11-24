@@ -108,11 +108,17 @@ def _coordinator(
     jobs: FakeJobs,
     repository: FakeRepository,
     settings: Settings,
+    *,
+    available: bool | None = None,
 ) -> BadCaseRootSyncCoordinator:
+    # Assembly decides availability from the factory product; these tests mirror
+    # that decision from the legacy endpoint credentials unless stated otherwise.
+    resolved = settings.session_query_configured if available is None else available
     return BadCaseRootSyncCoordinator(
         cast(JobRunner, jobs),
         cast(Any, repository),
         settings,
+        available=resolved,
     )
 
 

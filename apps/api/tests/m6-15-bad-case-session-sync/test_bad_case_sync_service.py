@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
@@ -21,7 +20,13 @@ from app.db.migrate import upgrade_database
 from app.db.models.domain import bad_cases, sync_runs, trajectory_payloads
 from app.errors import AppError, ErrorCode
 from app.service.acquisition.bad_case_sync import BadCaseRootSyncService
+from app.third_party_api.bad_case_query.models import BadCasePage
+from app.third_party_api.bad_case_sync_source import (
+    BaseBadCaseSyncSource,
+    ClaudeUpstreamEnvelopeFactory,
+)
 from app.third_party_api.session_query.models import SessionTrajectory
+from app.third_party_api.session_source.base import SessionSourceEnvelope
 from app.utils.time import now_shanghai
 
 ROOT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -88,11 +93,33 @@ def _trajectory() -> SessionTrajectory:
     return SessionTrajectory(content=content, line_count=2)
 
 
-@dataclass
-class FakeSource:
-    tree: dict[str, tuple[str, ...]]
-    failures: dict[str, Exception] | None = None
-    calls: list[str] | None = None
+class FakeSource(BaseBadCaseSyncSource):
+    """In-memory tree source that exercises the parent template end to end."""
+
+    provider = "fake"
+
+    def __init__(
+        self,
+        tree: dict[str, tuple[str, ...]],
+        failures: dict[str, Exception] | None = None,
+        calls: list[str] | None = None,
+    ) -> None:
+        self.tree = tree
+        self.failures = failures
+        self.calls = calls
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> FakeSource:
+        raise NotImplementedError("the session fake is constructed directly")
+
+    async def fetch_page(
+        self,
+        *,
+        after_id: int,
+        offset: int,
+        limit: int,
+    ) -> BadCasePage:
+        raise NotImplementedError("the session fake never reads catalog pages")
 
     async def list_children(self, session_id: str) -> tuple[str, ...]:
         if self.calls is not None:
@@ -103,6 +130,22 @@ class FakeSource:
 
     async def fetch_trajectory(self, session_id: str) -> SessionTrajectory:
         return _trajectory()
+
+    def build_envelope(
+        self,
+        *,
+        session_id: str,
+        expected_parent_id: str | None,
+        children: tuple[str, ...],
+        trajectory: SessionTrajectory,
+    ) -> SessionSourceEnvelope:
+        return ClaudeUpstreamEnvelopeFactory.build(
+            runtime_key="claude-code",
+            session_id=session_id,
+            expected_parent_id=expected_parent_id,
+            children=children,
+            trajectory=trajectory,
+        )
 
     async def close(self) -> None:
         return None
@@ -230,7 +273,10 @@ async def test_one_root_failure_does_not_block_another_root(database: Database) 
     assert failed.last_error == ErrorCode.SESSION_QUERY_TIMEOUT.value
     assert failed.next_retry_at is not None
     assert failed.next_retry_at >= now + timedelta(minutes=1)
-    assert failed.agent_count == 1
+    # The parent template reads the trajectory and the children before projecting,
+    # so the agent whose children read failed writes no payload; the retry ladder
+    # re-reads it. Agents completed earlier in the traversal keep their payloads.
+    assert failed.agent_count == 0
     async with database.session() as session:
         partial = (
             await session.execute(
@@ -239,7 +285,7 @@ async def test_one_root_failure_does_not_block_another_root(database: Database) 
                 ),
             )
         ).scalar_one()
-    assert partial == 1
+    assert partial == 0
 
 
 @pytest.mark.asyncio

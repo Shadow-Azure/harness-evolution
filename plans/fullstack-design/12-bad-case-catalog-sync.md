@@ -162,35 +162,37 @@ loop:
 
 ### 4.3 已存在记录的更新
 
-upsert 是唯一写路径：`bad_case_id` 命中则更新 §3.2 的全部字段，不新增行，不触碰 `bad_case_analysis`、`probe_reports` 等关联表。更新路径在以下场景真实发生：
+`bad_cases.origin` 记录首次写入者（`report` / `catalog`）。命中已存在 `bad_case_id` 时按归属分流：`catalog` 自有行更新 §3.2 的全部上游字段；`report` 自有行跳过并计入 `skipped`，一个字段都不改（含 `created_at`，report 源选择正按它排序）。首次写入者决定归属，之后不因另一条线的写入而改判；不新增行，不触碰 `bad_case_analysis`、`probe_reports` 等关联表。更新路径在以下场景真实发生：
 
-- 首次部署（状态表无行、游标从 0）时全量刷新存量。
+- 首次部署（状态表无行、游标从 0）时刷新目录自有存量。
 - 同一页因失败回滚后重试（理论上同页重复提交）。
 - 人工重置状态表游标后的重放。
 
 游标只增不减；任何情况下不把 `last_bad_case_id` 写小。
 
-## 5. 写入：upsert 与事务
+## 5. 写入：归属分流与事务
 
 ### 5.1 方言实现
 
-| 方言 | 语句 |
-|---|---|
-| SQLite | `insert(bad_cases).on_conflict_do_update(index_elements=["bad_case_id"], set_=...)` |
-| MySQL | `insert(bad_cases).on_duplicate_key_update(...)` |
+两种方言共用同一组语句，仓储不再按 `database.dialect` 分支：
 
-仓储按 `database.dialect` 分支，业务层只调用 `upsert_many(rows)`。每页一次批量语句，不做逐行 select-then-write，避免与外部写入方竞态。
+1. 读本页已存在 id 的 `origin`。
+2. `INSERT` 目录自有新行：`origin = 'catalog'`，`workspace_id` 落默认空间。
+3. 条件 `UPDATE … WHERE bad_case_id IN (...) AND origin = 'catalog'`，只改目录自有行。
+4. `origin = 'report'` 的行原样保留，计入 `skipped`。
+
+一页一批语句、同一事务提交。并发插入抢先时，`INSERT` 在保存点内失败，回滚该保存点后重新读取这些 id 的归属，把 `catalog` 行转入更新、`report` 行归入跳过，整页仍然提交。
 
 ### 5.2 事务边界
 
-- 一页 = 一个事务：`upsert_many` + 状态表更新（游标、计数、时间）同事务提交。
+- 一页 = 一个事务：归属三分流的写入 + 状态表更新（游标、计数、时间）同事务提交。
 - 页内任一条失败 → 整页回滚，游标不动，状态记 `failed` 与稳定错误码；下次从同一游标重试。
 - 不使用部分成功：避免"数据进了表、游标没动"导致重复拉取，或"游标动了、数据没进"导致永久空洞。
-- 任务结果记录 `pages`、`inserted`、`updated`、`lastBadCaseId`。
+- 任务结果记录 `pages`、`inserted`、`updated`、`skipped`、`lastBadCaseId`。
 
 ### 5.3 与外部写入方共存
 
-`bad_cases` 可能仍有外部系统直写。本特性的 upsert 只覆盖上游接口返回的字段，按主键合并；不做全表删除、不做 `TRUNCATE`。若上游接口删除了记录，本服务保留该行（见非目标）。
+`bad_cases` 可能仍有外部系统直写。本特性的写入只覆盖上游接口返回的字段，且只覆盖目录自有行；不做全表删除、不做 `TRUNCATE`。若上游接口删除了记录，本服务保留该行（见非目标）。
 
 ## 6. 状态表与统计
 
@@ -317,7 +319,8 @@ idle ──trigger──▶ running ──success──▶ idle
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `HE_BAD_CASE_QUERY_BASE_URL` | 空 | 坏例查询服务地址；缺失即 `unavailable` |
+| `HE_BAD_CASE_SYNC_PROVIDER` | 空 | global 线总开关；设为 `claude-upstream` 才启用目录与轨迹回填，未设置时目录与 root 状态均为 `unavailable` |
+| `HE_BAD_CASE_QUERY_BASE_URL` | 空 | 坏例查询服务地址；provider 启用后缺失即启动失败 |
 | `HE_BAD_CASE_QUERY_TOKEN` | 空 | 服务令牌 |
 | `HE_BAD_CASE_QUERY_TIMEOUT_SECONDS` | `30` | 单次请求超时 |
 | `HE_BAD_CASE_QUERY_RETRY_ATTEMPTS` | `2` | 重试次数（0–5） |

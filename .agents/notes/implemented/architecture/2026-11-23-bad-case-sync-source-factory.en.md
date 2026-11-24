@@ -1,6 +1,6 @@
 # Agent Note: Bad Case sync-source factory — base class, factory, and the ClaudeUpstream subclass
 
-Status: proposed
+Status: implemented
 
 English | [中文](2026-11-23-bad-case-sync-source-factory.md)
 
@@ -36,4 +36,5 @@ The request is a feature: turn the global line into factory + base class + subcl
 - Payload output is field-for-field identical to today's `_payload()` (main → `agent_meta=None`; subagent → `{"parentAgentId": …}`; `runtime_key="claude-code"`), and the implementation must pin this with a parity test; the error codes `SESSION_QUERY_UNAVAILABLE` / `BAD_CASE_QUERY_UNAVAILABLE` and `_NON_RETRYABLE_ERRORS` stay unchanged.
 - The dialect-specific `_upsert_statement` in the catalog sync is replaced by an explicit `INSERT` plus a conditional `UPDATE … WHERE origin = "catalog"`; `PageCounts` gains `skipped`, the job result gains one field, and whether the status API exposes `skippedBadCases` is left to the implementation issue.
 - The `session_query_source=` / `bad_case_catalog_source=` injection seams of `create_app` collapse into `bad_case_sync_source=`, so the related test fixtures need renaming; the `bad_cases.origin` migration and its backfill rule are in §7.4 of the design document.
-- The factory layer supports one provider per deployment only (consistent with the [Git push providers](../../implemented/architecture/2026-11-21-git-push-provider.en.md) note); multiple coexisting providers and renaming the `kind="global"` label are outside this decision.
+- The global path reads the trace and the child list through the parent `fetch_session` before projecting, so an agent whose child read fails writes no payload of its own; previously the global path wrote the payload before reading children. Completed agents and other roots are unaffected, and the retry ladder re-reads that agent.
+- The factory layer supports one provider per deployment only (consistent with the [Git push providers](2026-11-21-git-push-provider.en.md) note); multiple coexisting providers and renaming the `kind="global"` label are outside this decision.

@@ -34,7 +34,7 @@ Session 页 360px 列表+概览，默认最新 10、回车查询；错误详情�
 
 - 生产 MySQL 8、本地/测试 SQLite；`HE_DB_DIALECT` 是唯一选择点。`Database` 统管连接、只读 session、写事务与 health；Alembic 维护双方言迁移，业务只依赖 `db/crud/` 与 `Database`。
 - 空间：`workspaces`、`workspace_members`、`workspace_ingest_credentials`；bad case、对象配置与运行带 `workspace_id`。轨迹全局共享，空间 Session 由 bad case 投影。
-- 上报：凭据只写 URL 空间，额度在写入事务内判定；同 ID 幂等 upsert，不重复计数。
+- 上报：凭据只写 URL 空间，额度在写入事务内判定；同 ID 幂等 upsert，不重复计数。global 同步源由 `HE_BAD_CASE_SYNC_PROVIDER` 在装配期决定是否存在（工厂产出 `BaseBadCaseSyncSource`），目录同步只更新 `origin="catalog"` 的行。
 - 保存对象绑定即启动归因；向导复用每例最新报告或选 Skill 重算。[归因工作目录](../attribute/README.md)
 - 归因：`bad_case_analysis` 以 `(bad_case_id, probe_id)` 关联多行；`probe_reports` 存结论、缓存键与复用计数；缓存键含空间、case、对象身份、版本、策略与引擎。
 - 外部问题表按 06 §4 巡检；schema/行漂移写结构化日志，读失败映射为稳定错误码，读路径只发 SELECT。

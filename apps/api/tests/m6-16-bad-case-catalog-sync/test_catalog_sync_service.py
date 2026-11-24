@@ -17,23 +17,38 @@ from app.db.crud.bad_case_catalog_sync import BadCaseCatalogSyncRepository
 from app.db.crud.bad_cases import BadCaseRepository
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
-from app.db.models.domain import bad_case_analysis, bad_cases
+from app.db.models.domain import (
+    BAD_CASE_ORIGIN_CATALOG,
+    BAD_CASE_ORIGIN_REPORT,
+    bad_case_analysis,
+    bad_cases,
+)
+from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
 from app.service.acquisition.bad_case_catalog_sync import (
     BadCaseCatalogSyncService,
 )
 from app.third_party_api.bad_case_query.models import BadCaseItem, BadCasePage
+from app.third_party_api.bad_case_sync_source import BaseBadCaseSyncSource
+from app.third_party_api.session_query.models import SessionTrajectory
+from app.third_party_api.session_source.base import SessionSourceEnvelope
 from app.utils.time import now_shanghai
 
 
-class FakeSource:
+class FakeSource(BaseBadCaseSyncSource):
     """In-memory paginated source that mirrors the upstream cursor contract."""
+
+    provider = "fake"
 
     def __init__(self, items: list[BadCaseItem]) -> None:
         self.items = sorted(items, key=lambda item: item.bad_case_id)
         self.calls: list[tuple[int, int, int]] = []
         self.fail_on_call: int | None = None
         self.failure: Exception | None = None
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> FakeSource:
+        raise NotImplementedError("the catalog fake is constructed directly")
 
     async def fetch_page(
         self,
@@ -53,6 +68,22 @@ class FakeSource:
             limit=limit,
             items=tuple(remaining[offset : offset + limit]),
         )
+
+    async def fetch_trajectory(self, session_id: str) -> SessionTrajectory:
+        raise NotImplementedError("the catalog fake never reads trajectories")
+
+    async def list_children(self, session_id: str) -> tuple[str, ...]:
+        raise NotImplementedError("the catalog fake never reads children")
+
+    def build_envelope(
+        self,
+        *,
+        session_id: str,
+        expected_parent_id: str | None,
+        children: tuple[str, ...],
+        trajectory: SessionTrajectory,
+    ) -> SessionSourceEnvelope:
+        raise NotImplementedError("the catalog fake never synthesizes envelopes")
 
     async def close(self) -> None:
         return None
@@ -163,11 +194,13 @@ async def _insert_case(
     *,
     title: str,
     now: datetime,
+    origin: str = BAD_CASE_ORIGIN_CATALOG,
 ) -> None:
     async with database.transaction() as session:
         await session.execute(
             bad_cases.insert().values(
                 bad_case_id=str(case_id),
+                origin=origin,
                 bad_case_session_id=f"session-{case_id}",
                 bad_case_type="self",
                 object_name="deep-research",
@@ -182,6 +215,28 @@ async def _insert_case(
                 updated_at=now,
             ),
         )
+
+
+def _job(now: datetime) -> JobRunRecord:
+    """Build one catalog-sync job row for the ``handle`` seam."""
+    return JobRunRecord(
+        id="job-catalog-1",
+        kind="bad_case_catalog_sync",
+        ref_id=None,
+        status="running",
+        progress=0.0,
+        executor="test",
+        external_job_id=None,
+        attempt=1,
+        payload={},
+        result=None,
+        error=None,
+        created_by=None,
+        created_at=now,
+        started_at=now,
+        finished_at=None,
+        updated_at=now,
+    )
 
 
 @pytest.mark.asyncio
@@ -359,3 +414,72 @@ async def test_analysis_rows_survive_upsert(database: Database) -> None:
     progress = await BadCaseRepository(database).analysis_progress()
     assert progress.total == 1
     assert progress.analyzed == 1
+
+
+@pytest.mark.asyncio
+async def test_run_accumulates_skipped_reported_rows_across_pages(
+    database: Database,
+) -> None:
+    """Reported rows are protected on every page and their count reaches the result."""
+    now = now_shanghai()
+    await _insert_case(
+        database,
+        2,
+        title="上报二",
+        now=now,
+        origin=BAD_CASE_ORIGIN_REPORT,
+    )
+    await _insert_case(
+        database,
+        4,
+        title="上报四",
+        now=now,
+        origin=BAD_CASE_ORIGIN_REPORT,
+    )
+    source = FakeSource([_item(case_id) for case_id in range(1, 5)])
+
+    result = await _service(database, source).run(owner="job-1")
+
+    assert result.pages == 2
+    assert result.inserted == 2
+    assert result.updated == 0
+    assert result.skipped == 2
+    assert result.last_bad_case_id == 4
+    assert result.exhausted is True
+    titles = await _titles(database)
+    assert titles["2"] == "上报二"
+    assert titles["4"] == "上报四"
+    async with database.session() as session:
+        origins = {
+            str(row["bad_case_id"]): str(row["origin"])
+            for row in (await session.execute(select(bad_cases))).mappings()
+        }
+    assert origins == {
+        "1": BAD_CASE_ORIGIN_CATALOG,
+        "2": BAD_CASE_ORIGIN_REPORT,
+        "3": BAD_CASE_ORIGIN_CATALOG,
+        "4": BAD_CASE_ORIGIN_REPORT,
+    }
+
+
+@pytest.mark.asyncio
+async def test_handle_exposes_skipped_in_the_job_result(database: Database) -> None:
+    """The job result mapping carries the skipped count alongside the other counters."""
+    now = now_shanghai()
+    await _insert_case(
+        database,
+        2,
+        title="上报二",
+        now=now,
+        origin=BAD_CASE_ORIGIN_REPORT,
+    )
+    service = _service(database, FakeSource([_item(1), _item(2)]))
+
+    result = await service.handle(_job(now))
+
+    assert result["pages"] == 1
+    assert result["inserted"] == 1
+    assert result["updated"] == 0
+    assert result["skipped"] == 1
+    assert result["lastBadCaseId"] == 2
+    assert result["exhausted"] is True

@@ -1,6 +1,6 @@
 # Agent Note: Bad Case 同步源工厂化——父类、工厂与 ClaudeUpstream 子类
 
-Status: proposed
+Status: implemented
 
 [English](2026-11-23-bad-case-sync-source-factory.en.md) | 中文
 
@@ -36,4 +36,5 @@ bad case 的 global 源线在代码里不是「一个源」，而是两个互不
 - payload 产出与现状 `_payload()` 逐字段相同（main → `agent_meta=None`；subagent → `{"parentAgentId": …}`；`runtime_key="claude-code"`），实现须以 parity 测试锁定；错误码 `SESSION_QUERY_UNAVAILABLE` / `BAD_CASE_QUERY_UNAVAILABLE` 与 `_NON_RETRYABLE_ERRORS` 不变。
 - 目录同步跨方言的 `_upsert_statement` 被显式 `INSERT` + 条件 `UPDATE … WHERE origin = "catalog"` 取代；`PageCounts` 新增 `skipped`，job 结果多一个字段，状态接口是否暴露 `skippedBadCases` 留给实现 issue 决定。
 - `create_app` 的 `session_query_source=` / `bad_case_catalog_source=` 注入缝收敛为 `bad_case_sync_source=`，相关测试夹具需改名；新增 `bad_cases.origin` 迁移与回填规则见设计文档 §7.4。
-- 工厂层只支持单部署单 provider（与 [Git 推送提供者](../../implemented/architecture/2026-11-21-git-push-provider.md) 一致）；多 provider 并存、`kind="global"` 标签改名均不在本决策内。
+- global 路径经父类 `fetch_session` 一次读完 trajectory 与子会话列表再投影，因此某个 agent 的子会话读失败时它自己的 payload 不落库；此前 global 路径先写 payload 再读子会话。已完成的 agent 与其它 root 不受影响，重试阶梯会重读该 agent。
+- 工厂层只支持单部署单 provider（与 [Git 推送提供者](2026-11-21-git-push-provider.md) 一致）；多 provider 并存、`kind="global"` 标签改名均不在本决策内。

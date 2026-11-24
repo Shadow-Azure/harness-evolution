@@ -31,8 +31,14 @@ from app.service.acquisition.parsers import (
     UnsupportedTraceRuntime,
 )
 from app.service.acquisition.parsers.base import _dict, _string
+from app.third_party_api.bad_case_query.models import BadCasePage
+from app.third_party_api.bad_case_sync_source import (
+    BaseBadCaseSyncSource,
+    ClaudeUpstreamEnvelopeFactory,
+)
 from app.third_party_api.session_query.models import SessionTrajectory
 from app.third_party_api.session_source import SessionInfo
+from app.third_party_api.session_source.base import SessionSourceEnvelope
 from app.utils.time import now_shanghai
 
 ROOT = "root-session-1"
@@ -206,10 +212,25 @@ class FakeFetcher:
 
 
 @dataclass
-class FakeGlobalSource:
-    """Legacy global query source that must not be called for report roots."""
+class FakeGlobalSource(BaseBadCaseSyncSource):
+    """Legacy global sync source that must not be called for report roots."""
+
+    provider = "fake-global"
 
     calls: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> FakeGlobalSource:
+        raise NotImplementedError("the selection fake is constructed directly")
+
+    async def fetch_page(
+        self,
+        *,
+        after_id: int,
+        offset: int,
+        limit: int,
+    ) -> BadCasePage:
+        raise NotImplementedError("the selection fake never reads catalog pages")
 
     async def list_children(self, session_id: str) -> tuple[str, ...]:
         self.calls.append(session_id)
@@ -218,6 +239,22 @@ class FakeGlobalSource:
     async def fetch_trajectory(self, session_id: str) -> SessionTrajectory:
         self.calls.append(session_id)
         return SessionTrajectory(content=jsonl({"type": "user"}), line_count=1)
+
+    def build_envelope(
+        self,
+        *,
+        session_id: str,
+        expected_parent_id: str | None,
+        children: tuple[str, ...],
+        trajectory: SessionTrajectory,
+    ) -> SessionSourceEnvelope:
+        return ClaudeUpstreamEnvelopeFactory.build(
+            runtime_key="claude-code",
+            session_id=session_id,
+            expected_parent_id=expected_parent_id,
+            children=children,
+            trajectory=trajectory,
+        )
 
     async def close(self) -> None:
         return None
@@ -321,7 +358,7 @@ async def test_global_fallback_keeps_the_existing_claude_path(database: Database
     state = await BadCaseRootSyncRepository(database).get(ROOT)
     assert state is not None
     assert state.source_kind == "global"
-    assert state.source_snapshot == {"kind": "global"}
+    assert state.source_snapshot == {"kind": "global", "provider": "fake-global"}
 
 
 @pytest.mark.asyncio

@@ -21,13 +21,22 @@ from app.db.migrate import upgrade_database
 from app.db.models.domain import bad_case_analysis
 from app.main import create_app
 from app.third_party_api.bad_case_query.models import BadCaseItem, BadCasePage
+from app.third_party_api.bad_case_sync_source import BaseBadCaseSyncSource
+from app.third_party_api.session_query.models import SessionTrajectory
+from app.third_party_api.session_source.base import SessionSourceEnvelope
 
 
-class FakeCatalogSource:
+class FakeCatalogSource(BaseBadCaseSyncSource):
     """Deterministic paginated catalog source for the status API."""
+
+    provider = "fake"
 
     def __init__(self, items: tuple[BadCaseItem, ...]) -> None:
         self.items = sorted(items, key=lambda item: item.bad_case_id)
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> FakeCatalogSource:
+        raise NotImplementedError("the catalog fake is constructed directly")
 
     async def fetch_page(
         self,
@@ -43,6 +52,22 @@ class FakeCatalogSource:
             limit=limit,
             items=tuple(remaining[offset : offset + limit]),
         )
+
+    async def fetch_trajectory(self, session_id: str) -> SessionTrajectory:
+        raise NotImplementedError("the catalog fake never reads trajectories")
+
+    async def list_children(self, session_id: str) -> tuple[str, ...]:
+        raise NotImplementedError("the catalog fake never reads children")
+
+    def build_envelope(
+        self,
+        *,
+        session_id: str,
+        expected_parent_id: str | None,
+        children: tuple[str, ...],
+        trajectory: SessionTrajectory,
+    ) -> SessionSourceEnvelope:
+        raise NotImplementedError("the catalog fake never synthesizes envelopes")
 
     async def close(self) -> None:
         return None
@@ -137,7 +162,7 @@ async def configured_client(
     app = create_app(
         settings,
         database=database,
-        bad_case_catalog_source=FakeCatalogSource((_item(1), _item(2))),
+        bad_case_sync_source=FakeCatalogSource((_item(1), _item(2))),
     )
     transport = httpx.ASGITransport(app=app)
     async with (
@@ -244,7 +269,7 @@ async def test_empty_catalog_finishes_without_error(tmp_path: Path) -> None:
     app = create_app(
         settings,
         database=database,
-        bad_case_catalog_source=FakeCatalogSource(()),
+        bad_case_sync_source=FakeCatalogSource(()),
     )
     transport = httpx.ASGITransport(app=app)
     async with (

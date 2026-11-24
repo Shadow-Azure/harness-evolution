@@ -1,4 +1,4 @@
-"""Durable cursor state and page upserts for the bad-case catalog sync."""
+"""Durable cursor state and owner-scoped page writes for the bad-case catalog sync."""
 
 from __future__ import annotations
 
@@ -8,14 +8,19 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, insert, select, update
-from sqlalchemy.dialects.mysql import insert as mysql_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy import bindparam, func, insert, select, update
 from sqlalchemy.engine import RowMapping
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
-from app.db.models.domain import bad_case_catalog_sync, bad_cases
+from app.db.crud.integrity import is_unique_violation
+from app.db.models.domain import (
+    BAD_CASE_ORIGIN_CATALOG,
+    bad_case_catalog_sync,
+    bad_cases,
+)
+from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +79,12 @@ class CatalogSyncState:
 
 
 @dataclass(frozen=True, slots=True)
-class UpsertCounts:
-    """Inserted and updated row counts for one committed page."""
+class PageCounts:
+    """Inserted, updated, and owner-protected counts for one committed page."""
 
     inserted: int
     updated: int
+    skipped: int
 
 
 def _state(row: RowMapping) -> CatalogSyncState:
@@ -111,6 +117,24 @@ def _values(row: CatalogCaseRow) -> dict[str, Any]:
         "source": row.source,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
+    }
+
+
+def _insert_values(row: CatalogCaseRow) -> dict[str, Any]:
+    """Return the full insert payload for a row the catalog is about to own."""
+    return {
+        **_values(row),
+        "workspace_id": DEFAULT_WORKSPACE_ID,
+        "origin": BAD_CASE_ORIGIN_CATALOG,
+    }
+
+
+def _update_parameters(row: CatalogCaseRow) -> dict[str, Any]:
+    """Return the executemany parameters of one owner-guarded row update."""
+    values = _values(row)
+    return {
+        "row_id": str(row.bad_case_id),
+        **{column: values[column] for column in _UPDATE_COLUMNS},
     }
 
 
@@ -232,24 +256,45 @@ class BadCaseCatalogSyncRepository:
         last_bad_case_id: int,
         pending_count: int,
         now: datetime,
-    ) -> UpsertCounts:
-        """Upsert one page and advance the cursor in the same transaction."""
-        values = [_values(item) for item in items]
-        ids = [value["bad_case_id"] for value in values]
+    ) -> PageCounts:
+        """Apply one page under writer ownership and advance the cursor together.
+
+        Rows absent locally are inserted as catalog-owned, rows the catalog
+        already owns are updated, and rows a report wrote first stay untouched
+        and are counted as skipped. A concurrent insert can win the primary-key
+        race after the ownership read; the failed statement also rolls back its
+        savepoint, the ids are re-read as a current read, and each loser is
+        routed to update or skip so the page transaction still commits.
+        """
+        rows = list(items)
+        by_id = {str(row.bad_case_id): row for row in rows}
         async with self._database.transaction() as session:
-            existing: set[str] = set()
-            if ids:
-                existing = set(
-                    (
-                        await session.execute(
-                            select(bad_cases.c.bad_case_id).where(
-                                bad_cases.c.bad_case_id.in_(ids),
-                            ),
-                        )
-                    ).scalars(),
+            origins = await self._origins(session, tuple(by_id))
+            to_insert = [row for case_id, row in by_id.items() if case_id not in origins]
+            to_update = [
+                row
+                for case_id, row in by_id.items()
+                if origins.get(case_id) == BAD_CASE_ORIGIN_CATALOG
+            ]
+            skipped = len(by_id) - len(to_insert) - len(to_update)
+            inserted = 0
+            if to_insert:
+                raced = await self._insert_catalog_rows(
+                    session,
+                    [_insert_values(row) for row in to_insert],
                 )
-            if values:
-                await session.execute(self._upsert_statement(values))
+                inserted = len(to_insert) - len(raced)
+                late_origins = await self._origins(session, raced, current=True)
+                for case_id in raced:
+                    if late_origins.get(case_id) == BAD_CASE_ORIGIN_CATALOG:
+                        to_update.append(by_id[case_id])
+                    else:
+                        skipped += 1
+            if to_update:
+                await session.execute(
+                    self._owned_update_statement(),
+                    [_update_parameters(row) for row in to_update],
+                )
             synced = int(
                 (
                     await session.execute(
@@ -268,9 +313,10 @@ class BadCaseCatalogSyncRepository:
                     updated_at=now,
                 ),
             )
-        return UpsertCounts(
-            inserted=len(values) - len(existing),
-            updated=len(existing),
+        return PageCounts(
+            inserted=inserted,
+            updated=len(to_update),
+            skipped=skipped,
         )
 
     async def count_bad_cases(self) -> int:
@@ -292,14 +338,71 @@ class BadCaseCatalogSyncRepository:
                 return 0
             raise
 
-    def _upsert_statement(self, values: list[dict[str, Any]]) -> Any:
-        if self._database.dialect == "mysql":
-            mysql_statement = mysql_insert(bad_cases).values(values)
-            return mysql_statement.on_duplicate_key_update(
-                {column: mysql_statement.inserted[column] for column in _UPDATE_COLUMNS},
+    async def _origins(
+        self,
+        session: AsyncSession,
+        bad_case_ids: Sequence[str],
+        *,
+        current: bool = False,
+    ) -> dict[str, str]:
+        """Return the writer origin of the ids that already exist.
+
+        MySQL REPEATABLE READ answers a plain re-read from the snapshot opened
+        before a competitor committed, so the post-race read is a locking read:
+        it waits for the winner and returns the committed origin.
+        """
+        if not bad_case_ids:
+            return {}
+        statement = select(bad_cases.c.bad_case_id, bad_cases.c.origin).where(
+            bad_cases.c.bad_case_id.in_(tuple(bad_case_ids)),
+        )
+        if current:
+            statement = statement.with_for_update()
+        rows = (await session.execute(statement)).mappings()
+        return {str(row["bad_case_id"]): str(row["origin"]) for row in rows}
+
+    async def _insert_catalog_rows(
+        self,
+        session: AsyncSession,
+        values: Sequence[dict[str, Any]],
+    ) -> tuple[str, ...]:
+        """Insert catalog-owned rows and return the ids that lost a primary-key race.
+
+        The batch insert runs inside a savepoint so a duplicate id leaves the
+        page transaction usable. The savepoint also rolls back the whole batch,
+        so losing rows are retried one by one in their own savepoints; only the
+        ids that still violate the primary key are reported back to the caller.
+        """
+        if not values:
+            return ()
+        try:
+            async with session.begin_nested():
+                await session.execute(insert(bad_cases), values)
+        except IntegrityError as exc:
+            if not is_unique_violation(exc):
+                raise
+            logger.warning(
+                "catalog page insert lost a primary-key race; retrying rows one by one",
+                extra={"bad_case_ids": [str(value["bad_case_id"]) for value in values]},
             )
-        sqlite_statement = sqlite_insert(bad_cases).values(values)
-        return sqlite_statement.on_conflict_do_update(
-            index_elements=[bad_cases.c.bad_case_id],
-            set_={column: sqlite_statement.excluded[column] for column in _UPDATE_COLUMNS},
+        else:
+            return ()
+        raced: list[str] = []
+        for value in values:
+            try:
+                async with session.begin_nested():
+                    await session.execute(insert(bad_cases).values(**value))
+            except IntegrityError as row_error:
+                if not is_unique_violation(row_error):
+                    raise
+                raced.append(str(value["bad_case_id"]))
+        return tuple(raced)
+
+    def _owned_update_statement(self) -> Any:
+        """Build the per-row update that only touches catalog-owned rows."""
+        return (
+            update(bad_cases)
+            .where(bad_cases.c.bad_case_id == bindparam("row_id"))
+            .where(bad_cases.c.origin == BAD_CASE_ORIGIN_CATALOG)
+            .values({column: bindparam(column) for column in _UPDATE_COLUMNS})
         )
