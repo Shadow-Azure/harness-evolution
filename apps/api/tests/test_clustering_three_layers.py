@@ -23,6 +23,7 @@ from app.db.models.domain import bad_cases
 from app.db.models.jobs import JobRunRecord
 from app.service.evolution.attribution import AttributionRunner, RuleBasedEngine
 from app.service.evolution.cluster import (
+    ATTRIBUTION_HYBRID_ALGORITHM,
     HYBRID_ALGORITHM,
     LEXICAL_ALGORITHM,
     TYPE_CONFIDENCE,
@@ -93,6 +94,15 @@ _REVIEW_MERGED = {
     "clusters": [
         {
             "from": ["D1", "D2"],
+            "title": "检索索引问题",
+            "description": "同一失败点",
+        },
+    ],
+}
+_REVIEW_ALL_THREE = {
+    "clusters": [
+        {
+            "from": ["D1", "D2", "D3"],
             "title": "检索索引问题",
             "description": "同一失败点",
         },
@@ -1277,7 +1287,7 @@ async def test_prepare_hybrid_persists_llm_values_and_records_calls(
     events = RecordingEvents()
     provider = _fake_with(
         {
-            REVIEW_TASK: _REVIEW_MERGED,
+            REVIEW_TASK: _REVIEW_ALL_THREE,
             CLUSTER_SCORE_TASK: {
                 "scores": [
                     {
@@ -1298,7 +1308,7 @@ async def test_prepare_hybrid_persists_llm_values_and_records_calls(
     assert run is not None
     assert run.progress_unit == 5
     assert run.status == "completed"
-    assert (run.stats or {}).get("clusterAlgorithm") == HYBRID_ALGORITHM
+    assert (run.stats or {}).get("clusterAlgorithm") == ATTRIBUTION_HYBRID_ALGORITHM
 
     clusters = await runs.list_clusters(RUN_ID)
     assert len(clusters) == 1
@@ -1312,7 +1322,10 @@ async def test_prepare_hybrid_persists_llm_values_and_records_calls(
 
     created = next(event for event in events.records if event.event_type == "clusters_created")
     assert created.payload is not None
-    assert created.payload["algorithm"] == HYBRID_ALGORITHM
+    assert created.payload["algorithm"] == ATTRIBUTION_HYBRID_ALGORITHM
+    assert created.payload["draftCount"] == 3
+    assert created.payload["grouping"] == "one-draft-per-attribution"
+    assert created.payload["draftSummaryMaxChars"] == 240
     assert "degraded" not in created.payload
     comparison = created.payload["severityFormula"]
     assert isinstance(comparison, list)
@@ -1358,8 +1371,16 @@ async def test_prepare_maps_non_zero_usage_and_trace_into_the_event(
     events = RecordingEvents()
     provider = _RawProvider(
         {
-            REVIEW_TASK: _REVIEW_MERGED,
-            CLUSTER_SCORE_TASK: _CLUSTER_SCORE_MERGED,
+            REVIEW_TASK: _REVIEW_ALL_THREE,
+            CLUSTER_SCORE_TASK: {
+                "scores": [
+                    {
+                        "cluster": "C1",
+                        "confidence": 0.9,
+                        "evidence_refs": ["case-three-layers-a"],
+                    },
+                ],
+            },
             SEVERITY_SCORE_TASK: _SEVERITY_OK,
         },
         trace=AgentCallTrace(
@@ -1428,7 +1449,7 @@ async def test_prepare_degrades_gracefully_when_every_call_fails(
     assert run is not None
     assert run.progress_unit == 5
     assert run.status == "completed"
-    assert (run.stats or {}).get("clusterAlgorithm") == HYBRID_ALGORITHM
+    assert (run.stats or {}).get("clusterAlgorithm") == ATTRIBUTION_HYBRID_ALGORITHM
     assert (run.stats or {}).get("clusterFailurePolicy") == "degrade"
     assert (run.stats or {}).get("clusterDegraded") == [
         REVIEW_TASK,
@@ -1436,19 +1457,11 @@ async def test_prepare_degrades_gracefully_when_every_call_fails(
         SEVERITY_SCORE_TASK,
     ]
     clusters = await runs.list_clusters(RUN_ID)
-    assert len(clusters) == 2
-    assert all(
-        cluster.confidence == pytest.approx(TYPE_CONFIDENCE["prompt"]) for cluster in clusters
-    )
-    assert all(
-        cluster.severity == pytest.approx(cluster_severity("prompt", count))
-        for cluster, count in zip(clusters, (2, 1), strict=True)
-    )
-    assert [cluster.probe_cluster_description for cluster in clusters] == [
-        "prompt 类问题 · 检索索引读取失败",
-        "prompt 类问题 · 工具调用超时",
-    ]
-    assert [cluster.rank for cluster in clusters] == [1, 2]
+    assert len(clusters) == 1
+    assert clusters[0].confidence == pytest.approx(TYPE_CONFIDENCE["prompt"])
+    assert clusters[0].severity == pytest.approx(cluster_severity("prompt", 3))
+    assert clusters[0].probe_cluster_description == ("prompt 类问题 · 3 条归因（聚类降级）")  # noqa: RUF001
+    assert clusters[0].rank == 1
     created = next(event for event in events.records if event.event_type == "clusters_created")
     assert created.payload is not None
     assert created.payload["degraded"] == [

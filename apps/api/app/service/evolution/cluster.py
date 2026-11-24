@@ -18,11 +18,17 @@ LEXICAL_ALGORITHM = "lexical-jaccard-v1"
 HYBRID_ALGORITHM = "hybrid-lexical-llm-v1"
 """Algorithm identity for lexical grouping plus LLM review and scoring (07 §5.5.2)."""
 
+ATTRIBUTION_HYBRID_ALGORITHM = "hybrid-attribution-llm-v1"
+"""Algorithm identity for one-draft-per-attribution grouping plus LLM review (07 §5.5.2)."""
+
 CLUSTER_ALGORITHM = LEXICAL_ALGORITHM
 """Backwards-compatible alias for :data:`LEXICAL_ALGORITHM`."""
 
 SIMILARITY_THRESHOLD = 0.3
 """Jaccard similarity at or above which two probes join the same cluster."""
+
+ATTRIBUTION_DRAFT_MAX_CHARS = 240
+"""Character bound for one attribution conclusion rendered into a review draft."""
 
 TYPE_ORDER: tuple[ClusterType, ...] = ("model", "prompt", "error", "flow", "context")
 
@@ -124,6 +130,70 @@ def cluster_probes(probes: Sequence[ProbeForCluster]) -> tuple[ClusterDraft, ...
                 ),
             )
     return tuple(clusters)
+
+
+def build_attribution_drafts(
+    probes: Sequence[ProbeForCluster],
+) -> tuple[ClusterDraft, ...]:
+    """Turn every attributed conclusion into its own review draft.
+
+    The attribution conclusion is the only grouping signal: the lexical layer
+    never merges probes, so the review layer sees exactly one draft per probe
+    and owns the semantic merge by root cause. Drafts are ordered by the closed
+    category order and then probe id, which makes the result independent of
+    database row order.
+
+    Args:
+        probes: Attributed probe identities with their conclusion text.
+
+    Returns:
+        One singleton draft per unique probe, in model, prompt, error, flow,
+        context order.
+    """
+    unique: dict[str, ProbeForCluster] = {}
+    for probe in probes:
+        current = unique.get(probe.probe_id)
+        if current is None or (probe.attribute_type, probe.text) < (
+            current.attribute_type,
+            current.text,
+        ):
+            unique[probe.probe_id] = probe
+
+    drafts: list[ClusterDraft] = []
+    for attribute_type in TYPE_ORDER:
+        group = sorted(
+            (probe for probe in unique.values() if probe.attribute_type == attribute_type),
+            key=lambda probe: probe.probe_id,
+        )
+        for probe in group:
+            drafts.append(
+                ClusterDraft(
+                    type=attribute_type,
+                    description=_attribution_description(attribute_type, probe),
+                    probes=(probe.probe_id,),
+                ),
+            )
+    return tuple(drafts)
+
+
+def attribution_fallback_description(
+    attribute_type: ClusterType,
+    attribution_count: int,
+) -> str:
+    """Return the honest degraded description for one category bucket.
+
+    A degraded review cannot claim a shared root cause, so the description says
+    what the bucket is (one category) and that clustering fell back. It never
+    reuses a member bad case title as the cluster title.
+
+    Args:
+        attribute_type: Closed attribution category of the bucket.
+        attribution_count: Number of attributed probes in the bucket.
+
+    Returns:
+        ``{type} 类问题 · {N} 条归因 (聚类降级)``.
+    """
+    return f"{attribute_type} 类问题 · {attribution_count} 条归因（聚类降级）"  # noqa: RUF001
 
 
 def signature_overlap(texts: Sequence[str]) -> float:
@@ -252,6 +322,26 @@ def _description(
     if headline:
         return f"{attribute_type} 类问题 · {headline}"
     return f"{attribute_type} 类问题 · {member_count} 条归因"
+
+
+def _attribution_description(
+    attribute_type: ClusterType,
+    probe: ProbeForCluster,
+) -> str:
+    """Render one attribution conclusion as a bounded review draft summary.
+
+    Args:
+        attribute_type: Closed attribution category of the probe.
+        probe: Attributed probe whose ``text`` is the conclusion.
+
+    Returns:
+        Category prefix plus the bounded conclusion, or a unique honest
+        fallback when the conclusion is missing.
+    """
+    headline = _headline(probe.text, ATTRIBUTION_DRAFT_MAX_CHARS)
+    if headline:
+        return f"{attribute_type} 类问题 · {headline}"
+    return f"{attribute_type} 类问题 · 编号 {probe.probe_id} 的归因结论缺失"
 
 
 def _headline(text: str, limit: int = 120) -> str:

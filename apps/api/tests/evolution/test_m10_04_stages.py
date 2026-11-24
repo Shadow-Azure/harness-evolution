@@ -280,7 +280,10 @@ async def test_v2_cluster_cases_use_bad_case_short_title(harness: Harness) -> No
 
     service = _stage_service(harness.database)
     clusters = await service.step("run-m10-04", "clusters")
-    cluster_cases = cast(StepClustersPayload, clusters.payload).clusters[0].cases
+    cluster = cast(StepClustersPayload, clusters.payload).clusters[0]
+    assert cluster.title == cluster.description
+    assert cluster.title != "短标题：七步投影"  # noqa: RUF001
+    cluster_cases = cluster.cases
     assert cluster_cases[0].title == "短标题：七步投影"  # noqa: RUF001
 
     iteration = await service.step("run-m10-04", "iteration")
