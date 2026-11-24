@@ -4,7 +4,7 @@ English | [中文](bugfix-attribution-skill-admin-style.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-45
+id: bugfix-52
 milestone: bugfix
 depends:
   - m12-23
