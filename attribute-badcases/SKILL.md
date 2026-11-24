@@ -3,7 +3,7 @@ name: attribute-badcases
 description: 你的目标是对session粒度的对象生成问题报告; 根据上报的session粒度下的badcase进行归因分析, 并生成归因报告; 你需要结合完整的session trace和codespec整套背景信息, 从每一个badcase的角度出发, 定位到其session trace中出现这个问题的位置或原因, 总结提炼, 为每个badcase生成独立的probe report; 使用包内 make_probe_report.py 生成报告.
 metadata:
   author: "chenzhiyang"
-  version: "1.0.0"
+  version: "2.0.0"
 user-invocable: true
 ---
 
@@ -137,8 +137,9 @@ user-invocable: true
 
 `bad_cases[].object` 是**上游上报时认为的**问题对象，它只代表"badcase 被挂在谁名下"，不代表"缺陷真的是谁引入的"。你必须独立判别：
 
-- **上报对象（reported/probe_object）**：badcase 被挂在谁名下，由上游 finding 的 source/label 决定。例如 `code-review` skill 检视出的 finding，badcase 的 `object` 往往就是 `code-review`。
-- **真实根因对象（real_target_object）**：在这个技能的分析流程中, 你需要找到trace 证据指向的、真正引入缺陷的对象, 也就是最终归因报告上需要体现的真实归因对象`probe_object`。可能是上报对象自己（检视误报/漏检），也可能是**另一个 skill/agent**（检视正报，缺陷由上游代码生成环节引入）, 当badcase中`bad_case_type`值为"discovery"时, 往往说明了, 此时badcase反应的真正问题在于其他位置, 反之如果是"self"则代表自身。
+- **上报对象（bad_cases[].object）**：badcase 被挂在谁名下，由上游 finding 的 source/label 决定。例如 `code-review` skill 检视出的 finding，badcase 的 `object` 往往就是 `code-review`。
+- **被评估对象**由平台从 `selected_target` 固定。用 `--conclusion` 回答它是否导致本条 bad case。证据能将该对象的行为连到失败时选 `attributed`；证据能排除该对象时选 `non_target`；证据无法区分可能原因时选 `inconclusive`。
+- 在 `--root-cause` 写明失败机制或仍缺哪段证据，在 `--probe-analysis` 引用可核对的 trace 位置。根因可能是另一个 Skill、Agent、知识条目或外部环境。只有定位到具体受支持的对象时才填写 `probe_object`、`probe_type` 和版本。比如环境数据过期导致评分失败，当前 Skill 可以改进汇报，这条建议可以保留在 Proposal 中；若证据排除了当前 Skill，结论为 `non_target`。
 
 判别依据（按优先级）：
 
@@ -150,22 +151,11 @@ user-invocable: true
    - 执行了 → 继续看执行结果。
 3. reason 文案与 trace 行为的一致性：
    - reason 写"skill 存在问题：对于代码 X 错误上报问题【…】"——这可能是**正报**（检视到的代码 X 的缺陷是真的），只是 reason 文案把"检视到的缺陷"表述成了"skill 的问题"。必须看 trace 里代码 X 的缺陷是否真实存在、是否由上游 skill 生成。
-   - reason 写"检视结果存在误报"——这是明确的误报指控，归因对象才真的是检视 skill。
+   - reason 写"检视结果存在误报"时，应检查对应检视记录。只有证据证明该检视行为产生了误报，才能将误报归因到检视 Skill。
 
 ### 1.5.2 版本随对象走
 
-输入里的 `bad_cases[].object_version` 是**上报对象** `object` 的版本，不是真实根因对象的版本。
-一旦 1.5.1 判定 `probe_object ≠ object`，你必须在步骤 3 收集真实根因对象的自身版本，并在步骤 4
-通过 `--object-version` 显式写入报告。把上报对象的版本套给真实根因对象会产生两个错误：
-
-- 报告把缺陷挂在一个该对象从未有过的版本上，下游按 `probe_object + object_version + probe_type`
-  检索时永远命中不到，真实根因无法进入自进化；
-- 同一条 trace 里 `from_bad_cases[].object_version`（上报对象版本）与 `object_version`
-  （真实对象版本）被写成同一个值，掩盖了"两者不是同一个对象"这一关键事实。
-
-版本取证顺序：trace 中该 skill/agent 的实际加载版本 → 目标配置（对象目录）中的当前版本 →
-上游 finding 的 `meta_data` 版本字段。三者都取不到时写 `unknown`，并在 `--probe-analysis`
-里说明取证缺口，不得沿用上报对象的版本。
+平台保留上报者在 `from_bad_cases` 中的原始版本，并从 `selected_target` 复制评估版本。若已定位到其他具体根因对象，使用轨迹、对象配置或上游原始记录核实其自身版本后传给 `--object-version`；版本不可得时写 `unknown` 并说明缺口。环境原因或未定位时省略整组根因对象参数。
 
 ## 步骤2: 获取完整session trace
 
@@ -325,10 +315,14 @@ user-invocable: true
 
 ```
 {
-  "probe_id": "xxxxx-xxxxx", // 按照 session_id + probe_object 的规则命名, 以下划线链接
-  "probe_type": "skill", // skill/agent/knowledge 归因对象类型
-  "probe_object": "code-review",  // 实际归因到的归因对象, 不一定是输入 object (real_target_object)
-  "object_version": "x.xx.x", // probe_object 自身的版本, 不是输入 object_version; 两者对象不同时必须显式给出
+  "probe_id": "session-id*code-review*case-id",
+  "selected_target": {"name": "code-review", "type": "skill", "version": "v1", "revision": "tag:v1"},
+  "conclusion": "attributed",
+  "root_cause": "检视规则忽略已存在的上游参数约束，产生误报",
+  "evidence_references": ["event:review:12"],
+  "probe_type": "skill", // 以下三个身份字段仅在定位到具体根因对象时提供
+  "probe_object": "code-review",
+  "object_version": "v1",
   "attribute_type": "prompt",  // model/prompt/error/flow/context/unknown，描述问题性质
   "probe_description": "误报了入参缺少空指针校验; ",    // 归因到的问题是什么 + 改进的建议 +
   "probe_analysis": "函数为static内部函数，且上游调用不为空，这种情况下可以不进行控制指针调用，查看skill中是否缺少这方面的说明",   // 需要在此体现归因分析的过程，不要包含代码相关敏感信息
@@ -352,8 +346,7 @@ user-invocable: true
 
 **禁止直接手写或编辑 probe_report.json 文件。** JSON 的结构字段由脚本生成，能保证
 `probe_id`、`from_bad_cases` 等与输入一致、零幻觉。
-你只负责通过脚本参数提供归因的开放内容（`probe_type` / `probe_object` / `object_version` /
-`probe_description` / `probe_analysis` / `attribute_type`）。
+通过脚本参数提供本例的结论、根因、问题类别和有证据的分析。脚本从原始输入派生被评估对象与上报来源。
 
 在本次工作目录执行以下命令，将尖括号内参数替换为本条 Badcase 的实际值：
 
@@ -361,29 +354,20 @@ user-invocable: true
 python3 .claude/skills/attribute-badcases/make_probe_report.py \
   --input-badcase input_badcase.json \
   --bad-case-id "<badcase_id>" \
-  --probe_type "<skill|agent|knowledge>" \
-  --probe_object "<实际归因对象>" \
-  --object-version "<实际归因对象的版本>" \
+  --conclusion "<attributed|non_target|inconclusive>" \
+  --root-cause "<已定位的原因或证据缺口>" \
   --attribute-type "<prompt|model|error|flow|context|unknown>" \
   --probe-description "<问题及改进方向>" \
-  --probe-analysis "<脱敏后的分析过程>" \
+  --probe-analysis "<引用轨迹或说明缺少的证据>" \
   --output probe_report.json
 ```
 
 脚本按以下规则生成报告：
 
-- 从 `input_badcase.json` 按 `--bad-case-id` 读取该 badcase，生成 `probe_id`（
-  `{session_id}_{probe_object}_{bad_case_id}`）与 `from_bad_cases`（reason / type /
-  object / object_version / ids 均取自输入，**不可由你改写**）。
-- `--probe_type`和`--probe_object`请填入实际归因到的对象信息
-- **`--object-version` 是 `probe_object` 自己的版本，不是输入里的 `object_version`。**
-  输入中的 `object_version` 属于上报对象 `object`。当 `probe_object` 与 `object`
-  不同（discovery 正报，真实根因在上游 skill/agent）时，`--object-version` **必填**，
-  否则脚本直接报错；两者相同时可省略，脚本沿用输入版本。
-  版本必须取自可核验来源（trace 中该 skill 的版本、目标配置或上游上报的
-  `reported_object` 版本），不得臆造；确实无法确定时，用 `unknown` 并说明取证缺口。
-- `--attribute-type` 是封闭枚举，取值非法脚本会报错。
-- `--probe-description` / `--probe-analysis` 为必填。
+- 脚本从输入生成 `{session_id}*{selected_target.name}*{bad_case_id}`、`selected_target` 和 `from_bad_cases`。
+- 有可核对的轨迹坐标时，用 `--evidence-ref` 逐个传入；缺证时在分析中说明。
+- 如能定位到具体根因对象，可补充 `--probe_object`、`--probe_type` 与 `--object-version`。
+- `--attribute-type` 表达问题性质。正向归因需要已知类别；其他结论可记录已知的外部错误类别，也可用 `unknown`。
 
 **必须遵守**：
 
@@ -410,10 +394,7 @@ python3 .claude/skills/attribute-badcases/make_probe_report.py \
 8. 非 Skill 问题没有被强行归因为 Prompt。
 9. JSON 格式合法（由脚本生成，结构字段与输入严格一致，无手写漂移）。
 10. 报告内容与原始 trace、Skill 和 Codespec框架 不矛盾。
-11. 每份报告中 `probe_object` 与 `object_version` 指向同一个对象：`probe_object` 与
-    `from_bad_cases[].object` 不同时，`object_version` 必须是真实根因对象自己的版本
-    （有取证来源），且不等于 `from_bad_cases[].object_version`；脚本会在两者不同却未给
-    `--object-version` 时报错，但沿用上报版本这类"给了但给错"的情况仍需你人工核对。
+11. 逐条复核 `conclusion` 与因果分析是否一致，确认引用与所选对象有关，且根因对象和版本有各自的证据。
 
 # 最终完成条件
 
