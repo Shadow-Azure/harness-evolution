@@ -75,6 +75,9 @@ class BadCaseCatalogSyncSummary(IdentityModel):
 
     synced: int
     unsynced: int
+    assigned: int
+    unassigned: int
+    invalid_label: int
     last_bad_case_id: int
     status: Literal["unavailable", "idle", "queued", "running", "failed"]
     last_run_at: datetime | None
@@ -199,6 +202,9 @@ def _status_response(
         bad_case_catalog_sync=BadCaseCatalogSyncSummary(
             synced=catalog_sync.synced,
             unsynced=catalog_sync.unsynced,
+            assigned=catalog_sync.assigned,
+            unassigned=catalog_sync.unassigned,
+            invalid_label=catalog_sync.invalid_label,
             last_bad_case_id=catalog_sync.last_bad_case_id,
             status=catalog_sync.status,
             last_run_at=catalog_sync.last_run_at,

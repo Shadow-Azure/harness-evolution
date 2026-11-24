@@ -8,14 +8,19 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import delete, func, insert, literal, select, update
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app.db.base import Database
-from app.db.models.domain import bad_case_catalog_sync, bad_cases
+from app.db.models.domain import (
+    bad_case_catalog_sync,
+    bad_cases,
+    workspace_bad_case_labels,
+    workspace_bad_cases,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +37,8 @@ _UPDATE_COLUMNS = (
     "title",
     "bad_case_description",
     "meta_data",
+    "catalog_label",
+    "catalog_synced",
     "source",
     "created_at",
     "updated_at",
@@ -56,6 +63,7 @@ class CatalogCaseRow:
     created_at: datetime
     updated_at: datetime
     trigger_line: int | None = None
+    catalog_label: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +73,9 @@ class CatalogSyncState:
     last_bad_case_id: int
     synced_count: int
     pending_count: int
+    assigned_count: int
+    unassigned_count: int
+    invalid_label_count: int
     status: str
     attempts: int
     last_error: str | None
@@ -86,6 +97,9 @@ def _state(row: RowMapping) -> CatalogSyncState:
         last_bad_case_id=int(row["last_bad_case_id"]),
         synced_count=int(row["synced_count"]),
         pending_count=int(row["pending_count"]),
+        assigned_count=int(row["assigned_count"]),
+        unassigned_count=int(row["unassigned_count"]),
+        invalid_label_count=int(row["invalid_label_count"]),
         status=str(row["status"]),
         attempts=int(row["attempts"]),
         last_error=(str(row["last_error"]) if row["last_error"] is not None else None),
@@ -108,6 +122,8 @@ def _values(row: CatalogCaseRow) -> dict[str, Any]:
         "title": row.title,
         "bad_case_description": row.description,
         "meta_data": row.meta_data,
+        "catalog_label": row.catalog_label,
+        "catalog_synced": True,
         "source": row.source,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
@@ -158,6 +174,9 @@ class BadCaseCatalogSyncRepository:
                         last_bad_case_id=0,
                         synced_count=0,
                         pending_count=0,
+                        assigned_count=0,
+                        unassigned_count=0,
+                        invalid_label_count=0,
                         status="idle",
                         attempts=0,
                         last_error=None,
@@ -250,10 +269,69 @@ class BadCaseCatalogSyncRepository:
                 )
             if values:
                 await session.execute(self._upsert_statement(values))
+                await session.execute(
+                    delete(workspace_bad_cases).where(
+                        workspace_bad_cases.c.bad_case_id.in_(ids),
+                        workspace_bad_cases.c.assignment_source.in_(
+                            ("legacy_owner", "catalog_label"),
+                        ),
+                    ),
+                )
+                matching_assignments = (
+                    select(
+                        workspace_bad_case_labels.c.workspace_id,
+                        bad_cases.c.bad_case_id,
+                        literal("catalog_label"),
+                        bad_cases.c.catalog_label,
+                        literal(now),
+                    )
+                    .select_from(
+                        bad_cases.join(
+                            workspace_bad_case_labels,
+                            workspace_bad_case_labels.c.label == bad_cases.c.catalog_label,
+                        ),
+                    )
+                    .where(bad_cases.c.bad_case_id.in_(ids))
+                )
+                await session.execute(
+                    insert(workspace_bad_cases).from_select(
+                        [
+                            "workspace_id",
+                            "bad_case_id",
+                            "assignment_source",
+                            "label",
+                            "assigned_at",
+                        ],
+                        matching_assignments,
+                    ),
+                )
             synced = int(
                 (
                     await session.execute(
-                        select(func.count()).select_from(bad_cases),
+                        select(func.count())
+                        .select_from(bad_cases)
+                        .where(bad_cases.c.catalog_synced.is_(True)),
+                    )
+                ).scalar_one(),
+            )
+            valid = int(
+                (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(bad_cases)
+                        .where(
+                            bad_cases.c.catalog_synced.is_(True),
+                            bad_cases.c.catalog_label.is_not(None),
+                        ),
+                    )
+                ).scalar_one(),
+            )
+            assigned = int(
+                (
+                    await session.execute(
+                        select(func.count(func.distinct(workspace_bad_cases.c.bad_case_id))).where(
+                            workspace_bad_cases.c.assignment_source == "catalog_label",
+                        ),
                     )
                 ).scalar_one(),
             )
@@ -264,6 +342,9 @@ class BadCaseCatalogSyncRepository:
                     last_bad_case_id=last_bad_case_id,
                     synced_count=synced,
                     pending_count=pending_count,
+                    assigned_count=assigned,
+                    unassigned_count=max(valid - assigned, 0),
+                    invalid_label_count=max(synced - valid, 0),
                     status="running",
                     updated_at=now,
                 ),
@@ -280,7 +361,9 @@ class BadCaseCatalogSyncRepository:
                 return int(
                     (
                         await session.execute(
-                            select(func.count()).select_from(bad_cases),
+                            select(func.count())
+                            .select_from(bad_cases)
+                            .where(bad_cases.c.catalog_synced.is_(True)),
                         )
                     ).scalar_one(),
                 )

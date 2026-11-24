@@ -59,6 +59,18 @@ def _object_name(item: BadCaseItem) -> str:
     return _SOURCE_OBJECT_NAMES.get(source, source or "unknown")
 
 
+def _catalog_label(meta_data: object) -> str | None:
+    """Extract one exact valid public catalog label, or reject it as invalid."""
+    if not isinstance(meta_data, Mapping):
+        return None
+    label = meta_data.get("label")
+    if not isinstance(label, str):
+        return None
+    if not label or len(label) > 128 or label != label.strip():
+        return None
+    return label
+
+
 def _row(item: BadCaseItem, fallback: datetime) -> CatalogCaseRow:
     """Map one upstream item to local column names, defaulting timestamps."""
     return CatalogCaseRow(
@@ -73,6 +85,7 @@ def _row(item: BadCaseItem, fallback: datetime) -> CatalogCaseRow:
         title=item.title,
         description=item.description,
         meta_data=item.meta_data,
+        catalog_label=_catalog_label(item.meta_data),
         source=item.source,
         created_at=item.created_at or fallback,
         updated_at=item.updated_at or fallback,

@@ -40,6 +40,9 @@ class CatalogSyncStatus:
 
     synced: int
     unsynced: int
+    assigned: int
+    unassigned: int
+    invalid_label: int
     last_bad_case_id: int
     status: SyncStatus
     last_run_at: datetime | None
@@ -154,10 +157,16 @@ class BadCaseCatalogSyncCoordinator:
         unsynced = state.pending_count if state is not None else 0
         last_run_at = state.last_run_at if state is not None else None
         last_error = state.last_error if state is not None else None
+        assigned = state.assigned_count if state is not None else 0
+        unassigned = state.unassigned_count if state is not None else 0
+        invalid_label = state.invalid_label_count if state is not None else 0
         if not self.available:
             return CatalogSyncStatus(
                 synced=synced,
                 unsynced=unsynced,
+                assigned=assigned,
+                unassigned=unassigned,
+                invalid_label=invalid_label,
                 last_bad_case_id=last_bad_case_id,
                 status="unavailable",
                 last_run_at=last_run_at,
@@ -173,6 +182,9 @@ class BadCaseCatalogSyncCoordinator:
         return CatalogSyncStatus(
             synced=synced,
             unsynced=unsynced,
+            assigned=assigned,
+            unassigned=unassigned,
+            invalid_label=invalid_label,
             last_bad_case_id=last_bad_case_id,
             status=status,
             last_run_at=last_run_at,

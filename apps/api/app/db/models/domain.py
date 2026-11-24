@@ -312,6 +312,7 @@ bad_cases = Table(
     Column("bad_case_description", Text, nullable=False),
     Column("meta_data", JSON, nullable=True),
     Column("catalog_label", String(128), nullable=True),
+    Column("catalog_synced", Boolean, nullable=False, server_default=text("0")),
     Column("source", String(64), nullable=True),
     Column("session_source", JSON, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
@@ -328,6 +329,7 @@ bad_cases = Table(
     Index("ix_bad_cases_workspace_object", "workspace_id", "object_name"),
     Index("ix_bad_cases_workspace_type", "workspace_id", "bad_case_type"),
     Index("ix_bad_cases_catalog_label", "catalog_label"),
+    Index("ix_bad_cases_catalog_synced", "catalog_synced"),
 )
 
 
@@ -489,6 +491,9 @@ bad_case_catalog_sync = Table(
     ),
     Column("synced_count", Integer, nullable=False),
     Column("pending_count", Integer, nullable=False),
+    Column("assigned_count", Integer, nullable=False, server_default="0"),
+    Column("unassigned_count", Integer, nullable=False, server_default="0"),
+    Column("invalid_label_count", Integer, nullable=False, server_default="0"),
     Column("status", String(16), nullable=False),
     Column("attempts", Integer, nullable=False),
     Column("last_error", Text, nullable=True),

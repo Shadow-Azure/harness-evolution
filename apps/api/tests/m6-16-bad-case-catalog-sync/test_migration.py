@@ -21,6 +21,9 @@ EXPECTED_COLUMNS = {
     "last_bad_case_id",
     "synced_count",
     "pending_count",
+    "assigned_count",
+    "unassigned_count",
+    "invalid_label_count",
     "status",
     "attempts",
     "last_error",
@@ -157,6 +160,7 @@ async def test_upgrade_backfills_workspace_bad_case_assignments(tmp_path: Path) 
             ).one()
 
         assert "catalog_label" in schema["bad_case_columns"]
+        assert "catalog_synced" in schema["bad_case_columns"]
         assert schema["label_columns"] == {
             "workspace_id",
             "label",
@@ -177,6 +181,7 @@ async def test_upgrade_backfills_workspace_bad_case_assignments(tmp_path: Path) 
         ]
         assert schema["assignment_fks"] == {("workspace_id",), ("bad_case_id",)}
         assert "ix_bad_cases_catalog_label" in schema["bad_case_indexes"]
+        assert "ix_bad_cases_catalog_synced" in schema["bad_case_indexes"]
         assert tuple(assignment) == (
             "ws-default",
             "legacy-case",

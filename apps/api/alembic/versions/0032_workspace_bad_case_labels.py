@@ -21,11 +21,45 @@ def upgrade() -> None:
         if "catalog_label" not in bad_case_columns:
             with op.batch_alter_table("bad_cases") as batch_op:
                 batch_op.add_column(sa.Column("catalog_label", sa.String(128)))
+                batch_op.add_column(
+                    sa.Column(
+                        "catalog_synced",
+                        sa.Boolean(),
+                        nullable=False,
+                        server_default=sa.text("0"),
+                    ),
+                )
                 batch_op.create_index(
                     "ix_bad_cases_catalog_label",
                     ["catalog_label"],
                     unique=False,
                 )
+                batch_op.create_index(
+                    "ix_bad_cases_catalog_synced",
+                    ["catalog_synced"],
+                    unique=False,
+                )
+
+    if inspector.has_table("bad_case_catalog_sync"):
+        sync_columns = {
+            str(column["name"]) for column in inspector.get_columns("bad_case_catalog_sync")
+        }
+        missing_sync_columns = [
+            name
+            for name in ("assigned_count", "unassigned_count", "invalid_label_count")
+            if name not in sync_columns
+        ]
+        if missing_sync_columns:
+            with op.batch_alter_table("bad_case_catalog_sync") as batch_op:
+                for name in missing_sync_columns:
+                    batch_op.add_column(
+                        sa.Column(
+                            name,
+                            sa.Integer(),
+                            nullable=False,
+                            server_default="0",
+                        ),
+                    )
 
     if not inspector.has_table("workspace_bad_case_labels"):
         op.create_table(
@@ -104,6 +138,14 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Remove routing state without deleting canonical badcase facts."""
     inspector = inspect(op.get_bind())
+    if inspector.has_table("bad_case_catalog_sync"):
+        sync_columns = {
+            str(column["name"]) for column in inspector.get_columns("bad_case_catalog_sync")
+        }
+        with op.batch_alter_table("bad_case_catalog_sync") as batch_op:
+            for name in ("invalid_label_count", "unassigned_count", "assigned_count"):
+                if name in sync_columns:
+                    batch_op.drop_column(name)
     if inspector.has_table("workspace_bad_cases"):
         op.drop_table("workspace_bad_cases")
     if inspector.has_table("workspace_bad_case_labels"):
@@ -112,5 +154,7 @@ def downgrade() -> None:
         columns = {str(column["name"]) for column in inspector.get_columns("bad_cases")}
         if "catalog_label" in columns:
             with op.batch_alter_table("bad_cases") as batch_op:
+                batch_op.drop_index("ix_bad_cases_catalog_synced")
                 batch_op.drop_index("ix_bad_cases_catalog_label")
+                batch_op.drop_column("catalog_synced")
                 batch_op.drop_column("catalog_label")
