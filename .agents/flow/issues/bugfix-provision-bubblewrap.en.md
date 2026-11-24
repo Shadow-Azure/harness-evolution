@@ -8,7 +8,7 @@ id: bugfix-33
 milestone: bugfix
 depends: []
 priority: P2
-status: done
+status: ready
 scope:
   - deploy/**
   - .github/workflows/provision.yml

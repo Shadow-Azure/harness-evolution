@@ -13,7 +13,7 @@ status: in-progress
 scope:
   - apps/web/**
   - tests/e2e/**
-  - plans/fullstack-design/**
+  - plans/**
   - .agents/**
 adr: []
 github:
