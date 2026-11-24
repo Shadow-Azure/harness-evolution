@@ -8,14 +8,14 @@ id: bugfix-45
 milestone: bugfix
 depends: []
 priority: P2
-status: ready
+status: in-progress
 scope:
   - apps/api/app/third_party_api/ai_agent/claude_code.py
   - apps/api/tests/**
   - docs/**
   - plans/**
   - .agents/**
-adr: []
+adr: [../../notes/implemented/bug-fix/2026-11-24-claude-edit-tool-surface.md]
 github:
   number: 566
   url: https://github.com/Shadow-Azure/harness-evolution/issues/566
@@ -23,7 +23,7 @@ github:
 
 ## Background
 
-On 2026-11-24 09:41–09:52 (CST) the production full run `01M85KA28DRPZ9RN26A3GV5JQ2` (skill `codespec-subagent-driven-development@openspec-cn-main-copy-ar-a7ec200-claude-core`) blocked during patch generation in round 1/3 of step 6/7:
+On 2026-11-24 09:41–09:52 (CST) the production full run `01M85KA28DRPZ9RN26A3GV5JQ2` (skill `codespec-subagent-driven-development@openspec-cn-main-copy-ar-a7ec200-claude-core`) blocked during patch generation in turn 1/3 of step 6/7:
 
 ```text
 运行在补丁生成（patch）阶段阻塞
@@ -50,7 +50,7 @@ The run's durable events (`GET /api/evolution/runs/{id}/events`) give the whole 
 
 Three facts follow directly:
 
-1. **Analyze calls in the same run, with the same model and the same settings, all succeeded** (seq 7–9). `[claude-code:unrecognized_model]` is only the diagnostic line Claude Code prints to stderr for a custom model ID missing from its known list (the official docs list it as a diagnostic line and show `modelOverrides` as the way to silence it). It is not the failure; treating it as one is why triage went the wrong way.
+1. **Analyze calls in the same run, with the same model and the same settings, all succeeded** (seq 7–9). `[claude-code:unrecognized_model]` is only the diagnosis line Claude Code prints to stderr for a custom model ID missing from its known list (the official docs list it as a diagnosis line and show `modelOverrides` as the way to silence it). It is not the failure; treating it as one is why triage went the wrong way.
 2. **The edit child process actually lived for about 644 seconds** (09:41:46 → 09:52:30). That is neither `could not start` (milliseconds) nor `cancelled` (timeout/cancel takes a different classification), and it is far below `EDIT_TIMEOUT_SECONDS=1800`. The CLI started normally, ran a long conversation, and exited with `exit_code=1` on its own.
 3. **The call produced nothing usable**: `AgentUsage` is all zeroes, `sessionId=null`, `model=unknown`, and the submitted `EditPlan` file does not exist, so patch generation failed and the run blocked at `stage=patch`.
 
@@ -68,7 +68,7 @@ Three facts follow directly:
 
 - **Immediate cause**: the edit call produced no `.harness-evolution/edits.json5`; the model exhausted `--max-turns 40` and the CLI exited 1 with `is_error`. The provider normalized that into `exited unsuccessfully`, patch generation failed, and the run blocked at `stage=patch`.
 - **Root cause**: the `ClaudeCodeProvider` edit channel still carries the two defects #537 found before it fixed analyze: (1) `--bare` leaves the tool set without `Write`; (2) the submission allow rule is the relative `Write(./…)`, while the CLI matches file writes only against `Edit(absolute path)`. Analyze was fixed; edit was explicitly left untouched and never ran a real-CLI smoke test.
-- **Why it looked like a model problem**: on a non-zero exit `_call()` drops the stdout result and reports stderr only, and `unrecognized_model` is the only line written to stderr, so a diagnostic line impersonated the error cause and also hid the real shape of the failure (four zeroes plus 644 seconds).
+- **Why it looked like a model problem**: on a non-zero exit `_call()` drops the stdout result and reports stderr only, and `unrecognized_model` is the only line written to stderr, so a diagnosis line impersonated the error cause and also hid the real shape of the failure (four zeroes plus 644 seconds).
 - **Capacity defect (handled separately from the root cause)**: `EDIT_MAX_TURNS=40` is too tight for a real edit session — the 644 seconds in this run were 40 turns at roughly 16 seconds each. Once the tool surface works, exploration plus plan writing will still exceed 40 turns, so the turn budget must rise with it; raising the cap never substitutes for the tool-surface fix, because with no usable write tool more turns only stretch the failure to the wall-clock limit.
 
 ## Goals
@@ -76,7 +76,7 @@ Three facts follow directly:
 - Make the edit channel genuinely work on the production CLI: the model sees and can call a write tool, the permission rule matches this workspace's submission path, and `edits.json5` is written and collected by `submission.collect`.
 - Make edit share **one already-verified invocation shape** with analyze — one subclass-private `_headless_argv()`, one rule builder, one failure-evidence path — instead of maintaining a second argv and a second permission rule set.
 - Keep the other call sites (`health_check()`, `run_skill()`) as documented exceptions that still reuse the adapter rules: binary resolution, settings resolution, and failure evidence.
-- Make edit failures diagnosable within seconds: a missing `Write`, a denied submission path, or an exhausted turn budget must each name its cause instead of costing 644 seconds and returning one model diagnostic.
+- Make edit failures diagnosable within seconds: a missing `Write`, a denied submission path, or an exhausted turn budget must each name its cause instead of costing 644 seconds and returning one model diagnosis.
 - Raise the edit turn budget to what a real session needs (`EDIT_MAX_TURNS` 40 → 120) while keeping `EDIT_TIMEOUT_SECONDS=1800` as the wall-clock cap, so spend protection is not removed.
 - Production acceptance: a real full run reaches candidate in step 6 with `agent.edit` at `outcome=ok`, tokens>0, and a model other than `unknown`.
 
@@ -86,7 +86,7 @@ Three facts follow directly:
 - [07 §5.5.3 six-layer JSON reliability](../../../plans/fullstack-design/07-backend-implementation.md): one-shot task directory + a single write tool + strict/JSON5/repair parsing + Pydantic validation is the cross-backend submission contract; `collect()` reads that one file.
 - [07 §5.5.4 execution flow and safety gates](../../../plans/fullstack-design/07-backend-implementation.md): read-only exploration, EditPlan submission, deterministic application on a scratch mirror, and the `--max-turns` spend guard.
 - [#537 fix record (Agent Note)](https://github.com/Shadow-Azure/harness-evolution/blob/main/.agents/notes/implemented/bug-fix/2026-11-23-claude-analyze-tool-surface.md): the three measured conclusions — `--bare` has no `Write`, `Write(relative)` does not match, and `Edit(absolute)` is required — plus analyze's final argv shape.
-- [Claude Code model configuration docs](https://code.claude.com/docs/zh-CN/model-config): `[claude-code:unrecognized_model]` is a diagnostic line for a custom model ID, silenceable with `modelOverrides`, and unrelated to a call failure.
+- [Claude Code model configuration docs](https://code.claude.com/docs/zh-CN/model-config): `[claude-code:unrecognized_model]` is a diagnosis line for a custom model ID, silenceable with `modelOverrides`, and unrelated to a call failure.
 
 ## Implementation
 
@@ -154,8 +154,8 @@ HE_AI_AGENT_CLAUDE_BIN=/opt/harness/shared/claude-code/current/usr/bin/claude \
 - The production edit call writes and collects an EditPlan; `ai_agent_call` for `agent.edit` is `outcome=ok` with tokens>0 and a model other than `unknown`.
 - Edit and analyze share one hardening set and one absolute `Edit(//…)` submission rule; `--bare` no longer appears in any provider argv.
 - Both edit and analyze argv come from the same `_headless_argv()`; `claude_code.py` holds no second place that hand-builds a `-p` headless argv.
-- A missing `Write` or a denied submission path fails within seconds and names the missing tool or denied path, instead of 644s plus one model diagnostic.
-- A non-zero exit carries the CLI result's structured evidence (`subtype`/`num_turns`/`stop_reason`/`permission_denials`) in its detail; a stderr diagnostic line no longer impersonates the cause.
+- A missing `Write` or a denied submission path fails within seconds and names the missing tool or denied path, instead of 644s plus one model diagnosis.
+- A non-zero exit carries the CLI result's structured evidence (`subtype`/`num_turns`/`stop_reason`/`permission_denials`) in its detail; a stderr diagnosis line no longer impersonates the cause.
 - A healthy edit call on the production workload does not end in `error_max_turns`; `ai_agent_call` records the real `num_turns`, and the 120-turn budget still bottoms out at the unchanged `EDIT_TIMEOUT_SECONDS=1800`.
 - Permissions stay minimal: Bash, writes outside the workspace, and undeclared tools are denied; `submission.py` and the base contract are unchanged.
 - The real-CLI e2e remains repeatable on the deployment host as an opt-in run (no new CI workflow).

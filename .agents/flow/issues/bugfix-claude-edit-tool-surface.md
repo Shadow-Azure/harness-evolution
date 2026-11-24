@@ -8,14 +8,14 @@ id: bugfix-45
 milestone: bugfix
 depends: []
 priority: P2
-status: ready
+status: in-progress
 scope:
   - apps/api/app/third_party_api/ai_agent/claude_code.py
   - apps/api/tests/**
   - docs/**
   - plans/**
   - .agents/**
-adr: []
+adr: [../../notes/implemented/bug-fix/2026-11-24-claude-edit-tool-surface.md]
 github:
   number: 566
   url: https://github.com/Shadow-Azure/harness-evolution/issues/566

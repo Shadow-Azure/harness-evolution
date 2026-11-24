@@ -2,8 +2,8 @@
 
 Every test here scripts the CLI transport; none spawns a process or touches the
 network. The default asyncio runner is exercised against a fake process object,
-and the single real-CLI smoke is opt-in through ``HE_AI_AGENT_CLAUDE_E2E=1`` and
-must be run in the serial lane.
+and the real-CLI smokes are opt-in through ``HE_AI_AGENT_CLAUDE_E2E=1`` and must
+be run in the serial lane.
 """
 
 from __future__ import annotations
@@ -37,12 +37,15 @@ from app.third_party_api.ai_agent.claude_code import (
     ANALYZE_TOOLS,
     EDIT_MAX_TURNS,
     EDIT_PLAN_FILENAME,
+    EDIT_TOOLS,
     HEALTH_TIMEOUT_SECONDS,
     READ_ONLY_TOOLS,
     SUBMISSION_TOOL,
     AsyncioClaudeCliRunner,
+    _HeadlessProfile,
     _parse_cli_stdout,
 )
+from app.third_party_api.ai_agent.edits import EditPlan
 
 _REAL_RESULT_FIXTURE = (
     Path(__file__).parent / "fixtures" / "ai_agent_claude_code" / "real_model_usage_result.json"
@@ -1066,15 +1069,109 @@ async def test_edit_workspace_collects_the_plan_without_applying_it(
 
     call = runner.calls[0]
     argv = call.argv
-    assert call.cwd == workspace
+    directory = workspace.resolve()
+    assert call.cwd == directory
     assert call.timeout_seconds == EDIT_TIMEOUT_SECONDS
-    expected_tools = ",".join((*READ_ONLY_TOOLS, f"Write(./{EDIT_PLAN_FILENAME})"))
-    assert argv[argv.index("--allowed-tools") + 1] == expected_tools
+    assert "--bare" not in argv
+    assert "--safe-mode" in argv
+    assert "--restricted" in argv
+    assert "--strict-mcp-config" in argv
+    assert argv[argv.index("--output-format") + 1] == "stream-json"
+    assert "--verbose" in argv
+    assert argv[argv.index("--permission-mode") + 1] == PERMISSION_MODE
+    assert argv[argv.index("--tools") + 1] == ",".join(EDIT_TOOLS)
+    assert argv[argv.index("--allowed-tools") + 1] == (
+        f"Read({_absolute_rule(directory)}/**),"
+        f"Edit({_absolute_rule(directory / EDIT_PLAN_FILENAME)})"
+    )
+    assert (*READ_ONLY_TOOLS, SUBMISSION_TOOL) == EDIT_TOOLS
     assert "make the skill tolerate slow hosts" in argv[argv.index("-p") + 1]
     assert argv[argv.index("--max-turns") + 1] == str(EDIT_MAX_TURNS)
+    assert EDIT_MAX_TURNS == 120
     assert argv[argv.index("--settings") + 1] == str(settings_file)
     assert "--no-session-persistence" in argv
     assert "--resume" not in argv
+
+
+def test_headless_argv_is_the_single_constructor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both phases produce their argv through one shared headless constructor."""
+    binary = _binary(tmp_path)
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path, binary=binary),
+        runner=MockRunner(),
+        settings_path=tmp_path / "missing-settings.json",
+    )
+    analyze_prep = provider._submission.prepare("cluster.score", ScoreOutput)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    edit_prep = provider._submission.prepare(
+        "agent.edit",
+        EditPlan,
+        directory=workspace,
+        filename=EDIT_PLAN_FILENAME,
+    )
+    profiles: list[_HeadlessProfile] = []
+    original = ClaudeCodeProvider._headless_argv
+
+    def spy(
+        self: ClaudeCodeProvider,
+        profile: _HeadlessProfile,
+        *,
+        settings_file: Path,
+    ) -> tuple[str, ...]:
+        profiles.append(profile)
+        return original(self, profile, settings_file=settings_file)
+
+    monkeypatch.setattr(ClaudeCodeProvider, "_headless_argv", spy)
+    try:
+        analyze_directory = analyze_prep.directory.resolve()
+        analyze_argv = provider._analyze_argv(
+            "analyze prompt",
+            analyze_prep,
+            directory=analyze_directory,
+            settings_file=tmp_path / "missing-settings.json",
+        )
+        edit_directory = workspace.resolve()
+        edit_argv = provider._edit_argv(
+            "edit prompt",
+            edit_prep,
+            directory=edit_directory,
+            settings_file=tmp_path / "missing-settings.json",
+        )
+    finally:
+        provider._submission.discard(analyze_prep)
+
+    assert [profile.prompt for profile in profiles] == ["analyze prompt", "edit prompt"]
+    assert [profile.tools for profile in profiles] == [ANALYZE_TOOLS, EDIT_TOOLS]
+    assert [profile.max_turns for profile in profiles] == [None, EDIT_MAX_TURNS]
+    assert profiles[0].rules == (
+        f"Read({_absolute_rule(analyze_directory / 'schema.json')})",
+        f"Edit({_absolute_rule(analyze_prep.result_path)})",
+    )
+    assert profiles[1].rules == (
+        f"Read({_absolute_rule(edit_directory)}/**)",
+        f"Edit({_absolute_rule(edit_directory / EDIT_PLAN_FILENAME)})",
+    )
+    for argv in (analyze_argv, edit_argv):
+        assert argv[:4] == (
+            str(binary),
+            "--safe-mode",
+            "--restricted",
+            "--strict-mcp-config",
+        )
+        assert "--bare" not in argv
+        assert argv[argv.index("--output-format") + 1] == "stream-json"
+        assert "--verbose" in argv
+        assert argv[argv.index("--permission-mode") + 1] == PERMISSION_MODE
+        assert "--no-session-persistence" in argv
+        assert "--settings" not in argv
+    assert "--max-turns" not in analyze_argv
+    assert edit_argv[edit_argv.index("--max-turns") + 1] == str(EDIT_MAX_TURNS)
+    assert analyze_argv[analyze_argv.index("-p") + 1] == "analyze prompt"
+    assert edit_argv[edit_argv.index("-p") + 1] == "edit prompt"
 
 
 def test_settings_file_prefers_the_explicit_deployment_path(tmp_path: Path) -> None:
@@ -1196,6 +1293,173 @@ async def test_edit_invalid_plan_raises_without_retry(tmp_path: Path) -> None:
     assert error.usage.input_tokens == 5
     assert error.usage.cost_usd == pytest.approx(0.002)
     assert error.latency_ms >= 0
+    assert len(runner.calls) == 1
+
+
+async def test_edit_fails_fast_when_the_tool_set_lacks_write(tmp_path: Path) -> None:
+    """A zero-exit edit with no ``Write`` tool is terminal before collection."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    init = {"type": "system", "subtype": "init", "tools": ["Bash", "Edit", "Read"]}
+    runner = MockRunner(
+        ClaudeCliResult(
+            returncode=0,
+            stdout="\n".join(
+                (
+                    json.dumps(init),
+                    _result_document(stop_reason="end_turn", num_turns=2),
+                ),
+            ),
+            stderr="",
+        ),
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    with pytest.raises(AgentProviderError) as caught:
+        await provider.edit_workspace(EditRequest(workspace=workspace, prompt="edit"))
+
+    error = caught.value
+    assert error.message == "claude-code edit tool set does not include Write"
+    assert error.detail is not None
+    assert "Write" in error.detail
+    assert "tools=Bash,Edit,Read" in error.detail
+    assert error.retryable is False
+    assert error.trace.attempts == 1
+    assert error.trace.submission_rounds == 0
+    assert len(runner.calls) == 1
+    assert not (workspace / EDIT_PLAN_FILENAME).exists()
+
+
+async def test_edit_nonzero_exit_without_write_fails_fast(tmp_path: Path) -> None:
+    """A failed edit process whose init tools lack ``Write`` fails on the tool set."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    init = {"type": "system", "subtype": "init", "tools": ["Bash", "Edit", "Read"]}
+    runner = MockRunner(
+        ClaudeCliResult(
+            returncode=1,
+            stdout="\n".join(
+                (
+                    json.dumps(init),
+                    json.dumps(
+                        {
+                            "type": "result",
+                            "is_error": True,
+                            "subtype": "error_max_turns",
+                        },
+                    ),
+                ),
+            ),
+            stderr="[claude-code:unrecognized_model] {}",
+        ),
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    with pytest.raises(AgentProviderError) as caught:
+        await provider.edit_workspace(EditRequest(workspace=workspace, prompt="edit"))
+
+    error = caught.value
+    assert error.message == "claude-code edit tool set does not include Write"
+    assert error.detail is not None
+    assert "tools=Bash,Edit,Read" in error.detail
+    assert error.retryable is False
+    assert len(runner.calls) == 1
+
+
+async def test_edit_nonzero_exit_keeps_the_result_evidence(tmp_path: Path) -> None:
+    """A non-zero edit exit reports the result's structured evidence, not model text."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    init = {
+        "type": "system",
+        "subtype": "init",
+        "tools": ["Glob", "Grep", "Read", "Write"],
+    }
+    result = {
+        "type": "result",
+        "is_error": True,
+        "subtype": "error_max_turns",
+        "num_turns": 120,
+        "stop_reason": "max_turns",
+        "result": "model secret text",
+    }
+    runner = MockRunner(
+        ClaudeCliResult(
+            returncode=1,
+            stdout="\n".join((json.dumps(init), json.dumps(result))),
+            stderr="boom",
+        ),
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    with pytest.raises(AgentProviderError) as caught:
+        await provider.edit_workspace(EditRequest(workspace=workspace, prompt="edit"))
+
+    error = caught.value
+    assert error.message == "claude-code edit call exited unsuccessfully"
+    assert error.retryable is True
+    detail = error.detail or ""
+    assert "exit_code=1" in detail
+    assert "is_error=true" in detail
+    assert "subtype=error_max_turns" in detail
+    assert "num_turns=120" in detail
+    assert "stop_reason=max_turns" in detail
+    assert "tools=Glob,Grep,Read,Write" in detail
+    assert "stderr=boom" in detail
+    assert "model secret text" not in detail
+    assert len(runner.calls) == 1
+
+
+async def test_edit_denied_submission_write_names_the_path(tmp_path: Path) -> None:
+    """A denied plan write names the tool and path instead of only ``missing``."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    runner = MockRunner(
+        lambda cwd: ClaudeCliResult(
+            returncode=0,
+            stdout=_result_document(
+                stop_reason="end_turn",
+                num_turns=4,
+                permission_denials=[
+                    {
+                        "tool_name": "Write",
+                        "tool_use_id": "tool-1",
+                        "tool_input": {"file_path": str(cwd / EDIT_PLAN_FILENAME)},
+                    },
+                ],
+            ),
+            stderr="",
+        ),
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=runner,
+        settings_path=tmp_path / "missing-settings.json",
+    )
+
+    with pytest.raises(AgentProviderError) as caught:
+        await provider.edit_workspace(EditRequest(workspace=workspace, prompt="edit"))
+
+    error = caught.value
+    assert error.message == "claude-code edit submission failed validation"
+    assert error.detail is not None
+    assert "permission denied: Write(" in error.detail
+    assert "edits.json5" in error.detail
+    assert "stop_reason=end_turn" in error.detail
+    assert "num_turns=4" in error.detail
+    assert error.retryable is False
     assert len(runner.calls) == 1
 
 
@@ -1541,6 +1805,104 @@ async def test_e2e_real_cli_denies_write_outside_task_directory(
             cwd=directory,
             env=dict(os.environ),
             timeout_seconds=ANALYZE_TIMEOUT_SECONDS,
+        )
+        parsed = _parse_cli_stdout(result.stdout, fallback_model="e2e")
+
+        assert result.returncode == 0
+        assert result.cancelled is False
+        assert not outside.exists()
+        assert SUBMISSION_TOOL in parsed.tools
+        assert any(
+            denial.get("tool_name") == SUBMISSION_TOOL
+            and str(outside) in json.dumps(denial.get("tool_input", {}))
+            for denial in parsed.permission_denials
+        )
+    finally:
+        provider._submission.discard(prep)
+
+
+@pytest.mark.skipif(
+    not _e2e_enabled() or not Path(_E2E_BIN).is_file(),
+    reason="set HE_AI_AGENT_CLAUDE_E2E=1 with an installed claude CLI",
+)
+async def test_e2e_real_cli_edit_smoke(tmp_path: Path) -> None:
+    """Opt-in real CLI edit smoke: a one-edit plan is written, collected, and priced."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    sentinel = workspace / "skill.json"
+    sentinel.write_text('{"timeoutSeconds": 30}\n', encoding="utf-8")
+    provider = ClaudeCodeProvider(
+        Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            ai_agent_provider="claude-code",
+            ai_agent_claude_bin=_E2E_BIN,
+        ),
+    )
+    request = EditRequest(
+        workspace=workspace,
+        prompt=(
+            "Submit one EditPlan for this workspace. In skill.json, use op=replace "
+            "to change the exact text '\"timeoutSeconds\": 30' into "
+            "'\"timeoutSeconds\": 120', with file=skill.json and a short rationale. "
+            "Do not modify skill.json itself and do not touch any other file."
+        ),
+    )
+
+    result = await provider.edit_workspace(request)
+
+    assert result.plan is not None
+    assert result.plan.summary.strip()
+    assert len(result.plan.edits) == 1
+    edit = result.plan.edits[0]
+    assert edit.op == "replace"
+    assert edit.file == "skill.json"
+    assert "timeoutSeconds" in (edit.target or "")
+    assert "120" in (edit.content or "")
+    assert result.usage.input_tokens + result.usage.output_tokens > 0
+    assert result.usage.model != "claude-code"
+
+
+@pytest.mark.skipif(
+    not _e2e_enabled() or not Path(_E2E_BIN).is_file(),
+    reason="set HE_AI_AGENT_CLAUDE_E2E=1 with an installed claude CLI",
+)
+async def test_e2e_real_cli_edit_denies_write_outside_workspace(tmp_path: Path) -> None:
+    """The real CLI denies an edit-phase write outside the workspace rules."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "skill.json").write_text('{"timeoutSeconds": 30}\n', encoding="utf-8")
+    provider = ClaudeCodeProvider(
+        Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            ai_agent_provider="claude-code",
+            ai_agent_claude_bin=_E2E_BIN,
+        ),
+    )
+    prep = provider._submission.prepare(
+        "smoke-edit-escape",
+        EditPlan,
+        directory=workspace,
+        filename=EDIT_PLAN_FILENAME,
+    )
+    outside = tmp_path / "escape.txt"
+    try:
+        directory = workspace.resolve()
+        prompt = (
+            f"Use the Write tool to create the file {outside} with the exact text "
+            "escape. Do not use any other tool and do not write any other file. "
+            "Then stop."
+        )
+        argv = provider._edit_argv(
+            prompt,
+            prep,
+            directory=directory,
+            settings_file=provider._settings_file(),
+        )
+        result = await AsyncioClaudeCliRunner().run(
+            argv,
+            cwd=directory,
+            env=dict(os.environ),
+            timeout_seconds=EDIT_TIMEOUT_SECONDS,
         )
         parsed = _parse_cli_stdout(result.stdout, fallback_model="e2e")
 
