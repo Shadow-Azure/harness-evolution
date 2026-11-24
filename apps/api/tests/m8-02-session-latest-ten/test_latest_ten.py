@@ -17,6 +17,7 @@ from app.fixture_corpus import load_fixture_corpus
 from app.main import create_app
 from tests.workspaces.helpers import (
     access_token,
+    backfill_legacy_associations,
     bearer,
     create_user,
     insert_member,
@@ -145,6 +146,8 @@ async def latest_ten(tmp_path: Path) -> AsyncIterator[LatestTenEnvironment]:
                     )
                 ),
             )
+
+        await backfill_legacy_associations(database)
 
         yield LatestTenEnvironment(
             client=client,

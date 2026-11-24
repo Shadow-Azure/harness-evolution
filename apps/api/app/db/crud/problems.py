@@ -182,7 +182,7 @@ class ProblemRepository:
                 )
                 .where(
                     bad_case_analysis.c.probe_id.is_not(None),
-                    scope.condition(bad_cases.c.workspace_id),
+                    scope.case_condition(),
                 )
             )
             probes = tuple(
@@ -257,7 +257,7 @@ class ProblemRepository:
                     )
                     .where(
                         bad_case_analysis.c.probe_id == probe_id,
-                        scope.condition(bad_cases.c.workspace_id),
+                        scope.case_condition(),
                     )
                     .limit(1),
                 )
@@ -348,7 +348,7 @@ class ProblemRepository:
                 await session.execute(
                     select(bad_cases).where(
                         bad_cases.c.bad_case_id == case_id,
-                        scope.condition(bad_cases.c.workspace_id),
+                        scope.case_condition(),
                     ),
                 )
             )
@@ -370,7 +370,7 @@ class ProblemRepository:
                     select(bad_cases)
                     .where(
                         bad_cases.c.bad_case_session_id == session_id,
-                        scope.condition(bad_cases.c.workspace_id),
+                        scope.case_condition(),
                     )
                     .order_by(bad_cases.c.created_at, bad_cases.c.bad_case_id),
                 )

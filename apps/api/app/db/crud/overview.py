@@ -19,6 +19,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.base import Database
 from app.db.crud.bad_case_sync import BadCaseRootSyncRow, _to_row
+from app.db.crud.read_scope import WorkspaceReadScope
 from app.db.external_contract import read_only_guard
 from app.db.models.domain import (
     bad_case_analysis,
@@ -26,6 +27,7 @@ from app.db.models.domain import (
     bad_cases,
     probe_reports,
     session_families,
+    workspace_bad_cases,
 )
 from app.db.models.workspace import workspaces
 from app.utils.time import SHANGHAI
@@ -112,7 +114,7 @@ def _case_conditions(
     reads always pass both boundaries.
     """
     conditions: list[ColumnElement[bool]] = [
-        bad_cases.c.workspace_id == workspace_id,
+        WorkspaceReadScope.for_workspace(workspace_id).case_condition(),
         # Legacy catalog sync only enforces the column length, so a row can carry
         # a type outside the report contract. Excluding it here keeps
         # badCases == self + discovery and the trend total on every read path.
@@ -224,9 +226,11 @@ class OverviewRepository:
                 used = int(
                     (
                         await session.execute(
-                            select(func.count())
-                            .select_from(bad_cases)
-                            .where(bad_cases.c.workspace_id == workspace_id),
+                            select(
+                                func.count(
+                                    func.distinct(workspace_bad_cases.c.bad_case_id),
+                                )
+                            ).where(workspace_bad_cases.c.workspace_id == workspace_id),
                         )
                     ).scalar_one(),
                 )

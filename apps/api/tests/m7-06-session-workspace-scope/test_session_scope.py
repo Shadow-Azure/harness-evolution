@@ -17,6 +17,7 @@ from app.main import create_app
 from app.utils.time import now_shanghai
 from tests.workspaces.helpers import (
     access_token,
+    associate_case,
     bearer,
     create_user,
     insert_member,
@@ -119,6 +120,11 @@ async def scope_environment(tmp_path: Path) -> AsyncIterator[ScopeEnvironment]:
                     updated_at=now_shanghai(),
                 ),
             )
+
+        await associate_case(database, workspace_id=workspace_a, bad_case_id=CASE_S1_A)
+        await associate_case(database, workspace_id=workspace_a, bad_case_id=CASE_S3_A)
+        await associate_case(database, workspace_id=workspace_b, bad_case_id=CASE_S2_B)
+        await associate_case(database, workspace_id=workspace_b, bad_case_id=CASE_S1_B)
 
         yield ScopeEnvironment(
             client=client,

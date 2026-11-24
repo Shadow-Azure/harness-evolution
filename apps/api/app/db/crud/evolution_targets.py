@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.base import Database
 from app.db.crud.integrity import is_unique_violation
+from app.db.crud.read_scope import scoped_case_ids
 from app.db.models.domain import agents, attribution_skill_packages, bad_cases, evolution_targets
 from app.db.models.evolution import evolution_runs
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
@@ -487,7 +488,7 @@ class EvolutionTargetRepository:
         )
         if workspace_ids is not None:
             scoped_sessions = select(bad_cases.c.bad_case_session_id).where(
-                bad_cases.c.workspace_id.in_(workspace_ids),
+                bad_cases.c.bad_case_id.in_(scoped_case_ids(workspace_ids)),
             )
             statement = statement.where(agents.c.root_session_id.in_(scoped_sessions))
         statement = statement.group_by(agents.c.model).order_by(

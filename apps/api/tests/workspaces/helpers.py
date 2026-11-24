@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Annotated, cast
 
 from fastapi import Depends, FastAPI
-from sqlalchemy import insert
+from sqlalchemy import insert, text
 
 from app.api.deps import require_workspace_role
 from app.db.base import Database
@@ -120,6 +120,49 @@ async def insert_bad_case(
                 assignment_source="legacy_owner",
                 label=None,
                 assigned_at=now,
+            ),
+        )
+
+
+async def associate_case(
+    database: Database,
+    *,
+    workspace_id: str,
+    bad_case_id: str,
+    source: str = "legacy_owner",
+    label: str | None = None,
+) -> None:
+    """Insert one workspace→bad-case association for scoped read tests."""
+    async with database.transaction() as session:
+        await session.execute(
+            insert(workspace_bad_cases).values(
+                workspace_id=workspace_id,
+                bad_case_id=bad_case_id,
+                assignment_source=source,
+                label=label,
+                assigned_at=now_shanghai(),
+            ),
+        )
+
+
+async def backfill_legacy_associations(database: Database) -> None:
+    """Mirror migration 0032 for fixtures that seed ownership without associations.
+
+    Workspace-scoped reads derive visibility from ``workspace_bad_cases``, so a
+    fixture that writes ``bad_cases.workspace_id`` directly must backfill the
+    matching ``legacy_owner`` rows exactly as the migration would have.
+    """
+    async with database.transaction() as session:
+        await session.execute(
+            text(
+                """
+                INSERT INTO workspace_bad_cases (
+                    workspace_id, bad_case_id, assignment_source, label, assigned_at
+                )
+                SELECT workspace_id, bad_case_id, 'legacy_owner', NULL, CURRENT_TIMESTAMP
+                FROM bad_cases
+                WHERE workspace_id IS NOT NULL
+                """,
             ),
         )
 
