@@ -48,3 +48,6 @@ claude-code-sessions
 
 # pytest writes its temp root into the repo because %TEMP% is unusable in this sandbox
 pytest-of-*/
+
+# Local agent scratch files (PR bodies, CI logs)
+.tmp-*
