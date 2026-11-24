@@ -42,6 +42,14 @@ Workspace Admin → Attribution Skill shows ZIP packages and resource details. I
 - Align the primary action and table in the V2 prototype and Web tab. Provide consistent padding in the detail section for bound targets, the directory and SKILL.md.
 - Stack the detail fields on narrow screens, allow local table scrolling, and wrap long directory and prompt lines in the panel.
 
+## Prototype comparison
+
+Both images use the same 1440 × 900 Chrome viewport, Harness Core R&D demo workspace, global admin and default attribute-badcases selection. Open either image to see it at full resolution.
+
+| Baseline prototype (d39b1222) | Proposed prototype (this issue) |
+| --- | --- |
+| [![Baseline prototype (d39b1222)](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/6eda3b8ae1ae67c944d17482a2c27f23f48b03cc/plans/ui-prototype-v2/evidence/attribution-skill-style/before.png)](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/6eda3b8ae1ae67c944d17482a2c27f23f48b03cc/plans/ui-prototype-v2/evidence/attribution-skill-style/before.png) | [![Proposed prototype (this issue)](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/6eda3b8ae1ae67c944d17482a2c27f23f48b03cc/plans/ui-prototype-v2/evidence/attribution-skill-style/after.png)](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/6eda3b8ae1ae67c944d17482a2c27f23f48b03cc/plans/ui-prototype-v2/evidence/attribution-skill-style/after.png) |
+
 ## Steps
 
 1. Capture the baseline, sibling reference and proposed prototype at the same Chrome viewport.

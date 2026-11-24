@@ -42,6 +42,14 @@ github:
 - 在 V2 原型和归因 Skill 前端页签对齐主操作和表格，使用带留白的详情面板展示绑定对象、目录和 SKILL.md。
 - 在窄屏让详情字段堆叠、表格局部横向滚动；长目录和提示词在面板内换行。
 
+## 原型截图对照
+
+同一 Chrome 1440 × 900 视口，使用 Harness 核心研发演示空间、全局管理员和默认选中的 attribute-badcases。点击图片可查看原尺寸。
+
+| 当前原型（d39b1222） | 预期原型（本 Issue） |
+| --- | --- |
+| [![当前原型（d39b1222）](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/6eda3b8ae1ae67c944d17482a2c27f23f48b03cc/plans/ui-prototype-v2/evidence/attribution-skill-style/before.png)](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/6eda3b8ae1ae67c944d17482a2c27f23f48b03cc/plans/ui-prototype-v2/evidence/attribution-skill-style/before.png) | [![预期原型（本 Issue）](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/6eda3b8ae1ae67c944d17482a2c27f23f48b03cc/plans/ui-prototype-v2/evidence/attribution-skill-style/after.png)](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/6eda3b8ae1ae67c944d17482a2c27f23f48b03cc/plans/ui-prototype-v2/evidence/attribution-skill-style/after.png) |
+
 ## 实施步骤
 
 1. 用同一 Chrome 视口保存基线、同页参照与预期原型。
