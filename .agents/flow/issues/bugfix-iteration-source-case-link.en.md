@@ -9,13 +9,14 @@ milestone: bugfix
 depends:
   - m21-01
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/web/**
   - tests/e2e/**
   - plans/**
   - .agents/**
-adr: []
+adr:
+  - ../../notes/implemented/bug-fix/2026-11-24-iteration-source-case-deep-link.md
 github:
   number: 569
   url: https://github.com/Shadow-Azure/harness-evolution/issues/569
