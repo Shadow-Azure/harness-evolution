@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-claude-edit-tool-surface.md
-bugfix-claude-edit-tool-surface.md: 86890cdda2653c1960ec5280019b6c03a38e55f6
-bugfix-claude-edit-tool-surface.en.md: c9879853da21d442f86df21f34b8eade2d5de15b
+bugfix-claude-edit-tool-surface.md: 5f61823797b54d1a902227298c0fd6beae7f2061
+bugfix-claude-edit-tool-surface.en.md: 7bea83e667041770648690e1d773c3fea880f5f6
