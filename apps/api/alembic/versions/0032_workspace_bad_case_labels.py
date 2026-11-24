@@ -17,9 +17,7 @@ def upgrade() -> None:
     inspector = inspect(bind)
 
     if inspector.has_table("bad_cases"):
-        bad_case_columns = {
-            str(column["name"]) for column in inspector.get_columns("bad_cases")
-        }
+        bad_case_columns = {str(column["name"]) for column in inspector.get_columns("bad_cases")}
         if "catalog_label" not in bad_case_columns:
             with op.batch_alter_table("bad_cases") as batch_op:
                 batch_op.add_column(sa.Column("catalog_label", sa.String(128)))

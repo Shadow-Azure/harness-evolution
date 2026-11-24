@@ -10,8 +10,11 @@ from app.api.security import BEARER_AUTH
 from app.db.models.users import UserRecord
 from app.errors import AppError, ErrorCode, ErrorResponse
 from app.service.identity.principals import Principal
+from app.service.workspaces.bad_case_labels import WorkspaceBadCaseLabelService
 from app.service.workspaces.schemas import (
     Workspace,
+    WorkspaceBadCaseLabelConfiguration,
+    WorkspaceBadCaseLabelRequest,
     WorkspaceCreateRequest,
     WorkspaceCredentialCreated,
     WorkspaceCredentialListResponse,
@@ -36,6 +39,11 @@ CandidateLimit = Annotated[int, Query(ge=1, le=20)]
 def workspaces_from(request: Request) -> WorkspaceService:
     """Return the application-scoped workspace service."""
     return cast(WorkspaceService, request.app.state.workspaces)
+
+
+def bad_case_labels_from(request: Request) -> WorkspaceBadCaseLabelService:
+    """Return the application-scoped workspace label service."""
+    return cast(WorkspaceBadCaseLabelService, request.app.state.bad_case_labels)
 
 
 async def current_user(request: Request) -> UserRecord:
@@ -108,6 +116,43 @@ async def update_workspace(
 ) -> Workspace:
     """Update the workspace fields permitted for the caller's effective role."""
     return await workspaces_from(request).update_workspace(access, body)
+
+
+@router.get(
+    "/{wid}/bad-case-labels",
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication is required"},
+        404: {"model": ErrorResponse, "description": "Workspace does not exist"},
+    },
+)
+async def get_bad_case_labels(
+    wid: WorkspaceId,
+    request: Request,
+    access: Annotated[WorkspaceAccess, Depends(require_workspace_role("viewer"))],
+) -> WorkspaceBadCaseLabelConfiguration:
+    """Return the public badcase labels accepted by this workspace."""
+    return await bad_case_labels_from(request).get(access.workspace_id)
+
+
+@router.put(
+    "/{wid}/bad-case-labels",
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication is required"},
+        403: {"model": ErrorResponse, "description": "Workspace role is insufficient"},
+        404: {"model": ErrorResponse, "description": "Workspace does not exist"},
+        422: {"model": ErrorResponse, "description": "Label set is invalid"},
+    },
+)
+async def replace_bad_case_labels(
+    wid: WorkspaceId,
+    body: WorkspaceBadCaseLabelRequest,
+    request: Request,
+    access: Annotated[WorkspaceAccess, Depends(require_workspace_role("space_admin"))],
+) -> WorkspaceBadCaseLabelConfiguration:
+    """Replace label rules and historical catalog assignments atomically."""
+    return await bad_case_labels_from(request).replace(access.workspace_id, body.items)
 
 
 @router.get(

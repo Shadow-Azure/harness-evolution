@@ -142,8 +142,7 @@ async def test_upgrade_backfills_workspace_bad_case_assignments(tmp_path: Path) 
                         )
                     },
                     "bad_case_indexes": {
-                        index["name"]
-                        for index in inspect(sync_connection).get_indexes("bad_cases")
+                        index["name"] for index in inspect(sync_connection).get_indexes("bad_cases")
                     },
                 },
             )

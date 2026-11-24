@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 from app.service.identity.schemas import PublicUser
@@ -150,3 +150,29 @@ class WorkspaceCredentialCreated(WorkspaceModel):
     credential_id: str
     prefix: str
     credential: str
+
+
+class WorkspaceBadCaseLabelRequest(WorkspaceModel):
+    """Complete replacement set for one workspace's accepted public labels."""
+
+    items: list[str] = Field(default_factory=list)
+
+    @field_validator("items")
+    @classmethod
+    def validate_items(cls, items: list[str]) -> list[str]:
+        """Keep exact matching deterministic and reject ambiguous rule sets."""
+        if len(items) != len(set(items)):
+            raise ValueError("labels must be unique")
+        for label in items:
+            if not label or len(label) > 128 or label != label.strip():
+                raise ValueError(
+                    "labels must be 1-128 characters without surrounding whitespace",
+                )
+        return sorted(items)
+
+
+class WorkspaceBadCaseLabelConfiguration(WorkspaceModel):
+    """One label rule set plus its current distinct assignment count."""
+
+    items: list[str]
+    assigned_bad_case_count: int = Field(ge=0)
