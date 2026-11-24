@@ -111,6 +111,7 @@ EXTERNAL_TABLES: tuple[TableContract, ...] = (
             ColumnContract("meta_data", "json", True),
             ColumnContract("source", "varchar", True, 64),
             ColumnContract("session_source", "json", True),
+            ColumnContract("origin", "varchar", False, 16),
             ColumnContract("created_at", "datetime", False),
             ColumnContract("updated_at", "datetime", False),
         ),

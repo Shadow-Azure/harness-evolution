@@ -62,7 +62,26 @@ class BadCaseSyncSourceFactory:
             raise ValueError(
                 f"unknown bad-case sync provider: {normalized!r}; expected one of: {choices}",
             )
+        cls._require_endpoints(normalized, settings)
         return implementation.from_settings(settings)
+
+    @classmethod
+    def _require_endpoints(cls, provider: str, settings: Settings) -> None:
+        """Fail startup when the switch is on but its endpoints cannot work.
+
+        A provider without its base URL or Bearer token would otherwise start
+        cleanly and fail on every sync tick, which reads as a runtime outage
+        instead of the configuration error it is.
+        """
+        missing: list[str] = []
+        if not settings.session_query_configured:
+            missing.append("HE_SESSION_QUERY_BASE_URL/HE_SESSION_QUERY_TOKEN")
+        if not settings.bad_case_query_configured:
+            missing.append("HE_BAD_CASE_QUERY_BASE_URL/HE_BAD_CASE_QUERY_TOKEN")
+        if missing:
+            raise ValueError(
+                f"HE_BAD_CASE_SYNC_PROVIDER={provider} requires: " + ", ".join(missing),
+            )
 
     @classmethod
     def from_settings(cls, settings: Settings) -> BaseBadCaseSyncSource | None:

@@ -177,6 +177,9 @@ async def trace_status(tmp_path: Path) -> AsyncIterator[StatusEnvironment]:
         admin_password=SecretStr("initial-password"),
         session_query_base_url="http://127.0.0.1:9/session-query",
         session_query_token=SecretStr("m12-07-query-token"),
+        bad_case_query_base_url="http://127.0.0.1:9/bad-cases",
+        bad_case_query_token=SecretStr("m12-07-catalog-token"),
+        bad_case_sync_provider="claude-upstream",
         sync_interval_seconds=0,
     )
     corpus = load_fixture_corpus(ROOT / "fixtures" / "m2-synthetic" / "corpus.json")

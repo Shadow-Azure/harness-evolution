@@ -31,7 +31,7 @@ bad case 的 global 源线在代码里不是「一个源」，而是两个互不
 ## Consequences
 
 - 新增上游 = 一个 `BaseBadCaseSyncSource` 子类 + `@BadCaseSyncSourceFactory.register`；服务层、`main.py`、DB 零改动。遍历/租约/重试策略仍在 `BadCaseRootSyncService`，子类不感知遍历。
-- `SessionSourceSnapshot` 需扩展可选 `provider`（仅 global 允许）：旧快照 `{"kind":"global"}` 仍合法；带 `provider` 的新快照在回滚到旧代码时被 `extra="forbid"` 拒绝并以 `SESSION_SOURCE_INVALID_RESPONSE` 停车，启动钩子 `reset_deterministic_failures` 负责清快照 re-arm。
+- `SessionSourceSnapshot` 需扩展可选 `provider`（仅 global 允许）：旧快照 `{"kind":"global"}` 仍合法；带 `provider` 的新快照在回滚到旧代码时被 `extra="forbid"` 拒绝（`SESSION_SOURCE_INVALID_RESPONSE`，502）。该错误不在 `_NON_RETRYABLE_ERRORS`，因此按 1m/5m/15m/1h 阶梯反复重试、每次重试仍被拒；回滚后需手工清理受影响 root 的 `source_snapshot`，启动钩子只清确定性失败集合内的行。
 - global 线开关语义变为显式：现网若已配端点凭据但未加 `HE_BAD_CASE_SYNC_PROVIDER`，升级后 global 线关闭，部署清单须加一行；装配期对「有凭据无 provider」打 warning。
 - payload 产出与现状 `_payload()` 逐字段相同（main → `agent_meta=None`；subagent → `{"parentAgentId": …}`；`runtime_key="claude-code"`），实现须以 parity 测试锁定；错误码 `SESSION_QUERY_UNAVAILABLE` / `BAD_CASE_QUERY_UNAVAILABLE` 与 `_NON_RETRYABLE_ERRORS` 不变。
 - 目录同步跨方言的 `_upsert_statement` 被显式 `INSERT` + 条件 `UPDATE … WHERE origin = "catalog"` 取代；`PageCounts` 新增 `skipped`，job 结果多一个字段，状态接口是否暴露 `skippedBadCases` 留给实现 issue 决定。

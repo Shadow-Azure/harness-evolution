@@ -53,7 +53,7 @@ github:
 ## 实现内容
 
 - **新模块**：`base.py` 定义 `BaseBadCaseSyncSource`（`fetch_bad_case_page` / `fetch_session` 模板方法，`fetch_page` / `fetch_trajectory` / `list_children` / `build_envelope` / `close` 与 `from_settings` 抽象钩子）；`claude_upstream.py` 封装两个 `httpx.AsyncClient`、Bearer、超时、重试、退避与 `ClaudeUpstreamEnvelopeFactory`，显式声明 `runtime_key="claude-code"`；`factory.py` 提供注册、`provider_key`、未配置返回 `None`、未知 provider 启动失败。
-- **目录同步**：服务依赖改为 `BaseBadCaseSyncSource | None` 并调用 `fetch_bad_case_page`；`CatalogSyncResult` / job 结果新增 `skipped`；`BadCaseCatalogSyncRepository.commit_page` 改为查询 `origin` 后三分流，显式 `INSERT` + 仅 `origin="catalog"` 的条件 `UPDATE`，`IntegrityError` 经保存点重试后归入跳过；删除 `_upsert_statement` 与方言分支。
+- **目录同步**：服务依赖改为 `BaseBadCaseSyncSource | None` 并调用 `fetch_bad_case_page`；`CatalogSyncResult` / job 结果新增 `skipped`；`BadCaseCatalogSyncRepository.commit_page` 改为查询 `origin` 后三分流，显式 `INSERT` + 仅 `origin="catalog"` 的条件 `UPDATE`，并发插入抢先时 `IntegrityError` 经保存点回滚后重读真实归属，catalog 行转更新、report 行归入跳过；删除 `_upsert_statement` 与方言分支。
 - **root 同步**：`SessionSourceSnapshot` 新增仅 global 可用的可选 `provider`（report 带 provider、global 带模板/运行时一律拒绝）；`_select_source` 把当前源 provider 冻结进 global 快照；`_sync_root` 用 `ReportSessionFetcher` / global 源的 `fetch_session` 统一循环，删除 `_payload()` 与两套 BFS。
 - **装配与开关**：`Settings.bad_case_sync_provider` 对应 `HE_BAD_CASE_SYNC_PROVIDER`；`create_app` 在未注入时调用工厂，两个 coordinator 接受 `available`；lifespan 关闭一个同步源与 report fetcher 客户端；旧 `session_query_source=` / `bad_case_catalog_source=` 注入缝删除。
 - **数据迁移**：`0032_bad_case_origin` 增加 `origin` 列（默认 `catalog`），按「非默认 workspace 或 `session_source` 非空 → report，否则 catalog」回填；上报写 `origin="report"`，重报不改归属。

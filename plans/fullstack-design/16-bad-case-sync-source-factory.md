@@ -136,6 +136,8 @@ class BaseBadCaseSyncSource(ABC):
     async def close(self) -> None: ...
 ```
 
+父类把 `from_settings` 声明为抽象钩子（子类实现装配细节）；模板方法不加 `@final`——全仓没有该惯例，靠 ABC 与评审约束边界。
+
 **签名对齐**：`fetch_session` 与既有 `SessionSourceFetcher.fetch(session_url_template=, session_id=, expected_parent_id=, declared_runtime=)` 同构——两者都接收 `session_id` + `expected_parent_id`，都返回 `SessionInfo`。差别只在第三个参数：report 路径需要 URL 模板，global 路径需要 provider；两者都来自**同一份冻结快照**，所以统一签名取 `snapshot: SessionSourceSnapshot`。
 
 ### 3.3 子类 `ClaudeUpstreamBadCaseSyncSource`：封装的全部内容
@@ -176,7 +178,7 @@ while queue:
     self._enqueue_children(info.child_session_ids, ...)
 ```
 
-映射表只有两项，都是数据而非控制流：`"report"` → `ReportSessionFetcher`（薄适配器，内部调既有 `SessionSourceFetcher.fetch(session_url_template=snapshot.session_url_template, …, declared_runtime=snapshot.runtime)`）；`"global"` → `BadCaseSyncSourceFactory.create(selection.provider or 当前 provider).fetch_session`。provider 未配置时与今天一样抛 `SESSION_QUERY_UNAVAILABLE`（在 `_NON_RETRYABLE_ERRORS` 内，启动时 `reset_deterministic_failures` 会在配置出现后 re-arm），错误码与重试语义完全保留。
+映射表只有两项，都是数据而非控制流：`"report"` → `ReportSessionFetcher`（薄适配器，内部调既有 `SessionSourceFetcher.fetch(session_url_template=snapshot.session_url_template, …, declared_runtime=snapshot.runtime)`）；`"global"` → 装配期产出的 `BaseBadCaseSyncSource.fetch_session`（经 `GlobalSessionFetcher` 适配同一个 fetcher 签名）。快照里的 `provider` 参与一致性校验：与装配产物不一致即抛 `SESSION_SOURCE_INVALID_RESPONSE`（502），不会静默改道；源为 `None` 时与今天一样抛 `SESSION_QUERY_UNAVAILABLE`（503，在 `_NON_RETRYABLE_ERRORS` 内，配置出现后启动钩子 `reset_deterministic_failures` 会清快照 re-arm），错误码与重试语义完全保留。
 
 ### 3.5 决策 ②：两线独立与开关矩阵
 
@@ -201,7 +203,7 @@ existing = {bad_case_id: origin for bad_case_id, origin in select(bad_cases.c.ba
 to_insert = [row for row in page if row.bad_case_id not in existing]           # origin = "catalog"
 to_update = [row for row in page if existing.get(row.bad_case_id) == "catalog"]  # 只改自己拥有的
 skipped   = [row for row in page if existing.get(row.bad_case_id) == "report"]   # 已上报：不动
-# 同一事务：INSERT to_insert（IntegrityError → 视为已存在、归入 skipped）
+# 同一事务：INSERT to_insert（保存点内失败 → 回滚保存点 → 重读真实 origin → catalog 行转 UPDATE、report 行计入 skipped）
 #           UPDATE to_update SET _UPDATE_COLUMNS... WHERE bad_case_id IN (...) AND origin = "catalog"
 #           推进游标 + synced_count + pending_count
 return PageCounts(inserted=len(to_insert), updated=len(to_update), skipped=len(skipped))
@@ -505,7 +507,7 @@ ReplayResult（聚合）                           随后 mark_synced
 | 方向 | 情形 | 结果 | 缓解 |
 |---|---|---|---|
 | 新代码读旧行 | DB 里冻结的 `{"kind":"global"}` / `{"kind":"report",…}` | **合法**：`provider` 可选，默认 `None`（= 领取时未配置 provider；路由到工厂当前产物） | 无需迁移 |
-| 旧代码读新行（回滚） | 冻结的 `{"kind":"global","provider":"claude-upstream"}` | `extra="forbid"` 拒绝 → `SESSION_SOURCE_INVALID_RESPONSE`（确定性失败，停车） | 启动钩子 `reset_deterministic_failures` 会把停车行清快照 re-arm；回滚手册注明「若曾以新代码领取过 root，回滚后等待一次启动 re-arm」 |
+| 旧代码读新行（回滚） | 冻结的 `{"kind":"global","provider":"claude-upstream"}` | `extra="forbid"` 拒绝 → `SESSION_SOURCE_INVALID_RESPONSE`（502，不在 `_NON_RETRYABLE_ERRORS`，按 1m/5m/15m/1h 阶梯重试且每次重试仍被拒） | 回滚后手工清理该 root 的 `source_snapshot`；启动钩子只清确定性失败集合内的行，不清这一类 |
 | 校验器变更 | report 快照带 `provider`；global 快照带模板/运行时 | **一律拒绝**（report 不允许 provider；global 不允许模板与运行时，规则不变） | 单测覆盖三种非法组合 |
 
 ### 7.2 行为兼容清单

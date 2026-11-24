@@ -420,7 +420,13 @@ class BadCaseRootSyncService:
             )
 
     def _fetcher_for(self, selection: SessionSourceSnapshot) -> SessionFetcher:
-        """Map the frozen source kind onto the one fetcher that can read it."""
+        """Map the frozen source kind onto the one fetcher that can read it.
+
+        A global snapshot may name the provider that claimed the root. Assembly
+        builds exactly one source, so a snapshot naming another provider is a
+        configuration change after the fact: it fails loudly instead of silently
+        re-routing the root through whatever is assembled today.
+        """
         if selection.kind == "report":
             if self._session_source_fetcher is None:
                 raise AppError(
@@ -434,6 +440,12 @@ class BadCaseRootSyncService:
                 status_code=503,
                 code=ErrorCode.SESSION_QUERY_UNAVAILABLE,
                 message="session query service is not configured",
+            )
+        if selection.provider is not None and selection.provider != self._source.provider:
+            raise AppError(
+                status_code=502,
+                code=ErrorCode.SESSION_SOURCE_INVALID_RESPONSE,
+                message="root sync source snapshot names a provider that is not assembled",
             )
         return GlobalSessionFetcher(self._source)
 
