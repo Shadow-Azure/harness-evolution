@@ -8,7 +8,7 @@ id: bugfix-45
 milestone: bugfix
 depends: [bugfix-33]
 priority: P2
-status: ready
+status: done
 scope:
   - deploy/**
   - apps/api/tests/deploy/**
@@ -19,7 +19,8 @@ scope:
   - plans/**
   - scripts/doc-budgets.manifest.json
   - .agents/**
-adr: []
+adr:
+  - ../../notes/implemented/process/2026-11-24-ci-deploy-contract-gate.md
 github:
   number: 552
   url: https://github.com/Shadow-Azure/harness-evolution/issues/552

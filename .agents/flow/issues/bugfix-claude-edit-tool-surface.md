@@ -4,11 +4,11 @@
 
 ```yaml flow
 kind: issue
-id: bugfix-45
+id: bugfix-46
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/app/third_party_api/ai_agent/claude_code.py
   - apps/api/tests/**
