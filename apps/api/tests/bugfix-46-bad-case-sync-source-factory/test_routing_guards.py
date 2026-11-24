@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import ClassVar, cast
 
 import pytest
 from pydantic import SecretStr
 
 from app.config import Settings
 from app.errors import AppError, ErrorCode
-from app.service.acquisition.bad_case_sync import BadCaseRootSyncService
+from app.service.acquisition.bad_case_sync import (
+    BadCaseRootSyncService,
+    GlobalSessionFetcher,
+)
 from app.third_party_api.bad_case_query.models import BadCasePage
 from app.third_party_api.bad_case_sync_source import (
     BadCaseSyncSourceFactory,
@@ -102,9 +105,8 @@ def test_frozen_provider_matching_the_assembly_routes_through_the_source() -> No
     service = _service(_StubSource())
     snapshot = SessionSourceSnapshot(kind="global", provider="stub-upstream")
 
-    fetcher = service._fetcher_for(snapshot)
+    fetcher = cast(GlobalSessionFetcher, service._fetcher_for(snapshot))
 
-    assert fetcher.source is not None
     assert fetcher.source.provider == "stub-upstream"
 
 
@@ -112,9 +114,9 @@ def test_bare_global_snapshot_routes_to_the_assembled_source() -> None:
     """A legacy snapshot without a provider keeps using whatever is assembled."""
     service = _service(_StubSource())
 
-    fetcher = service._fetcher_for(SessionSourceSnapshot(kind="global"))
+    fetcher = cast(GlobalSessionFetcher, service._fetcher_for(SessionSourceSnapshot(kind="global")))
 
-    assert fetcher.source is not None
+    assert fetcher.source.provider == "stub-upstream"
 
 
 def test_missing_global_source_parks_with_the_unavailable_error() -> None:
