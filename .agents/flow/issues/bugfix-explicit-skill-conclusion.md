@@ -13,6 +13,7 @@ scope:
   - attribute-badcases/**
   - apps/api/app/service/evolution/local_attribution.py
   - apps/api/tests/attribution/**
+  - plans/evidence/attribution-verdict-588/*.png
   - .agents/flow/issues/bugfix-explicit-skill-conclusion*
   - .agents/notes/implemented/architecture/2026-11-17-attribution-report-v2*
 adr: []
@@ -23,7 +24,7 @@ github:
 
 ## 背景
 
-生产发现正文将失败归于外部评分环境、当前 Skill 仅能改善验证汇报的报告，在详情页仍显示「可归因到本对象」。同一源报告的对象身份与分析对象相同，类别为 error，正文排除了 Skill 的直接责任，保存的正向结论已被复用三次。公开复现使用合成数据。
+生产发现正文将失败归于外部评分环境、当前 Skill 仅能改善验证汇报的报告，在详情页仍显示「可归因到本对象」。同一源报告的对象身份与分析对象相同，类别为 error，正文排除了 Skill 的直接责任，保存的正向结论已被复用三次。自动化回归使用合成数据，PR 另附同一生产样例在修改前后的详情页截图。
 
 ## 目标
 
@@ -47,9 +48,9 @@ PR #421 引入的本地执行器按原始报告中的对象身份与类别推导
 
 ## 独立验证
 
-`pnpm test:api -- tests/attribution/test_local_runtime.py` 在独立 SQLite 内验证四类样本。真实 CLI 使用合成输入，导出的 bad case 和轨迹仅在本地验证。
+`pnpm test:api -- tests/attribution/test_local_runtime.py` 在独立 SQLite 内验证四类样本。真实 CLI 分别验证合成输入和本地 SQLite 中的生产导出样例。
 
-共享 Claude Provider 使用服务配置的 600 秒超时完成内置 Skill 的非交互执行，经校验写入 SQLite，第二次运行命中缓存。新版协议在脱敏评分证据上返回 inconclusive 并给出两处证据引用。回归测试核对入库、详情响应、复用和聚类资格。
+共享 Claude Provider 使用服务配置的 600 秒超时完成内置 Skill 的非交互执行，经校验写入 SQLite，第二次运行命中缓存。新版协议在脱敏评分证据上返回 inconclusive 并给出两处证据引用。用完整轨迹（8 个 Agent）对 swe-5a7e0d8d69419188a326 关闭缓存重新执行后，Skill 返回 non_target 和 8 处证据引用；该结论入库后详情页显示「非该对象问题」，聚类候选数为 0。评分容器的原始 traceback 未包含在导出中。
 
 ## 验收标准
 

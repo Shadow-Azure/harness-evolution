@@ -13,6 +13,7 @@ scope:
   - attribute-badcases/**
   - apps/api/app/service/evolution/local_attribution.py
   - apps/api/tests/attribution/**
+  - plans/evidence/attribution-verdict-588/*.png
   - .agents/flow/issues/bugfix-explicit-skill-conclusion*
   - .agents/notes/implemented/architecture/2026-11-17-attribution-report-v2*
 adr: []
@@ -23,7 +24,7 @@ github:
 
 ## Background
 
-A production report assigned the observed failure to an external scoring environment and identified a verification improvement in the selected Skill. Its source identity matched the selected object and its category was error. The stored affirmative conclusion was reused three times. The public reproduction uses synthetic data.
+A production report assigned the observed failure to an external scoring environment and identified a verification improvement in the selected Skill. Its source identity matched the selected object and its category was error. The stored affirmative conclusion was reused three times. Automated regression tests use synthetic data. The PR also shows the same production case in the report UI before and after the fix.
 
 ## Goals
 
@@ -47,9 +48,9 @@ Bound uploads and the built-in Skill use the platform writer. Completed batches 
 
 ## Verification
 
-Run `pnpm test:api -- tests/attribution/test_local_runtime.py` against isolated SQLite for four contrasting cases. Use synthetic inputs with the live CLI and validate the exported cases and traces locally.
+Run `pnpm test:api -- tests/attribution/test_local_runtime.py` against isolated SQLite for four contrasting cases. Exercise the live CLI on synthetic inputs and on the production case exported to local SQLite.
 
-The shared Claude provider completed a noninteractive built-in Skill run at the application timeout of 600 seconds, validated its report, persisted it in SQLite and reused it on a second run. Replaying an anonymized scoring excerpt with the new contract yielded inconclusive and two evidence references. Regression tests cover the stored verdict, detail response, cached reuse and clustering eligibility.
+The shared Claude provider completed a noninteractive built-in Skill run at the application timeout of 600 seconds, validated its report, persisted it in SQLite and reused it on a second run. Replaying an anonymized scoring excerpt with the new contract yielded inconclusive and two evidence references. A fresh run of swe-5a7e0d8d69419188a326 with traces from all eight Agents and caching disabled returned non_target with eight evidence references. The detail view displayed the persisted non-target verdict and the run had zero clustering candidates. The export did not include the original scoring-container traceback.
 
 ## Acceptance
 
