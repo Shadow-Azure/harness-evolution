@@ -1,10 +1,10 @@
 """Dialect-neutral persistence for durable job audit rows."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import timedelta
 from typing import Any, cast
 
-from sqlalchemy import and_, insert, or_, select, update
+from sqlalchemy import and_, func, insert, or_, select, update
 from sqlalchemy.engine import CursorResult
 
 from app.db.base import Database
@@ -434,6 +434,59 @@ class JobRepository:
                 ),
             )
         return int(getattr(result, "rowcount", 0) or 0)
+
+    async def latest_interrupted(self, kinds: Sequence[str]) -> list[JobRunRecord]:
+        """Return the newest row per kind and resource when a restart interrupted it.
+
+        A replacement job inserted after a previous recovery makes the older
+        interrupted row stale; selecting the newest row for each
+        ``(kind, ref_id)`` pair keeps a second restart from queueing it again.
+        """
+        if not kinds:
+            return []
+        recency = (
+            func.row_number()
+            .over(
+                partition_by=(job_runs.c.kind, job_runs.c.ref_id),
+                order_by=(job_runs.c.created_at.desc(), job_runs.c.id.desc()),
+            )
+            .label("recency")
+        )
+        ranked = select(*job_runs.c, recency).where(job_runs.c.kind.in_(tuple(kinds))).subquery()
+        statement = select(ranked).where(
+            ranked.c.recency == 1,
+            ranked.c.status == "interrupted",
+            ranked.c.cancel_requested.is_(False),
+            ranked.c.attempt < ranked.c.max_attempts,
+        )
+        async with self._database.session() as session:
+            rows = (await session.execute(statement)).mappings().all()
+        return [record_from_row(row) for row in rows]
+
+    async def requeue_interrupted(self, job_id: str) -> JobRunRecord | None:
+        """Return one shutdown-interrupted row to the queue under its own identity."""
+        now = now_shanghai()
+        async with self._database.transaction() as session:
+            result = await session.execute(
+                update(job_runs)
+                .where(
+                    job_runs.c.id == job_id,
+                    job_runs.c.status == "interrupted",
+                    job_runs.c.cancel_requested.is_(False),
+                    job_runs.c.attempt < job_runs.c.max_attempts,
+                )
+                .values(
+                    status="queued",
+                    **_LEASE_CLEARED,
+                    error=None,
+                    started_at=None,
+                    finished_at=None,
+                    updated_at=now,
+                ),
+            )
+        if int(getattr(result, "rowcount", 0) or 0) != 1:
+            return None
+        return await self.get(job_id)
 
     async def request_cancel(self, job_id: str) -> JobRunRecord | None:
         """Persist cancellation for queued or running work."""
