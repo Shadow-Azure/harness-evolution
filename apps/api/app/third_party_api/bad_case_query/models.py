@@ -9,19 +9,19 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 class BadCaseItem(BaseModel):
-    """One upstream bad case shaped like the local bad_cases columns."""
+    """One upstream bad case; null type and overlong titles stay for write normalization."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     bad_case_id: int = Field(ge=0)
     bad_case_session_id: str = Field(min_length=1, max_length=36)
-    bad_case_type: str = Field(min_length=1, max_length=16)
+    bad_case_type: str | None = Field(default=None, min_length=1, max_length=16)
     object_name: str | None = Field(default=None, max_length=128)
     object_type: str | None = Field(default=None, max_length=16)
     object_version: str | None = Field(default=None, max_length=64)
     bad_case_agent_id: str | None = Field(default=None, max_length=64)
     trigger_line: int | None = Field(default=None, ge=0)
-    title: str = Field(alias="bad_case_title", min_length=1, max_length=255)
+    title: str = Field(alias="bad_case_title", min_length=1)
     description: str = Field(alias="bad_case_description")
     meta_data: Any | None = None
     source: str | None = Field(default=None, max_length=64)

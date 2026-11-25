@@ -59,17 +59,30 @@ def _object_name(item: BadCaseItem) -> str:
 
 
 def _row(item: BadCaseItem, fallback: datetime) -> CatalogCaseRow:
-    """Map one upstream item to local column names, defaulting timestamps."""
+    """Map one upstream item to local columns, normalizing type and title."""
+    normalized = [
+        field
+        for field, drifted in (
+            ("bad_case_type", item.bad_case_type is None),
+            ("title", len(item.title) > 200),
+        )
+        if drifted
+    ]
+    if normalized:
+        logger.info(
+            "upstream bad case normalized",
+            extra={"badCaseId": item.bad_case_id, "fields": ",".join(normalized)},
+        )
     return CatalogCaseRow(
         bad_case_id=item.bad_case_id,
         bad_case_session_id=item.bad_case_session_id,
-        bad_case_type=item.bad_case_type,
+        bad_case_type=item.bad_case_type or "self",
         object_name=_object_name(item),
         object_type=item.object_type or "skill",
         object_version=item.object_version,
         bad_case_agent_id=item.bad_case_agent_id,
         trigger_line=item.trigger_line,
-        title=item.title,
+        title=item.title[:200],
         description=item.description,
         meta_data=item.meta_data,
         source=item.source,

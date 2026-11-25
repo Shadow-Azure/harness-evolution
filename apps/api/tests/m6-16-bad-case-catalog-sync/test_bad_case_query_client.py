@@ -148,6 +148,94 @@ async def test_fetch_page_allows_null_object_fields() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["null", "missing"])
+async def test_fetch_page_allows_null_bad_case_type(mode: str) -> None:
+    """A null or absent bad_case_type parses; defaulting is the write layer's job."""
+    item = _item(1)
+    if mode == "null":
+        item["bad_case_type"] = None
+    else:
+        del item["bad_case_type"]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_page([item], total=1))
+
+    source = HttpBadCaseCatalogSource(
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            base_url="http://query.test",
+        ),
+        max_retries=0,
+    )
+    try:
+        page = await source.fetch_page(after_id=0, offset=0, limit=2)
+    finally:
+        await source.close()
+
+    assert page.items[0].bad_case_type is None
+    assert page.items[0].bad_case_id == 1
+    assert page.items[0].title == "case title"
+    assert page.items[0].created_at is not None
+
+
+@pytest.mark.asyncio
+async def test_fetch_page_allows_overlong_title() -> None:
+    """The transport keeps a 300-character title verbatim; truncation happens at write."""
+    long_title = "t" * 300
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_page([_item(1, title=long_title)], total=1))
+
+    source = HttpBadCaseCatalogSource(
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            base_url="http://query.test",
+        ),
+        max_retries=0,
+    )
+    try:
+        page = await source.fetch_page(after_id=0, offset=0, limit=2)
+    finally:
+        await source.close()
+
+    assert page.items[0].title == long_title
+    assert len(page.items[0].title) == 300
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"bad_case_session_id": ""},
+        {"bad_case_session_id": "s" * 37},
+        {"bad_case_type": "x" * 17},
+        {"bad_case_title": ""},
+    ],
+)
+async def test_fetch_page_still_rejects_illegal_shapes(overrides: dict[str, Any]) -> None:
+    """Only the null-type and overlong-title shapes were relaxed; the rest stays strict."""
+    payload = _page([_item(1, **overrides)], total=1)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    source = HttpBadCaseCatalogSource(
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            base_url="http://query.test",
+        ),
+        max_retries=0,
+    )
+    try:
+        with pytest.raises(AppError) as failure:
+            await source.fetch_page(after_id=0, offset=0, limit=2)
+    finally:
+        await source.close()
+
+    assert failure.value.code is ErrorCode.BAD_CASE_QUERY_INVALID_RESPONSE
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "payload",
     [
