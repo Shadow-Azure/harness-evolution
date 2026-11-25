@@ -59,7 +59,7 @@ async def submit_state(
             "title": "submit config error",
             "mode": "full",
             "engine_key": "full",
-            "eval_config": {"mode": "http"},
+            "eval_config": {"mode": "ai-eval-platform"},
             "target_config_id": None,
             "target_type": "skill",
             "target_name": "deep-research",
@@ -158,4 +158,4 @@ def test_submit_gateway_config_error_is_the_declared_error_family() -> None:
         Settings(jwt_secret=SecretStr("m12-03-submit-config-secret")),
     )
     with pytest.raises(EvalGatewayConfigError, match="baseUrl"):
-        factory(EvalGatewayConfig.from_mapping({"mode": "http"}))
+        factory(EvalGatewayConfig.from_mapping({"mode": "ai-eval-platform"}))

@@ -1051,7 +1051,7 @@ POST /runs（同步校验）
 | 端点 | 说明 |
 |---|---|
 | `GET /api/evolution/targets` | V2 路径为 `/api/workspaces/{wid}/evolution/targets`；列出本空间配置 |
-| `POST /api/evolution/targets` | V2 生效路径同上；空间管理员或全局管理员可新增，body 含 `objectType/objectName/repoUrl/subDir/defaultRef/validationProjectId/testProjectId/attributionPackageId/enabled`；`attributionPackageId` 可空，缺省用空间默认包；`409 TARGET_EXISTS`、`422 PROJECT_ID_INVALID`、`409 ATTRIBUTION_SKILL_PACKAGE_INVALID` |
+| `POST /api/evolution/targets` | V2 生效路径同上；空间管理员或全局管理员可新增，body 含 `objectType/objectName/repoUrl/subDir/defaultRef/validationProjectId/testProjectId/primaryMetricKey/attributionPackageId/enabled`；`attributionPackageId` 可空，缺省用空间默认包；`409 TARGET_EXISTS`、`422 PROJECT_ID_INVALID`、`422 PRIMARY_METRIC_KEY_INVALID`、`409 ATTRIBUTION_SKILL_PACKAGE_INVALID` |
 | `PUT /api/evolution/targets/{id}` | 空间管理员或全局管理员修改；`404 TARGET_NOT_FOUND` |
 | `DELETE /api/evolution/targets/{id}` | 空间管理员或全局管理员删除；有进行中 run 时 `409 TARGET_IN_USE` |
 | `GET /api/evolution/targets/{id}/versions` | V2 路径为 `/api/workspaces/{wid}/evolution/targets/{id}/versions`；读取 tag 列表作为版本建议，不枚举分支或 commit；仓库不可用 → `422 REPO_INVALID` |
@@ -1065,7 +1065,8 @@ POST /runs（同步校验）
   { "id": "tgt-123", "objectType": "skill", "objectName": "deep-research",
     "repoUrl": "https://git.example.com/agent-skills.git", "subDir": "skills/deep-research",
     "defaultRef": "main", "attributionPackageId": "pkg-123",
-    "validationProjectId": "val-2026-q3", "testProjectId": "test-2026-q3", "enabled": true }
+    "validationProjectId": "val-2026-q3", "testProjectId": "test-2026-q3",
+    "primaryMetricKey": "resolved_rate", "enabled": true }
 ] }
 ```
 
@@ -1075,7 +1076,8 @@ POST /runs（同步校验）
 { "objectType": "skill", "objectName": "deep-research",
   "repoUrl": "https://git.example.com/agent-skills.git", "subDir": "skills/deep-research",
   "defaultRef": "main", "attributionPackageId": "pkg-123",
-  "validationProjectId": "val-2026-q3", "testProjectId": "test-2026-q3", "enabled": true }
+  "validationProjectId": "val-2026-q3", "testProjectId": "test-2026-q3",
+  "primaryMetricKey": "resolved_rate", "enabled": true }
 ```
 
 `POST` → `201` 创建后的 target；`PUT` → `200` 更新后的 target；`DELETE` → `204`。
@@ -1088,10 +1090,11 @@ POST /runs（同步校验）
 - target 不接受 push/eval URL 输入：provider 用 `repoUrl` + PAT 用户自动创建/定位 fork；prepare 把派生的 push 目标写入 run 快照，eval 直接复用同一目标，保证同源。凭据由部署级 `HE_GIT_PUSH_PROVIDER` / `HE_GIT_PUSH_TOKEN` 与 `GIT_ASKPASS` 提供，不写进 URL。
 - `subDir` 必须是仓库内相对路径，禁止 `..` 越界；保存时只校验格式，目录存在性在创建 run 的准备阶段校验。
 - `validationProjectId` / `testProjectId` 是不透明字符串，trim 后非空、不含空白或控制字符；超过 128 由请求校验返回 `422 VALIDATION_INVALID`（前端 `maxlength` 拦截），空值与空白/控制字符失败返回 `422 PROJECT_ID_INVALID`，`details` 为 `{ "field": "validationProjectId" | "testProjectId", "reason": "project_id_required" | "project_id_format" }`。本服务不校验工程是否存在。
+- `primaryMetricKey` 是平台 results 中的主指标 `metric_key`（如 `resolved_rate`），trim 后非空、不含空白或控制字符、最长 128；失败返回 `422 PRIMARY_METRIC_KEY_INVALID`，`details` 为 `{ "field": "primaryMetricKey", "reason": "metric_key_required" | "metric_key_format" }`。`HE_EVAL_MODE` 为真实平台时，它和两个模板 ID 缺一不可。
 - `REPO_INVALID` 的 `details` 只出现在 admin 的 create/update 响应：`{ "field": "objectName" | "repoUrl" | "subDir" | "defaultRef", "reason": "<见下表>", "command"?: { "name": "git ls-remote", "exitCode": 128 }, "output"?: "<有界脱敏输出>" }`。member 可读的 versions 接口继续返回空 `details`，不暴露命令输出。
 - `reason` 取值：`object_name_invalid`、`repo_url_format`、`repo_url_credentials`、`sub_dir_format`、`ref_format`、`ref_not_found`、`repo_unreachable`、`git_timeout`、`git_unavailable`。本地格式失败不带 `command`/`output`；远端失败在 `command` 给出命令名与退出码（超时/无法启动 git 时无退出码），`output` 为 git stderr 的末 40 行、最多 4096 字节，经运行日志同一链路脱敏并替换本机绝对路径，保留远端 URL 路径。
 - 示例：`{"error": {"code": "REPO_INVALID", "message": "repository or ref is invalid", "details": {"field": "defaultRef", "reason": "ref_not_found", "command": {"name": "git ls-remote", "exitCode": 2}, "output": "fatal: couldn't find remote ref v9.9.9"}}}`。
-- 创建 run 时把两个 project ID 从 target 快照到 `evolution_runs`；run API 响应不变。
+- 创建 run 时把两个 project ID、`primaryMetricKey` 与 `subDir` 快照到 `evolution_runs.eval_config`；run API 响应不变。
 - 只有 `enabled=true` 的配置出现在向导的“对象/版本”下拉里。
 - 配置页入口在向导 Step1 提示文案内的「配置页」链接（[08 §9.2](08-frontend-implementation.md)）。
 
@@ -1398,6 +1401,7 @@ FastAPI /api/openapi.json
 | `TARGET_IN_USE` | 409 | 删除配置时仍有进行中的 run |
 | `REPO_INVALID` | 422 | 仓库路径不存在/不是 git 仓库/ref 不存在 |
 | `PROJECT_ID_INVALID` | 422 | 验证集/测试集测试工程 ID 为空、超长或含空白/控制字符 |
+| `PRIMARY_METRIC_KEY_INVALID` | 422 | 主指标 key 为空、超长或含空白/控制字符 |
 | `ENGINE_INVALID` | 422 | `engineKey` 未注册或 `eval` 评测接入配置非法 |
 | `GIT_ERROR` | 500 | git 操作失败（clone/branch/commit；消息含 stderr 摘要） |
 | `UPSTREAM_NOT_AVAILABLE` | 409 | 上游查询接口未配置或未实现时的 pull 请求 |

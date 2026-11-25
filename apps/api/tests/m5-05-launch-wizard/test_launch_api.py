@@ -302,6 +302,7 @@ async def _seed_hits(app: Any, revision: str = "tag:v2.0.0") -> None:
                     "default_ref": "v2.0.0",
                     "validation_project_id": "val-deep-research",
                     "test_project_id": "test-deep-research",
+                    "primary_metric_key": "resolved_rate",
                     "enabled": True,
                     "created_at": NOW,
                     "updated_at": NOW,
@@ -315,6 +316,7 @@ async def _seed_hits(app: Any, revision: str = "tag:v2.0.0") -> None:
                     "default_ref": "v2.0.0",
                     "validation_project_id": "val-reported-object",
                     "test_project_id": "test-reported-object",
+                    "primary_metric_key": "resolved_rate",
                     "enabled": True,
                     "created_at": NOW,
                     "updated_at": NOW,
@@ -328,6 +330,7 @@ async def _seed_hits(app: Any, revision: str = "tag:v2.0.0") -> None:
                     "default_ref": "v1.0.0",
                     "validation_project_id": "val-web-search",
                     "test_project_id": "test-web-search",
+                    "primary_metric_key": "resolved_rate",
                     "enabled": True,
                     "created_at": NOW,
                     "updated_at": NOW,
@@ -341,6 +344,7 @@ async def _seed_hits(app: Any, revision: str = "tag:v2.0.0") -> None:
                     "default_ref": "v1.0.0",
                     "validation_project_id": "val-code-review",
                     "test_project_id": "test-code-review",
+                    "primary_metric_key": "resolved_rate",
                     "enabled": False,
                     "created_at": NOW,
                     "updated_at": NOW,
@@ -802,6 +806,7 @@ async def test_editing_unbound_target_keeps_main_remote_validation(
             "defaultRef",
             "validationProjectId",
             "testProjectId",
+            "primaryMetricKey",
             "enabled",
         )
     }
@@ -1060,6 +1065,10 @@ async def test_start_run_redacts_eval_secrets_before_snapshot(
             "token": "<redacted>",
             "options": {"api_key": "<redacted>"},
         },
+        "validationProjectId": "val-deep-research",
+        "testProjectId": "test-deep-research",
+        "primaryMetricKey": "resolved_rate",
+        "subDir": "skills/deep-research",
     }
     serialized = json.dumps(row["eval_config"])
     assert "sk-live-abc123" not in serialized

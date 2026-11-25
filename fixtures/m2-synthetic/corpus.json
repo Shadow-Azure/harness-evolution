@@ -470,6 +470,7 @@
       "defaultRef": "main",
       "validationProjectId": "val-synthetic-review",
       "testProjectId": "test-synthetic-review",
+      "primaryMetricKey": "resolved_rate",
       "enabled": true,
       "createdAt": "2026-10-24T09:00:00+08:00",
       "updatedAt": "2026-10-24T09:00:00+08:00"

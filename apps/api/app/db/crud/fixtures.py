@@ -465,6 +465,7 @@ async def _seed_corpus(database: Database, corpus: FixtureCorpus) -> CorpusSeedR
                     "default_ref": target.default_ref,
                     "validation_project_id": target.validation_project_id,
                     "test_project_id": target.test_project_id,
+                    "primary_metric_key": target.primary_metric_key,
                     "enabled": target.enabled,
                     "created_by": None,
                     "created_at": as_shanghai(target.created_at),

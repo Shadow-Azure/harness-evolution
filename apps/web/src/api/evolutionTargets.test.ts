@@ -28,6 +28,7 @@ const target = {
   defaultRef: "main",
   validationProjectId: "val-deep-research",
   testProjectId: "test-deep-research",
+  primaryMetricKey: "resolved_rate",
   enabled: true,
 };
 
@@ -86,6 +87,7 @@ describe("evolution target API", () => {
       defaultRef: target.defaultRef,
       validationProjectId: target.validationProjectId,
       testProjectId: target.testProjectId,
+      primaryMetricKey: target.primaryMetricKey,
       enabled: true,
     };
 
@@ -134,6 +136,7 @@ describe("evolution target API", () => {
       defaultRef: target.defaultRef,
       validationProjectId: target.validationProjectId,
       testProjectId: target.testProjectId,
+      primaryMetricKey: target.primaryMetricKey,
       enabled: false,
     };
 

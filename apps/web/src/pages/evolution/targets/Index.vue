@@ -79,6 +79,7 @@ function targetWrite(target: EvolutionTarget): EvolutionTargetWrite {
     defaultRef: target.defaultRef,
     validationProjectId: target.validationProjectId,
     testProjectId: target.testProjectId,
+    primaryMetricKey: target.primaryMetricKey,
     enabled: target.enabled,
   };
 }

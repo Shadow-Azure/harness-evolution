@@ -568,6 +568,7 @@ erDiagram
 | `default_ref` | `VARCHAR(128)` | NOT NULL | 默认基线分支或 tag（如 `main` / `v2.0.0`） |
 | `validation_project_id` | `VARCHAR(128)` | NOT NULL DEFAULT `''` | 验证集在外部测试平台的测试工程 ID；历史行为空串 |
 | `test_project_id` | `VARCHAR(128)` | NOT NULL DEFAULT `''` | 测试集在外部测试平台的测试工程 ID；历史行为空串 |
+| `primary_metric_key` | `VARCHAR(128)` | NOT NULL DEFAULT `''` | 平台 results 中用于逐轮比较与终评的主指标 key；历史行为空串，保存时由 API 要求非空 |
 | `enabled` | BOOLEAN | NOT NULL DEFAULT true | 关闭后不进入向导候选，也不领取绑定批次 |
 | `attribution_package_id` | `VARCHAR(64)` | NULL | 绑定的空间 Skill 包 ID；NULL 表示空间默认包或历史内联提示词。跨空间/不存在的包在保存时返回 409 |
 | `attribution_generation` | `VARCHAR(36)` | NULL | 绑定批次 ID；新建、换包或影响分析的字段变化时更新，后台按它领取批次 |
@@ -610,7 +611,7 @@ erDiagram
 | `cache_enabled` | BOOLEAN NOT NULL DEFAULT false | V2：是否复用缓存归因 |
 | `attribution_engine` | `VARCHAR(64)` NOT NULL | 创建 run 时的归因引擎标识；参与缓存键，后续全局配置变更不影响历史 run |
 | `engine_key` | `VARCHAR(64)` | 执行引擎选择键，默认 = `mode`；决定该 run 由哪个 `EvolutionEngine` 子类执行（[07 §5.4](07-backend-implementation.md)）；创建时固化 |
-| `eval_config` | JSON | 评测接入配置快照（上游传入，缺省为全局 `HE_EVAL_*`）；密钥不落库，只存 env 引用名（[07 §5.7](07-backend-implementation.md)） |
+| `eval_config` | JSON | 评测接入配置快照：provider 选择、`validationProjectId`/`testProjectId`/`primaryMetricKey`/`subDir`，以及创建时传入的 `baseUrl`/`apiKeyRef`；密钥值不落库，只存 env 引用名（[07 §5.7](07-backend-implementation.md)） |
 | `target_config_id` | `VARCHAR(36)` | FK → `evolution_targets.id` |
 | `target_type` | `VARCHAR(16)` | `skill` / `agent` / `knowledge`（来自 run 创建时选择的目标，字段名沿用 V1；knowledge 目前仅 API 启动） |
 | `target_name` | `VARCHAR(128)` | 目标名（字段名沿用 V1，不再表示 probe 来源） |
@@ -725,6 +726,20 @@ erDiagram
 
 > `patching` 覆盖 patch 生成 → 落盘 → candidate commit；`started_at` 在进入 `patching` 时写。patch 失败包括：生成失败（无输出 / 格式非法 / LLM 超时）、应用失败（上下文不匹配、文件冲突、`sub_dir` 不存在）、candidate commit 失败（hook / 脏工作区 / 权限）。可重试 → run `blocked`、`blocked_stage=patch`，本轮停在 `patching`；不可恢复 → 本轮 `failed`、run `failed`，`error_stage` 按子步骤记 `patch` 或 `commit`。
 > `deciding`：拿到评测结果后执行接纳/拒绝、fast-forward / 删 ref。`accepted` / `rejected` 是终态，`accepted` 布尔列与 `status` 同步。
+
+### 5.5.1 `evolution_evaluations` —— 运行级评测
+
+不属于任何迭代轮的评测：验证集基线、测试集基线与测试集终评。字段与 `evolution_rounds` 的评测列同构，`UNIQUE(run_id, kind)` 保证每种评测一行，`INDEX(eval_status, eval_next_poll_at)` 支持 poller 扫描；失败重试通过 `reset_run_eval_for_retry` 清空外部 ID 与结果后重新提交。
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `id` | `VARCHAR(36)` PK | ULID |
+| `run_id` | `VARCHAR(36)` FK → `evolution_runs.id` ON DELETE CASCADE | 归属 run |
+| `kind` | `VARCHAR(32)` | `validation_baseline` / `test_baseline` / `test_final` |
+| `eval_external_id` / `eval_status` / `eval_attempts` / `eval_next_poll_at` | — | 平台任务 ID、状态、尝试次数与下次轮询时间 |
+| `eval_started_at` / `eval_finished_at` / `eval_paused_seconds` | — | 观察时间与暂停扣除 |
+| `eval_score` / `eval_result` / `eval_error` | — | 主指标分数、原始指标项与脱敏错误 |
+| `created_at` | `DATETIME` NOT NULL | — |
 
 ### 5.6 `evolution_finals` —— 终评结果
 

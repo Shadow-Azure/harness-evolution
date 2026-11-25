@@ -47,7 +47,8 @@ type FormErrors = Partial<
     | "subDir"
     | "defaultRef"
     | "validationProjectId"
-    | "testProjectId",
+    | "testProjectId"
+    | "primaryMetricKey",
     string
   >
 >;
@@ -66,6 +67,7 @@ const form = reactive<EvolutionTargetWrite>({
   defaultRef: "",
   validationProjectId: "",
   testProjectId: "",
+  primaryMetricKey: "",
   enabled: true,
 });
 const errors = reactive<FormErrors>({});
@@ -152,6 +154,7 @@ function resetForm(): void {
   form.defaultRef = props.target?.defaultRef ?? "";
   form.validationProjectId = props.target?.validationProjectId ?? "";
   form.testProjectId = props.target?.testProjectId ?? "";
+  form.primaryMetricKey = props.target?.primaryMetricKey ?? "";
   form.enabled = props.target?.enabled ?? true;
   serverErrorDismissed.value = false;
   clearErrors();
@@ -196,6 +199,7 @@ function submit(): void {
   const defaultRef = form.defaultRef.trim();
   const validationProjectId = form.validationProjectId.trim();
   const testProjectId = form.testProjectId.trim();
+  const primaryMetricKey = form.primaryMetricKey.trim();
   if (!objectName) errors.objectName = "请填写对象名称";
   if (!repoUrl) errors.repoUrl = "请填写仓库地址";
   if (!subDir) errors.subDir = "请填写子目录";
@@ -210,6 +214,11 @@ function submit(): void {
   } else if (PROJECT_ID_INVALID(testProjectId)) {
     errors.testProjectId = "工程 ID 不能包含空格或控制字符";
   }
+  if (!primaryMetricKey) {
+    errors.primaryMetricKey = "请填写主指标 key";
+  } else if (PROJECT_ID_INVALID(primaryMetricKey)) {
+    errors.primaryMetricKey = "主指标 key 不能包含空格或控制字符";
+  }
   if (Object.keys(errors).length > 0) return;
   emit("submit", {
     objectType: form.objectType,
@@ -219,6 +228,7 @@ function submit(): void {
     defaultRef,
     validationProjectId,
     testProjectId,
+    primaryMetricKey,
     enabled: form.enabled,
     attributionPackageId: form.attributionPackageId,
   });
@@ -506,6 +516,35 @@ watch(
         <p class="field-help project-id-help">
           验证集与测试集分别对应外部测试平台的测试工程 ID；只保存标识，不在此处校验工程是否存在。
         </p>
+
+        <ElFormItem
+          label="主指标 key"
+          required
+        >
+          <ElInput
+            v-model="form.primaryMetricKey"
+            :aria-describedby="fieldDescribedBy('primaryMetricKey')"
+            :aria-invalid="fieldAriaInvalid('primaryMetricKey')"
+            maxlength="128"
+            name="primaryMetricKey"
+            placeholder="如 resolved_rate"
+            @input="onFieldInput('primaryMetricKey', $event)"
+          />
+          <p class="field-help">
+            对比验证集与测试集时使用的平台指标 metric_key；按平台给出的方向比较，候选必须严格更优才接纳。
+          </p>
+          <p
+            v-if="hasFieldError('primaryMetricKey')"
+            id="target-primaryMetricKey-error"
+            class="field-error"
+          >
+            {{ fieldMessage("primaryMetricKey") }}
+            <span
+              v-if="fieldSuggestion('primaryMetricKey')"
+              class="field-suggestion"
+            >{{ fieldSuggestion("primaryMetricKey") }}</span>
+          </p>
+        </ElFormItem>
 
         <ElFormItem label="启用">
           <div class="switch-row">

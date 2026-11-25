@@ -87,7 +87,7 @@ def _settings(tmp_path: Path, base_url: str) -> Settings:
         db_dialect=DatabaseDialect.SQLITE,
         data_dir=tmp_path / "db",
         jwt_secret=SecretStr("m12-03-e2e-secret"),
-        eval_mode="http",
+        eval_mode="ai-eval-platform",
         eval_base_url=base_url,
         patch_source_mode="minimal-config",
     )
@@ -306,14 +306,18 @@ async def _drive_accept_loop(
 ) -> dict[str, Any]:
     """Run the whole accept loop end to end and collect traceable evidence."""
     _database, repository, probes, bare, _seed, base_commit = loop_state
-    platform = StubEvalPlatform(status_sequence=["completed"])
+    platform = StubEvalPlatform()
     server, stub_url = platform.build()
     env = {API_KEY_REF: "stub-secret-value"}
     eval_config = {
-        "mode": "http",
+        "mode": "ai-eval-platform",
         "baseUrl": stub_url,
         "apiKeyRef": API_KEY_REF,
         "patchMode": "minimal-config",
+        "validationProjectId": "tpl-validation",
+        "testProjectId": "tpl-test",
+        "primaryMetricKey": "resolved_rate",
+        "subDir": "skills/deep-research",
     }
     try:
         workspaces = GitWorkspaceManager(
@@ -345,7 +349,12 @@ async def _drive_accept_loop(
         candidate_commit = round_.candidate_commit
         assert candidate_ref and candidate_commit
         assert round_.push_status == "succeeded"
-        assert round_.eval_external_id == "eval-e2e-1"
+        candidate_launch = next(
+            run_id
+            for run_id, launch in platform.launches.items()
+            if launch["lineage"].get("evolutionRoundId") == ROUND_ID
+        )
+        assert round_.eval_external_id == candidate_launch
 
         # The candidate tag really exists on the bare remote at this commit.
         assert git(bare, "rev-parse", f"refs/tags/{candidate_ref}") == candidate_commit
@@ -417,7 +426,14 @@ async def _drive_accept_loop(
         remote_tags = git(bare, "tag", "--list", f"{candidate_ref}")
         assert remote_tags == ""
 
-        finalize = EvolutionFinalizeService(repository, workspaces)
+        finalize = EvolutionFinalizeService(
+            repository,
+            workspaces,
+            eval_submitter=submitter,
+        )
+        pending = await finalize.handle(_job("evolution_finalize", {"runId": RUN_ID}))
+        assert pending["finalized"] is False
+        await poller.run_once()
         finished = await finalize.handle(_job("evolution_finalize", {"runId": RUN_ID}))
         assert finished["finalized"] is True
         run = await repository.get_run(RUN_ID)
@@ -448,6 +464,7 @@ async def _drive_accept_loop(
             },
             "finalVerdict": final_row.verdict,
             "evalReceivedBodies": platform.received_bodies,
+            "evalReceivedIdempotency": platform.received_idempotency,
             "evalReceivedAuth": platform.received_auth,
         }
         _evidence(evidence_out, evidence)
@@ -471,10 +488,18 @@ async def test_real_loop_accept_path_is_fully_traceable(
     assert evidence["remoteRefs"]["runBranch"] == evidence["finalCommit"]
     assert evidence["remoteRefs"]["candidateTag"] is None
     assert evidence["evalResult"]["externalVerdict"] == "accept"
-    assert evidence["evalReceivedAuth"] == ["Bearer stub-secret-value"]
-    body = evidence["evalReceivedBodies"][0]
-    assert body["idempotencyKey"] == f"{RUN_ID}:1:" + evidence["candidateCommit"]
-    assert body["ref"] == evidence["candidateRef"]
+    assert set(evidence["evalReceivedAuth"]) == {"Bearer stub-secret-value"}
+    candidate_index = next(
+        index
+        for index, body in enumerate(evidence["evalReceivedBodies"])
+        if (body.get("lineage") or {}).get("evolutionRoundId") == ROUND_ID
+    )
+    assert evidence["evalReceivedIdempotency"][candidate_index] == (
+        f"{RUN_ID}:1:{evidence['candidateCommit']}:1"
+    )
+    candidate_body = evidence["evalReceivedBodies"][candidate_index]
+    assert candidate_body["asset_override"]["commit"] == evidence["candidateCommit"]
+    assert candidate_body["asset_override"]["ref"] == evidence["candidateRef"]
 
 
 async def test_real_loop_reject_path_keeps_run_branch_untouched(
@@ -483,22 +508,18 @@ async def test_real_loop_reject_path_keeps_run_branch_untouched(
 ) -> None:
     """Rejection deletes the candidate ref and never rewrites the run branch."""
     _database, repository, probes, bare, _seed, base_commit = loop_state
-    platform = StubEvalPlatform(
-        status_sequence=["completed"],
-        result_payload={
-            "currentScore": 82.0,
-            "candidateScore": 79.0,
-            "externalVerdict": "reject",
-            "metrics": [],
-        },
-    )
+    platform = StubEvalPlatform(candidate_score=79.0)
     server, stub_url = platform.build()
     env = {API_KEY_REF: "stub-secret-value"}
     eval_config = {
-        "mode": "http",
+        "mode": "ai-eval-platform",
         "baseUrl": stub_url,
         "apiKeyRef": API_KEY_REF,
         "patchMode": "minimal-config",
+        "validationProjectId": "tpl-validation",
+        "testProjectId": "tpl-test",
+        "primaryMetricKey": "resolved_rate",
+        "subDir": "skills/deep-research",
     }
     try:
         workspaces = GitWorkspaceManager(
@@ -560,7 +581,14 @@ async def test_real_loop_reject_path_keeps_run_branch_untouched(
         assert git(bare, "tag", "--list", candidate_ref) == ""
         assert git(bare, "rev-parse", f"refs/heads/{run.branch_name}") == base_commit
 
-        finalize = EvolutionFinalizeService(repository, workspaces)
+        finalize = EvolutionFinalizeService(
+            repository,
+            workspaces,
+            eval_submitter=submitter,
+        )
+        pending = await finalize.handle(_job("evolution_finalize", {"runId": RUN_ID}))
+        assert pending["finalized"] is False
+        await poller.run_once()
         finished = await finalize.handle(_job("evolution_finalize", {"runId": RUN_ID}))
         assert finished["finalized"] is True
         run = await repository.get_run(RUN_ID)
@@ -627,10 +655,14 @@ async def _agent_edit_environment(
     _database, repository, probes, bare, _seed, base_commit = loop_state
     env = {API_KEY_REF: "stub-secret-value"}
     eval_config = {
-        "mode": "http",
+        "mode": "ai-eval-platform",
         "baseUrl": stub_url,
         "apiKeyRef": API_KEY_REF,
         "patchMode": "agent-edit",
+        "validationProjectId": "tpl-validation",
+        "testProjectId": "tpl-test",
+        "primaryMetricKey": "resolved_rate",
+        "subDir": "skills/deep-research",
     }
     workspaces = GitWorkspaceManager(
         repos_root=tmp_path / "repos",
@@ -669,7 +701,7 @@ async def test_real_loop_agent_edit_commits_a_multi_file_candidate(
 ) -> None:
     """One EditPlan becomes a real two-file candidate with intent and diff events."""
     _database, repository, _probes, bare, _seed, _base = loop_state
-    platform = StubEvalPlatform(status_sequence=["completed"])
+    platform = StubEvalPlatform()
     server, stub_url = platform.build()
     try:
         advance, events, agent = await _agent_edit_environment(tmp_path, loop_state, stub_url)
@@ -766,7 +798,7 @@ async def test_agent_edit_provider_failure_records_the_call_before_run_failure(
 ) -> None:
     """One provider failure produces one error call, then the run failure."""
     _database, repository, _probes, _bare, _seed, _base = loop_state
-    platform = StubEvalPlatform(status_sequence=["completed"])
+    platform = StubEvalPlatform()
     server, stub_url = platform.build()
     try:
         advance, events, _agent = await _agent_edit_environment(
@@ -813,7 +845,7 @@ async def test_agent_edit_apply_failure_still_records_the_provider_call(
 ) -> None:
     """A plan that cannot apply is one ok call followed by the run failure."""
     _database, _repository, _probes, _bare, _seed, _base = loop_state
-    platform = StubEvalPlatform(status_sequence=["completed"])
+    platform = StubEvalPlatform()
     server, stub_url = platform.build()
     bad_plan = {
         "summary": "target a missing anchor",

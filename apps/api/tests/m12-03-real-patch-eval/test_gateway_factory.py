@@ -1,21 +1,23 @@
-"""Mode-driven evaluation gateway selection with env fallback."""
+"""Registry-driven evaluation gateway selection with env fallback."""
 
 from __future__ import annotations
 
 from typing import Any
 
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from app.config import Settings
 from app.service.evolution.engine.contracts import (
-    ConfigError,
     EvalGatewayConfig,
     EvalGatewayConfigError,
-    FakeEvalGateway,
 )
 from app.service.evolution.gateway_factory import build_eval_gateway_factory
-from app.third_party_api.eval_gateway.http import HttpEvalGateway
+from app.third_party_api.eval_gateway.ai_eval_platform import (
+    AiEvalPlatformGateway,
+)
+from app.third_party_api.eval_gateway.factory import EVAL_GATEWAY_MODES
+from app.third_party_api.eval_gateway.fake import FakeEvalGateway
 
 
 def _settings(**overrides: Any) -> Settings:
@@ -23,6 +25,17 @@ def _settings(**overrides: Any) -> Settings:
     values: dict[str, Any] = {"jwt_secret": SecretStr("m12-03-gateway-secret")}
     values.update(overrides)
     return Settings(**values)
+
+
+def test_registry_lists_the_builtin_providers() -> None:
+    """The registry is the single source for legal HE_EVAL_MODE values."""
+    assert EVAL_GATEWAY_MODES == ("fake", "ai-eval-platform")
+
+
+def test_unknown_env_mode_fails_startup_validation() -> None:
+    """An unknown HE_EVAL_MODE fails settings construction, not a later call."""
+    with pytest.raises(ValidationError, match="HE_EVAL_MODE"):
+        _settings(eval_mode="http")
 
 
 def test_factory_defaults_to_the_fake_gateway() -> None:
@@ -34,125 +47,105 @@ def test_factory_defaults_to_the_fake_gateway() -> None:
     assert isinstance(gateway, FakeEvalGateway)
 
 
-def test_factory_selects_http_from_run_snapshot() -> None:
+def test_factory_selects_the_registered_platform_from_the_run_snapshot() -> None:
     """The frozen run snapshot mode wins over the process-wide default."""
     factory = build_eval_gateway_factory(_settings())
 
     gateway = factory(
-        EvalGatewayConfig.from_mapping({"mode": "http", "baseUrl": "http://127.0.0.1:9"}),
+        EvalGatewayConfig.from_mapping(
+            {"mode": "ai-eval-platform", "baseUrl": "http://127.0.0.1:9"},
+        ),
     )
 
-    assert type(gateway).__name__ == "HttpEvalGateway"
+    assert isinstance(gateway, AiEvalPlatformGateway)
 
 
 def test_factory_falls_back_to_env_mode_and_base_url() -> None:
     """Global HE_EVAL_* settings opt runs in without per-run config."""
     factory = build_eval_gateway_factory(
-        _settings(eval_mode="http", eval_base_url="http://127.0.0.1:9/"),
+        _settings(
+            eval_mode="ai-eval-platform",
+            eval_base_url="http://127.0.0.1:9/",
+        ),
     )
 
     gateway = factory(EvalGatewayConfig.from_mapping({}))
 
-    assert type(gateway).__name__ == "HttpEvalGateway"
-    assert isinstance(gateway, HttpEvalGateway)
+    assert isinstance(gateway, AiEvalPlatformGateway)
     assert gateway.config["baseUrl"] == "http://127.0.0.1:9"
 
 
-def test_http_mode_without_base_url_fails_explicitly() -> None:
+def test_platform_mode_without_base_url_fails_explicitly() -> None:
     """Missing baseUrl is a configuration error, never a silent fake fallback."""
-    factory = build_eval_gateway_factory(_settings(eval_mode="http"))
+    factory = build_eval_gateway_factory(_settings(eval_mode="ai-eval-platform"))
 
-    with pytest.raises(EvalGatewayConfigError, match="HE_EVAL_BASE_URL"):
-        factory(EvalGatewayConfig.from_mapping({"mode": "http"}))
+    with pytest.raises(EvalGatewayConfigError, match="baseUrl"):
+        factory(EvalGatewayConfig.from_mapping({"mode": "ai-eval-platform"}))
 
 
 def test_run_snapshot_base_url_overrides_env() -> None:
     """The run snapshot baseUrl wins over the global env value."""
     factory = build_eval_gateway_factory(
-        _settings(eval_mode="http", eval_base_url="http://env.invalid"),
+        _settings(
+            eval_mode="ai-eval-platform",
+            eval_base_url="http://env.invalid",
+        ),
     )
 
     gateway = factory(
-        EvalGatewayConfig.from_mapping({"mode": "http", "baseUrl": "http://run.invalid"}),
+        EvalGatewayConfig.from_mapping(
+            {"mode": "ai-eval-platform", "baseUrl": "http://run.invalid"},
+        ),
     )
 
     assert gateway.config["baseUrl"] == "http://run.invalid"
 
 
-def test_api_key_ref_is_an_indirect_env_reference() -> None:
-    """apiKeyRef names an env var; the secret itself never enters the config."""
-    factory = build_eval_gateway_factory(_settings())
+def test_platform_base_url_rejects_embedded_credentials() -> None:
+    """A baseUrl with credentials or a query is a configuration error."""
+    factory = build_eval_gateway_factory(_settings(eval_mode="ai-eval-platform"))
+
+    with pytest.raises(EvalGatewayConfigError, match="without credentials"):
+        factory(
+            EvalGatewayConfig.from_mapping(
+                {
+                    "mode": "ai-eval-platform",
+                    "baseUrl": "https://user:secret@platform.invalid/api?x=1",
+                },
+            ),
+        )
+
+
+def test_api_key_ref_resolves_from_the_environment() -> None:
+    """The snapshot carries the env var name; the factory resolves its value."""
+    factory = build_eval_gateway_factory(_settings(eval_mode="ai-eval-platform"))
 
     gateway = factory(
         EvalGatewayConfig.from_mapping(
             {
-                "mode": "http",
-                "baseUrl": "http://127.0.0.1:9",
+                "mode": "ai-eval-platform",
+                "baseUrl": "http://run.invalid",
                 "apiKeyRef": "HE_EVAL_API_KEY",
             },
         ),
-        env={"HE_EVAL_API_KEY": "stub-secret"},
+        env={"HE_EVAL_API_KEY": "stub-token"},
     )
 
-    assert isinstance(gateway, HttpEvalGateway)
-    assert gateway.auth_header == {"Authorization": "Bearer stub-secret"}
+    assert gateway._auth_header == {"Authorization": "Bearer stub-token"}  # type: ignore[attr-defined]
 
 
-def test_missing_api_key_env_fails_explicitly() -> None:
-    """A dangling apiKeyRef is a configuration error, not an anonymous call."""
-    factory = build_eval_gateway_factory(_settings())
+def test_dangling_api_key_ref_fails_explicitly() -> None:
+    """A snapshot pointing at an unset variable blocks instead of unauth calls."""
+    factory = build_eval_gateway_factory(_settings(eval_mode="ai-eval-platform"))
 
-    with pytest.raises(EvalGatewayConfigError, match="HE_EVAL_API_KEY"):
+    with pytest.raises(EvalGatewayConfigError, match="apiKeyRef"):
         factory(
             EvalGatewayConfig.from_mapping(
                 {
-                    "mode": "http",
-                    "baseUrl": "http://127.0.0.1:9",
-                    "apiKeyRef": "HE_EVAL_API_KEY",
+                    "mode": "ai-eval-platform",
+                    "baseUrl": "http://run.invalid",
+                    "apiKeyRef": "MISSING_EVAL_KEY",
                 },
             ),
             env={},
         )
-
-
-def test_settings_api_key_is_used_without_api_key_ref() -> None:
-    """HE_EVAL_API_KEY works alone for deployments that only inject the secret."""
-    factory = build_eval_gateway_factory(_settings(eval_api_key=SecretStr("env-secret")))
-
-    gateway = factory(
-        EvalGatewayConfig.from_mapping({"mode": "http", "baseUrl": "http://127.0.0.1:9"}),
-    )
-
-    assert isinstance(gateway, HttpEvalGateway)
-    assert gateway.auth_header == {"Authorization": "Bearer env-secret"}
-
-
-def test_unknown_mode_fails_explicitly() -> None:
-    """Unknown gateway modes fail loudly instead of silently degrading."""
-    factory = build_eval_gateway_factory(_settings())
-
-    with pytest.raises(ConfigError, match="mode"):
-        factory(EvalGatewayConfig.from_mapping({"mode": "grpc"}))
-    with pytest.raises(ConfigError, match="mode"):
-        build_eval_gateway_factory(_settings(), fallback_mode="grpc")(
-            EvalGatewayConfig.from_mapping({}),
-        )
-
-
-def test_settings_reject_unknown_eval_mode() -> None:
-    """The env-backed default mode only accepts registered gateways."""
-    with pytest.raises(Exception):
-        Settings(jwt_secret=SecretStr("m12-03-gateway-secret"), eval_mode="grpc")
-
-
-def test_extra_config_keys_do_not_change_the_fake_gateway() -> None:
-    """Snapshot keys added for http selection keep the fake behavior intact."""
-    factory = build_eval_gateway_factory(_settings())
-
-    gateway = factory(
-        EvalGatewayConfig.from_mapping(
-            {"mode": "fake", "baseUrl": "http://ignored.invalid", "currentScore": 70.0},
-        ),
-    )
-
-    assert isinstance(gateway, FakeEvalGateway)

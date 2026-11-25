@@ -11,13 +11,14 @@ from pydantic import SecretStr
 from app.config import DatabaseDialect, Settings
 from app.db.models.evolution import EvolutionRunRecord
 from app.main import create_app
-from app.service.evolution.engine.contracts import FakeEvalGateway
 from app.service.evolution.gateway_factory import build_eval_gateway_factory
 from app.service.evolution.patch_source import (
     MinimalConfigPatchSource,
     PlaceholderPatchSource,
     default_patch_source_factory,
 )
+from app.third_party_api.eval_gateway.ai_eval_platform import AiEvalPlatformGateway
+from app.third_party_api.eval_gateway.fake import FakeEvalGateway
 
 NOW = datetime(2026, 11, 17, 10, 0, tzinfo=UTC)
 
@@ -92,19 +93,19 @@ def test_create_app_keeps_default_seams_without_configuration(tmp_path: Path) ->
 
 def test_create_app_respects_configured_modes(tmp_path: Path) -> None:
     """Settings-configured modes flip the composition seams without run config."""
-    from app.service.evolution.engine.contracts import EvalGatewayConfig, FakeEvalGateway
+    from app.service.evolution.engine.contracts import EvalGatewayConfig
 
     app = create_app(
         _settings(
             tmp_path,
-            eval_mode="http",
+            eval_mode="ai-eval-platform",
             eval_base_url="http://127.0.0.1:9",
             patch_source_mode="minimal-config",
         ),
     )
 
     gateway = app.state.evolution_gateway_factory(EvalGatewayConfig.from_mapping({}))
-    assert type(gateway).__name__ == "HttpEvalGateway"
+    assert isinstance(gateway, AiEvalPlatformGateway)
     patch_source = app.state.evolution_patch_source_factory(_run({}))
     assert isinstance(patch_source, MinimalConfigPatchSource)
     # Distinguishing assertion: under http settings a run snapshot can still
@@ -126,17 +127,17 @@ def test_run_snapshot_mode_selects_http_gateway(tmp_path: Path) -> None:
 
     gateway = factory(
         EvalGatewayConfig.from_mapping(
-            {"mode": "http", "baseUrl": "http://127.0.0.1:9"},
+            {"mode": "ai-eval-platform", "baseUrl": "http://127.0.0.1:9"},
         ),
     )
 
-    assert type(gateway).__name__ == "HttpEvalGateway"
+    assert isinstance(gateway, AiEvalPlatformGateway)
     engine = _EngineFactory.for_run(
-        _run({"mode": "http", "baseUrl": "http://127.0.0.1:9"}),
+        _run({"mode": "ai-eval-platform", "baseUrl": "http://127.0.0.1:9"}),
         EngineDeps(reads=None, writes=None, gateway_factory=factory),  # type: ignore[arg-type]
     )
     assert isinstance(engine, EvolutionEngine)
-    assert type(engine.gateway()).__name__ == "HttpEvalGateway"
+    assert isinstance(engine.gateway(), AiEvalPlatformGateway)
 
 
 def test_minimal_config_mode_selects_the_config_source(tmp_path: Path) -> None:

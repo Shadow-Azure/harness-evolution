@@ -168,6 +168,16 @@ function toggle(target: EvolutionTarget): void {
                   {{ target.testProjectId || "未填写" }}
                 </span>
               </div>
+              <div class="project-id-row">
+                <span class="project-id-label">主指标</span>
+                <span
+                  class="project-id-value"
+                  data-testid="target-primary-metric"
+                  :title="target.primaryMetricKey || '未填写'"
+                >
+                  {{ target.primaryMetricKey || "未填写" }}
+                </span>
+              </div>
             </td>
             <td>
               <span

@@ -15,6 +15,7 @@ const target = (overrides: Partial<EvolutionTarget> = {}): EvolutionTarget => ({
   defaultRef: "main",
   validationProjectId: "val-deep-research",
   testProjectId: "test-deep-research",
+  primaryMetricKey: "resolved_rate",
   enabled: true,
   ...overrides,
 });
@@ -65,6 +66,19 @@ describe("TargetTable", () => {
       expect(wrapper.get(".binding-failure").text()).toContain(message);
     },
   );
+
+  it("shows the configured primary metric key", () => {
+    const wrapper = mount(TargetTable, {
+      props: {
+        targets: [target()],
+        canWrite: false,
+      },
+    });
+
+    expect(wrapper.get('[data-testid="target-primary-metric"]').text()).toBe(
+      "resolved_rate",
+    );
+  });
 
   it("shows an explicit empty project value for historical rows", () => {
     const wrapper = mount(TargetTable, {

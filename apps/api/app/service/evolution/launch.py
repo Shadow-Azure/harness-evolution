@@ -85,6 +85,7 @@ class EvolutionLaunchService:
         *,
         reports: AttributionRepository | None = None,
         attribution_skills: LaunchAttributionSkillResolver | None = None,
+        default_eval_mode: str = "fake",
     ) -> None:
         """Bind launch collaborators for both run modes."""
         self._targets = targets
@@ -95,6 +96,7 @@ class EvolutionLaunchService:
         self._attribution_skills = attribution_skills
         self._reports = reports
         self._resolver = resolver
+        self._default_eval_mode = default_eval_mode
 
     async def request_run(
         self,
@@ -295,7 +297,11 @@ class EvolutionLaunchService:
             "workspace_id": config.workspace_id,
             "mode": body.mode,
             "engine_key": body.engine_key or body.mode,
-            "eval_config": _snapshot_eval(body.eval),
+            "eval_config": _snapshot_eval(
+                body.eval,
+                config=config,
+                default_mode=self._default_eval_mode,
+            ),
             "potential_policy": {
                 **policy.snapshot(),
                 **({"latestReportsOnly": True} if latest_only else {}),
@@ -350,22 +356,51 @@ class EvolutionLaunchService:
         )
 
 
-def _snapshot_eval(eval_config: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Redact credential fields from eval config before the run snapshot is durable.
+def _snapshot_eval(
+    eval_config: Mapping[str, Any] | None,
+    *,
+    config: EvolutionTargetRecord,
+    default_mode: str,
+) -> dict[str, Any]:
+    """Redact credentials and freeze the target identity into eval config.
 
     Args:
         eval_config: Credential-bearing eval selection from the wizard body.
+        config: Enabled target configuration backing the launch.
+        default_mode: Effective gateway mode when the wizard sends no override.
 
     Returns:
-        The snapshot dictionary with the same redaction applied to job payloads.
+        The snapshot dictionary with target template IDs, metric key and
+        subdirectory, plus the wizard overrides that win over target defaults.
 
     The ``apiKeyRef`` value is an environment-variable NAME, not a credential:
-    the blanket credential-key redaction would erase it and leave the http
-    gateway pointing at an unset variable at submit time, so the original name
-    is restored after the pass.
+    the blanket credential-key redaction would erase it and leave the gateway
+    pointing at an unset variable at submit time, so the original name is
+    restored after the pass.
     """
     source = dict(eval_config or {})
-    sanitized = sanitize_job_payload(source)
+    mode = source.get("mode") or default_mode
+    if mode != "fake":
+        for field, value in (
+            ("validationProjectId", config.validation_project_id),
+            ("testProjectId", config.test_project_id),
+            ("primaryMetricKey", config.primary_metric_key),
+        ):
+            if not value.strip():
+                raise AppError(
+                    status_code=422,
+                    code=ErrorCode.VALIDATION_INVALID,
+                    message=f"real evaluation requires target field {field}",
+                    details={"field": field},
+                )
+    merged = {
+        "validationProjectId": config.validation_project_id,
+        "testProjectId": config.test_project_id,
+        "primaryMetricKey": config.primary_metric_key,
+        "subDir": config.sub_dir,
+        **source,
+    }
+    sanitized = sanitize_job_payload(merged)
     if not isinstance(sanitized, dict):
         return {}
     snapshot = {str(key): value for key, value in sanitized.items()}
@@ -373,8 +408,6 @@ def _snapshot_eval(eval_config: Mapping[str, Any] | None) -> dict[str, Any]:
     if isinstance(ref, str) and ref.strip():
         snapshot["apiKeyRef"] = ref.strip()
     else:
-        # Nothing to reference: drop the redacted placeholder so the gateway
-        # falls back to the env-provided key instead of an unset literal.
         snapshot.pop("apiKeyRef", None)
     return snapshot
 
