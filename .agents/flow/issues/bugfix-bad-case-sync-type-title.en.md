@@ -18,6 +18,7 @@ scope:
   - apps/api/app/third_party_api/bad_case_query/models.py
   - apps/api/tests/m6-16-bad-case-catalog-sync/**
   - plans/fullstack-design/12-bad-case-catalog-sync.md
+  - plans/2026-11-25-pr606-review.md
 adr: []
 github:
   number: 600
