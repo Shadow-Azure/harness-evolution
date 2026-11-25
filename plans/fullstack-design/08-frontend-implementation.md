@@ -867,7 +867,7 @@ RunLogPanel.vue
 - 页面先处理 `preparing`：显示“正在关联 Session / 筛选潜在 / 生成归因 / 聚类”（V2 的 `cluster_only` 也执行 0–4 步，见 [07 §5.11](07-backend-implementation.md)），轮询 `GET /runs/{rid}` 到 `status=completed`，再拉 `steps/clusters`。
 - 顶部 banner："仅聚类分析：未执行 patch 生成与评测迭代" + 「以这批问题启动自进化 →」。
 - 输入概况：关联 Session / 潜在 bad case / 聚类数。
-- 聚类列表：每簇展示分类、来源 bad case 数、严重程度，簇内来源 bad case 表（可展开，ID 可深链错误详情）。
+- 聚类列表：每簇展示分类、来源 bad case 数、严重程度，簇内来源 bad case 表（可展开，ID 可深链错误详情）。簇标题由 `steps/clusters` 的 `description` 单行截断生成，描述是对成员归因结论的根因归纳；降级时为 `{type} 类问题 · {N} 条归因（聚类降级）`，两者都不再取第一个成员 bad case 标题。
 - 来源 bad case 的深链由页面并行读取 `steps/attribution` 得到 `badCaseId → sessionId` 映射后拼出 `/workspaces/{wid}/sessions/{sid}/errors?case={badCaseId}&tab=attr`；不在 `steps/clusters` 契约里新增 session 字段。
 - 数据来自 `mode=cluster_only` 的 run（`GET /runs/{rid}/steps/clusters`）；「启动自进化」用同一条件再创建 `mode=full` 的 run（同样 202）。
 - 状态口径由后端给：`cluster_only` 的可见进度是 5 步，完成态 `progress.stageLabel` 为「第 5/5 步 · 聚类完成」，不出现迭代轮次；页面用中文状态徽标，不直接渲染 `completed` 等原始枚举。

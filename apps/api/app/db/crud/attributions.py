@@ -208,6 +208,16 @@ class KnowledgeEvidenceRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class ClusterableProbe:
+    """One included, attributed probe as the grouping layer consumes it."""
+
+    probe_id: str
+    attribute_type: str
+    bad_case_id: str
+    probe_description: str
+
+
+@dataclass(frozen=True, slots=True)
 class AttributionRecord:
     """One case-to-probe attribution joined with its probe detail."""
 
@@ -558,18 +568,20 @@ class AttributionRepository:
     async def list_clusterable_probes(
         self,
         run_id: str,
-    ) -> tuple[tuple[str, str, str], ...]:
-        """Return ``(probe_id, attribute_type, bad_case_id)`` for attributed rows.
+    ) -> tuple[ClusterableProbe, ...]:
+        """Return the included, attributed probes with their conclusion text.
 
         Clustering only consumes included candidates whose probe conclusion is
         ``attributed``; ``non_target`` rows stay visible in attribution but never
-        reach a cluster.
+        reach a cluster. ``probe_description`` is the attribution conclusion, the
+        only grouping signal the clustering layer reads.
         """
         statement = (
             select(
                 evolution_run_candidates.c.probe_id,
                 probe_reports.c.attribute_type,
                 evolution_run_candidates.c.bad_case_id,
+                probe_reports.c.probe_description,
             )
             .select_from(
                 evolution_run_candidates.join(
@@ -587,7 +599,12 @@ class AttributionRepository:
         async with self._database.session() as session:
             rows = (await session.execute(statement)).all()
         return tuple(
-            (str(row[0]), str(row[1]), str(row[2]))
+            ClusterableProbe(
+                probe_id=str(row[0]),
+                attribute_type=str(row[1]),
+                bad_case_id=str(row[2]),
+                probe_description=str(row[3] or ""),
+            )
             for row in rows
             if row[0] is not None and row[1] is not None
         )

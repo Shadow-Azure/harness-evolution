@@ -198,6 +198,7 @@ describe("run detail conformance", () => {
     ]) {
       expect(clusters.text()).toContain(heading);
     }
+    expect(clusters.text()).toContain("按归因根因聚类");
     expect(clusters.text()).toContain("读取越界");
     expect(clusters.text()).toContain("deep-research");
     expect(clusters.text()).toContain("错误");
