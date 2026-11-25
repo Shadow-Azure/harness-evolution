@@ -21,26 +21,33 @@ function config(
   return { items, assignedBadCaseCount };
 }
 
-async function mountTab(canManage = true): Promise<VueWrapper> {
+function newClient(gcTime = 0): QueryClient {
+  return new QueryClient({
+    defaultOptions: { queries: { gcTime, retry: false } },
+  });
+}
+
+async function mountTab(
+  canManage = true,
+  client: QueryClient = newClient(),
+  wid: string = workspaceId,
+): Promise<VueWrapper> {
   const wrapper = mount(BadCaseLabelsTab, {
-    props: { workspaceId, canManage },
+    props: { workspaceId: wid, canManage },
     global: {
       components: elementPlusComponents,
-      plugins: [
-        [
-          VueQueryPlugin,
-          {
-            queryClient: new QueryClient({
-              defaultOptions: { queries: { gcTime: 0, retry: false } },
-            }),
-          },
-        ],
-      ],
+      plugins: [[VueQueryPlugin, { queryClient: client }]],
     },
   });
   wrappers.push(wrapper);
   await flushPromises();
   return wrapper;
+}
+
+function chipLabels(wrapper: VueWrapper): string[] {
+  return wrapper
+    .findAll("[data-testid='bad-case-label-chips'] .chip")
+    .map((chip) => chip.text().replace("×", "").trim());
 }
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -152,6 +159,53 @@ describe("Badcase 类型 label management tab", () => {
     const wrapper = await mountTab();
 
     expect(wrapper.get("[data-testid='no-bad-case-labels']").text()).toContain(
+      "还没有配置 label",
+    );
+  });
+
+  it("keeps the save button disabled until a change is made", async () => {
+    server.use(
+      http.get(`${base}/bad-case-labels`, () =>
+        HttpResponse.json(config(["review"], 2)),
+      ),
+    );
+    const wrapper = await mountTab();
+    const save = () => wrapper.get("[data-testid='save-bad-case-labels']");
+
+    expect(save().attributes("disabled")).toBeDefined();
+
+    await wrapper.get("[data-testid='bad-case-label-input']").setValue("tool-use");
+    await wrapper.get("[data-testid='add-bad-case-label']").trigger("click");
+    await flushPromises();
+    expect(save().attributes("disabled")).toBeUndefined();
+
+    await wrapper.get("[aria-label='移除 tool-use']").trigger("click");
+    await flushPromises();
+    expect(save().attributes("disabled")).toBeDefined();
+  });
+
+  it("discards unsaved edits when the tab is left and re-entered", async () => {
+    server.use(
+      http.get(`${base}/bad-case-labels`, () => HttpResponse.json(config([]))),
+    );
+    const client = newClient(30_000);
+
+    const first = await mountTab(true, client);
+    await first.get("[data-testid='bad-case-label-input']").setValue("review");
+    await first.get("[data-testid='add-bad-case-label']").trigger("click");
+    await flushPromises();
+    expect(chipLabels(first)).toEqual(["review"]);
+    expect(first.find("[data-testid='bad-case-label-dirty']").exists()).toBe(true);
+
+    // Leaving the tab unmounts the editor; coming back must hydrate the saved
+    // server snapshot (still empty) instead of the abandoned draft.
+    first.unmount();
+    wrappers.splice(wrappers.indexOf(first), 1);
+
+    const second = await mountTab(true, client);
+    expect(chipLabels(second)).toEqual([]);
+    expect(second.find("[data-testid='bad-case-label-dirty']").exists()).toBe(false);
+    expect(second.get("[data-testid='no-bad-case-labels']").text()).toContain(
       "还没有配置 label",
     );
   });

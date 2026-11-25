@@ -24,28 +24,34 @@ const assignedCount = computed(
   () => labelsQuery.data.value?.assignedBadCaseCount ?? 0,
 );
 
-const draft = ref<string[]>([]);
+const draft = ref<string[]>([...savedItems.value]);
 const inputValue = ref("");
 const inputError = ref("");
 const operationError = ref("");
 
-// Reconcile the local draft once the server snapshot arrives, but keep any
-// in-flight edits when the query refreshes in the background.
-let syncedFromServer = false;
+/** Identity comparison for label lists; order-sensitive because both sides sort. */
+function sameLabels(left: string[], right: string[]): boolean {
+  return left.join("\u0000") === right.join("\u0000");
+}
+
+// Switching workspace discards unsaved edits: adopt the new workspace's snapshot.
 watch(
-  savedItems,
-  (items) => {
-    if (!syncedFromServer) {
-      draft.value = [...items];
-      syncedFromServer = true;
-    }
+  () => props.workspaceId,
+  () => {
+    draft.value = [...savedItems.value];
   },
-  { immediate: true },
 );
 
-const isDirty = computed(
-  () => draft.value.join("\u0000") !== savedItems.value.join("\u0000"),
-);
+// Adopt every server snapshot only while the draft still matches the previous
+// one (cold load, remount after a tab switch, or a background refetch). A user
+// who already edited keeps their draft until they save or leave the tab.
+watch(savedItems, (items, previous) => {
+  if (sameLabels(draft.value, previous ?? [])) {
+    draft.value = [...items];
+  }
+});
+
+const isDirty = computed(() => !sameLabels(draft.value, savedItems.value));
 
 /**
  * Validate one label and return the public Chinese message, or empty when valid.
