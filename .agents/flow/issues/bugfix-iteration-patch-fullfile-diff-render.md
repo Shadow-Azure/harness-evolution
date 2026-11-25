@@ -41,7 +41,7 @@ github:
 
 ### 数据侧对照
 
-第 4 轮 `candidate_committed` 事件里的真实 `unifiedDiff` 是 72 行新增、0 行删除；第 3 轮到第 4 轮的目标文件从 406 行增长到 478 行。第 1 至第 4 轮全部为新增型改动，没有任何一轮发生过整文件回退或大面积删除。第 4 轮 `round.patch` 同时保存了 `intent`（3 条编辑）与 `report`（逐条应用状态），其中 `replace` / `insert_after` 的 `target` 都是「需求覆盖度关卡」相关段落，和被选中的簇直接对应。
+第 4 轮 `candidate_committed` 事件里的真实 `unifiedDiff` 是 72 行新增、0 行删除；第 3 轮到第 4 轮的目标文件从 406 行增长到 478 行。第 1 至第 4 轮都以新增为主（各轮真实删除为 0–2 行），没有任何一轮发生过整文件回退或大面积删除。第 4 轮 `round.patch` 同时保存了 `intent`（8 条编辑）与 `report`（逐条应用状态），其中 `replace` / `insert_after` 的 `target` 都围绕「需求覆盖度关卡」与「验证门禁」，和被选中的簇直接对应。
 
 ### 关于「报错」的复核
 
@@ -82,12 +82,12 @@ github:
 2. 读取同一 run 的 `GET /api/evolution/runs/{id}/events`；第 4 轮 `candidate_committed` 的 `unifiedDiff` 为 72 行新增、0 行删除，和页面上的 147 行删除矛盾，说明页面没有渲染这份 diff。
 3. 读取 `GET /api/evolution/runs/{id}/steps/iteration`；第 4 轮 `patch.files[0]` 是 478 行、`overwrite=true`，没有 `diff` 字段；这是整文件内容，不是 diff。
 4. 沿后端链路定位：`_patch_from_content()` 生成全文，`_stored_patch()` 只落库全文与 intent/report，`_round_patch()` 只投影 `file / lines / overwrite`，`DiffView.vue` 的 `lineClass()` 只做首字符判断。
-5. 对照真实编辑计划：第 4 轮 `intent.edits` 的 3 条编辑分别替换/插入「建立验收矩阵」「需求覆盖度关卡」段落，说明改动与簇描述确实相关；页面之所以看起来无关，是因为它展示了 478 行全文而不是这 3 处变更。
+5. 对照真实编辑计划：第 4 轮 `intent.edits` 的 8 条编辑全部围绕「建立验收矩阵」「需求覆盖度关卡」「验证门禁处置」，说明改动与簇描述确实相关；页面之所以看起来无关，是因为它展示了 478 行全文而不是这 8 处变更。
 6. 核对测试：`RunDetailConformance.test.ts` 的 DiffView 用例只传 `@@ / -old / +new / context` 人工行；API 测试只校验 patch 的形状与文件数，没有把真实 `_stored_patch()` 输出（含 Markdown 列表和 `---`）喂给读模型与渲染。
 
 ### 责任边界
 
-- 不是模型删除了内容，也不是簇描述或归因输入错了：第 4 轮真实 diff 为 0 行删除，3 条编辑均围绕所选簇的验收门禁。
+- 不是模型删除了内容，也不是簇描述或归因输入错了：第 4 轮真实 diff 为 0 行删除，8 条编辑均围绕所选簇的验收门禁。
 - 不是 `#522`（读取 500）回归：该 run 的 `steps/iteration` 已正常返回 200，问题发生在投影之后。
 - 不是 `#599`（多行 `insert_after` 校验失败）：该缺陷只发生在 patch 生成阶段并导致 run 失败；本 run 的 edit 调用全部成功。
 - 不是评测、推送或 git candidate 的问题：第 1 至第 4 轮均已推送并被接纳，run 状态正常。

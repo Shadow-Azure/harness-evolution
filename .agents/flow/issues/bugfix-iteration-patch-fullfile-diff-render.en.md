@@ -41,7 +41,7 @@ The expanded "generated patch (current → candidate)" block shows 478 lines: 14
 
 ### Data-side comparison
 
-The real `unifiedDiff` in the turn-4 `candidate_committed` event contains 72 additions and 0 deletions. The target file grew from 406 lines in turn 3 to 478 lines in turn 4. Turns 1 through 4 are all addition-only; no turn rewound or removed the file wholesale. The turn-4 `round.patch` also stores `intent` (three edits) and `report` (per-edit apply status); the `replace` / `insert_after` targets all belong to the acceptance-coverage gate, which directly matches the selected cluster.
+The real `unifiedDiff` in the turn-4 `candidate_committed` event contains 72 additions and 0 deletions. The target file grew from 406 lines in turn 3 to 478 lines in turn 4. Turns 1 through 4 are predominantly additions (0–2 real deletions per turn); no turn rewound or removed the file wholesale. The turn-4 `round.patch` also stores `intent` (eight edits) and `report` (per-edit apply status); the `replace` / `insert_after` targets all concern the acceptance-coverage and verification gates, which directly matches the selected cluster.
 
 ### Verification of the reported "error"
 
@@ -82,12 +82,12 @@ The systemic cause is that step 6's auditable information is truncated: `intent`
 2. Read `GET /api/evolution/runs/{id}/events` for the same run; the `unifiedDiff` of the turn-4 `candidate_committed` event had 72 additions and 0 deletions, contradicting the 147 deletions on the page and proving the page did not render that diff.
 3. Read `GET /api/evolution/runs/{id}/steps/iteration`; turn 4's `patch.files[0]` had 478 lines and `overwrite=true`, with no `diff` field; that is whole-file content, not a diff.
 4. Traced the backend chain: `_patch_from_content()` produces the whole file, `_stored_patch()` stores only the whole file plus intent/report, `_round_patch()` projects only `file / lines / overwrite`, and `DiffView.vue`'s `lineClass()` only inspects the first character.
-5. Cross-checked the real edit plan: turn 4's three `intent.edits` replace or insert the "establish an acceptance matrix" and "acceptance-coverage gate" sections, showing the change is indeed related to the cluster description; the page looks unrelated only because it shows all 478 lines instead of those three changes.
+5. Cross-checked the real edit plan: turn 4's eight `intent.edits` all concern the "establish an acceptance matrix", "acceptance-coverage gate", and "verification-gate disposition" sections, showing the change is indeed related to the cluster description; the page looks unrelated only because it shows all 478 lines instead of those eight changes.
 6. Checked the tests: the DiffView case in `RunDetailConformance.test.ts` passes only synthetic `@@ / -old / +new / context` lines; the API tests only assert patch shape and file count, and never feed the real `_stored_patch()` output (with Markdown lists and `---`) into the read model and renderer.
 
 ### Responsibility boundary
 
-- The model did not delete content, and the cluster description or attribution inputs are not wrong: the real turn-4 diff has 0 deletions, and all three edits center on the selected cluster's acceptance gate.
+- The model did not delete content, and the cluster description or attribution inputs are not wrong: the real turn-4 diff has 0 deletions, and all eight edits center on the selected cluster's acceptance gate.
 - This is not a regression of `#522` (the read 500): the run's `steps/iteration` already returns 200, and the problem occurs after projection.
 - This is not `#599` (the multi-line `insert_after` validation failure): that defect occurs only in the patch-generation stage and fails the run; all edit calls in this run succeeded.
 - This is not an evaluation, push, or git-candidate problem: turns 1 through 4 were pushed and accepted, and the run state is normal.
