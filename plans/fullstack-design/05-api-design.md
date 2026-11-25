@@ -9,7 +9,7 @@
 | 项 | 约定 |
 |---|---|
 | Base path | `/api`；OpenAPI 文档 `/api/docs`（dev 开放，prod 关闭） |
-| 鉴权 | `/api/health`、`/api/auth/login`、`/api/auth/refresh` 公开；配置 IdP 时 `/api/auth/callback` 也公开；`/api/events` 用一次性票据；其余业务请求使用 `Authorization: Bearer <accessToken>`。401 用 `AUTH_*` 错误码；**V2 上报端点另用空间凭据**（§4.17） |
+| 鉴权 | `/api/health`、`/api/app-config`、`/api/auth/login`、`/api/auth/refresh` 公开；配置 IdP 时 `/api/auth/callback` 也公开；`/api/events` 用一次性票据；其余业务请求使用 `Authorization: Bearer <accessToken>`。401 用 `AUTH_*` 错误码；**V2 上报端点另用空间凭据**（§4.17） |
 | 空间前缀（V2） | 业务资源一律 `/api/workspaces/{workspaceId}/...`；`workspaceId` 只在路径出现，body 不重复；对当前用户不可见的空间统一 `404 WORKSPACE_NOT_FOUND`（防枚举）。V1 无前缀路径冻结保留一个版本（§4.5 末段） |
 | 命名 | JSON 一律 **camelCase**（Pydantic `alias_generator=to_camel`）；数据库列 snake_case；两者转换只在 Pydantic 层发生 |
 | 时间 | ISO 8601 带时区，统一 **Asia/Shanghai（UTC+8）**，如 `2026-08-30T16:00:33.573+08:00`；不使用 `Z` 结尾；时长用整数秒 |
@@ -630,6 +630,7 @@ bad case 行与 Session 投影是两种存在：前者由上报写入，后者�
 ```text
 ┌─ 基础与鉴权 ──────────────────────────────────────────────┐
 │ GET  /api/health                                         │
+│ GET  /api/app-config                                     │
 │ POST /api/auth/login · refresh · logout                  │
 │ POST /api/auth/change-password                           │
 │ GET  /api/auth/me                                        │
@@ -729,6 +730,14 @@ bad case 行与 Session 投影是两种存在：前者由上报写入，后者�
 ```
 
 `phase` ∈ `scaffold | demo | live`：`demo` 表示开发/演示数据已 seed（顶栏可显示"演示数据"角标）；`live` 表示接真实来源。`db.dialect` 取值 `sqlite | mysql`；`ok=false` 时 HTTP 返回 `503` 且 `db` 带错误摘要（API 进程仍可达）。
+
+`GET /api/app-config` → `200`（公开，无需登录）
+
+```json
+{ "brand": { "name": "Harness Evolution", "subtitle": "轨迹诊断与自进化" } }
+```
+
+`brand.name` 与 `brand.subtitle` 来自 API 启动时读取的 `HE_BRAND_NAME` / `HE_BRAND_SUBTITLE`；空串与纯空白回落到上述默认值，配置值去除首尾空白后原样返回。响应模型 `extra="forbid"`，改 `.env` 后需重启 API 生效。
 
 **鉴权端点**（`/api/auth/login` 与 `/api/auth/refresh` 公开，其余需登录）：
 

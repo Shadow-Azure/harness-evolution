@@ -36,6 +36,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
 
     assert set(schema["paths"]) == {
         "/api/health",
+        "/api/app-config",
         "/api/auth/login",
         "/api/auth/refresh",
         "/api/auth/callback",
@@ -137,6 +138,8 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
     assert {
         "HealthResponse",
         "DatabaseHealthResponse",
+        "AppConfigResponse",
+        "AppConfigBrand",
         "ErrorCode",
         "ErrorResponse",
         "ErrorBody",
@@ -358,6 +361,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         assert paths[path][method]["security"] == [{"BearerAuth": []}]
     for path, method in [
         ("/api/health", "get"),
+        ("/api/app-config", "get"),
         ("/api/auth/login", "post"),
         ("/api/auth/refresh", "post"),
         ("/api/auth/callback", "get"),

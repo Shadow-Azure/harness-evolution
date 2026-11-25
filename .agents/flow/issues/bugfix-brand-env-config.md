@@ -8,7 +8,7 @@ id: bugfix-54
 milestone: bugfix
 depends: []
 priority: P2
-status: ready
+status: in-progress
 scope:
   - .agents/flow/issues/bugfix-brand-env-config*
   - .agents/notes/**
@@ -21,10 +21,12 @@ scope:
   - docs/deployment.md
   - docs/deployment.en.md
   - docs/deployment.i18n.yaml
+  - plans/**
   - plans/fullstack-design/05-api-design.md
   - plans/fullstack-design/08-frontend-implementation.md
   - scripts/doc-budgets.manifest.json
-adr: []
+adr:
+  - ../../notes/implemented/feature/2026-11-25-brand-env-config.md
 github:
   number: 594
   url: https://github.com/Shadow-Azure/harness-evolution/issues/594

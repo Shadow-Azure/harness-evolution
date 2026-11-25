@@ -4,11 +4,13 @@ import type { App } from "vue";
 import type { Router } from "vue-router";
 
 import { installAuthRuntime } from "./auth/runtime";
+import { useAppConfigStore } from "./stores/appConfig";
 import { useAuthStore } from "./stores/auth";
 
 /** Injected dependencies for the deterministic browser bootstrap sequence. */
 export type BootstrapAppOptions = {
   app: App;
+  loadAppConfig?: () => Promise<void>;
   mountTarget: string;
   pinia: Pinia;
   queryClient: QueryClient;
@@ -27,6 +29,8 @@ export async function bootstrapApp(options: BootstrapAppOptions): Promise<void> 
     history.scrollRestoration = "manual";
   }
   app.use(pinia);
+  const appConfig = useAppConfigStore(pinia);
+  await (options.loadAppConfig ?? (() => appConfig.load()))();
   app.use(VueQueryPlugin, { queryClient });
   installAuthRuntime(router, pinia, queryClient);
   app.use(router);

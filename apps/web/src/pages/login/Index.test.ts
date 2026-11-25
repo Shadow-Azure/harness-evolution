@@ -17,6 +17,7 @@ import {
 
 import LoginPage from "./Index.vue";
 import { createAppRouter } from "../../router";
+import { useAppConfigStore } from "../../stores/appConfig";
 import { server } from "../../test/server";
 import { elementPlusComponents } from "../../test/setup";
 import { testWorkspace } from "../../test/auth";
@@ -45,9 +46,15 @@ beforeEach(() => {
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-async function mountPage(path = "/login?redirect=/sessions") {
+async function mountPage(
+  path = "/login?redirect=/sessions",
+  brand?: { name: string; subtitle: string },
+) {
   const pinia = createPinia();
   setActivePinia(pinia);
+  if (brand) {
+    useAppConfigStore().brand = brand;
+  }
   const router = createAppRouter();
   await router.push(path);
   await router.isReady();
@@ -78,10 +85,24 @@ describe("login page", () => {
     expect(wrapper.get("h1").attributes("id")).toBe("login-brand-title");
 
     const text = wrapper.text();
+    expect(wrapper.get(".brand-lockup strong").text()).toBe("Harness Evolution");
+    expect(wrapper.get(".brand-lockup > div > span").text()).toBe("轨迹诊断与自进化");
     expect(text).toContain("工作空间隔离");
     expect(text).toContain("归因进入进化流程");
     expect(text).toContain("默认 10 个 Session");
     expect(text).toContain("首次登录需要设置自己的密码");
+  });
+
+  it("renders the configured brand pair in the login left column", async () => {
+    const brand = {
+      name: "Acme Diagnostics Self-Evolution Platform",
+      subtitle: "Acme Self-Evolution",
+    };
+    const { wrapper } = await mountPage(undefined, brand);
+
+    expect(wrapper.get(".brand-lockup strong").text()).toBe(brand.name);
+    expect(wrapper.get(".brand-lockup > div > span").text()).toBe(brand.subtitle);
+    expect(wrapper.text()).toContain("工作空间隔离");
   });
 
   it("does not enumerate or offer accounts", async () => {

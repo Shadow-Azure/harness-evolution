@@ -7,6 +7,7 @@ import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createAppRouter } from "../../router";
+import { useAppConfigStore } from "../../stores/appConfig";
 import { useAuthStore } from "../../stores/auth";
 import { server } from "../../test/server";
 import { elementPlusComponents } from "../../test/setup";
@@ -27,9 +28,12 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-async function mountCard() {
+async function mountCard(brand?: { name: string; subtitle: string }) {
   const pinia = createPinia();
   setActivePinia(pinia);
+  if (brand) {
+    useAppConfigStore().brand = brand;
+  }
   const store = useAuthStore();
   store.setSession({
     accessToken: "access",
@@ -74,6 +78,9 @@ describe("change-password card", () => {
     );
     const { router, wrapper } = await mountCard();
 
+    expect(wrapper.get(".brand-lockup strong").text()).toBe("Harness Evolution");
+    expect(wrapper.get(".brand-lockup > div > span").text()).toBe("首次登录");
+
     await wrapper.get('input[name="oldPassword"]').setValue("temporary-password");
     await wrapper.get('input[name="newPassword"]').setValue("replacement-password");
     await wrapper.get('input[name="confirmPassword"]').setValue("different-password");
@@ -85,5 +92,17 @@ describe("change-password card", () => {
     await vi.waitFor(() =>
       expect(router.currentRoute.value.fullPath).toBe(`${ws}/sessions`),
     );
+  });
+
+  it("renders the configured brand name while keeping 首次登录 unchanged", async () => {
+    const brand = {
+      name: "Acme Diagnostics Self-Evolution Platform",
+      subtitle: "Acme Self-Evolution",
+    };
+    const { wrapper } = await mountCard(brand);
+
+    expect(wrapper.get(".brand-lockup strong").text()).toBe(brand.name);
+    expect(wrapper.get(".brand-lockup > div > span").text()).toBe("首次登录");
+    expect(wrapper.text()).toContain("设置新密码");
   });
 });

@@ -37,18 +37,27 @@ describe("application bootstrap", () => {
       calls.push("tryRefresh");
       return true;
     });
+    const loadAppConfig = vi.fn(async () => {
+      calls.push("loadAppConfig");
+    });
     const options = {
       app,
       pinia,
       queryClient,
       router,
       mountTarget: "#app",
+      loadAppConfig,
       restore,
     } as unknown as BootstrapAppOptions;
 
     await bootstrapApp(options);
 
+    expect(calls.indexOf("loadAppConfig")).toBeGreaterThanOrEqual(0);
+    expect(calls.indexOf("loadAppConfig")).toBeLessThan(
+      calls.indexOf("tryRefresh"),
+    );
     expect(calls.slice(-3)).toEqual(["tryRefresh", "router.isReady", "mount"]);
+    expect(loadAppConfig).toHaveBeenCalledTimes(1);
     expect(app.use).toHaveBeenCalledTimes(3);
     expect(app.mount).toHaveBeenCalledWith("#app");
     expect(history.scrollRestoration).toBe("manual");
