@@ -13,6 +13,7 @@ status: in-progress
 scope:
   - apps/api/app/third_party_api/ai_agent/edits.py
   - apps/api/app/service/evolution/patch_source.py
+  - apps/api/app/third_party_api/ai_agent/attribution_case_tools.py
   - apps/api/tests/**
   - docs/**
   - plans/**
@@ -125,6 +126,10 @@ edits.6: Value error, target must be a single-line substring
    - CRLF 文件中的多行块插入保持 `\r\n`；
    - `append` / `replace` / `delete` 的既有语义不变。
 6. **不改观测与重试**：`feedback_prompt()` 与 `edit_workspace()` 的单次调用结构保持原样；`ConfigError` 转换丢弃 detail 的问题不在本方案内处理，避免把修复面扩大到 run 错误模型。
+
+### 附带修复（main 已红的回归）
+
+#588（`744f4f57`）给 `attribute-badcases/make_probe_report.py` 增加了必需的 `--conclusion` / `--root-cause`，并在 `SKILL.md` 要求 Skill 传入显式结论；但平台 MCP 工具 `CaseTools.write_probe_report(report: ReportFields)` 的 `ReportFields` 没有这两个字段（`extra="forbid"`），也不会转发，导致 `case-tools` 模式下所有 attribution 报告被脚本拒绝、`unit-tests-api` 红、main 自身 CI 为 failure。本 PR 在 `attribution_case_tools.py` 补齐两个必需字段（结论枚举 + 非空根因校验），并更新 `test_case_tools.py` 的 `selected_target` fixture 与断言；否则任何 PR 都无法通过 CI。该修复不改锚点语义、预算或重试边界。
 
 ## 实施步骤
 

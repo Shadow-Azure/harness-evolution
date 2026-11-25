@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from mcp.server import MCPServer
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 _EVIDENCE = (
     "input_badcase.json",
@@ -31,6 +31,8 @@ class ReportFields(BaseModel):
     probe_type: Literal["skill", "agent", "knowledge"] = "skill"
     object_version: str | None = None
     attribute_type: Literal["prompt", "model", "error", "flow", "context", "unknown"]
+    conclusion: Literal["attributed", "non_target", "inconclusive"]
+    root_cause: str
     probe_description: str
     probe_analysis: str
     detail_description: str | None = None
@@ -39,6 +41,14 @@ class ReportFields(BaseModel):
     proposal_change: str | None = None
     proposal_expected_behavior: str | None = None
     proposal_evaluation_plan: str | None = None
+
+    @field_validator("root_cause")
+    @classmethod
+    def _validate_root_cause(cls, value: str) -> str:
+        """Require a non-blank mechanism or evidence gap for the explicit verdict."""
+        if not value.strip():
+            raise ValueError("root_cause must not be blank")
+        return value
 
 
 class CaseTools:

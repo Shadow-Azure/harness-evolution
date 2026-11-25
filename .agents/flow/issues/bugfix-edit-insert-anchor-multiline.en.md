@@ -13,6 +13,7 @@ status: in-progress
 scope:
   - apps/api/app/third_party_api/ai_agent/edits.py
   - apps/api/app/service/evolution/patch_source.py
+  - apps/api/app/third_party_api/ai_agent/attribution_case_tools.py
   - apps/api/tests/**
   - docs/**
   - plans/**
@@ -125,6 +126,10 @@ edits.6: Value error, target must be a single-line substring
    - a multi-line block in a CRLF file preserves `\r\n` on insertion;
    - `append` / `replace` / `delete` semantics are unchanged.
 6. **Do not change observability or retries**: `feedback_prompt()` and the single-shot structure of `edit_workspace()` stay as they are; the `ConfigError` conversion that drops detail is not part of this solution, to avoid expanding the fix into the run error model.
+
+### Incidental fix (a regression already red on main)
+
+#588 (`744f4f57`) added the required `--conclusion` / `--root-cause` arguments to `attribute-badcases/make_probe_report.py` and updated `SKILL.md` to require an explicit verdict; but the platform MCP tool `CaseTools.write_probe_report(report: ReportFields)` had neither field on `ReportFields` (`extra="forbid"`) nor forwarded them, so every attribution report in `case-tools` mode was rejected by the script, `unit-tests-api` went red, and main's own CI was a failure. This PR adds the two required fields (verdict enum + non-blank root-cause validator) in `attribution_case_tools.py` and updates the `selected_target` fixture and assertions in `test_case_tools.py`; without it no PR can pass CI. The fix does not change anchor semantics, budgets, or retry boundaries.
 
 ## Implementation steps
 
