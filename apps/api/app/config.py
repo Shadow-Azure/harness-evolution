@@ -11,6 +11,7 @@ from pydantic import (
     BeforeValidator,
     Field,
     SecretStr,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -20,6 +21,9 @@ _API_DIR = Path(__file__).resolve().parents[1]
 # Sources run under <checkout>/apps/api or <release>/api.
 _ASSET_ROOT = _API_DIR.parents[1] if _API_DIR.parent.name == "apps" else _API_DIR / "release-assets"
 DEFAULT_ATTRIBUTION_GOLDEN_SET = _ASSET_ROOT / "fixtures" / "attribution-golden" / "cases.json"
+
+DEFAULT_BRAND_NAME = "Harness Evolution"
+DEFAULT_BRAND_SUBTITLE = "轨迹诊断与自进化"
 
 _COOKIE_TOKEN_CHARS = set(
     "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
@@ -172,6 +176,8 @@ class Settings(BaseSettings):
     ai_agent_failure_policy: Literal["strict", "degrade"] | None = None
     blocked_sweep_seconds: float = Field(default=30.0, ge=1)
     web_base_url: str | None = None
+    brand_name: str = DEFAULT_BRAND_NAME
+    brand_subtitle: str = DEFAULT_BRAND_SUBTITLE
     auth_provider: AuthProviderName = AuthProviderName.PASSWORD
     session_cookie_name: str = Field(default="he_session", min_length=1, max_length=64)
     session_ttl_hours: int = Field(default=12, gt=0, le=24 * 30)
@@ -232,6 +238,23 @@ class Settings(BaseSettings):
                 f"HE_DATA_DIR must be an absolute path in production (got {self.data_dir})",
             )
         return self
+
+    @field_validator("brand_name", "brand_subtitle", mode="before")
+    @classmethod
+    def normalize_brand_text(cls, value: object, info: ValidationInfo) -> object:
+        """Treat blank brand overrides as unset and trim configured text."""
+        field_name = info.field_name
+        default = (
+            cls.model_fields[field_name].default
+            if field_name is not None and field_name in cls.model_fields
+            else ""
+        )
+        if value is None:
+            return default
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or default
+        return value
 
     @field_validator("upstream_base_url")
     @classmethod

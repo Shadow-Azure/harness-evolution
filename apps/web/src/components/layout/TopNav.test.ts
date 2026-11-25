@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 
 import { server } from "../../test/server";
 import { queryKeys } from "../../api/queryKeys";
+import { useAppConfigStore } from "../../stores/appConfig";
 import { useAuthStore } from "../../stores/auth";
 import { createAppRouter } from "../../router";
 import { testWorkspace, TEST_WORKSPACE_ID } from "../../test/auth";
@@ -20,10 +21,16 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-async function mountWithStatus(payload: Record<string, unknown>) {
+async function mountWithStatus(
+  payload: Record<string, unknown>,
+  brand?: { name: string; subtitle: string },
+) {
   server.use(http.get("/api/acquisition/status", () => HttpResponse.json(payload)));
   const pinia = createPinia();
   setActivePinia(pinia);
+  if (brand) {
+    useAppConfigStore().brand = brand;
+  }
   useAuthStore().setSession({
     accessToken: "access",
     expiresIn: 1_800,
@@ -288,7 +295,29 @@ describe("top navigation user area", () => {
     });
 
     expect(wrapper.get(".brand").attributes("aria-label")).toBe("Harness Evolution");
+    expect(wrapper.get(".brand-copy strong").text()).toBe("Harness Evolution");
+    expect(wrapper.get(".brand-copy small").text()).toBe("轨迹诊断与自进化");
     expect(wrapper.get("[data-testid='demo-badge']").text()).toBe("演示数据");
+  });
+
+  it("renders a configured long brand with a bounded ellipsis", async () => {
+    const brand = {
+      name: "Acme Diagnostics Self-Evolution Platform",
+      subtitle: "Acme Self-Evolution",
+    };
+    expect(brand.name.length).toBeGreaterThanOrEqual(24);
+    const wrapper = await mountWithStatus(statusPayload(), brand);
+
+    expect(wrapper.get(".brand").attributes("aria-label")).toBe(brand.name);
+    expect(wrapper.get(".brand-copy strong").text()).toBe(brand.name);
+    expect(wrapper.get(".brand-copy small").text()).toBe(brand.subtitle);
+    expect(wrapper.findAll("nav .tn-item")).toHaveLength(3);
+
+    expect(TopNavSource).toMatch(/\.brand-copy \{[^}]*min-width: 0;/);
+    expect(TopNavSource).toMatch(/\.brand-copy \{[^}]*max-width: 220px;/);
+    expect(TopNavSource).toMatch(
+      /\.brand-copy strong,\s*\.brand-copy small \{[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/,
+    );
   });
 
   it("shows pending acquisition detail without exposing it to members as an action", async () => {

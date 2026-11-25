@@ -3,9 +3,11 @@ import { computed, ref } from "vue";
 
 import { formatApiError } from "../../app/apiError";
 import { authErrorCode, useChangePassword } from "../../composables/useAuth";
+import { useAppConfigStore } from "../../stores/appConfig";
 
 defineOptions({ name: "ChangePasswordCard" });
 
+const appConfig = useAppConfigStore();
 const oldPassword = ref("");
 const newPassword = ref("");
 const confirmPassword = ref("");
@@ -71,7 +73,7 @@ async function submit() {
         aria-hidden="true"
       />
       <div>
-        <strong>Harness Evolution</strong>
+        <strong>{{ appConfig.brand.name }}</strong>
         <span>首次登录</span>
       </div>
     </div>
@@ -155,6 +157,14 @@ async function submit() {
 
 .brand-lockup > div {
   display: grid;
+  min-width: 0;
+}
+
+.brand-lockup > div > strong,
+.brand-lockup > div > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .brand-lockup span {

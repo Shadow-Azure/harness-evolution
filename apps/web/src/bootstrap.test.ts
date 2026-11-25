@@ -37,20 +37,66 @@ describe("application bootstrap", () => {
       calls.push("tryRefresh");
       return true;
     });
+    const loadAppConfig = vi.fn(async () => {
+      calls.push("loadAppConfig");
+    });
     const options = {
       app,
       pinia,
       queryClient,
       router,
       mountTarget: "#app",
+      loadAppConfig,
       restore,
     } as unknown as BootstrapAppOptions;
 
     await bootstrapApp(options);
 
+    expect(calls).toContain("loadAppConfig");
+    expect(calls.indexOf("loadAppConfig")).toBeLessThan(
+      calls.indexOf("tryRefresh"),
+    );
     expect(calls.slice(-3)).toEqual(["tryRefresh", "router.isReady", "mount"]);
+    expect(loadAppConfig).toHaveBeenCalledTimes(1);
     expect(app.use).toHaveBeenCalledTimes(3);
     expect(app.mount).toHaveBeenCalledWith("#app");
     expect(history.scrollRestoration).toBe("manual");
+  });
+
+  it("mounts after the bounded brand timeout when the config request stalls", async () => {
+    vi.useFakeTimers();
+    try {
+      const app = {
+        use: vi.fn(() => app),
+        mount: vi.fn(),
+      };
+      const router = {
+        install: vi.fn(),
+        isReady: vi.fn(async () => undefined),
+        push: vi.fn(),
+        currentRoute: { value: { fullPath: "/" } },
+      };
+      const loadAppConfig = vi.fn(
+        () => new Promise<void>(() => undefined),
+      );
+      const options = {
+        app,
+        pinia: createPinia(),
+        queryClient: new QueryClient(),
+        router,
+        mountTarget: "#app",
+        loadAppConfig,
+        restore: vi.fn(async () => true),
+      } as unknown as BootstrapAppOptions;
+
+      const bootstrap = bootstrapApp(options);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await bootstrap;
+
+      expect(loadAppConfig).toHaveBeenCalledTimes(1);
+      expect(app.mount).toHaveBeenCalledWith("#app");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

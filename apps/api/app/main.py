@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.acquisition import router as acquisition_router
+from app.api.app_config import router as app_config_router
 from app.api.attribution_skill_packages import router as attribution_skill_packages_router
 from app.api.attribution_skills import router as attribution_skills_router
 from app.api.auth import router as auth_router
@@ -754,6 +755,7 @@ def create_app(
 
     register_exception_handlers(app)
     app.include_router(health_router)
+    app.include_router(app_config_router)
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(workspaces_router)

@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { useAppConfigStore } from "../../stores/appConfig";
 import LoginForm from "./LoginForm.vue";
 
 defineOptions({ name: "LoginPage" });
+
+const appConfig = useAppConfigStore();
 </script>
 
 <template>
@@ -21,8 +24,8 @@ defineOptions({ name: "LoginPage" });
             aria-hidden="true"
           />
           <div>
-            <strong>Harness Evolution</strong>
-            <span>轨迹诊断与自进化</span>
+            <strong>{{ appConfig.brand.name }}</strong>
+            <span>{{ appConfig.brand.subtitle }}</span>
           </div>
         </div>
         <div class="brand-heading">
@@ -136,7 +139,15 @@ defineOptions({ name: "LoginPage" });
 
 .brand-lockup > div {
   display: grid;
+  min-width: 0;
   gap: 2px;
+}
+
+.brand-lockup > div > strong,
+.brand-lockup > div > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .brand-lockup span {

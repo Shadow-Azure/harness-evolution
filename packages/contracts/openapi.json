@@ -107,6 +107,40 @@
         "title": "AcquisitionStatusResponse",
         "type": "object"
       },
+      "AppConfigBrand": {
+        "additionalProperties": false,
+        "description": "Deployment brand name and subtitle exposed to every visitor.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "subtitle": {
+            "title": "Subtitle",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "subtitle"
+        ],
+        "title": "AppConfigBrand",
+        "type": "object"
+      },
+      "AppConfigResponse": {
+        "additionalProperties": false,
+        "description": "Public runtime configuration shared by the login page and the shell.",
+        "properties": {
+          "brand": {
+            "$ref": "#/components/schemas/AppConfigBrand"
+          }
+        },
+        "required": [
+          "brand"
+        ],
+        "title": "AppConfigResponse",
+        "type": "object"
+      },
       "AttributeStats": {
         "additionalProperties": false,
         "description": "Probe counts by attribution type shown in the wizard distribution bar.",
@@ -11020,6 +11054,28 @@
         "summary": "Trigger Sync",
         "tags": [
           "acquisition"
+        ]
+      }
+    },
+    "/api/app-config": {
+      "get": {
+        "description": "Report the brand resolved from the API environment at startup.",
+        "operationId": "app_config_api_app_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "App Config",
+        "tags": [
+          "app-config"
         ]
       }
     },
