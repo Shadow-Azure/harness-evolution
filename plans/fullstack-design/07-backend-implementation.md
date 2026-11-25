@@ -849,9 +849,9 @@ patch 生成采用 SkillOpt 式编辑指令（对齐 [microsoft/SkillOpt](https:
 }
 ```
 
-- **执行流**：agent 以只读工具（Read/Grep/Glob）探索 → 写 `edits.json5`（submission 通道收货）→ 语义校验（`file ∈ allowed_paths`；锚**存在且唯一**（`text.count` 不重叠计数），可以是单行或多行文本块；多义按 `ambiguous` 拒绝（edit 单次调用，不回喂）；`len(edits) ≤ edit_budget`（默认 8，SkillOpt learning-rate 等价物：prompt 约束 + 硬截断））→ `edits.py` 确定性应用（replace 首个匹配 / insert_after 块末行之后 / append 追加，逐条 status 报告、后续编辑的锚实时复查）→ `git diff` 收真实改动 → `PatchBundle{files, unified_diff, note=intent.summary, intent=EditPlan, report=逐条状态}` → candidate 提交（`Harness-Patch-Hash` trailer）→ push → eval。
+- **执行流**：agent 以只读工具（Read/Grep/Glob）探索 → 写 `edits.json5`（submission 通道收货）→ 语义校验（`file ∈ allowed_paths`；锚**存在且唯一**（`text.count` 不重叠计数），可以是单行或多行文本块；多义按 `ambiguous` 拒绝（edit 单次调用，不回喂）；`len(edits) ≤ edit_budget`（默认 8，SkillOpt learning-rate 等价物：prompt 约束 + 硬截断））→ `edits.py` 确定性应用（replace 首个匹配 / insert_after 块末行之后 / append 追加，逐条 status 报告、后续编辑的锚实时复查）→ `git diff` 收真实改动 → `PatchBundle{files, note=intent.summary, intent=EditPlan, report=逐条状态}` → candidate 提交（`Harness-Patch-Hash` trailer）→ 把提交产生的真实 diff 回写 `round.patch.diff` → push → eval。
 - **拒绝处理**：评测 reject 沿用既有状态机结束该轮并清理候选，不自动开启下一轮，也不注入 `--resume` 反馈或 rejected-edit buffer（2026-11-23 决定：失败即拒绝，避免 round 生命周期改造）；accept → 并入 run 分支。
-- **安全闸**：agent 工具面 = 只读 + 写一个 json5 文件（`dontAsk` 模式，无文件编辑权限）；`.harness-evolution/` 排除在 diff scope 外；应用器只在临时镜像上写入，越界/失败编辑不会触达仓库，因此无需 `git checkout -- .` 回滚；diff + intent + report 落 run events（diff 为候选 commit 的真实 git diff，超长时按事件载荷上限截断）。声明（intent）与实际（diff）的对照本身是审计信号。
+- **安全闸**：agent 工具面 = 只读 + 写一个 json5 文件（`dontAsk` 模式，无文件编辑权限）；`.harness-evolution/` 排除在 diff scope 外；应用器只在临时镜像上写入，越界/失败编辑不会触达仓库，因此无需 `git checkout -- .` 回滚；diff + intent + report 落 round patch，intent 轮次的 diff 同时进入 `candidate_committed` 事件（事件载荷超长时截断，落库值不截断）。声明（intent）与实际（diff）的对照本身是审计信号。
 - **patch source 接入**：新增第三种模式 `agent-edit` 注册进 `PATCH_SOURCE_MODES` 与工厂，沿用「run 冻结配置优先、env 兜底」的选择语义；`PatchSource` 增加 `build_bundle()`（默认实现包装旧 `build()` 为单文件 bundle，旧实现零改动）。
 
 ### 5.6 单轮执行：candidate → push → 提交评测（`FullEvolutionEngine.advance_one_round`）
