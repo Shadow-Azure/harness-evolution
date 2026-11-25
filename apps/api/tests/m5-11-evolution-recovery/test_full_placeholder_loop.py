@@ -44,11 +44,10 @@ from app.service.evolution.apply_final import (
 )
 from app.service.evolution.engine.contracts import (
     EvalGatewayConfig,
+    EvalMeasurement,
     EvalRequest,
-    EvalResult,
     EvalStatus,
     EvalSubmission,
-    FakeEvalGateway,
 )
 from app.service.evolution.eval_poller import EvolutionEvalPoller, EvolutionEvalSubmitter
 from app.service.evolution.events import EvolutionRunEventService
@@ -56,6 +55,7 @@ from app.service.evolution.git_candidate import (
     CandidateTrace,
     EvolutionCandidateService,
 )
+from app.third_party_api.eval_gateway.fake import FakeEvalGateway
 from app.third_party_api.git.workspace import GitWorkspaceManager
 
 NOW = datetime(2026, 10, 28, 9, 30, tzinfo=ZoneInfo("Asia/Shanghai"))
@@ -177,30 +177,38 @@ class JobCapture:
 
 
 class RoundGateway:
-    """Dispatch fake evaluation calls to the gateway configured for one round."""
+    """Dispatch fake evaluation calls to the gateway configured for one purpose."""
 
     config = EvalGatewayConfig.from_mapping({})
 
-    def __init__(self, gateways: Mapping[str, FakeEvalGateway]) -> None:
-        """Bind one deterministic gateway per evolution round id."""
+    def __init__(
+        self,
+        gateways: Mapping[str, FakeEvalGateway],
+        fallback: FakeEvalGateway,
+    ) -> None:
+        """Bind one deterministic gateway per round plus the run-level fallback."""
         self._gateways = dict(gateways)
+        self._fallback = fallback
 
     @staticmethod
-    def _round_id(eval_id: str) -> str:
-        """Read the embedded evolution round id from a fake evaluation id."""
+    def _key(eval_id: str) -> str:
+        """Read the embedded round id or run-level purpose from a fake id."""
         return eval_id.split(":")[2]
 
     async def submit(self, request: EvalRequest) -> EvalSubmission:
-        """Delegate submission to the round's configured gateway."""
-        return await self._gateways[request.evolution_round_id].submit(request)
+        """Delegate submission to the round's gateway or the run-level fallback."""
+        gateway = self._gateways.get(request.evolution_round_id, self._fallback)
+        return await gateway.submit(request)
 
     async def get_status(self, eval_id: str) -> EvalStatus:
-        """Delegate status polling to the round's configured gateway."""
-        return await self._gateways[self._round_id(eval_id)].get_status(eval_id)
+        """Delegate status polling to the round's gateway or the fallback."""
+        gateway = self._gateways.get(self._key(eval_id), self._fallback)
+        return await gateway.get_status(eval_id)
 
-    async def get_result(self, eval_id: str) -> EvalResult:
-        """Delegate result retrieval to the round's configured gateway."""
-        return await self._gateways[self._round_id(eval_id)].get_result(eval_id)
+    async def get_result(self, eval_id: str) -> EvalMeasurement:
+        """Delegate result retrieval to the round's gateway or the fallback."""
+        gateway = self._gateways.get(self._key(eval_id), self._fallback)
+        return await gateway.get_result(eval_id)
 
 
 async def _no_sleep(seconds: float) -> None:
@@ -450,7 +458,7 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
                         "status": "completed",
                         "currentScore": 80.0,
                         "candidateScore": 90.0,
-                        "verdict": "accept",
+                        "primaryMetricKey": "resolved_rate",
                     },
                 ),
             ),
@@ -460,11 +468,21 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
                         "status": "completed",
                         "currentScore": 80.0,
                         "candidateScore": 70.0,
-                        "verdict": "reject",
+                        "primaryMetricKey": "resolved_rate",
                     },
                 ),
             ),
         },
+        FakeEvalGateway(
+            EvalGatewayConfig.from_mapping(
+                {
+                    "status": "completed",
+                    "currentScore": 80.0,
+                    "candidateScore": 90.0,
+                    "primaryMetricKey": "resolved_rate",
+                },
+            ),
+        ),
     )
     candidates = EvolutionCandidateService(
         repository,
@@ -501,6 +519,7 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
         repository,
         workspaces,
         events=events,
+        eval_submitter=submitter,
         now=now,
     )
 
@@ -520,6 +539,9 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
             analysis="missing output constraints and a lower candidate score",
         ),
     }
+
+    # Run-level baselines start before round 1 and gate its decision.
+    await submitter.submit_baselines(run)
 
     # Round 1: publish, evaluate, accept through real git.
     round_accept = await repository.get_round(ROUND_ACCEPT)
@@ -624,9 +646,15 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
     assert run_after_reject.progress_unit == 7
     assert _remote_tag(bare, published_reject.candidate_ref) == ""
 
-    # Finalize: durable final row, completed run, and a published run branch.
-    finalized = await finalize_service.handle(
+    # Finalize: submit the held-out test-set final, poll it, then persist.
+    pending_final = await finalize_service.handle(
         _job("evolution_finalize", job_id="job-finalize", run_id=RUN_ID),
+    )
+    assert pending_final["finalized"] is False
+    clock = NOW + timedelta(minutes=18)
+    assert await poller.run_once() >= 1
+    finalized = await finalize_service.handle(
+        _job("evolution_finalize", job_id="job-finalize-2", run_id=RUN_ID),
     )
     assert finalized["finalized"] is True
     completed = await repository.get_run(RUN_ID)
@@ -638,8 +666,16 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
     assert final.verdict is True
     assert final.init_score == 80.0
     assert final.best_score == 90.0
-    assert len(final.metrics) == 2
-    assert [metric["accepted"] for metric in final.metrics] == [True, False]
+    assert final.metrics == [
+        {
+            "name": "score",
+            "init": 80.0,
+            "best": 90.0,
+            "delta": 10.0,
+            "unit": "",
+            "direction": "higher_is_better",
+        },
+    ]
     assert _git(bare, "rev-parse", f"refs/heads/{BRANCH}") == accepted_round.commit_hash
     branch_refs = _git(bare, "for-each-ref", "--format=%(refname)", "refs/heads").splitlines()
     assert f"refs/heads/{BRANCH}" in branch_refs

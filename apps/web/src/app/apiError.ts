@@ -13,6 +13,7 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   mode: "运行模式",
   password: "密码",
   objectName: "对象名称",
+  primaryMetricKey: "主指标 key",
   repoUrl: "仓库地址",
   sessionId: "Session ID",
   status: "状态筛选",

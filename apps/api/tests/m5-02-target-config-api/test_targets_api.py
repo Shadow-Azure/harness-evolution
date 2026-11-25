@@ -182,6 +182,7 @@ def _record(target_id: str, values: Mapping[str, object]) -> EvolutionTargetReco
         default_ref=str(values["default_ref"]),
         validation_project_id=str(values["validation_project_id"]),
         test_project_id=str(values["test_project_id"]),
+        primary_metric_key=str(values.get("primary_metric_key", "resolved_rate")),
         enabled=bool(values["enabled"]),
         workspace_id=str(values.get("workspace_id", DEFAULT_WORKSPACE_ID)),
     )
@@ -197,6 +198,7 @@ def _write(**overrides: Any) -> EvolutionTargetWrite:
         "default_ref": " main ",
         "validation_project_id": " val-2026-q3 ",
         "test_project_id": " test-2026-q3 ",
+        "primary_metric_key": " resolved_rate ",
         "enabled": True,
     }
     values.update(overrides)
@@ -213,6 +215,7 @@ def _project_payload(**overrides: Any) -> dict[str, Any]:
         "defaultRef": "main",
         "validationProjectId": " val-2026-q3 ",
         "testProjectId": " test-2026-q3 ",
+        "primaryMetricKey": " resolved_rate ",
         "enabled": True,
     }
     values.update(overrides)
@@ -495,6 +498,7 @@ def test_target_write_schema_requires_project_ids() -> None:
     assert {
         "validationProjectId",
         "testProjectId",
+        "primaryMetricKey",
     } <= set(schema["required"])
 
 
@@ -510,11 +514,13 @@ async def test_target_project_ids_are_required_and_round_trip(
     body = created.json()
     assert body["validationProjectId"] == "val-2026-q3"
     assert body["testProjectId"] == "test-2026-q3"
+    assert body["primaryMetricKey"] == "resolved_rate"
 
     listed = await target_http.member.get("/api/evolution/targets")
     assert listed.status_code == 200
     assert listed.json()["items"][0]["validationProjectId"] == "val-2026-q3"
     assert listed.json()["items"][0]["testProjectId"] == "test-2026-q3"
+    assert listed.json()["items"][0]["primaryMetricKey"] == "resolved_rate"
 
     updated = await target_http.admin.put(
         f"/api/evolution/targets/{body['id']}",
@@ -523,6 +529,7 @@ async def test_target_project_ids_are_required_and_round_trip(
     assert updated.status_code == 200
     assert updated.json()["validationProjectId"] == "val-v2"
     assert updated.json()["testProjectId"] == "test-2026-q3"
+    assert updated.json()["primaryMetricKey"] == "resolved_rate"
 
     async with target_http.database.session() as session:
         row = (
@@ -590,6 +597,33 @@ async def test_target_project_ids_are_required_when_the_key_is_missing(
     assert error["details"]["reason"] == "project_id_required"
 
 
+async def test_primary_metric_key_is_required_and_field_located(
+    target_http: TargetHttpEnvironment,
+) -> None:
+    """A missing or malformed primary metric key returns a field-located 422."""
+    payload = _project_payload()
+    del payload["primaryMetricKey"]
+    missing = await target_http.admin.post(
+        "/api/evolution/targets",
+        json=payload,
+    )
+    assert missing.status_code == 422
+    error = missing.json()["error"]
+    assert error["code"] == "PRIMARY_METRIC_KEY_INVALID"
+    assert error["details"] == {
+        "field": "primaryMetricKey",
+        "reason": "metric_key_required",
+    }
+
+    malformed = await target_http.admin.post(
+        "/api/evolution/targets",
+        json=_project_payload(primaryMetricKey="resolved rate"),
+    )
+    assert malformed.status_code == 422
+    assert malformed.json()["error"]["code"] == "PRIMARY_METRIC_KEY_INVALID"
+    assert malformed.json()["error"]["details"]["reason"] == "metric_key_format"
+
+
 async def test_legacy_target_project_ids_are_empty_and_must_be_filled(
     target_http: TargetHttpEnvironment,
 ) -> None:
@@ -615,6 +649,7 @@ async def test_legacy_target_project_ids_are_empty_and_must_be_filled(
     legacy = listed.json()["items"][0]
     assert legacy["validationProjectId"] == ""
     assert legacy["testProjectId"] == ""
+    assert legacy["primaryMetricKey"] == ""
 
     empty = await target_http.admin.put(
         "/api/evolution/targets/legacy-target",

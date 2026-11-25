@@ -149,7 +149,7 @@ async def associate_case(
 
 
 async def backfill_legacy_associations(database: Database) -> None:
-    """Mirror migration 0033 for fixtures that seed ownership without associations.
+    """Mirror migration 0034 for fixtures that seed ownership without associations.
 
     Delegates to the shared corpus/fixture helper so the migration semantics
     live in one place; the ``NOT EXISTS`` guard keeps repeated calls idempotent.

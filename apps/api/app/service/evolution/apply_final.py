@@ -1,23 +1,32 @@
-"""Apply placeholder evaluation verdicts and finalize an evolution run."""
-
-# ruff: noqa: RUF001
+"""Apply gated evaluation verdicts and finalize an evolution run."""
 
 from __future__ import annotations
 
 import logging
-import math
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.probe_query import ProbeHitRow
-from app.db.models.evolution import EvolutionRoundRecord, EvolutionRunRecord
+from app.db.models.evolution import (
+    EvolutionEvaluationRecord,
+    EvolutionRoundRecord,
+    EvolutionRunRecord,
+)
 from app.db.models.jobs import JobRunRecord
 from app.service.evolution.advance import build_candidate_trace
 from app.service.evolution.backoff import next_retry_at
 from app.service.evolution.control import checkpoint
-from app.service.evolution.engine.contracts import EvalResult, RunBlocked
+from app.service.evolution.engine.contracts import (
+    EvalMeasurement,
+    EvalResult,
+    RunBlocked,
+)
+from app.service.evolution.eval_gate import (
+    decision_sentence,
+    gate_measurement,
+)
 from app.service.evolution.events import EvolutionRunEventService
 from app.service.evolution.git_candidate import (
     CandidateTrace,
@@ -97,10 +106,33 @@ class EvolutionApplyService:
             }
         if round_.eval_status != "completed" or round_.eval_result is None:
             raise ValueError("apply job requires a completed durable evaluation result")
-        result = EvalResult.from_payload(round_.eval_result)
+        legacy = _legacy_result(round_.eval_result)
+        if legacy is not None:
+            result = legacy
+            accepted = result.external_verdict == "accept"
+            reason = decision_sentence(result, accepted=accepted)
+            gated = result.to_payload()
+        else:
+            measurement = EvalMeasurement.from_payload(round_.eval_result)
+            baseline = await self._validation_baseline(run, round_)
+            if baseline is None:
+                return {
+                    "runId": run.id,
+                    "roundId": round_.id,
+                    "status": round_.status,
+                    "applied": False,
+                    "reason": "validation baseline is not ready",
+                }
+            decision = gate_measurement(
+                measurement,
+                baseline_score=baseline[0],
+                baseline_label=baseline[1],
+            )
+            result = decision.result
+            accepted = decision.accepted
+            reason = decision.reason
+            gated = result.to_payload()
         trace = await self._trace(run, round_)
-        accepted = result.external_verdict == "accept"
-        reason = decision_sentence(result, accepted=accepted)
         await checkpoint(self._runs, run.id)
         if accepted:
             decided = await self._candidates.accept(
@@ -112,6 +144,7 @@ class EvolutionApplyService:
                 reason=reason,
                 job_id=job.id,
                 retry_attempts=_job_retry_attempts(job),
+                eval_result=gated,
             )
         else:
             decided = await self._candidates.reject(
@@ -119,6 +152,7 @@ class EvolutionApplyService:
                 round_,
                 reason=reason,
                 job_id=job.id,
+                eval_result=gated,
             )
         return {
             "runId": run.id,
@@ -128,6 +162,29 @@ class EvolutionApplyService:
             "reason": reason,
             "applied": True,
         }
+
+    async def _validation_baseline(
+        self,
+        run: EvolutionRunRecord,
+        round_: EvolutionRoundRecord,
+    ) -> tuple[float, str] | None:
+        """Return the latest accepted candidate score, else the validation baseline."""
+        rounds = await self._runs.list_rounds(run.id)
+        accepted = [
+            item for item in rounds if item.accepted and item.commit_hash and item.seq < round_.seq
+        ]
+        if accepted:
+            latest = max(accepted, key=lambda item: item.seq)
+            if latest.eval_result is not None:
+                result = _legacy_result(latest.eval_result) or _measurement_result(
+                    latest.eval_result,
+                )
+                if result is not None:
+                    return result.candidate_score, f"第 {latest.seq} 轮已接纳候选分"
+        baseline = await self._runs.get_run_evaluation(run.id, "validation_baseline")
+        if baseline is None or baseline.eval_status != "completed" or baseline.eval_score is None:
+            return None
+        return baseline.eval_score, "验证集基线分"
 
     async def _trace(
         self,
@@ -159,8 +216,21 @@ class EvolutionApplyService:
         )
 
 
+class RunEvalFinalizer(Protocol):
+    """Submit the held-out test-set evaluation that closes one run."""
+
+    async def submit_baselines(self, run: EvolutionRunRecord) -> None:
+        """Ensure both run-level baselines exist."""
+
+    async def submit_test_final(
+        self,
+        run: EvolutionRunRecord,
+    ) -> EvolutionEvaluationRecord:
+        """Submit the test-set final exactly once and return its durable row."""
+
+
 class EvolutionFinalizeService:
-    """Build the placeholder final, publish the run branch, and finish the run."""
+    """Build the terminal final, publish the run branch, and finish the run."""
 
     def __init__(
         self,
@@ -168,12 +238,14 @@ class EvolutionFinalizeService:
         workspaces: GitWorkspaceManager,
         *,
         events: EvolutionRunEventService | None = None,
+        eval_submitter: RunEvalFinalizer | None = None,
         now: Any = now_shanghai,
     ) -> None:
-        """Bind durable finals, git publication, and event recording."""
+        """Bind durable finals, git publication, evaluation, and events."""
         self._runs = runs
         self._workspaces = workspaces
         self._events = events
+        self._eval_submitter = eval_submitter
         self._now = now
 
     async def handle(self, job: JobRunRecord) -> Mapping[str, Any]:
@@ -217,10 +289,20 @@ class EvolutionFinalizeService:
                 "reason": "rounds are still active",
             }
         retry_attempts = _job_retry_attempts(job)
+        if self._eval_submitter is not None:
+            await self._eval_submitter.submit_baselines(run)
+            test_final = await self._eval_submitter.submit_test_final(run)
+            if test_final.eval_status != "completed":
+                return {
+                    "runId": run.id,
+                    "status": run.status,
+                    "finalized": False,
+                    "reason": "test-set final evaluation is pending",
+                }
         await checkpoint(self._runs, run.id)
         try:
             final = await self._runs.get_final(run.id) or await self._runs.write_final(
-                _final_values(run, rounds)
+                await self._final_values(run, rounds),
             )
             prepared = _prepared_workspace(run)
         except Exception as exc:
@@ -295,6 +377,25 @@ class EvolutionFinalizeService:
             "pushStatus": push_status,
         }
 
+    async def _final_values(
+        self,
+        run: EvolutionRunRecord,
+        rounds: Sequence[EvolutionRoundRecord],
+    ) -> Mapping[str, Any]:
+        """Prefer the held-out test-set baseline and final over round rollups."""
+        baseline = await self._runs.get_run_evaluation(run.id, "test_baseline")
+        test_final = await self._runs.get_run_evaluation(run.id, "test_final")
+        if (
+            baseline is None
+            or test_final is None
+            or baseline.eval_status != "completed"
+            or test_final.eval_status != "completed"
+            or baseline.eval_score is None
+            or test_final.eval_score is None
+        ):
+            return _final_values(run, rounds)
+        return _test_final_values(run, rounds, baseline, test_final)
+
     async def _record(
         self,
         run_id: str,
@@ -331,20 +432,26 @@ def _job_retry_attempts(job: JobRunRecord) -> int:
     return raw
 
 
-def decision_sentence(result: EvalResult, *, accepted: bool) -> str:
-    """Translate the placeholder score comparison into one human-readable rule."""
-    delta = result.candidate_score - result.current_score
-    if math.isclose(delta, 0.0):
-        relation = "等于"
-    elif delta > 0:
-        relation = "高于"
-    else:
-        relation = "低于"
-    verdict = "接纳" if accepted else "拒绝"
-    return (
-        f"候选分 {result.candidate_score:.1f} {relation}基线 "
-        f"{result.current_score:.1f}（{delta:+.1f}），"
-        f"按 external-verdict 规则{verdict}"
+def _legacy_result(payload: Mapping[str, Any] | None) -> EvalResult | None:
+    """Read a pre-gate verdict payload written before baseline gating existed."""
+    if payload is None or "externalVerdict" not in payload:
+        return None
+    if "primaryMetricKey" in payload:
+        return None
+    return EvalResult.from_payload(payload)
+
+
+def _measurement_result(payload: Mapping[str, Any] | None) -> EvalResult | None:
+    """Project one measurement into the same score shape the UI reads."""
+    if payload is None or "primaryMetricKey" not in payload:
+        return None
+    measurement = EvalMeasurement.from_payload(payload)
+    return EvalResult(
+        current_score=measurement.candidate_score,
+        candidate_score=measurement.candidate_score,
+        external_verdict="accept",
+        metrics=measurement.metrics,
+        direction=measurement.direction,
     )
 
 
@@ -382,6 +489,50 @@ def _final_values(
         "init_score": initial,
         "metrics": metrics,
     }
+
+
+def _test_final_values(
+    run: EvolutionRunRecord,
+    rounds: Sequence[EvolutionRoundRecord],
+    baseline: EvolutionEvaluationRecord,
+    test_final: EvolutionEvaluationRecord,
+) -> Mapping[str, Any]:
+    """Build the final row from the held-out test-set baseline and final."""
+    init_score = float(baseline.eval_score or 0.0)
+    best_score = float(test_final.eval_score or 0.0)
+    direction = _measurement_direction(test_final.eval_result)
+    accepted = any(round_.accepted for round_ in rounds)
+    verdict = accepted and (
+        best_score > init_score if direction == "higher_is_better" else best_score < init_score
+    )
+    metric_key = run.eval_config.get("primaryMetricKey")
+    name = metric_key.strip() if isinstance(metric_key, str) and metric_key.strip() else "score"
+    metrics: list[dict[str, Any]] = [
+        {
+            "name": name,
+            "init": init_score,
+            "best": best_score,
+            "delta": best_score - init_score,
+            "unit": "",
+            "direction": direction,
+        },
+    ]
+    return {
+        "run_id": run.id,
+        "best_version": run.target_version,
+        "verdict": bool(verdict),
+        "best_score": best_score,
+        "init_score": init_score,
+        "metrics": metrics,
+    }
+
+
+def _measurement_direction(payload: Mapping[str, Any] | None) -> str:
+    """Read the metric direction from a persisted measurement payload."""
+    if payload is None:
+        return "higher_is_better"
+    direction = payload.get("direction")
+    return direction if direction in {"higher_is_better", "lower_is_better"} else "higher_is_better"
 
 
 def _prepared_workspace(run: EvolutionRunRecord) -> PreparedWorkspace:

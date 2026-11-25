@@ -7,16 +7,17 @@ from app.service.evolution.engine.contracts import (
     EngineDeps,
     EvalGateway,
     EvalGatewayConfig,
+    EvalMeasurement,
     EvalRequest,
     EvalResult,
     EvalStatus,
     EvalSubmission,
     EvolutionBlockedStage,
-    FakeEvalGateway,
     RunBlocked,
 )
 from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.engine.full import FullEvolutionEngine
+from app.third_party_api.eval_gateway.fake import FakeEvalGateway
 
 __all__ = [
     "ClusterOnlyEngine",
@@ -25,6 +26,7 @@ __all__ = [
     "EngineFactory",
     "EvalGateway",
     "EvalGatewayConfig",
+    "EvalMeasurement",
     "EvalRequest",
     "EvalResult",
     "EvalStatus",

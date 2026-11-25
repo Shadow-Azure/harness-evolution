@@ -4994,18 +4994,18 @@ function evReportSkill(run, hash) {
 const EV_DEMO_REFS = ['main', 'feature/foo'];
 const EV_TARGETS = {
   'ws-harness': [
-    { id: 't-dr', kind: 'skill', objectName: 'deep-research', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/deep-research', defaultRef: 'v2.4.0', tags: ['v2.4.0', 'v2.3.1', 'v2.2.0'], versions: [{ ref: 'v2.4.0', commit: 'a3f9c21', date: '2026-11-08' }, { ref: 'v2.3.1', commit: '7b2e084', date: '2026-10-30' }, { ref: 'v2.3.0', commit: 'e62b1c8', date: '2026-10-21' }, { ref: 'v2.2.0', commit: '5c41d7a', date: '2026-10-09' }, { ref: 'v2.1.3', commit: '2f9ab60', date: '2026-09-27' }, { ref: 'v2.1.2', commit: '9d03ee1', date: '2026-09-18' }, { ref: 'v2.1.1', commit: '4b6c2f5', date: '2026-09-11' }, { ref: 'v2.1.0', commit: 'c8d1a72', date: '2026-09-03' }, { ref: 'v2.0.9', commit: '1a7e3b9', date: '2026-08-26' }, { ref: 'v2.0.8', commit: '6e5f0c4', date: '2026-08-19' }, { ref: 'v2.0.7', commit: '0b9d27e', date: '2026-08-11' }, { ref: 'v2.0.6', commit: 'f4a8c13', date: '2026-08-04' }, { ref: 'v2.0.5', commit: '3d2f9b7', date: '2026-07-28' }, { ref: 'v2.0.4', commit: '9a6c1e8', date: '2026-07-20' }, { ref: 'v2.0.3', commit: '5f7b2d1', date: '2026-07-13' }, { ref: 'v2.0.2', commit: 'c3e8f6a', date: '2026-07-05' }, { ref: 'v2.0.1', commit: '8b4d5c2', date: '2026-06-27' }, { ref: 'v2.0.0', commit: 'a71f3e5', date: '2026-06-19' }], validationProjectId: 'val-dr-2026q4', testProjectId: 'test-dr-2026q4', enabled: true },
-    { id: 't-cr', kind: 'skill', objectName: 'code-review', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/code-review', defaultRef: 'v1.8.0', tags: ['v1.8.0', 'v1.7.2'], versions: [{ ref: 'v1.8.0', commit: 'f2c9a41', date: '2026-11-06' }, { ref: 'v1.7.2', commit: 'b7d3e58', date: '2026-10-24' }, { ref: 'v1.7.1', commit: '4e1a9c2', date: '2026-10-15' }, { ref: 'v1.7.0', commit: '9c5f2b8', date: '2026-10-03' }, { ref: 'v1.6.2', commit: '3a7e1d9', date: '2026-09-22' }, { ref: 'v1.6.1', commit: '8f2b4c7', date: '2026-09-12' }, { ref: 'v1.6.0', commit: 'd5e9a13', date: '2026-09-01' }, { ref: 'v1.5.3', commit: '6b1c8f4', date: '2026-08-22' }, { ref: 'v1.5.2', commit: 'e4a7d29', date: '2026-08-12' }, { ref: 'v1.5.1', commit: '1c6f9b3', date: '2026-08-02' }, { ref: 'v1.5.0', commit: 'a9d2e75', date: '2026-07-22' }, { ref: 'v1.4.0', commit: '7e3b5c1', date: '2026-07-10' }], validationProjectId: 'val-cr-2026q4', testProjectId: 'test-cr-2026q4', enabled: true },
-    { id: 't-ex', kind: 'agent', objectName: 'Explore', repoUrl: 'git@github.com:acme/agents.git', subDir: 'agents/Explore', defaultRef: 'v1.5.0', tags: ['v1.5.0', 'v1.4.3'], versions: [{ ref: 'v1.5.0', commit: 'c4a8b13', date: '2026-11-04' }, { ref: 'v1.4.3', commit: '6d2f9e1', date: '2026-10-20' }, { ref: 'v1.4.2', commit: 'b1e7c34', date: '2026-10-08' }, { ref: 'v1.4.1', commit: '9a3d5f7', date: '2026-09-25' }, { ref: 'v1.4.0', commit: 'f8c2e61', date: '2026-09-14' }, { ref: 'v1.3.2', commit: '2b6a9d4', date: '2026-09-02' }, { ref: 'v1.3.1', commit: 'd7e4b18', date: '2026-08-20' }, { ref: 'v1.3.0', commit: '5c1f7a2', date: '2026-08-08' }, { ref: 'v1.2.0', commit: '8e9b3c6', date: '2026-07-26' }], validationProjectId: 'val-ex-2026q4', testProjectId: 'test-ex-2026q4', enabled: true },
+    { id: 't-dr', kind: 'skill', objectName: 'deep-research', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/deep-research', defaultRef: 'v2.4.0', tags: ['v2.4.0', 'v2.3.1', 'v2.2.0'], versions: [{ ref: 'v2.4.0', commit: 'a3f9c21', date: '2026-11-08' }, { ref: 'v2.3.1', commit: '7b2e084', date: '2026-10-30' }, { ref: 'v2.3.0', commit: 'e62b1c8', date: '2026-10-21' }, { ref: 'v2.2.0', commit: '5c41d7a', date: '2026-10-09' }, { ref: 'v2.1.3', commit: '2f9ab60', date: '2026-09-27' }, { ref: 'v2.1.2', commit: '9d03ee1', date: '2026-09-18' }, { ref: 'v2.1.1', commit: '4b6c2f5', date: '2026-09-11' }, { ref: 'v2.1.0', commit: 'c8d1a72', date: '2026-09-03' }, { ref: 'v2.0.9', commit: '1a7e3b9', date: '2026-08-26' }, { ref: 'v2.0.8', commit: '6e5f0c4', date: '2026-08-19' }, { ref: 'v2.0.7', commit: '0b9d27e', date: '2026-08-11' }, { ref: 'v2.0.6', commit: 'f4a8c13', date: '2026-08-04' }, { ref: 'v2.0.5', commit: '3d2f9b7', date: '2026-07-28' }, { ref: 'v2.0.4', commit: '9a6c1e8', date: '2026-07-20' }, { ref: 'v2.0.3', commit: '5f7b2d1', date: '2026-07-13' }, { ref: 'v2.0.2', commit: 'c3e8f6a', date: '2026-07-05' }, { ref: 'v2.0.1', commit: '8b4d5c2', date: '2026-06-27' }, { ref: 'v2.0.0', commit: 'a71f3e5', date: '2026-06-19' }], validationProjectId: 'val-dr-2026q4', testProjectId: 'test-dr-2026q4', primaryMetricKey: 'resolved_rate', enabled: true },
+    { id: 't-cr', kind: 'skill', objectName: 'code-review', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/code-review', defaultRef: 'v1.8.0', tags: ['v1.8.0', 'v1.7.2'], versions: [{ ref: 'v1.8.0', commit: 'f2c9a41', date: '2026-11-06' }, { ref: 'v1.7.2', commit: 'b7d3e58', date: '2026-10-24' }, { ref: 'v1.7.1', commit: '4e1a9c2', date: '2026-10-15' }, { ref: 'v1.7.0', commit: '9c5f2b8', date: '2026-10-03' }, { ref: 'v1.6.2', commit: '3a7e1d9', date: '2026-09-22' }, { ref: 'v1.6.1', commit: '8f2b4c7', date: '2026-09-12' }, { ref: 'v1.6.0', commit: 'd5e9a13', date: '2026-09-01' }, { ref: 'v1.5.3', commit: '6b1c8f4', date: '2026-08-22' }, { ref: 'v1.5.2', commit: 'e4a7d29', date: '2026-08-12' }, { ref: 'v1.5.1', commit: '1c6f9b3', date: '2026-08-02' }, { ref: 'v1.5.0', commit: 'a9d2e75', date: '2026-07-22' }, { ref: 'v1.4.0', commit: '7e3b5c1', date: '2026-07-10' }], validationProjectId: 'val-cr-2026q4', testProjectId: 'test-cr-2026q4', primaryMetricKey: 'resolved_rate', enabled: true },
+    { id: 't-ex', kind: 'agent', objectName: 'Explore', repoUrl: 'git@github.com:acme/agents.git', subDir: 'agents/Explore', defaultRef: 'v1.5.0', tags: ['v1.5.0', 'v1.4.3'], versions: [{ ref: 'v1.5.0', commit: 'c4a8b13', date: '2026-11-04' }, { ref: 'v1.4.3', commit: '6d2f9e1', date: '2026-10-20' }, { ref: 'v1.4.2', commit: 'b1e7c34', date: '2026-10-08' }, { ref: 'v1.4.1', commit: '9a3d5f7', date: '2026-09-25' }, { ref: 'v1.4.0', commit: 'f8c2e61', date: '2026-09-14' }, { ref: 'v1.3.2', commit: '2b6a9d4', date: '2026-09-02' }, { ref: 'v1.3.1', commit: 'd7e4b18', date: '2026-08-20' }, { ref: 'v1.3.0', commit: '5c1f7a2', date: '2026-08-08' }, { ref: 'v1.2.0', commit: '8e9b3c6', date: '2026-07-26' }], validationProjectId: 'val-ex-2026q4', testProjectId: 'test-ex-2026q4', primaryMetricKey: 'resolved_rate', enabled: true },
   ],
   'ws-agent': [
-    { id: 't-ba', kind: 'skill', objectName: 'browser-agent', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/browser-agent', defaultRef: 'v0.9.4', tags: ['v0.9.4', 'v0.9.1'], validationProjectId: 'val-ba-2026q4', testProjectId: 'test-ba-2026q4', enabled: true },
-    { id: 't-wf', kind: 'skill', objectName: 'workflow', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/workflow', defaultRef: 'v1.1.0', tags: ['v1.1.0', 'v1.0.5'], validationProjectId: 'val-wf-2026q4', testProjectId: 'test-wf-2026q4', enabled: true },
-    { id: 't-cr2', kind: 'skill', objectName: 'code-review', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/code-review', defaultRef: 'v1.8.0', tags: ['v1.8.0'], validationProjectId: 'val-cr-2026q4', testProjectId: 'test-cr-2026q4', enabled: false },
+    { id: 't-ba', kind: 'skill', objectName: 'browser-agent', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/browser-agent', defaultRef: 'v0.9.4', tags: ['v0.9.4', 'v0.9.1'], validationProjectId: 'val-ba-2026q4', testProjectId: 'test-ba-2026q4', primaryMetricKey: 'resolved_rate', enabled: true },
+    { id: 't-wf', kind: 'skill', objectName: 'workflow', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/workflow', defaultRef: 'v1.1.0', tags: ['v1.1.0', 'v1.0.5'], validationProjectId: 'val-wf-2026q4', testProjectId: 'test-wf-2026q4', primaryMetricKey: 'resolved_rate', enabled: true },
+    { id: 't-cr2', kind: 'skill', objectName: 'code-review', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/code-review', defaultRef: 'v1.8.0', tags: ['v1.8.0'], validationProjectId: 'val-cr-2026q4', testProjectId: 'test-cr-2026q4', primaryMetricKey: 'resolved_rate', enabled: false },
   ],
   'ws-research': [
-    { id: 't-dr3', kind: 'skill', objectName: 'deep-research', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/deep-research', defaultRef: 'v2.4.0', tags: ['v2.4.0', 'v2.3.1'], validationProjectId: 'val-dr-2026q3', testProjectId: 'test-dr-2026q3', enabled: true },
-    { id: 't-ex3', kind: 'agent', objectName: 'Explore', repoUrl: 'git@github.com:acme/agents.git', subDir: 'agents/Explore', defaultRef: 'v1.5.0', tags: ['v1.5.0'], validationProjectId: 'val-ex-2026q3', testProjectId: 'test-ex-2026q3', enabled: true },
+    { id: 't-dr3', kind: 'skill', objectName: 'deep-research', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/deep-research', defaultRef: 'v2.4.0', tags: ['v2.4.0', 'v2.3.1'], validationProjectId: 'val-dr-2026q3', testProjectId: 'test-dr-2026q3', primaryMetricKey: 'resolved_rate', enabled: true },
+    { id: 't-ex3', kind: 'agent', objectName: 'Explore', repoUrl: 'git@github.com:acme/agents.git', subDir: 'agents/Explore', defaultRef: 'v1.5.0', tags: ['v1.5.0'], validationProjectId: 'val-ex-2026q3', testProjectId: 'test-ex-2026q3', primaryMetricKey: 'resolved_rate', enabled: true },
   ],
 };
 
@@ -5708,6 +5708,7 @@ function evRenderTargets() {
     <td class="project-ids">
       <div class="project-id-row"><span class="project-id-label">验证集</span><span class="project-id-value">${evEsc(t.validationProjectId || '未填写')}</span></div>
       <div class="project-id-row"><span class="project-id-label">测试集</span><span class="project-id-value">${evEsc(t.testProjectId || '未填写')}</span></div>
+      <div class="project-id-row"><span class="project-id-label">主指标</span><span class="project-id-value">${evEsc(t.primaryMetricKey || '未填写')}</span></div>
     </td>
     <td><span class="enabled-pill ${t.enabled ? '' : 'off'}">${t.enabled ? '已启用' : '已停用'}</span></td>
     <td class="actions">${evCanEdit() ? `<button class="btn sm" data-action="ev-target-edit" data-id="${t.id}">编辑</button>` : ''}</td>
@@ -5727,6 +5728,7 @@ function evOpenTargetDialog(t) {
     form: {
       kind: t?.kind || 'skill', objectName: t?.objectName || '', repoUrl: t?.repoUrl || '', subDir: t?.subDir || '',
       defaultRef: t?.defaultRef || '', validationProjectId: t?.validationProjectId || '', testProjectId: t?.testProjectId || '',
+      primaryMetricKey: t?.primaryMetricKey || '',
       enabled: t?.enabled ?? true, tags: t?.tags || [],
     },
     error: '',
@@ -5735,7 +5737,7 @@ function evOpenTargetDialog(t) {
 }
 function evSyncTargetForm() {
   const d = EV_STATE.targetDialog; if (!d) return;
-  ['objectName', 'repoUrl', 'subDir', 'defaultRef', 'validationProjectId', 'testProjectId'].forEach(k => {
+  ['objectName', 'repoUrl', 'subDir', 'defaultRef', 'validationProjectId', 'testProjectId', 'primaryMetricKey'].forEach(k => {
     const el = document.querySelector(`[data-ev-target-field="${k}"]`);
     if (el) d.form[k] = el.value;
   });
@@ -5760,6 +5762,7 @@ function evRenderTargetDialog() {
           <div class="f-row"><div class="f-label">基线分支或标签</div><input class="inp" data-ev-target-field="defaultRef" value="${evEsc(f.defaultRef)}" placeholder="main / v2.4.0"><div class="field-note">可填写分支或 tag；保存后作为启动向导的默认版本，向导中也可改填 commit id。</div></div>
           <div class="f-row"><div class="f-label">验证集测试工程 ID <span class="req">*</span></div><input class="inp" data-ev-target-field="validationProjectId" value="${evEsc(f.validationProjectId)}"></div>
           <div class="f-row"><div class="f-label">测试集测试工程 ID <span class="req">*</span></div><input class="inp" data-ev-target-field="testProjectId" value="${evEsc(f.testProjectId)}"></div>
+          <div class="f-row span-2"><div class="f-label">主指标 key <span class="req">*</span></div><input class="inp" data-ev-target-field="primaryMetricKey" value="${evEsc(f.primaryMetricKey)}" placeholder="如 resolved_rate"><div class="field-note">平台 results 中用于逐轮比较与终评的主指标 metric_key。</div></div>
           <div class="f-row span-2"><div class="f-label">启用</div><div class="switch-row"><label class="proto-switch"><input type="checkbox" data-ev-target-field="enabled" ${f.enabled ? 'checked' : ''}><span class="proto-switch-track"></span></label><span>${f.enabled ? '进入启动向导候选' : '保留配置但不进入向导'}</span></div></div>
         </div>
       </div>
@@ -5769,11 +5772,11 @@ function evRenderTargetDialog() {
 function evSaveTarget() {
   evSyncTargetForm();
   const d = EV_STATE.targetDialog, f = d.form;
-  for (const [k, label] of [['objectName', '对象名称'], ['repoUrl', '仓库地址'], ['subDir', '子目录'], ['defaultRef', '基线'], ['validationProjectId', '验证集测试工程 ID'], ['testProjectId', '测试集测试工程 ID']]) {
+  for (const [k, label] of [['objectName', '对象名称'], ['repoUrl', '仓库地址'], ['subDir', '子目录'], ['defaultRef', '基线'], ['validationProjectId', '验证集测试工程 ID'], ['testProjectId', '测试集测试工程 ID'], ['primaryMetricKey', '主指标 key']]) {
     if (!String(f[k] || '').trim()) { d.error = `请填写${label}。`; return evRenderTargetDialog(); }
   }
   const list = EV_TARGETS[evCurrentWs()];
-  const saved = { id: d.id, kind: f.kind, objectName: f.objectName.trim(), repoUrl: f.repoUrl.trim(), subDir: f.subDir.trim(), defaultRef: f.defaultRef.trim(), validationProjectId: f.validationProjectId.trim(), testProjectId: f.testProjectId.trim(), enabled: f.enabled, tags: f.tags || [] };
+  const saved = { id: d.id, kind: f.kind, objectName: f.objectName.trim(), repoUrl: f.repoUrl.trim(), subDir: f.subDir.trim(), defaultRef: f.defaultRef.trim(), validationProjectId: f.validationProjectId.trim(), testProjectId: f.testProjectId.trim(), primaryMetricKey: f.primaryMetricKey.trim(), enabled: f.enabled, tags: f.tags || [] };
   const idx = list.findIndex(t => t.id === saved.id);
   if (idx >= 0) list[idx] = saved; else list.push(saved);
   EV_STATE.targetDialog = null;

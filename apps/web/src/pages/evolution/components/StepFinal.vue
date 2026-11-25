@@ -15,6 +15,8 @@ type Metric = {
   best: number | string;
   delta: number;
   unit: string;
+  direction: "higher_is_better" | "lower_is_better";
+  improvement: number;
 };
 
 const metrics = computed(() =>
@@ -31,12 +33,17 @@ const metrics = computed(() =>
     ) {
       return [];
     }
+    const direction = item.direction === "lower_is_better"
+      ? "lower_is_better"
+      : "higher_is_better";
     return [{
       name,
       init,
       best,
       delta,
       unit: typeof item.unit === "string" ? item.unit : "",
+      direction,
+      improvement: direction === "lower_is_better" ? -delta : delta,
     }];
   }),
 );
@@ -174,7 +181,7 @@ const degraded = computed(() => props.step.payload.degraded === true);
                 <td class="num">
                   {{ metric.best }}
                 </td>
-                <td :class="metric.delta >= 0 ? 'delta-pos' : 'delta-neg'">
+                <td :class="metric.improvement >= 0 ? 'delta-pos' : 'delta-neg'">
                   {{ deltaLabel(metric.delta, metric.unit) }}
                 </td>
               </tr>

@@ -12,7 +12,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
-from typing import NoReturn
+from typing import Any, NoReturn
 from urllib.parse import urlsplit
 
 from app.db.crud.evolution import EvolutionRepository
@@ -121,6 +121,7 @@ def build_accepted_message(
     candidate_score: float,
     reason: str,
     web_base_url: str | None,
+    decision_rule: str = "primary-metric-strict-greater",
 ) -> str:
     """Build the assertion-shaped accepted message while preserving shared facts."""
     title = _safe_single_line(trace.cluster_title)
@@ -145,7 +146,7 @@ def build_accepted_message(
                 f"Harness-Verdict: accepted "
                 f"({candidate_score:.1f} vs {current_score:.1f}, {delta:+.1f})"
             ),
-            "Harness-Decision-Rule: external-verdict",
+            f"Harness-Decision-Rule: {decision_rule}",
         ),
     )
     return "\n\n".join((subject, *sections, "---\n" + trailers))
@@ -527,6 +528,7 @@ class EvolutionCandidateService:
         reason: str,
         job_id: str | None = None,
         retry_attempts: int = 0,
+        eval_result: Mapping[str, Any] | None = None,
     ) -> EvolutionRoundRecord:
         """Amend accepted metadata, fast-forward the run branch, and persist it."""
         if round_.status == "accepted":
@@ -589,6 +591,7 @@ class EvolutionCandidateService:
             final_commit=final.commit,
             final_message=final.message,
             finished_at=self._now(),
+            eval_result=eval_result,
         )
         await self._record(
             run.id,
@@ -613,6 +616,7 @@ class EvolutionCandidateService:
         *,
         reason: str,
         job_id: str | None = None,
+        eval_result: Mapping[str, Any] | None = None,
     ) -> EvolutionRoundRecord:
         """Delete rejected candidate refs and retain the run branch unchanged."""
         if round_.status == "rejected":
@@ -646,6 +650,7 @@ class EvolutionCandidateService:
         rejected = await self._runs.reject_round(
             deciding.id,
             finished_at=self._now(),
+            eval_result=eval_result,
         )
         await self._record(
             run.id,

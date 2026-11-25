@@ -53,6 +53,7 @@ class EvolutionTargetWrite(IdentityModel):
     default_ref: str
     validation_project_id: str = Field(max_length=128)
     test_project_id: str = Field(max_length=128)
+    primary_metric_key: str = Field(max_length=128)
     attribution_package_id: str | None = Field(default=None, min_length=1, max_length=64)
     enabled: bool = True
 
@@ -67,6 +68,8 @@ class EvolutionTargetWrite(IdentityModel):
             values["validationProjectId"] = ""
         if "testProjectId" not in values and "test_project_id" not in values:
             values["testProjectId"] = ""
+        if "primaryMetricKey" not in values and "primary_metric_key" not in values:
+            values["primaryMetricKey"] = ""
         return values
 
 
@@ -232,6 +235,30 @@ def _validate_project_id(value: str, *, field: str) -> str:
     return normalized
 
 
+def _validate_primary_metric_key(value: str) -> str:
+    """Trim one opaque metric key and reject blank or spaced values."""
+    normalized = value.strip()
+    if not normalized:
+        raise AppError(
+            status_code=422,
+            code=ErrorCode.PRIMARY_METRIC_KEY_INVALID,
+            message="primary metric key is required",
+            details={"field": "primaryMetricKey", "reason": "metric_key_required"},
+        )
+    if (
+        len(normalized) > 128
+        or _CONTROL.search(normalized)
+        or any(character.isspace() for character in normalized)
+    ):
+        raise AppError(
+            status_code=422,
+            code=ErrorCode.PRIMARY_METRIC_KEY_INVALID,
+            message="primary metric key is invalid",
+            details={"field": "primaryMetricKey", "reason": "metric_key_format"},
+        )
+    return normalized
+
+
 def _normalize_text(
     value: str,
     *,
@@ -360,6 +387,7 @@ def _normalize_write(body: EvolutionTargetWrite) -> EvolutionTargetWrite:
             body.test_project_id,
             field="testProjectId",
         ),
+        primary_metric_key=_validate_primary_metric_key(body.primary_metric_key),
         enabled=body.enabled,
         attribution_package_id=body.attribution_package_id,
     )
@@ -392,6 +420,7 @@ def _public(record: EvolutionTargetRecord) -> EvolutionTarget:
         default_ref=record.default_ref,
         validation_project_id=record.validation_project_id,
         test_project_id=record.test_project_id,
+        primary_metric_key=record.primary_metric_key,
         enabled=record.enabled,
     )
 

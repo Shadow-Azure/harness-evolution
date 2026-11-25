@@ -45,6 +45,7 @@ class EvolutionTargetRecord:
     attribution_will_retry: bool = False
     attribution_generation: str | None = None
     attribution_snapshot: dict[str, Any] | None = None
+    primary_metric_key: str = ""
 
     @property
     def definition(self) -> dict[str, str] | None:
@@ -87,6 +88,7 @@ def _record(row: RowMapping) -> EvolutionTargetRecord:
         default_ref=row["default_ref"],
         validation_project_id=row["validation_project_id"],
         test_project_id=row["test_project_id"],
+        primary_metric_key=row["primary_metric_key"],
         enabled=bool(row["enabled"]),
         attribution_package_id=row["attribution_package_id"],
         attribution_skill_name=row["attribution_skill_name"],
@@ -304,6 +306,7 @@ class EvolutionTargetRepository:
                         default_ref=values["default_ref"],
                         validation_project_id=values["validation_project_id"],
                         test_project_id=values["test_project_id"],
+                        primary_metric_key=values.get("primary_metric_key", ""),
                         enabled=values["enabled"],
                         created_by=values.get("created_by"),
                         created_at=now,
@@ -338,6 +341,7 @@ class EvolutionTargetRepository:
             default_ref=values["default_ref"],
             validation_project_id=values["validation_project_id"],
             test_project_id=values["test_project_id"],
+            primary_metric_key=values.get("primary_metric_key", ""),
             enabled=values["enabled"],
             updated_at=now_shanghai(),
         )

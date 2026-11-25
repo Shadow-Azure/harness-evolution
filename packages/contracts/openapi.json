@@ -2929,6 +2929,7 @@
           "RUN_NOT_RETRYABLE",
           "REPO_INVALID",
           "PROJECT_ID_INVALID",
+          "PRIMARY_METRIC_KEY_INVALID",
           "ENGINE_INVALID",
           "TARGET_EXISTS",
           "TARGET_NOT_FOUND",
@@ -4792,6 +4793,11 @@
             "title": "Objecttype",
             "type": "string"
           },
+          "primaryMetricKey": {
+            "maxLength": 128,
+            "title": "Primarymetrickey",
+            "type": "string"
+          },
           "repoUrl": {
             "title": "Repourl",
             "type": "string"
@@ -4819,6 +4825,7 @@
           "defaultRef",
           "validationProjectId",
           "testProjectId",
+          "primaryMetricKey",
           "id"
         ],
         "title": "EvolutionTarget",
@@ -4904,6 +4911,11 @@
             "title": "Objecttype",
             "type": "string"
           },
+          "primaryMetricKey": {
+            "maxLength": 128,
+            "title": "Primarymetrickey",
+            "type": "string"
+          },
           "repoUrl": {
             "title": "Repourl",
             "type": "string"
@@ -4930,7 +4942,8 @@
           "subDir",
           "defaultRef",
           "validationProjectId",
-          "testProjectId"
+          "testProjectId",
+          "primaryMetricKey"
         ],
         "title": "EvolutionTargetWrite",
         "type": "object"

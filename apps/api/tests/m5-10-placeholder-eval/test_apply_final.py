@@ -108,6 +108,7 @@ class CandidateDouble:
         reason: str,
         job_id: str | None = None,
         retry_attempts: int = 0,
+        eval_result: Mapping[str, Any] | None = None,
     ) -> EvolutionRoundRecord:
         del run, trace, current_score, candidate_score, job_id, retry_attempts
         self.calls.append(reason)
@@ -117,6 +118,7 @@ class CandidateDouble:
             final_commit="c" * 40,
             final_message="accepted",
             finished_at=NOW,
+            eval_result=eval_result,
         )
 
     async def reject(
@@ -126,11 +128,16 @@ class CandidateDouble:
         *,
         reason: str,
         job_id: str | None = None,
+        eval_result: Mapping[str, Any] | None = None,
     ) -> EvolutionRoundRecord:
         del run, job_id
         self.calls.append(reason)
         await self._runs.mark_round_deciding(round_.id)
-        return await self._runs.reject_round(round_.id, finished_at=NOW)
+        return await self._runs.reject_round(
+            round_.id,
+            finished_at=NOW,
+            eval_result=eval_result,
+        )
 
 
 class WorkspaceDouble:

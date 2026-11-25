@@ -535,6 +535,12 @@ evolution_targets = Table(
         server_default="",
     ),
     Column("test_project_id", String(128), nullable=False, server_default=""),
+    Column(
+        "primary_metric_key",
+        String(128),
+        nullable=False,
+        server_default="",
+    ),
     Column("enabled", Boolean, nullable=False, default=True, server_default=true()),
     Column(
         "created_by",

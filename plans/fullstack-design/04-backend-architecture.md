@@ -295,9 +295,10 @@ scheduler_loop()                                                # lifespan 启�
   └─ pending > 0 → trigger_sync(source="scheduler")（内部抢 sync_lock；抢不到跳过）
 
 eval_poller_loop()                                              # lifespan 启动；每 30s 扫到期评测
-  └─ round.eval_status=evaluating 且 eval_next_poll_at<=now
+  └─ rounds + evolution_evaluations 到期项（逐轮候选、基线、测试集终评）
   └─ 每 HE_EVAL_POLL_SECONDS=300 调一次外部 status
-  └─ completed → 入队 evolution_apply；failed/timeout → run blocked
+  └─ completed → 落测量值；候选完成后入队 evolution_apply
+  └─ failed/timeout → run blocked(stage=eval)
 
 blocked_sweeper_loop()                                         # lifespan 启动；每 30s 扫 blocked
   └─ next_retry_at<=now 且 retry_attempts<3
@@ -384,8 +385,8 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 | `HE_GIT_PROXY_PROBE_INTERVAL_SECONDS` / `HE_GIT_PROXY_PROBE_TIMEOUT_SECONDS` | `60` / `5` | 代理健康探测间隔与单次上限 |
 | `HE_GIT_REMOTE` | `origin` | 推送远端名 |
 | `HE_GIT_AUTHOR_NAME` / `HE_GIT_AUTHOR_EMAIL` | `harness-evolution` / `noreply@local` | commit author |
-| `HE_EVAL_MODE` | `fake` | `fake` / `http`；V1 可先 fake，但 push 链路真实 |
-| `HE_EVAL_BASE_URL` / `HE_EVAL_API_KEY` | 空 | 外部评测平台地址与密钥 |
+| `HE_EVAL_MODE` | `fake` | 注册表里的 provider：`fake` / `ai-eval-platform`；未知值启动失败 |
+| `HE_EVAL_BASE_URL` / `HE_EVAL_API_KEY` | 空 | 外部评测平台地址与服务令牌；真实 provider 必填，密钥只经 Secrets 注入 |
 | `HE_EVAL_POLL_SECONDS` | `300` | 评测状态轮询间隔（5 分钟） |
 | `HE_EVAL_TIMEOUT_SECONDS` | `7200` | 单轮评测超时；超时后 run 进入 blocked |
 | `HE_SSE_HEARTBEAT_SECONDS` | `15` | SSE 心跳 |

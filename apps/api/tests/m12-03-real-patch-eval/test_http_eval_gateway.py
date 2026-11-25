@@ -1,266 +1,330 @@
-"""HttpEvalGateway and EvalMapper contracts against a real local HTTP stub."""
+"""ai-eval-platform gateway contract: launch, status, results and errors."""
 
 from __future__ import annotations
 
-import threading
-from datetime import UTC, datetime
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+from collections.abc import Callable, Mapping
+from typing import Any
 
 import httpx
 import pytest
-from eval_stub import StubEvalPlatform
 
 from app.service.evolution.engine.contracts import (
     EvalGatewayConfig,
+    EvalGatewayConfigError,
     EvalRequest,
-    EvalStatus,
-    EvalSubmission,
 )
-from app.third_party_api.eval_gateway.http import HttpEvalError, HttpEvalGateway
-from app.third_party_api.eval_gateway.mapper import EvalMapper
+from app.third_party_api.eval_gateway.ai_eval_platform import (
+    AiEvalPlatformGateway,
+)
+from app.third_party_api.eval_gateway.base import EvalGatewayError
 
-NOW = datetime(2026, 11, 17, 10, 0, tzinfo=UTC)
-
-
-def _request() -> EvalRequest:
-    """Build one fully populated internal evaluation request."""
-    return EvalRequest(
-        run_id="run-m12-03",
-        evolution_round_id="round-m12-03",
-        repo_url="https://example.invalid/repo.git",
-        ref="evo/20261117-run-m12-03/candidate/r1",
-        commit="c" * 40,
-        target_type="skill",
-        target_name="deep-research",
-        target_version="v2.0.0",
-        cluster_id="C1",
-        idempotency_key="run-m12-03:1:" + "c" * 40,
-    )
+_COMMIT = "c" * 40
+_CONFIG: dict[str, Any] = {
+    "mode": "ai-eval-platform",
+    "baseUrl": "http://platform.invalid",
+    "validationProjectId": "tpl-validation",
+    "testProjectId": "tpl-test",
+    "primaryMetricKey": "resolved_rate",
+    "subDir": "skills/deep-research",
+}
 
 
-async def test_mapper_round_trips_submit_status_and_result() -> None:
-    """The mapper is the only place allowed to know the external field names."""
-    payload = EvalMapper.submit_payload(_request())
-    assert payload == {
-        "runId": "run-m12-03",
-        "evolutionRoundId": "round-m12-03",
-        "repoUrl": "https://example.invalid/repo.git",
-        "ref": "evo/20261117-run-m12-03/candidate/r1",
-        "commit": "c" * 40,
-        "targetType": "skill",
-        "targetName": "deep-research",
-        "targetVersion": "v2.0.0",
-        "clusterId": "C1",
-        "idempotencyKey": "run-m12-03:1:" + "c" * 40,
+def _request(**overrides: Any) -> EvalRequest:
+    """Build one candidate evaluation request with the target snapshot."""
+    values: dict[str, Any] = {
+        "run_id": "run-620",
+        "evolution_round_id": "round-620",
+        "repo_url": "https://example.invalid/repo.git",
+        "ref": "evo/20261125-run-620/candidate/r1",
+        "commit": _COMMIT,
+        "target_type": "skill",
+        "target_name": "deep-research",
+        "target_version": "v2.0.0",
+        "cluster_id": "C1",
+        "idempotency_key": f"run-620:1:{_COMMIT}:1",
+        "purpose": "candidate",
+        "project_id": "tpl-validation",
+        "sub_dir": "skills/deep-research",
+        "attempt": 1,
+        "round_seq": 1,
+        "parent_commit": "b" * 40,
     }
-    submission = EvalMapper.parse_submission({"evalId": "eval-9"})
-    assert submission == EvalSubmission(eval_id="eval-9")
-    status = EvalMapper.parse_status({"status": "running", "message": "wego"})
-    assert status == EvalStatus(status="running", message="wego")
-    result = EvalMapper.parse_result(
-        {
-            "currentScore": 80,
-            "candidateScore": 91.5,
-            "verdict": "reject",
-            "metrics": [],
-        },
+    values.update(overrides)
+    return EvalRequest(**values)
+
+
+def _gateway(
+    handler: Callable[[httpx.Request], httpx.Response],
+    config: Mapping[str, Any] | None = None,
+) -> AiEvalPlatformGateway:
+    """Build the adapter over a mock transport so no socket is opened."""
+    return AiEvalPlatformGateway(
+        EvalGatewayConfig.from_mapping(dict(config or _CONFIG)),
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        auth_header={"Authorization": "Bearer stub-token"},
     )
-    assert result.external_verdict == "reject"
-    assert result.candidate_score == 91.5
 
 
-async def test_http_gateway_submits_polls_and_fetches_results() -> None:
-    """The HTTP gateway performs real calls end to end against a local stub."""
-    platform = StubEvalPlatform()
-    server, base_url = platform.build()
-    try:
-        async with httpx.AsyncClient(base_url=base_url) as client:
-            gateway = HttpEvalGateway(
-                EvalGatewayConfig.from_mapping(
-                    {"mode": "http", "baseUrl": base_url},
-                ),
-                client=client,
-                auth_header={"Authorization": "Bearer stub-secret"},
-            )
-            submission = await gateway.submit(_request())
-            assert submission == EvalSubmission(eval_id="eval-e2e-1")
-            queued = await gateway.get_status(submission.eval_id)
-            assert queued.status == "queued"
-            completed = await gateway.get_status(submission.eval_id)
-            assert completed.status == "completed"
-            result = await gateway.get_result(submission.eval_id)
-    finally:
-        server.shutdown()
+async def test_submit_sends_the_real_launch_contract() -> None:
+    """The launch request pins the commit, scopes the asset and sends lineage."""
+    received: list[httpx.Request] = []
+    body: dict[str, Any] = {}
 
-    assert platform.received_auth == ["Bearer stub-secret"]
-    assert platform.received_bodies == [EvalMapper.submit_payload(_request())]
-    assert result.current_score == 82.0
-    assert result.candidate_score == 88.5
-    assert result.external_verdict == "accept"
-    assert result.metrics[0]["name"] == "pass_rate"
+    def handler(request: httpx.Request) -> httpx.Response:
+        received.append(request)
+        body.update(json.loads(request.content))
+        return httpx.Response(
+            202,
+            json={
+                "run_id": "run-platform-1",
+                "created": True,
+                "asset": {"resolved_commit": _COMMIT},
+                "warnings": ["该模板已开启自进化 bad case 上报"],
+            },
+        )
 
+    gateway = _gateway(handler)
+    submission = await gateway.submit(_request())
 
-async def test_http_gateway_reports_external_failure_status() -> None:
-    """External failed/timeout statuses surface with their safe message."""
-    platform = StubEvalPlatform(status_sequence=["failed"], status_message="runner lost")
-    server, base_url = platform.build()
-    try:
-        async with httpx.AsyncClient(base_url=base_url) as client:
-            gateway = HttpEvalGateway(
-                EvalGatewayConfig.from_mapping({"mode": "http", "baseUrl": base_url}),
-                client=client,
-            )
-            submission = await gateway.submit(_request())
-            status = await gateway.get_status(submission.eval_id)
-    finally:
-        server.shutdown()
-
-    assert status == EvalStatus(status="failed", message="runner lost")
-    assert platform.received_auth == [None]
+    assert submission.eval_id == "run-platform-1"
+    assert submission.warnings == ("该模板已开启自进化 bad case 上报",)
+    assert received[0].url.path == "/api/v1/eval-templates/tpl-validation/launch"
+    assert received[0].headers["Authorization"] == "Bearer stub-token"
+    assert received[0].headers["Idempotency-Key"] == f"run-620:1:{_COMMIT}:1"
+    assert body["asset_override"] == {
+        "ref": "evo/20261125-run-620/candidate/r1",
+        "commit": _COMMIT,
+        "asset_paths": ["skills/deep-research"],
+    }
+    assert body["lineage"] == {
+        "evolutionRunId": "run-620",
+        "evolutionRoundId": "round-620",
+        "roundSeq": 1,
+        "parentCommit": "b" * 40,
+    }
 
 
-async def test_http_gateway_rejects_invalid_status_and_result_payloads() -> None:
-    """Malformed external payloads raise gateway errors instead of silent defaults."""
-    platform = StubEvalPlatform(
-        status_sequence=["mysterious"],
-        result_payload={"currentScore": "high", "candidateScore": 90.0},
-    )
-    server, base_url = platform.build()
-    try:
-        async with httpx.AsyncClient(base_url=base_url) as client:
-            gateway = HttpEvalGateway(
-                EvalGatewayConfig.from_mapping({"mode": "http", "baseUrl": base_url}),
-                client=client,
-            )
-            submission = await gateway.submit(_request())
-            with pytest.raises(HttpEvalError, match="status"):
-                await gateway.get_status(submission.eval_id)
-            with pytest.raises(HttpEvalError, match="result"):
-                await gateway.get_result(submission.eval_id)
-    finally:
-        server.shutdown()
+async def test_submit_uses_the_test_template_for_the_held_out_final() -> None:
+    """Test baselines and the test final target the test template."""
 
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/eval-templates/tpl-test/launch"
+        return httpx.Response(
+            202,
+            json={"run_id": "run-test", "asset": {"resolved_commit": _COMMIT}},
+        )
 
-async def test_http_gateway_wraps_transport_and_http_failures() -> None:
-    """Connection failures and HTTP error codes become one gateway error type."""
-    platform = StubEvalPlatform(result_status_code=500)
-    server, base_url = platform.build()
-    try:
-        async with httpx.AsyncClient(base_url=base_url) as client:
-            gateway = HttpEvalGateway(
-                EvalGatewayConfig.from_mapping(
-                    {"mode": "http", "baseUrl": base_url},
-                ),
-                client=client,
-            )
-            submission = await gateway.submit(_request())
-            await gateway.get_status(submission.eval_id)
-            with pytest.raises(HttpEvalError, match="evaluation platform"):
-                await gateway.get_result(submission.eval_id)
-    finally:
-        server.shutdown()
-
-    dead = HttpEvalGateway(
-        EvalGatewayConfig.from_mapping(
-            {"mode": "http", "baseUrl": "http://127.0.0.1:1"},
+    gateway = _gateway(handler)
+    submission = await gateway.submit(
+        _request(
+            purpose="test_final",
+            evolution_round_id="",
+            project_id="tpl-test",
+            round_seq=0,
+            sub_dir="skills/deep-research",
         ),
     )
-    with pytest.raises(HttpEvalError):
-        await dead.submit(_request())
+
+    assert submission.eval_id == "run-test"
+
+
+async def test_submit_declares_an_agent_asset_as_subagent() -> None:
+    """Agent targets declare the asset type instead of inheriting the template."""
+    body: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body.update(json.loads(request.content))
+        return httpx.Response(
+            202,
+            json={"run_id": "run-agent", "asset": {"resolved_commit": _COMMIT}},
+        )
+
+    gateway = _gateway(handler)
+    await gateway.submit(
+        _request(target_type="agent", sub_dir="agents/reviewer"),
+    )
+
+    assert body["asset_override"]["asset_types"] == {"agents/reviewer": "subagent"}
+
+
+async def test_submit_rejects_a_drifting_resolved_commit() -> None:
+    """A resolved commit different from the candidate must fail closed."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            202,
+            json={"run_id": "run-drift", "asset": {"resolved_commit": "d" * 40}},
+        )
+
+    gateway = _gateway(handler)
+    with pytest.raises(EvalGatewayError, match="different candidate commit"):
+        await gateway.submit(_request())
+
+
+async def test_submit_rejects_knowledge_targets_explicitly() -> None:
+    """Knowledge targets are outside this phase and fail before any request."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError("knowledge targets must not call the platform")
+
+    gateway = _gateway(handler)
+    with pytest.raises(EvalGatewayConfigError, match="knowledge"):
+        await gateway.submit(_request(target_type="knowledge"))
 
 
 @pytest.mark.parametrize(
-    ("status_code", "retryable"),
-    [(500, True), (502, True), (429, True), (404, False), (400, False)],
+    ("platform_status", "expected"),
+    [
+        ("preparing", "queued"),
+        ("queued", "queued"),
+        ("running", "running"),
+        ("finalizing", "running"),
+        ("cancelling", "running"),
+        ("completed", "completed"),
+        ("failed", "failed"),
+        ("cancelled", "failed"),
+    ],
 )
-async def test_http_gateway_classifies_http_status_retryability(
-    status_code: int,
-    retryable: bool,
+async def test_status_maps_the_platform_lifecycle(
+    platform_status: str,
+    expected: str,
 ) -> None:
-    """Only 429/5xx are transient; other 4xx rejections are final answers."""
-    platform = StubEvalPlatform(status_status_code=status_code)
-    server, base_url = platform.build()
-    try:
-        async with httpx.AsyncClient(base_url=base_url) as client:
-            gateway = HttpEvalGateway(
-                EvalGatewayConfig.from_mapping({"mode": "http", "baseUrl": base_url}),
-                client=client,
-            )
-            submission = await gateway.submit(_request())
-            with pytest.raises(HttpEvalError) as excinfo:
-                await gateway.get_status(submission.eval_id)
-    finally:
-        server.shutdown()
+    """The 11-state platform table folds onto HE's five states."""
 
-    assert excinfo.value.retryable is retryable
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"status": platform_status})
+
+    gateway = _gateway(handler)
+    status = await gateway.get_status("run-platform-1")
+
+    assert status.status == expected
 
 
-async def test_http_gateway_marks_transport_failures_retryable() -> None:
-    """Connection failures and timeouts are transient observation problems."""
-    dead = HttpEvalGateway(
-        EvalGatewayConfig.from_mapping(
-            {"mode": "http", "baseUrl": "http://127.0.0.1:1"},
-        ),
-    )
-    with pytest.raises(HttpEvalError) as excinfo:
-        await dead.submit(_request())
+async def test_partial_status_uses_the_minimum_completion_guard() -> None:
+    """A partial run below 50% is a failure; at or above it is completed."""
 
-    assert excinfo.value.retryable is True
+    def below(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"status": "partial", "progress": {"percent": 40}},
+        )
+
+    def above(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"status": "partial", "progress": {"percent": 70}},
+        )
+
+    assert (await _gateway(below).get_status("run-1")).status == "failed"
+    assert (await _gateway(above).get_status("run-1")).status == "completed"
 
 
-async def test_http_gateway_marks_payload_failures_non_retryable() -> None:
-    """Non-JSON and malformed payloads are contract errors, never transient."""
-    platform = StubEvalPlatform(status_sequence=["mysterious"])
-    server, base_url = platform.build()
-    try:
-        async with httpx.AsyncClient(base_url=base_url) as client:
-            gateway = HttpEvalGateway(
-                EvalGatewayConfig.from_mapping({"mode": "http", "baseUrl": base_url}),
-                client=client,
-            )
-            submission = await gateway.submit(_request())
-            with pytest.raises(HttpEvalError) as excinfo:
-                await gateway.get_status(submission.eval_id)
-    finally:
-        server.shutdown()
+async def test_budget_pause_is_terminal_with_actionable_copy() -> None:
+    """The platform never self-heals a budget pause, so HE fails it."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"status": "paused_budget"})
+
+    gateway = _gateway(handler)
+    status = await gateway.get_status("run-1")
+
+    assert status.status == "failed"
+    assert "预算" in (status.message or "")
+
+
+async def test_unknown_status_fails_explicitly() -> None:
+    """An unknown platform state cannot silently look queued or running."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"status": "teleporting"})
+
+    gateway = _gateway(handler)
+    with pytest.raises(EvalGatewayError, match="unknown status"):
+        await gateway.get_status("run-1")
+
+
+async def test_result_reads_the_primary_metric_and_direction() -> None:
+    """Results keep raw items but expose the configured primary measurement."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "is_final": True,
+                "items": [
+                    {
+                        "metric_key": "resolved_count",
+                        "value": 4,
+                        "direction": "higher_is_better",
+                    },
+                    {
+                        "metric_key": "resolved_rate",
+                        "value": 66.7,
+                        "direction": "higher_is_better",
+                    },
+                ],
+            },
+        )
+
+    gateway = _gateway(handler)
+    measurement = await gateway.get_result("run-1")
+
+    assert measurement.candidate_score == 66.7
+    assert measurement.primary_metric_key == "resolved_rate"
+    assert measurement.direction == "higher_is_better"
+    assert measurement.metrics[1]["metric_key"] == "resolved_rate"
+
+
+async def test_result_without_the_primary_metric_fails_closed() -> None:
+    """A results payload missing the configured metric is not a score of zero."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"items": [{"metric_key": "resolved_count", "value": 4}]},
+        )
+
+    gateway = _gateway(handler)
+    with pytest.raises(EvalGatewayError, match="no primary metric"):
+        await gateway.get_result("run-1")
+
+
+async def test_4xx_error_envelope_is_final_with_the_platform_code() -> None:
+    """A configuration rejection is not retried and keeps the platform code."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            422,
+            json={
+                "error": {
+                    "code": "asset_ref_unresolved",
+                    "message": "资产 Ref 解析失败",
+                },
+            },
+        )
+
+    gateway = _gateway(handler)
+    with pytest.raises(EvalGatewayError) as excinfo:
+        await gateway.submit(_request())
 
     assert excinfo.value.retryable is False
+    assert excinfo.value.platform_code == "asset_ref_unresolved"
 
 
-@pytest.mark.parametrize("body", [b"not-json", b"[1,2,3]"])
-async def test_http_gateway_rejects_non_json_and_non_object_bodies(body: bytes) -> None:
-    """Non-JSON and non-object responses become one sanitized gateway error."""
-    received: list[str] = []
+async def test_5xx_and_transport_errors_are_retryable() -> None:
+    """Platform-side transience is deferred by the poller, not judged final."""
 
-    class Handler(BaseHTTPRequestHandler):
-        def do_POST(self) -> None:
-            self.rfile.read(int(self.headers.get("Content-Length", "0")))
-            received.append(self.path)
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+    def unavailable(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="upstream down")
 
-        def log_message(self, *args: object) -> None:
-            """Keep the test output quiet."""
+    def broken(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    try:
-        async with httpx.AsyncClient(
-            base_url=f"http://127.0.0.1:{server.server_port}",
-        ) as client:
-            gateway = HttpEvalGateway(
-                EvalGatewayConfig.from_mapping(
-                    {"mode": "http", "baseUrl": f"http://127.0.0.1:{server.server_port}"},
-                ),
-                client=client,
-            )
-            with pytest.raises(HttpEvalError):
-                await gateway.submit(_request())
-    finally:
-        server.shutdown()
-    # Distinguishing assertion: the request really round-tripped once and the
-    # bad body was folded by the gateway, not silently passed through.
-    assert received == ["/evals"]
+    with pytest.raises(EvalGatewayError) as unavailable_exc:
+        await _gateway(unavailable).get_status("run-1")
+    with pytest.raises(EvalGatewayError) as transport_exc:
+        await _gateway(broken).get_status("run-1")
+
+    assert unavailable_exc.value.retryable is True
+    assert transport_exc.value.retryable is True

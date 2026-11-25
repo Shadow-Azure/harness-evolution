@@ -306,6 +306,37 @@ evolution_rounds = Table(
     ),
 )
 
+evolution_evaluations = Table(
+    "evolution_evaluations",
+    EVOLUTION_METADATA,
+    Column("id", String(36), primary_key=True),
+    Column(
+        "run_id",
+        String(36),
+        ForeignKey("evolution_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("kind", String(32), nullable=False),
+    Column("eval_external_id", String(128), nullable=True),
+    Column("eval_status", String(16), nullable=False, server_default="pending"),
+    Column("eval_attempts", Integer, nullable=False, server_default="0"),
+    Column("eval_next_poll_at", DateTime(timezone=True), nullable=True),
+    Column("eval_paused_seconds", Float, nullable=False, server_default="0"),
+    Column("eval_started_at", DateTime(timezone=True), nullable=True),
+    Column("eval_finished_at", DateTime(timezone=True), nullable=True),
+    Column("eval_score", Float, nullable=True),
+    Column("eval_result", JSON, nullable=True),
+    Column("eval_error", Text, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("run_id", "kind", name="uq_evolution_evaluations_run_kind"),
+    Index("ix_evolution_evaluations_run", "run_id"),
+    Index(
+        "ix_evolution_evaluations_poll",
+        "eval_status",
+        "eval_next_poll_at",
+    ),
+)
+
 evolution_finals = Table(
     "evolution_finals",
     EVOLUTION_METADATA,
@@ -467,6 +498,29 @@ class EvolutionRoundRecord:
     eval_paused_seconds: float = 0
 
 
+EVALUATION_KINDS = ("validation_baseline", "test_baseline", "test_final")
+
+
+@dataclass(frozen=True, slots=True)
+class EvolutionEvaluationRecord:
+    """One run-level evaluation that belongs to no iteration round."""
+
+    id: str
+    run_id: str
+    kind: str
+    eval_external_id: str | None
+    eval_status: str
+    eval_attempts: int
+    eval_next_poll_at: datetime | None
+    eval_paused_seconds: float
+    eval_started_at: datetime | None
+    eval_finished_at: datetime | None
+    eval_score: float | None
+    eval_result: dict[str, Any] | None
+    eval_error: str | None
+    created_at: datetime
+
+
 @dataclass(frozen=True, slots=True)
 class EvolutionFinalRecord:
     """One run's terminal evaluation summary."""
@@ -554,6 +608,33 @@ def _optional_timestamp(value: object) -> datetime | None:
 def _optional_date(value: object) -> date | None:
     """Return an optional date without accepting timestamps."""
     return value if isinstance(value, date) and not isinstance(value, datetime) else None
+
+
+def record_from_evolution_evaluation(
+    row: Mapping[str, Any],
+) -> EvolutionEvaluationRecord:
+    """Translate one run-level evaluation row into an immutable record."""
+    score = row["eval_score"]
+    return EvolutionEvaluationRecord(
+        id=_required_text(row["id"]),
+        run_id=_required_text(row["run_id"]),
+        kind=_required_text(row["kind"]),
+        eval_external_id=_optional_text(row["eval_external_id"]),
+        eval_status=_required_text(row["eval_status"]),
+        eval_attempts=int(row["eval_attempts"]),
+        eval_next_poll_at=_optional_timestamp(row["eval_next_poll_at"]),
+        eval_paused_seconds=float(row["eval_paused_seconds"]),
+        eval_started_at=_optional_timestamp(row["eval_started_at"]),
+        eval_finished_at=_optional_timestamp(row["eval_finished_at"]),
+        eval_score=(
+            float(score)
+            if isinstance(score, (int, float)) and not isinstance(score, bool)
+            else None
+        ),
+        eval_result=_optional_json_dict(row["eval_result"]),
+        eval_error=_optional_text(row["eval_error"]),
+        created_at=_timestamp(row["created_at"]),
+    )
 
 
 def record_from_evolution_run(row: Mapping[str, Any]) -> EvolutionRunRecord:

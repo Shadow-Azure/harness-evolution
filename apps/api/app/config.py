@@ -359,9 +359,13 @@ class Settings(BaseSettings):
     @field_validator("eval_mode")
     @classmethod
     def validate_eval_mode(cls, value: str) -> str:
-        """Accept only registered evaluation gateway modes."""
-        if value not in {"fake", "http"}:
-            raise ValueError("HE_EVAL_MODE must be fake or http")
+        """Accept only evaluation gateway providers registered by the factory."""
+        from app.third_party_api.eval_gateway.factory import EVAL_GATEWAY_MODES
+
+        if value not in EVAL_GATEWAY_MODES:
+            raise ValueError(
+                "HE_EVAL_MODE must be one of " + ", ".join(EVAL_GATEWAY_MODES),
+            )
         return value
 
     @field_validator("eval_base_url")

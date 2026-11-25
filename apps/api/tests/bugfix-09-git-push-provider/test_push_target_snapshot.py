@@ -19,8 +19,8 @@ from app.db.migrate import upgrade_database
 from app.db.models.evolution import evolution_rounds, evolution_runs, probe_clusters
 from app.service.evolution.engine.contracts import (
     EvalGatewayConfig,
+    EvalMeasurement,
     EvalRequest,
-    EvalResult,
     EvalStatus,
     EvalSubmission,
 )
@@ -48,11 +48,11 @@ class CaptureGateway:
     async def get_status(self, eval_id: str) -> EvalStatus:
         return EvalStatus(status="running")
 
-    async def get_result(self, eval_id: str) -> EvalResult:
-        return EvalResult(
-            current_score=0.0,
+    async def get_result(self, eval_id: str) -> EvalMeasurement:
+        return EvalMeasurement(
             candidate_score=0.0,
-            external_verdict="reject",
+            primary_metric_key="resolved_rate",
+            direction="higher_is_better",
         )
 
 

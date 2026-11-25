@@ -537,6 +537,7 @@ before(async () => {
         attributionPackageId: "default-attribute-badcases",
         validationProjectId: "m11-05-validation",
         testProjectId: "m11-05-test",
+        primaryMetricKey: "resolved_rate",
         enabled: true,
       }),
     },

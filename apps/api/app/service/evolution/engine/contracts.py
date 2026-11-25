@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from types import MappingProxyType
-from typing import Any, Literal, Protocol, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 from app.db.models.evolution import (
     ClusterWrite,
@@ -148,12 +148,27 @@ class EvalGateway(Protocol):
     async def get_status(self, eval_id: str) -> EvalStatus:
         """Return the external evaluation's current lifecycle state."""
 
-    async def get_result(self, eval_id: str) -> EvalResult:
-        """Return normalized scores and an external verdict."""
+    async def get_result(self, eval_id: str) -> EvalMeasurement:
+        """Return the measured metrics; the service layer applies the gate."""
 
 
 EvalStatusValue = Literal["queued", "running", "completed", "failed", "timeout"]
 EvalVerdict = Literal["accept", "reject"]
+EvalDirection = Literal["higher_is_better", "lower_is_better"]
+EvalPurpose = Literal[
+    "candidate",
+    "validation_baseline",
+    "test_baseline",
+    "test_final",
+]
+
+EVAL_BASELINE_KINDS = ("validation_baseline", "test_baseline")
+EVAL_PURPOSES: tuple[EvalPurpose, ...] = (
+    "candidate",
+    "validation_baseline",
+    "test_baseline",
+    "test_final",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,13 +185,20 @@ class EvalRequest:
     target_version: str
     cluster_id: str
     idempotency_key: str
+    purpose: EvalPurpose = "candidate"
+    project_id: str = ""
+    sub_dir: str = ""
+    attempt: int = 1
+    round_seq: int = 0
+    parent_commit: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class EvalSubmission:
-    """External evaluation identifier returned after submission."""
+    """External evaluation identifier and non-fatal platform warnings."""
 
     eval_id: str
+    warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,18 +210,78 @@ class EvalStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class EvalMeasurement:
+    """One external evaluation's measured primary metric and raw items.
+
+    Baseline evaluations, per-round candidate evaluations and the held-out
+    test-set final all return this shape; comparing the candidate with the
+    active baseline is a service-layer decision, never the platform's verdict.
+    """
+
+    candidate_score: float
+    primary_metric_key: str
+    direction: EvalDirection
+    metrics: tuple[Mapping[str, FrozenValue], ...] = ()
+
+    def __post_init__(self) -> None:
+        """Reject malformed scores before they can become persisted JSON."""
+        _strict_score(self.candidate_score)
+        _EvalDirection.validate(self.direction)
+
+    def to_payload(self) -> dict[str, Any]:
+        """Serialize the measurement into the round's stable JSON representation."""
+        return {
+            "candidateScore": self.candidate_score,
+            "primaryMetricKey": self.primary_metric_key,
+            "direction": self.direction,
+            "metrics": [_thaw_json(metric) for metric in self.metrics],
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> EvalMeasurement:
+        """Read a persisted measurement and reject malformed external data."""
+        candidate = payload.get("candidateScore")
+        metric_key = payload.get("primaryMetricKey")
+        direction = payload.get("direction", "higher_is_better")
+        metrics = payload.get("metrics", ())
+        candidate_score = _strict_score(candidate, persisted=True)
+        if not isinstance(metric_key, str) or not metric_key.strip():
+            raise ValueError("persisted primary metric key is invalid")
+        if direction not in {"higher_is_better", "lower_is_better"}:
+            raise ValueError("persisted metric direction is invalid")
+        if not isinstance(metrics, (list, tuple)):
+            raise ValueError("persisted evaluation metrics are invalid")
+        if any(not isinstance(metric, Mapping) for metric in metrics):
+            raise ValueError("persisted evaluation metrics must contain objects")
+        frozen_metrics: list[Mapping[str, FrozenValue]] = []
+        for metric in metrics:
+            frozen_metrics.append(
+                cast(Mapping[str, FrozenValue], freeze_json(metric)),
+            )
+        return cls(
+            candidate_score=candidate_score,
+            primary_metric_key=metric_key.strip(),
+            direction=cast(EvalDirection, direction),
+            metrics=tuple(frozen_metrics),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class EvalResult:
-    """Normalized evaluation result consumed by the placeholder decision rule."""
+    """Gated result consumed by apply, final evaluation and the API projection."""
 
     current_score: float
     candidate_score: float
     external_verdict: EvalVerdict
     metrics: tuple[Mapping[str, FrozenValue], ...] = ()
+    direction: EvalDirection = "higher_is_better"
+    primary_metric_key: str = ""
 
     def __post_init__(self) -> None:
         """Reject malformed scores before they can become persisted JSON."""
         _strict_score(self.current_score)
         _strict_score(self.candidate_score)
+        _EvalDirection.validate(self.direction)
 
     def to_payload(self) -> dict[str, Any]:
         """Serialize the result into the round's stable JSON representation."""
@@ -207,6 +289,8 @@ class EvalResult:
             "currentScore": self.current_score,
             "candidateScore": self.candidate_score,
             "externalVerdict": self.external_verdict,
+            "direction": self.direction,
+            "primaryMetricKey": self.primary_metric_key,
             "metrics": [_thaw_json(metric) for metric in self.metrics],
         }
 
@@ -216,11 +300,15 @@ class EvalResult:
         current = payload.get("currentScore")
         candidate = payload.get("candidateScore")
         verdict = payload.get("externalVerdict")
+        direction = payload.get("direction", "higher_is_better")
+        primary_metric_key = payload.get("primaryMetricKey", "")
         metrics = payload.get("metrics", ())
         current_score = _strict_score(current, persisted=True)
         candidate_score = _strict_score(candidate, persisted=True)
         if verdict not in {"accept", "reject"}:
             raise ValueError("persisted external verdict is invalid")
+        if direction not in {"higher_is_better", "lower_is_better"}:
+            raise ValueError("persisted metric direction is invalid")
         if not isinstance(metrics, (list, tuple)):
             raise ValueError("persisted evaluation metrics are invalid")
         if any(not isinstance(metric, Mapping) for metric in metrics):
@@ -235,65 +323,21 @@ class EvalResult:
             candidate_score=candidate_score,
             external_verdict=verdict,
             metrics=tuple(frozen_metrics),
+            direction=cast(EvalDirection, direction),
+            primary_metric_key=(
+                primary_metric_key.strip() if isinstance(primary_metric_key, str) else ""
+            ),
         )
 
 
-@dataclass(frozen=True, slots=True)
-class FakeEvalGateway:
-    """Deterministic V1 gateway that needs no external service or memory state."""
-
-    config: EvalGatewayConfig
-
-    async def submit(self, request: EvalRequest) -> EvalSubmission:
-        """Return a stable identifier derived from the durable round identity."""
-        return EvalSubmission(
-            eval_id=f"fake:{request.run_id}:{request.evolution_round_id}:{request.commit}",
-        )
-
-    async def get_status(self, eval_id: str) -> EvalStatus:
-        """Return the configured placeholder lifecycle state."""
-        self._require_eval_id(eval_id)
-        configured = self.config.get("status", "completed")
-        if configured not in {"queued", "running", "completed", "failed", "timeout"}:
-            raise ValueError("fake evaluation status is invalid")
-        message = self.config.get("message")
-        return EvalStatus(
-            status=cast(EvalStatusValue, configured),
-            message=str(message) if message is not None else None,
-        )
-
-    async def get_result(self, eval_id: str) -> EvalResult:
-        """Return configured normalized scores without retaining process state."""
-        self._require_eval_id(eval_id)
-        current = self.config.get("currentScore", 80.0)
-        candidate = self.config.get("candidateScore", 85.0)
-        verdict = self.config.get("verdict", "accept")
-        metrics = self.config.get("metrics", ())
-        current_score = _strict_score(current)
-        candidate_score = _strict_score(candidate)
-        if verdict not in {"accept", "reject"}:
-            raise ValueError("fake evaluation verdict must be accept or reject")
-        if not isinstance(metrics, tuple) or any(
-            not isinstance(metric, Mapping) for metric in metrics
-        ):
-            raise ValueError("fake evaluation metrics must be objects")
-        return EvalResult(
-            current_score=current_score,
-            candidate_score=candidate_score,
-            external_verdict=cast(EvalVerdict, verdict),
-            metrics=tuple(cast(Mapping[str, FrozenValue], metric) for metric in metrics),
-        )
+class _EvalDirection:
+    """Validate one metric direction without a pydantic dependency."""
 
     @staticmethod
-    def _require_eval_id(eval_id: str) -> None:
-        """Reject blank/foreign identifiers before producing a misleading result."""
-        if not eval_id.startswith("fake:") or len(eval_id.split(":")) < 4:
-            raise ValueError("fake evaluation id is invalid")
-
-
-@dataclass(frozen=True, slots=True)
-class DefaultEvalGateway(FakeEvalGateway):
-    """Backward-compatible name for the deterministic V1 gateway."""
+    def validate(direction: object) -> None:
+        """Reject an unsupported comparison direction."""
+        if direction not in {"higher_is_better", "lower_is_better"}:
+            raise ValueError("evaluation metric direction is invalid")
 
 
 type GatewayFactory = Callable[[EvalGatewayConfig], EvalGateway]
@@ -306,7 +350,24 @@ type ClusterPrepare = Callable[
 
 def default_gateway_factory(config: EvalGatewayConfig) -> EvalGateway:
     """Build the deterministic gateway used by the V1 evolution loop."""
+    from app.third_party_api.eval_gateway.fake import FakeEvalGateway
+
     return FakeEvalGateway(config=config)
+
+
+if TYPE_CHECKING:
+    from app.third_party_api.eval_gateway.fake import FakeEvalGateway  # noqa: F401
+
+
+def __getattr__(name: str) -> object:
+    """Keep the historical FakeEvalGateway re-export without an import cycle."""
+    if name in {"FakeEvalGateway", "DefaultEvalGateway"}:
+        from app.third_party_api.eval_gateway.fake import FakeEvalGateway
+
+        if name == "DefaultEvalGateway":
+            return FakeEvalGateway
+        return FakeEvalGateway
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _thaw_json(value: FrozenValue) -> Any:

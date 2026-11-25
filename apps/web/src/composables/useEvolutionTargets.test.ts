@@ -30,6 +30,7 @@ const target = {
   defaultRef: "main",
   validationProjectId: "val-deep-research",
   testProjectId: "test-deep-research",
+  primaryMetricKey: "resolved_rate",
   enabled: true,
 };
 const body = {
@@ -40,6 +41,7 @@ const body = {
   defaultRef: target.defaultRef,
   validationProjectId: target.validationProjectId,
   testProjectId: target.testProjectId,
+  primaryMetricKey: target.primaryMetricKey,
   enabled: true,
 };
 const selectedTarget = ref<string | null>(null);

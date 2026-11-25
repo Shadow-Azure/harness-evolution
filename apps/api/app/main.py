@@ -440,6 +440,7 @@ def create_app(
         resolver,
         reports=attribution_repository,
         attribution_skills=local_attribution if attribution_enabled else attribution_skills,
+        default_eval_mode=resolved_settings.eval_mode,
     )
     probe_query = ProbeQueryService(probe_query_repository, target_repository)
     default_workspace_manager = GitWorkspaceManager(
@@ -513,6 +514,7 @@ def create_app(
         evolution_repository,
         candidate_workspace_manager,
         events=evolution_events,
+        eval_submitter=evolution_eval_submitter,
     )
     evolution_eval_poller = EvolutionEvalPoller(
         evolution_repository,
