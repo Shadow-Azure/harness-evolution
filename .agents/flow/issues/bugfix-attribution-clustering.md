@@ -9,7 +9,7 @@ milestone: bugfix
 depends:
   - bugfix-19
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/app/service/evolution/**
   - apps/api/app/db/crud/attributions.py
