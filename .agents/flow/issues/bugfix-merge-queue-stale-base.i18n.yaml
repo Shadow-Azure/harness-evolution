@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/bugfix-merge-queue-stale-base.md
+bugfix-merge-queue-stale-base.md: 4341ebbab1c6f8007180fe66d544f670ab863da5
+bugfix-merge-queue-stale-base.en.md: f7f1802a47a431a95117ab6214968e594d44263b
