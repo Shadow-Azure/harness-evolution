@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-brand-env-config.md
-bugfix-brand-env-config.md: 077a5981e9b779ab55373a467aecba7e20e68cb2
-bugfix-brand-env-config.en.md: a779f4e6e5743c360f5c9c310f5985bb9601c221
+bugfix-brand-env-config.md: 50eb39f8f7f33ad2cf24b019fbf6cfdedd48e55c
+bugfix-brand-env-config.en.md: b7c34395c5f210763dc59e3692525270225d7469

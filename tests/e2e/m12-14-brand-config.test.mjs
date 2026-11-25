@@ -251,6 +251,7 @@ test("m12-14 renders the configured brand on the login page and document title",
     assert.equal(login.subtitle, brandSubtitle);
     assert.equal(login.title, brandName);
     assert.equal(login.scrollWidth, login.clientWidth);
+    assert.ok(login.nameScrollWidth > login.nameClientWidth, JSON.stringify(login));
     assert.ok(login.brandLeft >= 0, JSON.stringify(login));
     assert.ok(login.brandRight <= login.clientWidth, JSON.stringify(login));
     assert.deepEqual(violations, []);

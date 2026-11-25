@@ -50,6 +50,20 @@ describe("app-config store", () => {
     expect(document.title).toBe("Acme Diagnostics");
   });
 
+  it("deduplicates concurrent loads into one request", async () => {
+    fetchAppConfigMock.mockResolvedValue({
+      brand: {
+        name: "Acme Diagnostics",
+        subtitle: "Acme Self-Evolution",
+      },
+    });
+    const store = useAppConfigStore();
+
+    await Promise.all([store.load(), store.load()]);
+
+    expect(fetchAppConfigMock).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the defaults and title when loading fails without throwing", async () => {
     fetchAppConfigMock.mockRejectedValue(new Error("offline"));
     document.title = "pre-load-title";

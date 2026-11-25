@@ -14,9 +14,11 @@ describe("app-config API", () => {
         subtitle: "Acme Self-Evolution",
       },
     };
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(payload)));
+    const fetchMock = vi.fn().mockResolvedValue(Response.json(payload));
+    vi.stubGlobal("fetch", fetchMock);
 
     await expect(fetchAppConfig()).resolves.toEqual(payload);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/app-config");
   });
 
   it("rejects a payload without the subtitle", async () => {

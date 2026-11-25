@@ -1477,7 +1477,10 @@ async def login(body: LoginRequest, db: Database, response: Response):
 ### 8.2 鉴权中间件
 
 ```python
-PUBLIC_PATHS = {"/api/health", "/api/auth/login", "/api/auth/refresh", "/api/auth/callback"}
+PUBLIC_PATHS = {
+    "/api/health", "/api/app-config",
+    "/api/auth/login", "/api/auth/refresh", "/api/auth/callback",
+}
 TICKET_PATHS = {"/api/events"}
 ALLOWED_WHEN_MUST_CHANGE = {
     "/api/auth/change-password", "/api/auth/logout", "/api/auth/me", "/api/auth/session"
@@ -1499,7 +1502,7 @@ async def auth_middleware(request, call_next):
     return await call_next(request)
 ```
 
-- **鉴权全部在 middleware**（2026-10-22 决定）：公开 `/api/health`、`/api/auth/login|refresh`，配置 IdP 时加 `/api/auth/callback`；`/api/events` 由端点校验一次性票据；`GET/POST /api/users`、`POST /api/acquisition/sync|pull`、`POST /api/workspaces` 要求全局 `role=admin`；其余业务请求要求登录。`targets` 等空间资源写操作用 `require_workspace_role`，不进入全局 admin middleware。
+- **鉴权全部在 middleware**（2026-10-22 决定）：公开 `/api/health`、`/api/app-config`、`/api/auth/login|refresh`，配置 IdP 时加 `/api/auth/callback`；`/api/events` 由端点校验一次性票据；`GET/POST /api/users`、`POST /api/acquisition/sync|pull`、`POST /api/workspaces` 要求全局 `role=admin`；其余业务请求要求登录。`targets` 等空间资源写操作用 `require_workspace_role`，不进入全局 admin middleware。
 - **空间角色在依赖层**（V2）：`require_workspace_role(wid, minimum)` 读 `workspace_members`；`users.role=admin` 直通；不可见空间统一 404。角色不进 token，每请求现查（成员变更立即生效）。
 - **强制改密也在 middleware**：`mcp` 为 true 的请求只放行改密、登出、`me` 与 `auth/session`，其余 `403 PASSWORD_CHANGE_REQUIRED`；前端守卫只是体验层，越权不依赖它（[08 §4.1](08-frontend-implementation.md)）。
 - `RequestContext` = `Principal + request_id`；业务代码只读 context，不解析 header。

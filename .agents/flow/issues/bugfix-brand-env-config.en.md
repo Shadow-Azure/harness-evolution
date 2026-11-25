@@ -18,6 +18,9 @@ scope:
   - packages/contracts/**
   - apps/web/**
   - tests/e2e/**
+  - docs/architecture.md
+  - docs/architecture.en.md
+  - docs/architecture.i18n.yaml
   - docs/deployment.md
   - docs/deployment.en.md
   - docs/deployment.i18n.yaml
@@ -115,7 +118,7 @@ HE_BRAND_NAME='Acme Diagnostics' HE_BRAND_SUBTITLE='Acme Self-Evolution' pnpm te
 - Contracts: `pnpm contract:check` must show no diff; the new public path updates the OpenAPI snapshot and generated types.
 - Web/API: `pnpm lint:web`, `pnpm typecheck:web`, `pnpm lint:api`, `pnpm typecheck:api`, and the matching test jobs pass.
 - Documentation: run `pnpm verify:docs` after the `.env.example` and design-note changes, and let `pnpm lint:docs` pass for the new Agent Note.
-- Process: the issue is ready, commits and the PR title carry `(#N)`; the PR links the `Bugfix 问题修复` milestone, and `pnpm verify:flow` plus `pnpm verify:flow-online` run before merge.
+- Process: the issue is activated (in-progress), commits and the PR title carry `(#N)`; the PR links the `Bugfix 问题修复` milestone, and `pnpm verify:flow` plus `pnpm verify:flow-online` run before merge.
 - UI change: the PR description attaches same-viewport, same-theme before (current copy) and after (configured copy) screenshots naming the baseline and candidate commits.
 
 ## Non-goals

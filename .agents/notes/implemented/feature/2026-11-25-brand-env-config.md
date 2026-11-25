@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-API 在启动时把 `HE_BRAND_NAME` / `HE_BRAND_SUBTITLE` 读入 `Settings`，并把未设置、`None`、空串与纯空白统一归一为内置默认（`Harness Evolution` / 「轨迹诊断与自进化」），真实值去除首尾空白后使用。公开只读端点 `GET /api/app-config` 返回 `{"brand":{"name","subtitle"}}`，与 `/api/health` 一样无需登录，不写库、不写审计。Web 在 `bootstrapApp` 挂载前拉取一次并写入 Pinia `appConfig` store；成功时覆盖品牌并写 `document.title`，失败或响应不合法时保留默认文案、照常挂载且永不抛错。顶栏、登录页与改密卡的品牌位读同一份 store，长品牌名用省略号截断。
+API 在启动时把 `HE_BRAND_NAME` / `HE_BRAND_SUBTITLE` 读入 `Settings`，并把未设置、`None`、空串与纯空白统一归一为内置默认（`Harness Evolution` / 「轨迹诊断与自进化」），真实值去除首尾空白后使用。公开只读端点 `GET /api/app-config` 返回 `{"brand":{"name","subtitle"}}`，与 `/api/health` 一样无需登录，不写库、不写审计。Web 在 `bootstrapApp` 挂载前拉取一次并写入 Pinia `appConfig` store；加载最多等待 2 秒，超时后先挂载，请求继续在后台完成并更新响应式品牌。成功时覆盖品牌并写 `document.title`，失败或响应不合法时保留默认文案、照常挂载且永不抛错。顶栏、登录页与改密卡的品牌位读同一份 store，长品牌名用省略号截断。
 
 ## Alternatives considered
 
@@ -21,4 +21,4 @@ API 在启动时把 `HE_BRAND_NAME` / `HE_BRAND_SUBTITLE` 读入 `Settings`，�
 
 ## Consequences
 
-改 `.env` 后必须重启 `harness-api` 才生效。品牌默认值同时存在于 `apps/api/app/config.py` 与 `apps/web/src/api/appConfig.ts`，两侧需同步维护；默认值漂移由 API、store 与组件测试共同兜住。公开端点新增一个无需登录的只读面，但只暴露品牌文本，不含部署路径或凭据。长品牌名依赖 CSS 截断，顶栏在 640px 以下隐藏副标题与品牌文字、只保留标记，390px 视口由现有断点保证不横向溢出。
+改 `.env` 后必须重启 `harness-api` 才生效。品牌默认值同时存在于 `apps/api/app/config.py`、`apps/web/src/api/appConfig.ts` 与 `apps/web/index.html` 的预加载标题，三处需同步维护；API/Web 单测分别锁定字面量，默认态 E2E 证明两侧一致。公开端点新增一个无需登录的只读面，但只暴露品牌文本，不含部署路径或凭据。首次加载失败时本次会话保持默认文案，刷新页面后重试；这是「挂载前拉取一次」的代价。长品牌名依赖 CSS 截断，顶栏在 640px 以下隐藏副标题与品牌文字、只保留标记，390px 视口由现有断点保证不横向溢出。

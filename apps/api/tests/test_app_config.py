@@ -79,6 +79,19 @@ def test_brand_reads_the_he_prefixed_environment(
     assert settings.brand_subtitle == "Acme Self-Evolution"
 
 
+def test_blank_environment_overrides_fall_back_to_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Blank values arriving through the real environment also fall back."""
+    monkeypatch.setenv("HE_BRAND_NAME", "")
+    monkeypatch.setenv("HE_BRAND_SUBTITLE", "   ")
+
+    settings = settings_with()
+
+    assert settings.brand_name == DEFAULT_BRAND_NAME
+    assert settings.brand_subtitle == DEFAULT_BRAND_SUBTITLE
+
+
 async def test_app_config_is_public_and_returns_settings_values() -> None:
     """The endpoint is readable without a token and mirrors the settings."""
     app = create_app(
