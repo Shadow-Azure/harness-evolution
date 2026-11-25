@@ -2,4 +2,4 @@
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-iteration-patch-fullfile-diff-render.md
 bugfix-iteration-patch-fullfile-diff-render.md: c7feae5f6b529c10bd5b36694075dbcf7e4452a6
-bugfix-iteration-patch-fullfile-diff-render.en.md: 9a04e1ccd23a022025d33201d8923bcce35bbb16
+bugfix-iteration-patch-fullfile-diff-render.en.md: 39240bd882a9733bae17bec8d7f6ce8a88444289
