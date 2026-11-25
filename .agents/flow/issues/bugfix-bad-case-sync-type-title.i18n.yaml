@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-bad-case-sync-type-title.md
-bugfix-bad-case-sync-type-title.md: 09606d9e0bdaa0100dadb8e496a96875ad2cabd8
-bugfix-bad-case-sync-type-title.en.md: 27a9346cd31ef1f30da746d6084960034df5da43
+bugfix-bad-case-sync-type-title.md: ea24c660a4e6326eef4b4b1242330fd323c1f716
+bugfix-bad-case-sync-type-title.en.md: 18b851fadf532b898db21f6a0a3f131a847be3a9
