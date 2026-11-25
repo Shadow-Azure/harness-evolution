@@ -104,9 +104,9 @@ The systemic cause is that step 6's auditable information is truncated: `intent`
 
 ## Design authority
 
-- `plans/fullstack-design/05-api-design.md` §3.6: the `steps/iteration` `rounds[]` contract and patch projection rules.
-- `plans/fullstack-design/08-frontend-implementation.md` §10.3: the step-6 patch / candidate / push / eval / acceptance rendering structure.
-- `plans/fullstack-design/07-backend-implementation.md` §5.5.4: agent-edit read-only exploration, EditPlan application, and intent / diff auditing.
+- [05 §3.6](../../../plans/fullstack-design/05-api-design.md): the `steps/iteration` `rounds[]` contract and patch projection rules.
+- [08 §10.3](../../../plans/fullstack-design/08-frontend-implementation.md): the step-6 patch / candidate / push / eval / acceptance rendering structure.
+- [07 §5.5.4](../../../plans/fullstack-design/07-backend-implementation.md): agent-edit read-only exploration, EditPlan application, and intent / diff auditing.
 - `.agents/flow/issues/bugfix-iteration-patch-read.md` (`#522`) and `bugfix-agent-edit-iteration.md` (`#488`): prior facts for the read model and the agent-edit storage shape.
 
 ## Implementation

@@ -104,9 +104,9 @@ github:
 
 ## 设计依据
 
-- `plans/fullstack-design/05-api-design.md` §3.6：`steps/iteration` 的 `rounds[]` 契约与 patch 投影规则。
-- `plans/fullstack-design/08-frontend-implementation.md` §10.3：第 6 步 patch / candidate / push / eval / 接纳的渲染结构。
-- `plans/fullstack-design/07-backend-implementation.md` §5.5.4：agent-edit 的只读探索、EditPlan 应用与 intent / diff 审计。
+- [05 §3.6](../../../plans/fullstack-design/05-api-design.md)：`steps/iteration` 的 `rounds[]` 契约与 patch 投影规则。
+- [08 §10.3](../../../plans/fullstack-design/08-frontend-implementation.md)：第 6 步 patch / candidate / push / eval / 接纳的渲染结构。
+- [07 §5.5.4](../../../plans/fullstack-design/07-backend-implementation.md)：agent-edit 的只读探索、EditPlan 应用与 intent / diff 审计。
 - `.agents/flow/issues/bugfix-iteration-patch-read.md`（`#522`）与 `bugfix-agent-edit-iteration.md`（`#488`）：本轮读取模型与 agent-edit 落库结构的前置事实。
 
 ## 实现内容
