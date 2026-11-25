@@ -4,7 +4,7 @@ English | [中文](bugfix-explicit-skill-conclusion.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-52
+id: bugfix-56
 milestone: bugfix
 depends: []
 priority: P2
