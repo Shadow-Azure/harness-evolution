@@ -9,7 +9,7 @@ milestone: bugfix
 depends:
   - bugfix-46
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/app/third_party_api/ai_agent/edits.py
   - apps/api/app/service/evolution/patch_source.py
