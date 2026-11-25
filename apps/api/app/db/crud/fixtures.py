@@ -155,8 +155,10 @@ async def backfill_legacy_associations(database: Database) -> None:
 
     The corpus (and other fixture seeds) write ``bad_cases.workspace_id``
     directly, but workspace-scoped reads derive visibility from
-    ``workspace_bad_cases``. The ``NOT EXISTS`` guard keeps repeated calls
-    idempotent so a fixture may backfill after its own seed as well.
+    ``workspace_bad_cases``. Reported rows become ``direct_ingest``; catalog
+    rows stay ``legacy_owner`` until a label rule rebuilds them. The
+    ``NOT EXISTS`` guard keeps repeated calls idempotent so a fixture may
+    backfill after its own seed as well.
     """
     async with database.transaction() as session:
         await session.execute(
@@ -165,14 +167,20 @@ async def backfill_legacy_associations(database: Database) -> None:
                 INSERT INTO workspace_bad_cases (
                     workspace_id, bad_case_id, assignment_source, label, assigned_at
                 )
-                SELECT bc.workspace_id, bc.bad_case_id, 'legacy_owner', NULL, CURRENT_TIMESTAMP
+                SELECT bc.workspace_id,
+                       bc.bad_case_id,
+                       CASE WHEN bc.origin = 'report'
+                            THEN 'direct_ingest' ELSE 'legacy_owner' END,
+                       NULL,
+                       CURRENT_TIMESTAMP
                 FROM bad_cases bc
                 WHERE bc.workspace_id IS NOT NULL
                   AND NOT EXISTS (
                     SELECT 1 FROM workspace_bad_cases wbc
                     WHERE wbc.workspace_id = bc.workspace_id
                       AND wbc.bad_case_id = bc.bad_case_id
-                      AND wbc.assignment_source = 'legacy_owner'
+                      AND wbc.assignment_source = CASE WHEN bc.origin = 'report'
+                            THEN 'direct_ingest' ELSE 'legacy_owner' END
                   )
                 """,
             ),

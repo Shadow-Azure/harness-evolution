@@ -11,7 +11,8 @@ import httpx
 from fastapi import FastAPI
 from sqlalchemy import insert
 
-from app.db.models.domain import bad_cases
+from app.db.crud.bad_cases import BadCaseRepository
+from app.db.models.domain import bad_case_analysis, bad_cases, probe_reports
 from app.utils.time import now_shanghai
 from tests.workspaces.helpers import (
     access_token,
@@ -118,3 +119,56 @@ async def test_removing_label_revokes_catalog_visibility_only_for_that_workspace
 
     assert await _bad_case_total(client, first, admin) == 1
     assert await _bad_case_total(client, second, admin) == 0
+
+
+async def test_analysis_progress_counts_reports_from_the_requesting_workspace(
+    workspace_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """A shared case's v2 report counts for the workspace that produced it."""
+    app, client = workspace_client
+    database = app.state.database
+    first = await insert_workspace(database, name="progress-first")
+    second = await insert_workspace(database, name="progress-second")
+
+    await _insert_catalog_case(app, case_id="case-progress", label="shared")
+    await _configure(app, client, first, ["shared"])
+    await _configure(app, client, second, ["shared"])
+    now = now_shanghai()
+    async with database.transaction() as session:
+        await session.execute(
+            insert(probe_reports).values(
+                probe_id="probe-progress-second",
+                workspace_id=second,
+                session_id="session-case-progress",
+                probe_type="skill",
+                probe_object="shared-object",
+                attribute_type="prompt",
+                conclusion="attributed",
+                confidence=0.8,
+                probe_description="progress probe",
+                probe_analysis="progress analysis",
+                policy_version="v1",
+                attribution_engine="test",
+                report_schema_version="probe-report/v2",
+                created_at=now,
+                updated_at=now,
+            ),
+        )
+        await session.execute(
+            insert(bad_case_analysis).values(
+                bad_case_id="case-progress",
+                analysis_status="unanalyzed",
+                probe_id="probe-progress-second",
+                analysis_result=None,
+                updated_at=now,
+            ),
+        )
+
+    repository = BadCaseRepository(database)
+    second_progress = await repository.analysis_progress((second,))
+    first_progress = await repository.analysis_progress((first,))
+
+    assert second_progress.analyzed == 1
+    assert second_progress.issue == 1
+    assert first_progress.analyzed == 0
+    assert first_progress.pending == 1

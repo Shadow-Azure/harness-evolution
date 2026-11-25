@@ -155,7 +155,7 @@ class WorkspaceCredentialCreated(WorkspaceModel):
 class WorkspaceBadCaseLabelRequest(WorkspaceModel):
     """Complete replacement set for one workspace's accepted public labels."""
 
-    items: list[str] = Field(default_factory=list)
+    items: list[str]
 
     @field_validator("items")
     @classmethod

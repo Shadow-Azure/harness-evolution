@@ -6340,7 +6340,7 @@ export interface components {
          */
         WorkspaceBadCaseLabelRequest: {
             /** Items */
-            items?: string[];
+            items: string[];
         };
         /**
          * WorkspaceCreateRequest

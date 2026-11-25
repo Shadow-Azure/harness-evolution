@@ -186,3 +186,10 @@ async def test_label_request_rejects_duplicates_whitespace_and_oversize(
             json={"items": items},
         )
         assert response.status_code == 422
+
+    missing = await client.put(
+        f"/api/workspaces/{workspace_id}/bad-case-labels",
+        headers=headers,
+        json={},
+    )
+    assert missing.status_code == 422

@@ -36,7 +36,7 @@
 
 同一空间与 badcase 可以同时有直接上报和 label 两种来源；读取使用 `EXISTS` 或 `SELECT DISTINCT workspace_id,bad_case_id`，不重复计数。删除 label 规则只删除对应的 `catalog_label` 行，直接上报关联继续保留。
 
-迁移创建两表及索引，并把每条既有 `bad_cases.workspace_id` 回填为 `legacy_owner`。后续直接上报同 ID 时把同空间的 `legacy_owner` 收敛为 `direct_ingest`；公共目录再次触达同 ID 时移除其 `legacy_owner`，再依据 label 建立 `catalog_label`，避免旧默认空间继续看到公共数据。
+迁移创建两表及索引，并把每条既有 `bad_cases.workspace_id` 回填为关联：`origin='report'` 的行为 `direct_ingest`，`origin='catalog'` 的行为 `legacy_owner`；同时把存量 catalog 行的 `meta_data.label` 按 label 契约投影到 `catalog_label`（合法值保留，非法或缺失为 `NULL`），并把 `catalog_synced` 置真。存量公共事实因此无需重放游标即可参与新增 label 规则；重复执行回填保持幂等。后续直接上报同 ID 时把同空间的 `legacy_owner` 收敛为 `direct_ingest`；公共目录再次触达同 ID 时移除其 `legacy_owner`，再依据 label 建立 `catalog_label`，避免旧默认空间继续看到公共数据。
 
 ### 2.3 `bad_cases.catalog_label`
 
@@ -82,15 +82,17 @@ API 以完整集合替换当前空间 label。一个数据库事务校验并锁�
 
 已持久化的 `evolution_run_candidates`、`probe_reports.workspace_id` 和运行快照不反查实时关联，因此配置变化只影响后续预览和新运行，已有运行可继续恢复。
 
+归因进度聚合按请求空间匹配 `probe_reports.workspace_id`，不跟随 `bad_cases.workspace_id`：一条 label 共享的公共 case 在空间 B 产出的报告只计入 B，不会因为事实行仍归默认空间而错算到默认空间；全局管理员视图不限制报告空间。
+
 ## 6. API
 
 ### `GET /api/workspaces/{wid}/bad-case-labels`
 
-空间成员可读，返回 `{ "items": ["code-review", "tool-use"], "assignedBadCaseCount": 142 }`。
+空间成员可读，返回 `{ "items": ["code-review", "tool-use"], "assignedBadCaseCount": 142 }`。`assignedBadCaseCount` 是该空间所有来源（`legacy_owner` / `direct_ingest` / `catalog_label`）去重后的可见 case 数，不等于 label 命中数；清空规则只撤销 `catalog_label` 关联。
 
 ### `PUT /api/workspaces/{wid}/bad-case-labels`
 
-空间管理员或全局管理员可写，请求 `{ "items": ["code-review", "tool-use"] }`。服务端排序、去重后以完整集合原子替换并完成历史重算；非法项返回 422，空间不存在返回 404，权限不足返回 403。响应为上述资源。
+空间管理员或全局管理员可写，请求 `{ "items": ["code-review", "tool-use"] }`。`items` 为必填字段：省略或传 `{}` 返回 422，`[]` 表示显式清空全部规则。服务端排序、去重后以完整集合原子替换并完成历史重算；非法项返回 422，空间不存在返回 404，权限不足返回 403。响应为上述资源。
 
 ## 7. 空间管理 UI
 

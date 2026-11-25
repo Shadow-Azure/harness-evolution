@@ -11,12 +11,12 @@ Status: implemented
 ## Decision
 
 - `bad_cases` 保留单份公共事实（`bad_case_id` 全局主键），可见性从 `bad_cases.workspace_id` 移到 `workspace_bad_cases` 关联表，主键 `(workspace_id, bad_case_id, assignment_source)`。
-- `assignment_source` 三态：`legacy_owner`（迁移把既有 `workspace_id` 回填）、`direct_ingest`（空间凭据直接上报）、`catalog_label`（公共目录 label 命中）。同一空间与 case 可同时有直接上报与 label 两种关联，读取用 `DISTINCT` 去重。
-- 空间接受的 label 存 `workspace_bad_case_labels(workspace_id, label)`；label 是 1–128 字符、无首尾空白、区分大小写的精确字符串，一个 label 可配置给多个空间。
+- `assignment_source` 三态：`legacy_owner`（迁移把既有 `workspace_id` 回填）、`direct_ingest`（空间凭据直接上报）、`catalog_label`（公共目录 label 命中）。迁移按 `bad_cases.origin` 区分存量：`report` 行回填 `direct_ingest`，`catalog` 行回填 `legacy_owner`，并把存量 catalog 行的 `meta_data.label` 按同一契约投影到 `catalog_label`、`catalog_synced` 置真，回填可重复执行。同一空间与 case 可同时有直接上报与 label 两种关联，读取用 `DISTINCT` 去重。
+- 空间接受的 label 存 `workspace_bad_case_labels(workspace_id, label)`；label 是 1–128 字符、无首尾空白、区分大小写的精确字符串，一个 label 可配置给多个空间。PUT 全量替换的 `items` 必填，`[]` 才表示显式清空。
 - `bad_cases.catalog_label` 是同步时对 `meta_data.label` 验证后写入的可空投影列（直接上报固定 `NULL`），不是第二事实源：统计与重建只查该列，不在 SQL 里解析 JSON，保持 SQLite/MySQL 一致并可走索引。
 - 目录同步的单页事务按序执行：upsert 事实 → 删本页 ID 的 `legacy_owner` 与旧 `catalog_label` 关联 → 按规则 `INSERT…SELECT` 重建 → 更新游标与 assigned/unassigned/invalid 计数；任何一步失败整页回滚、游标不前进。
 - 保存 label 配置在一个事务里锁定空间、全量替换规则、只删该空间的 `catalog_label` 关联，再从 `bad_cases.catalog_label JOIN workspace_bad_case_labels` 重建历史关联；新增规则补齐历史、删除规则撤销实时可见性。
-- 所有空间读路径（Session 列表与树、问题列表、总览、额度、潜在 badcase 与自进化取数）统一经 `WorkspaceReadScope.case_condition()` 走关联；`bad_cases.workspace_id` 只保留直接上报归属（ID 冲突检测与 owner 展示）。
+- 所有空间读路径（Session 列表与树、问题列表、总览、额度、潜在 badcase 与自进化取数）统一经 `WorkspaceReadScope.case_condition()` 走关联；`bad_cases.workspace_id` 只保留直接上报归属（ID 冲突检测与 owner 展示）。归因进度聚合按请求空间匹配 `probe_reports.workspace_id`，不跟 `bad_cases.workspace_id`，label 共享 case 的报告只计入产出它的空间。
 
 ## Alternatives considered
 
@@ -28,8 +28,8 @@ Status: implemented
 
 ## Consequences
 
-- 每次空间化读多一次关联 `EXISTS`/`IN` 子查询；`workspace_bad_case_labels`、`workspace_bad_cases` 与 `bad_cases.catalog_label` 列是新的事实面，迁移按 `WHERE workspace_id IS NOT NULL` 回填 `legacy_owner`。
+- 每次空间化读多一次关联 `EXISTS`/`IN` 子查询；`workspace_bad_case_labels`、`workspace_bad_cases` 与 `bad_cases.catalog_label` 列是新的事实面，迁移按 `origin` 回填 `direct_ingest`/`legacy_owner` 并把存量 catalog 标签投影到 `catalog_label`。
 - `bad_cases.workspace_id` 成为仅属直接上报的兼容字段，移除需要单独的兼容窗口。
 - 公共目录分配可使空间 `used > quota`：直接上报继续按额度拒绝，管理页提示调整额度或移除 label；`used` 统一按关联去重计数。
 - 配置保存只在整个事务提交后返回，读取不会观察到规则与关联不一致的中间态；同步与重算重试幂等。
-- 测试 fixture 直接写 `bad_cases.workspace_id` 的场景须按迁移语义回填 `legacy_owner` 关联，否则空间化读为空。
+- 测试 fixture 直接写 `bad_cases.workspace_id` 的场景须按迁移语义回填关联（`report` → `direct_ingest`，其余 → `legacy_owner`），否则空间化读为空。

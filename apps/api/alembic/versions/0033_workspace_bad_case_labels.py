@@ -40,6 +40,50 @@ def upgrade() -> None:
                     unique=False,
                 )
 
+    # Project the stored label onto pre-existing catalog facts so rules can
+    # route historical data without replaying the catalog cursor. Invalid or
+    # missing labels stay NULL, matching the sync-time contract.
+    if inspector.has_table("bad_cases"):
+        if bind.dialect.name == "sqlite":
+            op.execute(
+                sa.text(
+                    """
+                    UPDATE bad_cases
+                    SET catalog_label = CASE
+                        WHEN meta_data IS NOT NULL
+                         AND json_valid(meta_data)
+                         AND json_type(meta_data, '$.label') = 'text'
+                         AND length(json_extract(meta_data, '$.label')) BETWEEN 1 AND 128
+                         AND json_extract(meta_data, '$.label')
+                             = trim(json_extract(meta_data, '$.label'))
+                        THEN json_extract(meta_data, '$.label')
+                        ELSE NULL
+                    END,
+                    catalog_synced = 1
+                    WHERE origin = 'catalog'
+                    """,
+                ),
+            )
+        elif bind.dialect.name == "mysql":
+            op.execute(
+                sa.text(
+                    """
+                    UPDATE bad_cases
+                    SET catalog_label = CASE
+                        WHEN JSON_TYPE(JSON_EXTRACT(meta_data, '$.label')) = 'STRING'
+                         AND CHAR_LENGTH(JSON_UNQUOTE(JSON_EXTRACT(meta_data, '$.label')))
+                             BETWEEN 1 AND 128
+                         AND JSON_UNQUOTE(JSON_EXTRACT(meta_data, '$.label'))
+                             = TRIM(JSON_UNQUOTE(JSON_EXTRACT(meta_data, '$.label')))
+                        THEN JSON_UNQUOTE(JSON_EXTRACT(meta_data, '$.label'))
+                        ELSE NULL
+                    END,
+                    catalog_synced = 1
+                    WHERE origin = 'catalog'
+                    """,
+                ),
+            )
+
     if inspector.has_table("bad_case_catalog_sync"):
         sync_columns = {
             str(column["name"]) for column in inspector.get_columns("bad_case_catalog_sync")
@@ -121,18 +165,23 @@ def upgrade() -> None:
 
     inspector = inspect(bind)
     if inspector.has_table("bad_cases") and inspector.has_table("workspace_bad_cases"):
-        op.execute(
-            sa.text(
-                """
-                INSERT INTO workspace_bad_cases (
+        assignment_select = """
+                INTO workspace_bad_cases (
                   workspace_id, bad_case_id, assignment_source, label, assigned_at
                 )
-                SELECT workspace_id, bad_case_id, 'legacy_owner', NULL, CURRENT_TIMESTAMP
-                FROM bad_cases
-                WHERE workspace_id IS NOT NULL
-                """,
-            ),
-        )
+                SELECT bc.workspace_id,
+                       bc.bad_case_id,
+                       CASE WHEN bc.origin = 'report'
+                            THEN 'direct_ingest' ELSE 'legacy_owner' END,
+                       NULL,
+                       CURRENT_TIMESTAMP
+                FROM bad_cases bc
+                WHERE bc.workspace_id IS NOT NULL
+"""
+        if bind.dialect.name == "sqlite":
+            op.execute(sa.text("INSERT OR IGNORE" + assignment_select))
+        else:
+            op.execute(sa.text("INSERT IGNORE" + assignment_select))
 
 
 def downgrade() -> None:

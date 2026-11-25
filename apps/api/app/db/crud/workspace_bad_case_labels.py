@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sqlalchemy import delete, func, insert, literal, select
+from sqlalchemy import delete, func, insert, literal, select, update
 
 from app.db.base import Database
 from app.db.models.domain import (
@@ -68,6 +68,14 @@ class WorkspaceBadCaseLabelRepository:
         """Replace rules and rebuild catalog assignments in one transaction."""
         now = now_shanghai()
         async with self._database.transaction() as session:
+            if self._database.dialect == "sqlite":
+                # SQLite has no row locks; a no-op write takes the database
+                # write lock so concurrent replacements serialize like MySQL.
+                await session.execute(
+                    update(workspaces)
+                    .where(workspaces.c.id == workspace_id)
+                    .values(updated_at=workspaces.c.updated_at),
+                )
             workspace_exists = (
                 await session.execute(
                     select(workspaces.c.id)

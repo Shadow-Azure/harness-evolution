@@ -10379,6 +10379,9 @@
             "type": "array"
           }
         },
+        "required": [
+          "items"
+        ],
         "title": "WorkspaceBadCaseLabelRequest",
         "type": "object"
       },

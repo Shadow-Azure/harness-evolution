@@ -77,7 +77,7 @@ async def test_upgrade_creates_catalog_sync_table(tmp_path: Path) -> None:
 
 
 def _alembic_config(database: Database) -> Config:
-    """Build a config for exercising the 0031 → head data migration."""
+    """Build a config for exercising the 0032 → head data migration."""
     config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
     config.set_main_option("sqlalchemy.url", database.url.replace("%", "%%"))
     config.attributes["bootstrap_external_tables"] = True
@@ -86,7 +86,7 @@ def _alembic_config(database: Database) -> Config:
 
 @pytest.mark.asyncio
 async def test_upgrade_backfills_workspace_bad_case_assignments(tmp_path: Path) -> None:
-    """A legacy badcase remains visible through an explicit legacy-owner row."""
+    """Legacy rows keep their owner; report rows become direct-ingest associations."""
     settings = Settings(
         db_dialect=DatabaseDialect.SQLITE,
         data_dir=tmp_path,
@@ -95,20 +95,28 @@ async def test_upgrade_backfills_workspace_bad_case_assignments(tmp_path: Path) 
     database = create_database(settings)
     await database.start()
     try:
-        await asyncio.to_thread(command.upgrade, _alembic_config(database), "0031")
+        await asyncio.to_thread(command.upgrade, _alembic_config(database), "0032")
         async with database.session() as session:
             await session.execute(
                 text(
                     """
                     INSERT INTO bad_cases (
-                      bad_case_id, workspace_id, bad_case_session_id, bad_case_type,
-                      object_name, object_type, title, bad_case_description,
+                      bad_case_id, workspace_id, origin, bad_case_session_id, bad_case_type,
+                      object_name, object_type, title, bad_case_description, meta_data,
                       created_at, updated_at
-                    ) VALUES (
-                      'legacy-case', 'ws-default', 'session-1', 'skill',
-                      'review', 'skill', 'Legacy', 'Legacy case',
-                      CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                    )
+                    ) VALUES
+                      ('legacy-case', 'ws-default', 'catalog', 'session-1', 'skill',
+                       'review', 'skill', 'Legacy', 'Legacy case', NULL,
+                       CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+                      ('report-case', 'ws-default', 'report', 'session-2', 'skill',
+                       'review', 'skill', 'Report', 'Reported case', NULL,
+                       CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+                      ('catalog-labeled', 'ws-default', 'catalog', 'session-3', 'skill',
+                       'review', 'skill', 'Labeled', 'Catalog case', '{"label": "code-review"}',
+                       CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+                      ('catalog-invalid', 'ws-default', 'catalog', 'session-4', 'skill',
+                       'review', 'skill', 'Invalid', 'Bad label', '{"label": "  spaced  "}',
+                       CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     """,
                 ),
             )
@@ -150,14 +158,22 @@ async def test_upgrade_backfills_workspace_bad_case_assignments(tmp_path: Path) 
                 },
             )
         async with database.session() as session:
-            assignment = (
+            cases = (
                 await session.execute(
                     text(
-                        "SELECT workspace_id, bad_case_id, assignment_source, label "
-                        "FROM workspace_bad_cases WHERE bad_case_id = 'legacy-case'",
+                        "SELECT bad_case_id, catalog_label, catalog_synced "
+                        "FROM bad_cases ORDER BY bad_case_id",
                     ),
                 )
-            ).one()
+            ).all()
+            assignments = (
+                await session.execute(
+                    text(
+                        "SELECT bad_case_id, assignment_source "
+                        "FROM workspace_bad_cases ORDER BY bad_case_id",
+                    ),
+                )
+            ).all()
 
         assert "catalog_label" in schema["bad_case_columns"]
         assert "catalog_synced" in schema["bad_case_columns"]
@@ -182,11 +198,17 @@ async def test_upgrade_backfills_workspace_bad_case_assignments(tmp_path: Path) 
         assert schema["assignment_fks"] == {("workspace_id",), ("bad_case_id",)}
         assert "ix_bad_cases_catalog_label" in schema["bad_case_indexes"]
         assert "ix_bad_cases_catalog_synced" in schema["bad_case_indexes"]
-        assert tuple(assignment) == (
-            "ws-default",
-            "legacy-case",
-            "legacy_owner",
-            None,
-        )
+        assert [tuple(row) for row in cases] == [
+            ("catalog-invalid", None, 1),
+            ("catalog-labeled", "code-review", 1),
+            ("legacy-case", None, 1),
+            ("report-case", None, 0),
+        ]
+        assert [tuple(row) for row in assignments] == [
+            ("catalog-invalid", "legacy_owner"),
+            ("catalog-labeled", "legacy_owner"),
+            ("legacy-case", "legacy_owner"),
+            ("report-case", "direct_ingest"),
+        ]
     finally:
         await database.dispose()
