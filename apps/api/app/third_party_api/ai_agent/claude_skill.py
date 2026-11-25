@@ -167,7 +167,10 @@ def _sandbox(directory: Path, executable: str) -> list[str]:
 def _case_tool_options(directory: Path) -> list[str]:
     # Only the API's stdio server is configured. Uploaded Skill text is read as data,
     # so frontmatter, hooks and shell interpolation cannot grant tools on the host.
-    guides = list((directory / ".claude/skills").glob("*/SKILL.md"))
+    # The guide is read from the platform's neutral skill layout, where every file
+    # is real; the vendor alias under `.claude/skills` is a link for the CLI's own
+    # discovery and would fail the resolve check below.
+    guides = list((directory / "skills").glob("*/SKILL.md"))
     if len(guides) != 1 or guides[0].resolve(strict=True) != guides[0]:
         raise ValueError("expected one frozen attribution Skill guide")
     # The CLI loads the complete bound guide literally. It can exceed the OS argv limit.

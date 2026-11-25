@@ -182,6 +182,7 @@ async def _record_ai_agent_health(provider: AIAgentProvider) -> None:
             "event": "ai_agent_health",
             "provider_id": health.provider_id,
             "healthy": health.healthy,
+            "auth": health.auth,
             "detail": health.detail,
             "latency_ms": health.latency_ms,
         },

@@ -1,10 +1,10 @@
-# Preserve explicit Skill verdicts for external causes
+﻿# Preserve explicit Skill verdicts for external causes
 
 English | [中文](bugfix-explicit-skill-conclusion.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-56
+id: bugfix-58
 milestone: bugfix
 depends: []
 priority: P2

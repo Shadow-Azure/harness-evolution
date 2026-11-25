@@ -7,8 +7,8 @@ Self-evolution review, scoring and patch generation call models through one outb
 ## Layering
 
 - `apps/api/app/third_party_api/ai_agent/` is the single outbound seam: business services call only `build_agent_provider`, never import a vendor module, and never branch on a backend name.
-- `AIAgentProvider` defines contracts only; its two capability faces are `analyze` (structured analysis) and `edit_workspace` (a submitted edit plan).
-- The factory selects a registered subclass by `AI_AGENT_PROVIDER`: `claude-code` is the default, and `fake` gives unit tests and CI deterministic results; a new backend is one subclass plus one registry entry.
+- `AIAgentProvider` defines contracts only: `analyze` (structured analysis), `edit_workspace` (a submitted edit plan), and the optional skill faces `stage_skill`/`run_skill` (attribution follows the provider switch). A subclass declares its capability faces explicitly via `capabilities` (`analyze`/`edit`/`skill`); subclasses that never declared keep the `run_skill`-override derivation. `ProviderHealth.auth` (`ok`/`missing`/`unknown`) and the preflight capability line make credential state and binary usability enumerable.
+- The factory selects a registered subclass by `AI_AGENT_PROVIDER` and assembles it through `from_settings`: `claude-code` is the default, and `fake` gives unit tests and CI deterministic results. Switching backends = one subclass + one registry entry: a skill backend adapts the platform's neutral `work/skills/<name>/` layout into its own form in `stage_skill` and returns a native prefix (Claude links `.claude/skills/<name>` and returns `/{name} `, a generic backend returns an empty string with zero adaptation), and reads `HE_AI_AGENT_BIN`/`HE_AI_AGENT_SETTINGS` in `from_settings` (the generic name wins, unset falls back to the legacy names); the service layer and business code stay untouched.
 
 ## Analyze tasks
 
@@ -45,8 +45,9 @@ submissionParseFailures submissionValidationFailures
 | Setting | Default | Meaning |
 |---|---|---|
 | `AI_AGENT_PROVIDER` | `claude-code` | Selects the registered subclass; `fake` is for deterministic tests |
-| `HE_AI_AGENT_CLAUDE_BIN` | `~/.local/bin/claude` | Claude Code CLI path; deployment injects the stable `current` path |
-| `HE_AI_AGENT_CLAUDE_SETTINGS` | empty | Explicit `settings.json` path; otherwise `CLAUDE_CONFIG_DIR`, then `~/.claude` |
+| `HE_AI_AGENT_BIN` / `HE_AI_AGENT_SETTINGS` | empty | Generic backend config entry; the generic name wins, unset falls back to `HE_AI_AGENT_CLAUDE_*` |
+| `HE_AI_AGENT_CLAUDE_BIN` | `~/.local/bin/claude` | Claude Code CLI path (deprecated alias); deployment injects the stable `current` path |
+| `HE_AI_AGENT_CLAUDE_SETTINGS` | empty | Explicit `settings.json` path (deprecated alias); otherwise `CLAUDE_CONFIG_DIR`, then `~/.claude` |
 | `HE_AI_AGENT_FAILURE_POLICY` | derived from provider | `strict` (default for real providers) or `degrade` (default for `fake`); an unknown value fails startup |
 | `HE_PATCH_SOURCE_MODE` | `placeholder` | Accepts `minimal-config` and `agent-edit`; `agent-edit` needs a configured provider |
 

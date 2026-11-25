@@ -31,6 +31,8 @@ class ReportFields(BaseModel):
     probe_type: Literal["skill", "agent", "knowledge"] = "skill"
     object_version: str | None = None
     attribute_type: Literal["prompt", "model", "error", "flow", "context", "unknown"]
+    conclusion: Literal["attributed", "non_target", "inconclusive"]
+    root_cause: str
     probe_description: str
     probe_analysis: str
     detail_description: str | None = None
@@ -46,7 +48,7 @@ class CaseTools:
 
     def __init__(self, directory: Path) -> None:
         self.work = directory.resolve(strict=True)
-        skills = self.work / ".claude/skills"
+        skills = self.work / "skills"
         (self.skill,) = skills.iterdir()
         if self.skill.resolve(strict=True) != self.skill or not self.skill.is_dir():
             raise ValueError("invalid staged Skill")

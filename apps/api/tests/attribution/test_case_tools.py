@@ -15,7 +15,7 @@ from app.third_party_api.attribution import writer_entrypoint
 @pytest.fixture
 def case(tmp_path: Path) -> Path:
     work = tmp_path / "case"
-    skill = work / ".claude/skills/original"
+    skill = work / "skills/original"
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text("Use this case.")
     (skill / "references").mkdir()
@@ -29,6 +29,12 @@ def case(tmp_path: Path) -> Path:
         json.dumps(
             {
                 "session_id": "one-session",
+                "selected_target": {
+                    "name": "reporter",
+                    "type": "skill",
+                    "version": "v1",
+                    "revision": "v1",
+                },
                 "bad_cases": [
                     {
                         "bad_case_id": "case-one",
@@ -47,7 +53,7 @@ def case(tmp_path: Path) -> Path:
 def test_only_frozen_evidence_and_selected_skill_are_readable(case: Path) -> None:
     other = case.parent / "another-case.txt"
     other.write_text("another case")
-    skill = case / ".claude/skills/original"
+    skill = case / "skills/original"
     (skill / "other.md").symlink_to(other)
     (case / "traces.json").symlink_to(other)
     # Create a page boundary inside a multibyte UTF-8 character.
@@ -94,6 +100,8 @@ def test_only_platform_writer_chooses_paths_and_case_identity(case: Path) -> Non
         "probe_object": "reporter",
         "probe_type": "agent",
         "attribute_type": "context",
+        "conclusion": "attributed",
+        "root_cause": "平台 writer 校验根因字段",
         "probe_description": "--output=just literal analysis",
         "probe_analysis": "说明",
     }

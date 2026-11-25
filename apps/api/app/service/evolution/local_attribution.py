@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -81,6 +80,21 @@ def _component(value: str) -> str:
     if not re.fullmatch(r"[a-zA-Z0-9_-][a-zA-Z0-9._-]{0,127}", value):
         raise ValueError("invalid attribution filesystem identifier")
     return value
+
+
+def _skill_prompt(name: str) -> str:
+    """Build the neutral task text one provider may prefix with its native trigger.
+
+    The path-reference form carries no slash-command syntax: the provider owns
+    the invocation surface, and the platform owns only the task (read the
+    staged guide at its neutral layout, analyze this case's input, report
+    through the platform writer contract).
+    """
+    guide = "skills/" + name + "/SKILL.md"
+    return (
+        f"使用 {name} skill：读取 {guide} 并严格遵循其中的全部指令，"  # noqa: RUF001
+        "分析本目录的 input_badcase.json 并生成归因报告。"
+    )
 
 
 def _json(data: Any) -> str:
@@ -473,26 +487,42 @@ class LocalAttribution:
 
     @staticmethod
     def _stage_attempt(
-        snapshot: Path, work: Path, name: str, manifest: Mapping[str, Any], item: AttributionInput
-    ) -> None:
-        skill = work / ".claude/skills" / name
+        snapshot: Path,
+        work: Path,
+        name: str,
+        manifest: Mapping[str, Any],
+        item: AttributionInput,
+        provider: AIAgentProvider,
+    ) -> str:
+        """Stage one case and return the provider's native invocation prefix.
+
+        The service verifies the frozen files, splits the platform writer out of
+        the file set, and hands the rest (with the writer replaced by the shim)
+        to ``provider.stage_skill``. Splitting before staging matters: the
+        provider may materialize a copy of the neutral layout (hosts without
+        symlink privilege), and that copy must already carry the shim — an agent
+        following the frozen guide to ``.claude/skills/<name>/`` would otherwise
+        run the original writer and leave no receipt. Skill staging and
+        invocation syntax are fully provider-owned; only the neutral layout and
+        the platform writer contract stay upstream.
+        """
+        files: dict[str, bytes] = {}
         for path, digest in manifest["files"].items():
             content = (snapshot / "skill" / path).read_bytes()
             if _digest(content) != digest:
                 raise ValueError(f"frozen Skill file checksum mismatch: {path}")
-            dest = skill / path
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(content)
+            files[path] = content
+        original_writer = files.pop("make_probe_report.py", None)
+        if original_writer is None:
+            raise ValueError("frozen Skill does not bundle the platform writer")
         platform = work / ".platform"
         platform.mkdir()
-        writer = skill / "make_probe_report.py"
-        writer.rename(platform / writer.name)
-        shutil.copyfile(writer_entrypoint.__file__, writer)
-        alias = work / ".cac/skills"
-        alias.mkdir(parents=True)
-        (alias / name).symlink_to(skill, target_is_directory=True)
+        (platform / "make_probe_report.py").write_bytes(original_writer)
+        files["make_probe_report.py"] = Path(writer_entrypoint.__file__).read_bytes()
+        prefix = provider.stage_skill(work, name, files)
         for filename, text in item.local_input.items():
-            (work / filename).write_text(text)
+            (work / filename).write_text(text, encoding="utf-8")
+        return prefix
 
     @staticmethod
     def _read_emission(work: Path) -> dict[str, Any]:
@@ -535,7 +565,6 @@ class LocalAttribution:
         output.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="attempt-", dir=output) as tmp:
             work = Path(tmp)
-            prompt = f"/{name} input_badcase.json，请分析并生成归因报告"  # noqa: RUF001
             history = output / "logs" / work.name
             history.mkdir(parents=True, mode=0o700)
             log: dict[str, Any] = {
@@ -549,7 +578,6 @@ class LocalAttribution:
                 "skillHash": item.attribution_skill_content_hash,
                 "agent": manifest["agent"],
                 "model": manifest["modelIdentity"],
-                "prompt": prompt,
                 "inputManifest": str((archive.case_path / "manifest.json").relative_to(root)),
                 "startedAt": datetime.now(UTC).isoformat(),
                 "status": "running",
@@ -558,11 +586,15 @@ class LocalAttribution:
             diagnostics: dict[str, Any] = {}
             await asyncio.to_thread(_write_log, history, log)
             try:
-                await asyncio.to_thread(self._stage_attempt, snapshot, work, name, manifest, item)
                 provider = self._skill_provider(manifest["agent"])
                 if provider.skill_model_identity(manifest["model"]) != manifest["modelIdentity"]:
                     raise ValueError("model configuration differs from the frozen run")
+                prefix = await asyncio.to_thread(
+                    self._stage_attempt, snapshot, work, name, manifest, item, provider
+                )
+                prompt = f"{prefix}{_skill_prompt(name)}"
                 log["stage"] = "agent"
+                log["prompt"] = prompt
                 tokens = await provider.run_skill(
                     SkillRunRequest(
                         work, prompt, manifest["model"], self.settings.attribution_timeout_seconds
@@ -636,9 +668,15 @@ def _write_log(history: Path, record: Mapping[str, Any], latest: Path | None = N
         try:
             json.dump(record, tmp, ensure_ascii=False, indent=2, allow_nan=False)
             tmp.flush()
-            os.replace(path, dest)
-        finally:
+        except BaseException:
             path.unlink(missing_ok=True)
+            raise
+    # The rename runs after the handle closes: an open handle blocks os.replace on Windows.
+    try:
+        os.replace(path, dest)
+    except OSError:
+        path.unlink(missing_ok=True)
+        raise
     if latest is not None:
         link = history / "publishing"
         os.link(dest, link)

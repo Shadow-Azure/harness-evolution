@@ -24,11 +24,8 @@ from app.third_party_api.ai_agent import (
     build_agent_provider,
     registered_provider_ids,
 )
-from app.third_party_api.ai_agent.base import (
-    ANALYZE_TIMEOUT_SECONDS,
-    EDIT_TIMEOUT_SECONDS,
-    PERMISSION_MODE,
-)
+from app.third_party_api.ai_agent.base import ANALYZE_TIMEOUT_SECONDS, EDIT_TIMEOUT_SECONDS
+from app.third_party_api.ai_agent.claude_code import PERMISSION_MODE
 
 
 class ClusterReviewOutput(BaseModel):
@@ -69,6 +66,10 @@ def isolated_ai_agent_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "HE_AI_AGENT_PROVIDER",
         "HE_AI_AGENT_CLAUDE_BIN",
         "HE_AI_AGENT_CLAUDE_SETTINGS",
+        "AI_AGENT_BIN",
+        "HE_AI_AGENT_BIN",
+        "AI_AGENT_SETTINGS",
+        "HE_AI_AGENT_SETTINGS",
         "HE_AI_AGENT_FAILURE_POLICY",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -201,6 +202,151 @@ def test_blank_claude_bin_fails_startup() -> None:
     """An empty deployment path is a configuration error, not a silent default."""
     with pytest.raises(ValidationError, match="AI_AGENT_CLAUDE_BIN"):
         settings(ai_agent_claude_bin="   ")
+
+
+def test_generic_bin_entry_wins_over_the_legacy_alias() -> None:
+    """All three env combinations resolve deterministically; the generic name wins."""
+    legacy_only = settings(ai_agent_claude_bin="/opt/legacy/claude")
+    assert legacy_only.effective_ai_agent_bin == "/opt/legacy/claude"
+
+    generic_only = settings(ai_agent_bin="/opt/generic/agent")
+    assert generic_only.effective_ai_agent_bin == "/opt/generic/agent"
+
+    both = settings(ai_agent_bin="/opt/generic/agent", ai_agent_claude_bin="/opt/legacy/claude")
+    assert both.effective_ai_agent_bin == "/opt/generic/agent"
+
+    neither = settings()
+    assert neither.effective_ai_agent_bin == "~/.local/bin/claude"
+
+
+def test_generic_settings_entry_wins_over_the_legacy_alias() -> None:
+    """The settings path resolves the same way: generic wins, legacy fallback."""
+    legacy_only = settings(ai_agent_claude_settings="/opt/legacy/settings.json")
+    assert legacy_only.effective_ai_agent_settings == "/opt/legacy/settings.json"
+
+    generic_only = settings(ai_agent_settings="/opt/generic/settings.json")
+    assert generic_only.effective_ai_agent_settings == "/opt/generic/settings.json"
+
+    both = settings(
+        ai_agent_settings="/opt/generic/settings.json",
+        ai_agent_claude_settings="/opt/legacy/settings.json",
+    )
+    assert both.effective_ai_agent_settings == "/opt/generic/settings.json"
+
+    assert settings().effective_ai_agent_settings is None
+
+
+def test_generic_bin_reads_the_documented_environment_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HE_AI_AGENT_BIN 与裸 AI_AGENT_BIN 都注入通用字段。"""
+    monkeypatch.setenv("HE_AI_AGENT_BIN", "/opt/generic/claude")
+    monkeypatch.delenv("AI_AGENT_BIN", raising=False)
+    assert Settings(_env_file=None).effective_ai_agent_bin == "/opt/generic/claude"  # type: ignore[call-arg]
+
+    monkeypatch.delenv("HE_AI_AGENT_BIN", raising=False)
+    monkeypatch.setenv("AI_AGENT_BIN", "/opt/generic/claude")
+    assert Settings(_env_file=None).effective_ai_agent_bin == "/opt/generic/claude"  # type: ignore[call-arg]
+
+
+def test_blank_generic_bin_fails_startup_and_blank_settings_is_unset() -> None:
+    """A blank generic bin fails startup; a blank generic settings path is unset."""
+    with pytest.raises(ValidationError, match="AI_AGENT_BIN"):
+        settings(ai_agent_bin="   ")
+    assert settings(ai_agent_settings="   ").effective_ai_agent_settings is None
+
+
+def test_provider_health_rejects_an_unknown_auth_state() -> None:
+    """The structured auth field is a closed three-state contract."""
+    assert ProviderHealth(provider_id="fake", healthy=True).auth == "unknown"
+    assert ProviderHealth(provider_id="fake", healthy=True, auth="ok").auth == "ok"
+    assert ProviderHealth(provider_id="fake", healthy=True, auth="missing").auth == "missing"
+    assert ProviderHealth(provider_id="fake", healthy=True, auth="unknown").auth == "unknown"
+    with pytest.raises(ValueError, match="auth"):
+        ProviderHealth(provider_id="fake", healthy=True, auth="expired")  # type: ignore[arg-type]
+
+
+def _minimal_backend(provider_id: str, **properties: object) -> AIAgentProvider:
+    """Build a minimal concrete backend instance with optional class attributes."""
+
+    class MinimalBackend(AIAgentProvider):
+        async def analyze(self, request: AnalysisRequest) -> AnalysisResult:
+            raise NotImplementedError
+
+        async def edit_workspace(self, request: EditRequest) -> EditResult:
+            raise NotImplementedError
+
+        async def health_check(self) -> ProviderHealth:
+            raise NotImplementedError
+
+    MinimalBackend.provider_id = provider_id
+    for name, value in properties.items():
+        setattr(MinimalBackend, name, value)
+    return MinimalBackend()
+
+
+async def _unused_run_skill(request: object, *, diagnostics: dict[str, object]) -> int:
+    raise NotImplementedError
+
+
+def test_capabilities_declaration_wins_over_run_skill_derivation() -> None:
+    """The declaration wins: no skill capability stays off despite a run_skill."""
+    declared_without_skill = _minimal_backend(
+        "declared-no-skill",
+        capabilities=frozenset({"analyze", "edit"}),
+        run_skill=_unused_run_skill,
+    )
+    assert declared_without_skill.supports_skills is False
+
+    declared_with_skill = _minimal_backend(
+        "declared-skill",
+        capabilities=frozenset({"analyze", "edit", "skill"}),
+    )
+    assert declared_with_skill.supports_skills is True
+
+
+def test_undeclared_backends_keep_the_run_skill_derivation() -> None:
+    """Backends without a declaration keep the run_skill-override derivation."""
+    derived = _minimal_backend("derived-skill", run_skill=_unused_run_skill)
+    assert derived.supports_skills is True
+
+    plain = _minimal_backend("no-skill")
+    assert plain.supports_skills is False
+
+    assert type(plain).capabilities == frozenset({"analyze", "edit"})
+
+
+def test_stage_skill_default_refuses_staging(tmp_path: Path) -> None:
+    """A backend without stage_skill fails with an attributable error pre-staging."""
+    provider = FakeAIAgentProvider()
+    with pytest.raises(AgentProviderError, match="does not support Skill staging"):
+        provider.stage_skill(tmp_path, "attr", {"SKILL.md": b"text"})
+
+
+def test_factory_builds_through_from_settings() -> None:
+    """The factory assembles every backend through the from_settings hook."""
+
+    constructed: list[object] = []
+
+    class FromSettingsStub(FakeAIAgentProvider):
+        provider_id = "from-settings-stub"
+
+        @classmethod
+        def from_settings(cls, settings: Settings | None) -> FromSettingsStub:
+            constructed.append(settings)
+            return super().from_settings(settings)
+
+    from app.third_party_api.ai_agent import factory
+
+    factory.register_provider("from-settings-stub", FromSettingsStub)
+    try:
+        configured = settings(ai_agent_provider="from-settings-stub")
+        provider = build_agent_provider(configured)
+    finally:
+        factory._REGISTRY.pop("from-settings-stub", None)
+
+    assert isinstance(provider, FromSettingsStub)
+    assert constructed == [configured]
 
 
 def test_factory_rejects_an_unknown_value_that_bypasses_settings() -> None:
@@ -427,6 +573,7 @@ async def test_lifespan_records_the_provider_health_event(
     )
     assert getattr(record, "provider_id", None) == "fake"
     assert getattr(record, "healthy", None) is True
+    assert getattr(record, "auth", None) == "ok"
     assert getattr(record, "detail", None) == "deterministic fake provider"
     assert getattr(record, "latency_ms", None) == 0
 

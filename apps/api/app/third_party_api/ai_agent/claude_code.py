@@ -34,13 +34,12 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from app.third_party_api.ai_agent import claude_skill
 from app.third_party_api.ai_agent.base import (
     ANALYZE_TIMEOUT_SECONDS,
     EDIT_TIMEOUT_SECONDS,
-    PERMISSION_MODE,
     AIAgentProvider,
 )
 from app.third_party_api.ai_agent.claude_cli import (
@@ -49,6 +48,7 @@ from app.third_party_api.ai_agent.claude_cli import (
     ClaudeCliRunner,
 )
 from app.third_party_api.ai_agent.contracts import (
+    EDIT_PLAN_FILENAME,
     AgentCallTrace,
     AgentProviderError,
     AgentUsage,
@@ -56,6 +56,7 @@ from app.third_party_api.ai_agent.contracts import (
     AnalysisResult,
     EditRequest,
     EditResult,
+    ProviderAuth,
     ProviderHealth,
     SkillRunRequest,
 )
@@ -74,11 +75,11 @@ if TYPE_CHECKING:
 DEFAULT_CLAUDE_BIN: Final = "~/.local/bin/claude"
 """Deployment default used when no Settings instance was bound."""
 
+PERMISSION_MODE: Final = "dontAsk"
+"""Headless permission mode shared by CLI backends; never grants file edits."""
+
 CLAUDE_SETTINGS_FILENAME: Final = "settings.json"
 """File under ``~/.claude`` that carries model/endpoint configuration."""
-
-EDIT_PLAN_FILENAME: Final = ".harness-evolution/edits.json5"
-"""The one file the edit phase may write; the deterministic applier owns it later."""
 
 READ_ONLY_TOOLS: Final = ("Read", "Grep", "Glob")
 """Tools the edit phase may use to explore before it submits one plan (07 §5.5.4)."""
@@ -159,6 +160,9 @@ class ClaudeCodeProvider(AIAgentProvider):
 
     provider_id = "claude-code"
 
+    capabilities: ClassVar[frozenset[str]] = frozenset({"analyze", "edit", "skill"})
+    """Full protocol declaration: analysis, edits, and frozen Skill execution."""
+
     def __init__(
         self,
         settings: Settings | None = None,
@@ -183,6 +187,18 @@ class ClaudeCodeProvider(AIAgentProvider):
         self._submission = StructuredSubmission()
         self._capabilities: tuple[str, ...] = ()
 
+    @classmethod
+    def from_settings(cls, settings: Settings | None) -> ClaudeCodeProvider:
+        """Build the backend from the deployment's AI agent config entry.
+
+        ``Settings.effective_ai_agent_bin`` / ``effective_ai_agent_settings``
+        normalize the generic names against the deprecated ``ai_agent_claude_*``
+        aliases (the generic name wins when both carry a value); the module
+        helpers below are the only readers, so assembly, health, and Skill
+        execution all see the same resolution.
+        """
+        return cls(settings)
+
     @property
     def detected_capabilities(self) -> tuple[str, ...]:
         """Return capability names reported by the last ``system/init`` document.
@@ -191,6 +207,24 @@ class ClaudeCodeProvider(AIAgentProvider):
         version strings, and the list is recorded for observability only.
         """
         return self._capabilities
+
+    def stage_skill(self, work: Path, name: str, files: Mapping[str, bytes]) -> str:
+        """Stage the neutral layout and link it for the CLI's native skill trigger.
+
+        The frozen files land in ``work/skills/<name>/`` (the platform's neutral
+        layout the task prompt references) and ``work/.claude/skills/<name>``
+        aliases it so the real CLI resolves ``/{name}`` natively. Hosts that
+        refuse symlinks fall back to copying the staged tree. The returned
+        ``/{name} `` prefix keeps the deterministic native trigger in front of
+        the platform task text.
+        """
+        staged = work / "skills" / name
+        for relative, content in files.items():
+            destination = staged / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(content)
+        _link_or_copy(staged, work / ".claude" / "skills" / name)
+        return f"/{name} "
 
     def default_skill_model(self) -> str | None:
         return claude_skill.default_model(self._settings_file())
@@ -210,8 +244,8 @@ class ClaudeCodeProvider(AIAgentProvider):
             self._binary(),
             self._settings_file(),
             bwrap_enabled=self._bwrap_enabled,
-            allow_path_fallback=not self.settings
-            or self.settings.ai_agent_claude_bin == DEFAULT_CLAUDE_BIN,
+            allow_path_fallback=self.settings is None
+            or self.settings.effective_ai_agent_bin == DEFAULT_CLAUDE_BIN,
         )
 
     async def analyze(self, request: AnalysisRequest) -> AnalysisResult:
@@ -476,7 +510,14 @@ class ClaudeCodeProvider(AIAgentProvider):
         )
 
     async def health_check(self) -> ProviderHealth:
-        """Probe ``--version`` with a short timeout and never raise."""
+        """Probe ``--version`` with a short timeout and never raise.
+
+        The structured ``auth`` field names the credential state: ``ok`` when a
+        bare-mode credential source is configured, ``missing`` when a working
+        deployment has none, and ``unknown`` when the probe could not even
+        reach a working binary (absent executable, spawn failure, or non-zero
+        probe exit).
+        """
         started = self._clock()
         binary = self._binary()
         if not self._runner_injected and not _binary_available(binary):
@@ -510,6 +551,12 @@ class ClaudeCodeProvider(AIAgentProvider):
                 ),
                 latency_ms=latency_ms,
             )
+        auth: ProviderAuth = (
+            "ok"
+            if _env_declares("ANTHROPIC_API_KEY")
+            or _settings_declare_api_key_helper(self._settings_file())
+            else "missing"
+        )
         version = _version_line(result.stdout)
         detail = f"claude CLI available: {version}" if version else "claude CLI available"
         if self._capabilities:
@@ -520,6 +567,7 @@ class ClaudeCodeProvider(AIAgentProvider):
             healthy=True,
             detail=_bounded_detail(detail),
             latency_ms=latency_ms,
+            auth=auth,
         )
 
     async def _call(
@@ -773,17 +821,32 @@ def _is_cancelled(result: ClaudeCliResult) -> bool:
 
 def claude_binary(settings: Settings | None) -> str:
     """Resolve the shared service binary installed by Deploy."""
-    return str(Path(settings.ai_agent_claude_bin if settings else DEFAULT_CLAUDE_BIN).expanduser())
+    return str(
+        Path(settings.effective_ai_agent_bin if settings else DEFAULT_CLAUDE_BIN).expanduser()
+    )
 
 
 def claude_settings_file(settings: Settings | None) -> Path:
     """Resolve the explicit service settings, CLI config directory, or user default."""
-    configured = (settings.ai_agent_claude_settings or "").strip() if settings else ""
+    configured = (settings.effective_ai_agent_settings or "").strip() if settings else ""
     if configured:
         return Path(configured).expanduser()
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
     directory = Path(config_dir).expanduser() if config_dir else Path.home() / ".claude"
     return directory / CLAUDE_SETTINGS_FILENAME
+
+
+def _link_or_copy(source: Path, link: Path) -> None:
+    """Alias a staged directory; copy the tree where the host refuses symlinks.
+
+    The same mechanism the service layer used for its vendor alias: developer
+    hosts without symlink privilege (Windows without developer mode) still get
+    a working skill layout, just materialized instead of linked.
+    """
+    try:
+        link.symlink_to(source, target_is_directory=True)
+    except OSError:
+        shutil.copytree(source, link)
 
 
 def _binary_available(binary: str) -> bool:
