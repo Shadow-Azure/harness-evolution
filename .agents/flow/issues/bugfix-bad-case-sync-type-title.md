@@ -13,11 +13,13 @@ priority: P2
 status: ready
 scope:
   - .agents/flow/issues/bugfix-bad-case-sync-type-title*
+  - .agents/flow/issues/bugfix-edit-insert-anchor-multiline*
   - .agents/notes/**
   - apps/api/app/service/acquisition/bad_case_catalog_sync.py
   - apps/api/app/third_party_api/bad_case_query/models.py
   - apps/api/tests/m6-16-bad-case-catalog-sync/**
   - plans/fullstack-design/12-bad-case-catalog-sync.md
+  - plans/2026-11-25-pr606-review.md
 adr: []
 github:
   number: 600
