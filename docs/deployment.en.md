@@ -81,7 +81,7 @@ Before switching `current`, the deploy pipeline installs Claude Code and writes 
 - Trigger: push to main → CI green → `Deploy`; `workflow_dispatch` also available.
 - Behavior: [deploy/release.sh](../deploy/release.sh) validates the data directory → installs dependencies → checks the attribution runtime → `alembic upgrade head` → switches the `current` symlink → restarts harness-api → probes `/api/health` (up to 60 seconds).
 - Rollback: on a failed probe it restores `.env` first, then returns the symlink to the previous release and restarts; the server keeps the latest 5 releases and 5 `.env` backups.
-- Restart drain: the systemd unit uses `KillMode=mixed` + `TimeoutStopSec=45` so the main process receives SIGTERM first; the application waits for in-flight jobs up to `HE_JOB_DRAIN_TIMEOUT_SECONDS` (25 seconds by default), then releases the lease and marks the job `interrupted` for automatic recovery on the next start.
+- Restart drain: the systemd unit uses `KillMode=mixed` + `TimeoutStopSec=45` so the main process receives SIGTERM first; the application waits for in-flight jobs up to `HE_JOB_DRAIN_TIMEOUT_SECONDS` (25 seconds by default), then releases the lease and marks the job `interrupted`. The next start re-enqueues interrupted evolution jobs with a `job_recovered` event and returns an attribution batch to the queue in place; both resume from their persisted checkpoints. Residual `running` rows from a crash are marked `interrupted` first and follow the same recovery.
 - Migrations are idempotent: repeated releases have zero side effects on applied migrations.
 
 ## Data directory and writability check

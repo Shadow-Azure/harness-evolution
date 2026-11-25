@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/bugfix-attribution-clustering.md
+bugfix-attribution-clustering.md: d71ac4575362d7d7430cc9aab4449d20ee6ef84a
+bugfix-attribution-clustering.en.md: 828a5cea5afc941d99ee4f9355b919a8871e00d1

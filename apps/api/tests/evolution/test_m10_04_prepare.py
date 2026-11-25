@@ -192,7 +192,13 @@ async def test_prepare_advances_through_every_stage_and_clusters_attributed(
     assert candidates[0].included is True
     assert candidates[0].probe_id is not None
     attributed = await AttributionRepository(harness.database).list_clusterable_probes(RUN_ID)
-    assert attributed == ((candidates[0].probe_id, "prompt", "case-m10-04"),)
+    assert len(attributed) == 1
+    assert (
+        attributed[0].probe_id,
+        attributed[0].attribute_type,
+        attributed[0].bad_case_id,
+    ) == (candidates[0].probe_id, "prompt", "case-m10-04")
+    assert attributed[0].probe_description
     clusters = await runs.list_clusters(RUN_ID)
     assert len(clusters) == 1
     assert clusters[0].confidence == pytest.approx(0.74)

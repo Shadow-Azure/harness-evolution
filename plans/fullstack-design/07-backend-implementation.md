@@ -747,42 +747,36 @@ async def evolution_dispatch(job) -> None:
 - 第 4/5 步必须是独立写库点：归因步骤写单条结论，聚类步骤写簇级 `confidence / severity / rank`，**之后才**按 rank 顺序创建 `evolution_rounds`。不能把归因和聚类合并成一次不可恢复的内存步骤。
 - `attribution_step` / `cluster_step` 各自独立事务、各记一条 `step_advanced` 事件；当前在 prepare 模板内顺序调用，后续需要独立重跑时可拆成独立 job，接口与表不变。
 
-### 5.5 确定性词法聚类
+### 5.5 归因结论分组（legacy 词法保留）
 
 ```python
-TYPE_IMPACT = {"error": 9, "prompt": 7, "model": 5}          # 固定映射
-CLUSTER_ALGORITHM = "lexical-jaccard-v1"
-SIMILARITY_THRESHOLD = 0.3
+ATTRIBUTION_HYBRID_ALGORITHM = "hybrid-attribution-llm-v1"
+ATTRIBUTION_DRAFT_MAX_CHARS = 240
 
-
-def cluster_probes(probes: list[ProbeForCluster]) -> list[Cluster]:
-    # ProbeForCluster = (probe_id, attribute_type, bad_case_title)
-    clusters = []
-    for attr in ("model", "prompt", "error"):
-        group = sorted([p for p in probes if p.attribute_type == attr], key=lambda p: p.probe_id)
-        if not group:
-            continue                                       # 该类型 0 条 → 不产生簇
-        components = connected_components(
-            [tokens(p.title) for p in group],              # ASCII 词元 + CJK 字符二元组
-            similarity=jaccard,
-            threshold=SIMILARITY_THRESHOLD,                # 相似边 ≥ 0.3
-        )
-        for members in components:
-            representative = group[members[0]].title
-            clusters.append(Cluster(
+def build_attribution_drafts(probes: list[ProbeForCluster]) -> list[Cluster]:
+    # ProbeForCluster = (probe_id, attribute_type, probe_description)
+    drafts = []
+    for attr in ("model", "prompt", "error", "flow", "context"):
+        for probe in sorted(
+            (p for p in probes if p.attribute_type == attr),
+            key=lambda p: p.probe_id,
+        ):
+            summary = headline(probe.probe_description, ATTRIBUTION_DRAFT_MAX_CHARS)
+            drafts.append(Cluster(
                 type=attr,
-                description=f"{attr} 类问题 · {headline(representative)}",
-                probes=[group[i].probe_id for i in members],
+                description=f"{attr} 类问题 · {summary or attribution_missing(probe)}",
+                probes=[probe.probe_id],                       # 一归因一草稿，不做词法合并
             ))
-    return clusters
+    return drafts
 ```
 
-- **特征取 bad case 标题**：标题是上报方对问题的摘要，比 `rule-v1` 的模板结论句更能区分案例；标题从外部问题表只读加载，不进入归因缓存键。
-- **每个 `attribute_type` 独立聚类**：文本归一化后，ASCII 词元与 CJK 字符二元组构成集合；Jaccard ≥ 0.3 的探针经单链接连通分量合并。空文本不参与合并、单独成簇；重复 `probe_id` 先按 `(attribute_type, title)` 去重。
-- **确定性**：簇与成员都按 `probe_id` 排序，结果与数据库行序无关；空输入返回空列表，单元素返回单簇，同输入同输出。
-- **描述生成**：取簇内最小 `probe_id` 的标题，空白归一化并截断到 120 字符；无标题时用成员条数兜底。簇描述不再是占位文案。
-- **复现参数**：算法版本、阈值与簇结果 hash 写入 `clusters_created` 事件 payload；`confidence` / `impact` / `severity` / `rank` 仍按 [06 §5.3](06-database-design.md) 计算并固化。
-- 只替换聚类组合与描述生成，继续写 `probe_clusters` / `probe_cluster_probes`，表、关联和 API 字段不变。
+- **分组信号取归因结论**：`probe_reports.probe_description` 是唯一分组文本；每条 `attributed` probe 生成一个单 probe draft，词法层不再按 bad case 标题合并。`non_target` 仍不进入簇。
+- **确定性**：draft 按 `model` / `prompt` / `error` / `flow` / `context` 类目顺序、`probe_id` 升序排列，结果与数据库行序无关；重复 `probe_id` 先按 `(attribute_type, probe_description)` 去重。
+- **描述生成**：draft 摘要是空白归一化后的归因结论，截断到 240 字符；结论为空时生成带 `probe_id` 的唯一兜底文本，避免无证据 probe 被同质文本合在一起。draft 描述不是任何成员 bad case 标题。
+- **审查层负责根因合并**：`cluster.review` 收到 N 个单 probe draft，只允许按“同一处修改可覆盖全部成员”的根因合并、命名、写摘要（§5.5.2）；同根因可跨实例合并，不同根因即使标题相同也保持分开。
+- **legacy 词法保留**：`cluster_probes` / `lexical-jaccard-v1` 仅服务无 agent 的离线/测试路径与旧 run 读取；生产装配始终绑定 provider，默认走归因分组。旧 `hybrid-lexical-llm-v1` run 的步骤读取与历史 hash 不变。
+- **复现参数**：`clusters_created` 记录 `algorithm`、`draftCount`、`draftSummaryMaxChars`、`grouping` 与簇结果 hash；legacy 词法路径继续记录 `similarityThreshold`。`confidence` / `impact` / `severity` / `rank` 仍按 [06 §5.3](06-database-design.md) 计算并固化。
+- 只替换分组输入与描述生成，继续写 `probe_clusters` / `probe_cluster_probes`，表、关联和 API 字段不变。
 
 ### 5.5.1 AI Agent Provider 出站适配层（`third_party_api/ai_agent`）
 
@@ -817,14 +811,14 @@ class AIAgentProvider(ABC):
 
 ### 5.5.2 聚类三层：分组 / 审查 / 评分
 
-规模红线：**LLM 的输入输出一律与归因报告总量 N 解耦**（草稿键引用 + 代表采样 + 统计量注入）——N 只影响无 LLM 的分组层。
+规模红线：**review 输入为 O(N) 一次、输出 O(K)**；成员列表由代码持有，代表采样有上限，N 只决定 review 的输入草稿数。超过 `ATTRIBUTION_REVIEW_MAX_DRAFTS = 200` 时按类目分批，每批各自完整分区，批次事实写 `degraded`；不静默退回标题聚类。
 
-- **① 分组层（O(N)，无 LLM）**：`lexical-jaccard-v1`（§5.5）是第一实现；产出 K 个草稿簇，**成员列表由代码持有、不进任何 prompt**。向量化升级位：`SupportsEmbedding`（未来 `model` 子类实现）以语义相似合并词面不同语义相同的 case（「超时」vs「卡死」），收缩 K、缩小下游输入，附带产出簇内紧密度作评分层统计信号。向量化只替换分组与相似召回，不替换身份归因（归因靠对象锚点与时序的精确匹配）。降级：embedding 不可用 → 回 lexical。
-- **② 审查层（O(K×s)，`analyze(task="cluster.review")`）**：输入 = 草稿摘要（约 60 tokens/簇）+ 每草稿采样 3–5 条代表 case；任务只允许合并草稿、命名、写摘要。输出 schema 用**草稿键引用**（`{"from": ["D1","D2"], "title": …}`），成员由代码按 `from` 展开——输出量 O(K)，守恒是构造性的。硬闸：**草稿划分完整性**（每个输入草稿在输出 `from` 里恰好出现一次）+ 只合并不拆分；违反 → 整批降级用草稿。
-- **③ 评分层（O(K×s)，两次调用失败隔离）**：输入 = 最终簇摘要 + 代表样本 + 确定性统计量（成员数、签名重合度、时间跨度、可选紧密度）。`cluster.score`（簇置信度直评 0–1，rubric 锚定 + `evidence_refs ⊆ 输入` 引用校验，写 `probe_clusters.confidence`，降级回类目常量）与 `severity.score`（维度 0–10 + CoT grader，`overall` 为决策分、公式分对照进 metrics、CVSS 式向量串可审计，降级回 `cluster_severity()` 公式）分开执行。
+- **① 分组层（O(N)，无 LLM）**：默认对每条 `attributed` probe 用自己的归因结论生成一个单 probe draft（§5.5），产出 N 个草稿；`lexical-jaccard-v1` 仅保留给无 agent 的离线/测试路径和旧 run。向量化升级位：`SupportsEmbedding`（未来 `model` 子类实现）以语义相似合并词面不同语义相同的结论，收缩 N、缩小 review 输入，附带产出簇内紧密度作评分层统计信号。向量化只替换分组与相似召回，不替换身份归因（归因靠对象锚点与时序的精确匹配）。降级：embedding 不可用 → 回归因单 draft。
+- **② 审查层（一次调用，输入 O(N)、输出 O(K)，`analyze(task="cluster.review")`）**：输入 = N 个单 probe draft 的结论摘要（≤240 字符/草稿）+ 每个 draft 1 条代表 case；任务只允许按共同根因合并草稿、命名、写摘要，**禁止按实例名、数据集前缀、标题模板或类目合并**。输出 schema 用**草稿键引用**（`{"from": ["D1","D2"], "title": …}`），成员由代码按 `from` 展开——输出量 O(K)，守恒是构造性的。硬闸：**草稿划分完整性**（每个输入草稿在输出 `from` 里恰好出现一次）+ 只合并不拆分 + 同 type 才能合并；违反 → 整批按类目兜底并记 `degraded`，绝不落 N 个单例簇。
+- **③ 评分层（O(K×s)，两次调用失败隔离）**：输入 = 最终簇摘要 + 代表样本 + 确定性统计量（成员数、时间跨度；标题不再参与紧密度计算）。`cluster.score`（簇置信度直评 0–1，rubric 锚定 + `evidence_refs ⊆ 输入` 引用校验，写 `probe_clusters.confidence`，降级回类目常量）与 `severity.score`（维度 0–10 + CoT grader，`overall` 为决策分、公式分对照进 metrics、CVSS 式向量串可审计，降级回 `cluster_severity()` 公式）分开执行。
 - **归因置信度不上模型**：归因行 `probe_reports.confidence`（case 级归因置信度）改为证据完整度规则分（时间序可比 / 错误签名匹配 / 版本直证三信号计票映射区间），零模型调用；逐条模型分留作预算开关，不进默认路径。
-- 落库：算法标识升级 `hybrid-lexical-llm-v1`（embedding 上线后 `hybrid-embed-llm-v1`）随 run 快照可回放。成本形态：每 run 恰好 3 次有界 analyze + patch 阶段 edit 调用，与 N 无关。
-- 失败策略：`HE_AI_AGENT_FAILURE_POLICY` 默认按 provider 推导（`fake` → `degrade`，其余 → `strict`）。`strict` 下任一任务失败在记录 `ai_agent_call(outcome=error)` 后抛 `ClusterAIFailure`，run 在聚类阶段显式失败，不写兜底 confidence/severity、不写成功口径的 `clusters_created`；`degrade` 仅用于 `fake` 或显式配置，回退仍写 `degraded` 事件。`/steps/clusters` 暴露 `algorithm`/`failurePolicy`/`degraded`/`failure`，失败 run 的聚类步骤保持可读；run 卡片与终评按 `degraded` 标“聚类降级”，不显示“自进化有效”。
+- 落库：新 run 的算法标识为 `hybrid-attribution-llm-v1`（embedding 上线后 `hybrid-embed-llm-v1`），随 run 快照可回放；旧 run 的 `hybrid-lexical-llm-v1` 读取行为不变。成本形态：正常每 run 恰好 3 次 analyze + patch 阶段 edit 调用；超过 review 上限时按类目分批会增加 review 调用，并记 `degraded`，不静默回退。
+- 失败策略：`HE_AI_AGENT_FAILURE_POLICY` 默认按 provider 推导（`fake` → `degrade`，其余 → `strict`）。`strict` 下任一任务失败在记录 `ai_agent_call(outcome=error)` 后抛 `ClusterAIFailure`，run 在聚类阶段显式失败，不写兜底 confidence/severity、不写成功口径的 `clusters_created`；`degrade` 仅用于 `fake` 或显式配置，review 失败时按类目生成兜底簇并写 `degraded` 事件。`/steps/clusters` 暴露 `algorithm`/`failurePolicy`/`degraded`/`failure`，失败 run 的聚类步骤保持可读；run 卡片与终评按 `degraded` 标“聚类降级”，不显示“自进化有效”。
 
 ### 5.5.3 结构化提交通道（`submission.py`）与 JSON 可靠性防线
 

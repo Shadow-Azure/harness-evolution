@@ -146,7 +146,7 @@ function formatBytes(value: number): string {
       </div>
       <button
         v-if="canManage"
-        class="primary-button"
+        class="btn primary"
         data-testid="upload-attribution-skill"
         :disabled="manager.isMutating.value"
         type="button"
@@ -188,19 +188,19 @@ function formatBytes(value: number): string {
       @retry="manager.packages.refetch"
     />
     <template v-else>
-      <section class="panel">
-        <div class="section-heading">
+      <section>
+        <div class="list-heading">
           <div>
             <h3>已上传归因 Skill</h3>
             <p>{{ items.length }} 个包；默认包始终可用且不可删除。</p>
           </div>
           <span
             v-if="!canManage"
-            class="readonly-badge"
+            class="badge"
           >只读</span>
         </div>
         <div class="table-scroll">
-          <table>
+          <table class="admin-table">
             <thead>
               <tr>
                 <th>Skill 名</th>
@@ -222,7 +222,10 @@ function formatBytes(value: number): string {
                 <td>
                   <div class="skill-name">
                     <strong>{{ item.skillName }}</strong>
-                    <span v-if="item.builtIn">平台默认</span>
+                    <span
+                      v-if="item.builtIn"
+                      class="badge"
+                    >平台默认</span>
                   </div>
                 </td>
                 <td>{{ item.uploaderName }}</td>
@@ -231,7 +234,7 @@ function formatBytes(value: number): string {
                 <td>
                   <button
                     type="button"
-                    class="text-button"
+                    class="btn small"
                     :aria-pressed="selected?.id === item.id"
                     @click="selectedId = item.id"
                   >
@@ -240,7 +243,7 @@ function formatBytes(value: number): string {
                 </td>
                 <td class="operations">
                   <button
-                    class="text-button"
+                    class="btn small"
                     type="button"
                     :data-testid="`download-skill-${item.id}`"
                     @click="download(item)"
@@ -249,7 +252,7 @@ function formatBytes(value: number): string {
                   </button>
                   <button
                     v-if="canManage && !item.builtIn"
-                    class="text-button danger"
+                    class="btn small danger"
                     :disabled="manager.isMutating.value"
                     type="button"
                     :data-testid="`delete-skill-${item.id}`"
@@ -266,14 +269,10 @@ function formatBytes(value: number): string {
 
       <section
         v-if="selected"
-        class="panel prompt-panel"
+        class="skill-detail"
         data-testid="effective-skill-prompt"
       >
-        <div class="section-heading">
-          <div>
-            <h3>{{ selected.skillName }}</h3>
-          </div>
-        </div>
+        <h3>{{ selected.skillName }}</h3>
         <p v-if="detail.isPending.value">
           正在读取资源详情…
         </p>
@@ -283,12 +282,24 @@ function formatBytes(value: number): string {
           @retry="detail.refetch()"
         />
         <template v-else-if="detail.data.value">
-          <h4>已绑定进化对象</h4>
-          <p>{{ detail.data.value.targets.join("、") || "暂无绑定对象" }}</p>
-          <h4>目录结构</h4>
-          <pre data-testid="skill-directory-tree">{{ directoryTree }}</pre>
+          <div class="detail-grid">
+            <div>
+              <h4>已绑定进化对象</h4>
+              <p>{{ detail.data.value.targets.join("、") || "暂无绑定对象" }}</p>
+            </div>
+            <div>
+              <h4>目录结构</h4>
+              <pre
+                data-testid="skill-directory-tree"
+                tabindex="0"
+              >{{ directoryTree }}</pre>
+            </div>
+          </div>
           <h4>SKILL.md</h4>
-          <pre data-testid="skill-resource-prompt">{{ detail.data.value.prompt }}</pre>
+          <pre
+            data-testid="skill-resource-prompt"
+            tabindex="0"
+          >{{ detail.data.value.prompt }}</pre>
         </template>
       </section>
     </template>
@@ -296,34 +307,224 @@ function formatBytes(value: number): string {
 </template>
 
 <style scoped>
-.skill-tab { display: grid; gap: 16px; }
-.admin-head, .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
-h2, h3, p { margin: 0; }
-h2 { color: var(--text); font-size: 18px; }
-h3 { color: var(--text); font-size: 15px; }
-.sub, .upload-help, .section-heading p { margin-top: 6px; color: var(--text-dim); font-size: 13px; line-height: 1.6; }
-.upload-help { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-inset); }
-.hidden-input { display: none; }
-.primary-button { flex: 0 0 auto; min-height: 36px; padding: 0 16px; border: 1px solid var(--blue); border-radius: 8px; color: var(--text-on-accent); background: var(--blue); cursor: pointer; font-weight: 650; }
-.primary-button:disabled, .text-button:disabled { cursor: not-allowed; opacity: .55; }
-.operation-error { padding: 10px 12px; border: 1px solid var(--state-error-border); border-radius: 8px; color: var(--state-error-text); background: var(--state-error-surface); font-size: 13px; }
-.panel { overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); }
-.section-heading { padding: 16px 18px; border-bottom: 1px solid var(--border); }
-.readonly-badge, .status, .skill-name span { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; white-space: nowrap; }
-.readonly-badge, .status.inactive, .skill-name span { color: var(--text-dim); background: var(--bg-inset); }
-.status.active { color: var(--state-success-text); background: var(--state-success-surface); }
-.table-scroll { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { padding: 10px 14px; color: var(--text-dim); background: var(--bg-inset); text-align: left; font-weight: 600; white-space: nowrap; }
-td { padding: 13px 14px; border-top: 1px solid var(--border); color: var(--text-dim); }
-.skill-name { display: flex; align-items: center; gap: 8px; min-width: 190px; }
-.skill-name strong { color: var(--text); font-family: var(--mono); }
-.operations { text-align: right; white-space: nowrap; }
-.text-button { padding: 4px 7px; border: 0; color: var(--text-dim); background: transparent; cursor: pointer; }
-.text-button:hover { color: var(--text); }
-.text-button.emphasize { color: var(--blue); }
-.text-button.danger { color: var(--red); }
-.prompt-panel pre { max-height: 520px; margin: 0; padding: 18px; overflow: auto; color: var(--text-dim); background: var(--bg-inset); font-family: var(--mono); font-size: 12px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
-code { font-family: var(--mono); }
-@media (max-width: 760px) { .admin-head { flex-direction: column; } .primary-button { width: 100%; } }
+.admin-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.admin-head h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.admin-head .sub {
+  margin: 2px 0 0;
+}
+
+.admin-head .sub,
+.upload-help,
+.list-heading p {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.upload-help {
+  margin: 0 0 12px;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.operation-error {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--state-error-border);
+  border-radius: 8px;
+  color: var(--state-error-text);
+  background: var(--state-error-surface);
+  font-size: 11px;
+}
+
+.list-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.list-heading h3,
+.skill-detail h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.list-heading p {
+  margin: 0;
+}
+
+.badge {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-faint);
+  background: var(--bg-card);
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+.table-scroll {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.admin-table th {
+  background: var(--bg-panel);
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.admin-table .operations {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.operations button + button {
+  margin-left: 4px;
+}
+
+.skill-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.skill-name strong,
+code {
+  font-family: var(--mono);
+}
+
+.btn {
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.btn.primary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: var(--blue-deep);
+  color: var(--text-on-accent);
+}
+
+.btn.small {
+  padding: 3px 10px;
+}
+
+.btn[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
+  background: color-mix(in srgb, var(--blue) 8%, var(--bg-card));
+  color: var(--blue);
+}
+
+.btn.danger,
+.btn.danger:hover:not(:disabled) {
+  color: var(--red);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.skill-detail {
+  min-width: 0;
+  margin-top: 14px;
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-panel);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.skill-detail h4 {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.skill-detail p {
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.skill-detail pre {
+  max-height: 520px;
+  margin: 5px 0 0;
+  padding: 9px 11px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-inset);
+  color: var(--text-dim);
+  font: 11px/1.7 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 </style>

@@ -652,15 +652,15 @@ erDiagram
 
 ### 5.3 `probe_clusters` —— 本次 run 的聚类结果
 
-> 表名与列名沿用 V1；V2 只把 `probe_cluster_type` 的取值来源改为归因 `attribute_type`，API 对外统一映射为 `clusterId/category/description`。
+> 表名与列名沿用 V1；V2 只把 `probe_cluster_type` 的取值来源改为归因 `attribute_type`，API 对外统一映射为 `clusterId/category/description`。聚类默认按归因结论分组（[07 §5.5](07-backend-implementation.md)），簇描述是 review 对成员归因结论的根因归纳，不再取成员 bad case 标题。
 
 | 列 | 类型 | 说明 |
 |---|---|---|
 | `probe_cluster_id` | `VARCHAR(64)` PK | 本服务生成；API 映射为 `clusterId` |
 | `run_id` | `VARCHAR(36)` FK → `evolution_runs.id` | **按 run 归属** |
 | `seq` | `INTEGER` | 创建顺序（1..M）；不随 severity 重排 |
-| `probe_cluster_description` | `TEXT` | 簇描述（簇内最小 probe 对应的 bad case 标题）；API 映射为 `description` |
-| `probe_cluster_type` | `VARCHAR(16)` | `model` / `prompt` / `error`（由归因 `attribute_type` 驱动）；API 映射为 `category` |
+| `probe_cluster_description` | `TEXT` | 簇描述（review 对成员归因结论的根因归纳；降级时为 `{type} 类问题 · {N} 条归因（聚类降级）`）；API 映射为 `description`，并由它生成簇标题 |
+| `probe_cluster_type` | `VARCHAR(16)` | `model` / `prompt` / `error` / `flow` / `context`（由归因 `attribute_type` 驱动）；API 映射为 `category` |
 | `confidence` | `DOUBLE` NULL | 簇级置信度 0–1；聚类步写入 |
 | `impact` | `DOUBLE` NULL | 影响面 0–10；按 `category` 映射并固化（`error=9` / `prompt=7` / `model=5`） |
 | `severity` | `DOUBLE` NULL | 排序分 0–10；`confidence × impact × 报告频次权重` |
