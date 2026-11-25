@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import delete, func, insert, literal, select, update
+from sqlalchemy import delete, false, func, insert, literal, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -264,6 +264,16 @@ class BadCaseCatalogSyncRepository:
         """
         values = [_values(item) for item in items]
         async with self._database.transaction() as session:
+            if self._database.dialect == "sqlite":
+                # SQLite's DBAPI defers BEGIN until the first DML statement, so
+                # a SAVEPOINT opened before any write would release into its own
+                # transaction. A no-op UPDATE materializes the outer transaction
+                # first, keeping the savepoint inside the page's atomic unit.
+                await session.execute(
+                    update(bad_case_catalog_sync)
+                    .where(false())
+                    .values(updated_at=bad_case_catalog_sync.c.updated_at),
+                )
             ownership = await self._ownership(session, values)
             pending = [value for value in values if value["bad_case_id"] not in ownership]
             inserted_ids: set[str] = set()

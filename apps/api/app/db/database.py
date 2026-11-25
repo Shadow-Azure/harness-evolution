@@ -74,18 +74,9 @@ class SqlAlchemyDatabase:
 
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator[AsyncSession]:
-        """Commit successful writes and roll back every exception.
-
-        SQLite's legacy DBAPI transaction control defers ``BEGIN`` until the
-        first DML statement, so a ``SAVEPOINT`` opened before any write starts
-        its own transaction and ``RELEASE`` commits it even when the outer
-        block later rolls back. Opening the transaction explicitly keeps
-        nested savepoints inside the caller's atomic unit on SQLite.
-        """
+        """Commit successful writes and roll back every exception."""
         async with self._factory()() as session:
             try:
-                if self.dialect == "sqlite":
-                    await session.execute(text("BEGIN"))
                 yield session
                 await session.commit()
             except BaseException:

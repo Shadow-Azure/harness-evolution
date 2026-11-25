@@ -4,7 +4,7 @@ English | [中文](bugfix-bad-case-sync-type-title.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-59
+id: bugfix-61
 milestone: bugfix
 depends:
   - m6-16

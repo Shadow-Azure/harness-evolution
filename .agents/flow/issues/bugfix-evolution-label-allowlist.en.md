@@ -4,7 +4,7 @@ English | [中文](bugfix-evolution-label-allowlist.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-58
+id: bugfix-60
 milestone: bugfix
 depends: []
 priority: P2
