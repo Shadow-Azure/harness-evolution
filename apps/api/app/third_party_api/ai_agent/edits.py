@@ -470,8 +470,10 @@ def _insert_after_text(text: str, target: str, content: str) -> str:
     the line containing the match's last character (the end of the file when
     that line is unterminated), and an unterminated final line gains one.
     Inserted lines reuse the anchor line's ``\\r\\n`` or ``\\n`` style; a bare
-    ``\\r`` anchor line keeps its bytes and inserted lines use ``\\n``. A
-    single-line target therefore keeps producing the historical bytes.
+    ``\\r`` anchor line keeps its bytes and inserted lines use ``\\n``. In files
+    whose lines end in ``\\n``, ``\\r\\n``, or bare ``\\r``, a single-line target
+    therefore keeps producing the historical bytes; mixed terminator styles and
+    other Unicode line separators are outside the contract.
     """
     try:
         match_end = text.index(target) + len(target)

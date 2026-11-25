@@ -835,7 +835,7 @@ def test_insert_after_single_line_targets_reproduce_exact_bytes(
     content: str,
     expected: str,
 ) -> None:
-    """Single-line anchors keep producing the historical byte-for-byte output."""
+    """Single-line anchors keep historical bytes for `\n`/`\r\n`/bare-`\r` files."""
     workspace = tmp_path / "ws"
     _write(workspace / "doc.md", text)
     plan = EditPlan(
