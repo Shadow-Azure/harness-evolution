@@ -8,7 +8,7 @@ id: bugfix-58
 milestone: bugfix
 depends: []
 priority: P2
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/web/**

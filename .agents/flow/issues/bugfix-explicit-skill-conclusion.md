@@ -8,7 +8,7 @@ id: bugfix-56
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - attribute-badcases/**
   - apps/api/app/service/evolution/local_attribution.py

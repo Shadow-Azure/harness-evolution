@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from app.config import DatabaseDialect, Settings
 from app.db.crud.fixtures import ensure_fixture_external_tables
+from app.db.crud.fixtures import backfill_legacy_associations
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.models.domain import agent_events, bad_cases
@@ -125,6 +126,7 @@ async def _seed(data_dir: Path) -> None:
                     ),
                 ],
             )
+        await backfill_legacy_associations(database)
     finally:
         await database.dispose()
 

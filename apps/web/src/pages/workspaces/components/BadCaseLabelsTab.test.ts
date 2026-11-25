@@ -128,11 +128,13 @@ describe("Badcase 类型 label management tab", () => {
 
   it("tracks a dirty draft and saves a full replacement atomically", async () => {
     let savedBody: unknown = null;
+    let current = config([]);
     server.use(
-      http.get(`${base}/bad-case-labels`, () => HttpResponse.json(config([]))),
+      http.get(`${base}/bad-case-labels`, () => HttpResponse.json(current)),
       http.put(`${base}/bad-case-labels`, async ({ request }) => {
         savedBody = await request.json();
-        return HttpResponse.json(config(["review"], 3));
+        current = config(["review"], 3);
+        return HttpResponse.json(current);
       }),
     );
     const wrapper = await mountTab();

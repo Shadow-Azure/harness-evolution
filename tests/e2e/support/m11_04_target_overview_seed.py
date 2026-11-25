@@ -19,7 +19,10 @@ from pydantic import SecretStr
 from sqlalchemy import delete, select
 
 from app.config import DatabaseDialect, Settings
-from app.db.crud.fixtures import ensure_fixture_external_tables
+from app.db.crud.fixtures import (
+    backfill_legacy_associations,
+    ensure_fixture_external_tables,
+)
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.models.domain import (
@@ -190,6 +193,7 @@ async def _seed(data_dir: Path) -> None:
                             updated_at=NON_TARGET_AT,
                         ),
                     )
+        await backfill_legacy_associations(database)
         print(
             f"seeded m11-04 target overview data in {data_dir} for {workspace_id}",
             flush=True,
