@@ -291,6 +291,7 @@ class EvolutionCandidateService:
                 exc,
                 job_id=job_id,
             )
+        saved = _with_candidate_diff(saved, candidate.unified_diff)
         current = await self._runs.mark_round_candidate(
             current.id,
             candidate_ref=candidate.ref,
@@ -1078,11 +1079,31 @@ def _stored_patch(bundle: PatchBundle) -> dict[str, object]:
         "intent": bundle.intent.model_dump(mode="json") if bundle.intent is not None else None,
         "report": [asdict(status) for status in bundle.report],
     }
+    if bundle.unified_diff:
+        # The writer only fills this after the commit succeeds; keeping it in
+        # the durable payload lets step 6 render the real diff instead of
+        # interpreting whole-file lines as removals.
+        saved["diff"] = bundle.unified_diff
     if len(bundle.files) == 1:
         # Keep the legacy single-file keys so old readers and existing runs
         # resolve the same file, lines, and note without a migration.
         saved.update(files[0])
     return saved
+
+
+def _with_candidate_diff(
+    saved: dict[str, object],
+    unified_diff: str,
+) -> dict[str, object]:
+    """Attach the committed candidate's real diff to the durable patch payload.
+
+    The patch bundle is prepared before the commit, so the git-produced diff
+    only exists afterwards. Persisting it with ``mark_round_candidate`` keeps
+    the write-once patch bytes while adding the audit surface step 6 needs.
+    """
+    if not unified_diff.strip():
+        return saved
+    return {**saved, "diff": unified_diff}
 
 
 _MAX_EVENT_DIFF_CHARS = 20_000

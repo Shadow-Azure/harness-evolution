@@ -27,6 +27,7 @@ from app.db.models.evolution import (
 )
 from app.errors import AppError, ErrorCode
 from app.service.evolution.attribution_contracts import AttributionConclusion
+from app.service.evolution.patch_source import PatchBundle
 from app.service.evolution.potential import (
     AnchorSource,
     HitReason,
@@ -267,14 +268,22 @@ class StepRoundFilePatch(IdentityModel):
 class StepRoundPatch(IdentityModel):
     """Patch preview projected from the round's stored bundle.
 
-    The durable shape carries ``files[]`` plus ``note``/``intent``/``report``,
-    and single-file rounds also keep the legacy ``file``/``lines`` keys. This
-    read model is built from :func:`stored_bundle` instead of validating the
-    raw dictionary, so a later writer field cannot break step 6 again.
+    The durable shape carries ``files[]`` plus ``note``/``diff``/``intent``/
+    ``report``, and single-file rounds also keep the legacy ``file``/``lines``
+    keys. This read model is built from :func:`stored_bundle` instead of
+    validating the raw dictionary, so a later writer field cannot break step 6
+    again.
+
+    ``diff`` is the candidate commit's unified diff, already split into lines.
+    New rounds persist it; historical rounds that lack it get a change-block
+    diff synthesized from the applied ``intent``/``report`` pair, and ``None``
+    means no diff can be produced, so the client must show the neutral
+    whole-file preview instead of classifying lines.
     """
 
     files: list[StepRoundFilePatch]
     note: str | None = None
+    diff: list[str] | None = None
 
 
 class StepRoundPush(IdentityModel):
@@ -1119,7 +1128,9 @@ def _round_patch(raw: object) -> StepRoundPatch | None:
     """Project one stored round patch into the read DTO.
 
     Only the fields this step exposes are read from the restored bundle; the
-    persisted dictionary is never fed to a closed model directly.
+    persisted dictionary is never fed to a closed model directly. The client
+    renders ``diff`` when it exists and falls back to the neutral whole-file
+    preview otherwise.
     """
     bundle = stored_bundle(raw)
     if bundle is None:
@@ -1135,7 +1146,61 @@ def _round_patch(raw: object) -> StepRoundPatch | None:
             for patch in bundle.files
         ],
         note=note if isinstance(note, str) and note.strip() else None,
+        diff=_patch_diff(bundle),
     )
+
+
+def _patch_diff(bundle: PatchBundle) -> list[str] | None:
+    """Return the candidate's real diff, falling back to stored edit intent.
+
+    The writer persists the git-produced diff after the candidate commit. A
+    round stored before that field existed can still describe what changed
+    through ``intent`` + ``report``; synthesizing change blocks from those two
+    keeps the page auditable without pretending the whole file is a diff.
+    """
+    if bundle.unified_diff.strip():
+        return bundle.unified_diff.splitlines()
+    return _intent_diff(bundle)
+
+
+def _intent_diff(bundle: PatchBundle) -> list[str] | None:
+    """Synthesize a change-block diff from the applied edits of one plan.
+
+    Only edits whose stored report entry is ``applied`` participate, so a
+    skipped or failed edit never shows up as a change. Returns ``None`` when
+    there is neither a plan nor an applied edit, which keeps the neutral
+    preview for legacy rounds that never recorded intent.
+    """
+    plan = bundle.intent
+    if plan is None or not bundle.report:
+        return None
+    applied = {status.index: status for status in bundle.report if status.status == "applied"}
+    lines: list[str] = []
+    current_file: str | None = None
+    for index, edit in enumerate(plan.edits):
+        if index not in applied:
+            continue
+        if edit.file != current_file:
+            current_file = edit.file
+            lines.extend(
+                (
+                    f"diff --git a/{edit.file} b/{edit.file}",
+                    f"--- a/{edit.file}",
+                    f"+++ b/{edit.file}",
+                ),
+            )
+        lines.append(f"@@ 编辑 {index + 1} · {edit.op} @@")
+        target = (edit.target or "").splitlines()
+        content = (edit.content or "").splitlines()
+        if edit.op in {"replace", "delete"}:
+            lines.extend(f"-{line}" for line in target)
+        if edit.op == "insert_after":
+            # Keep the anchor visible so the inserted lines stay locatable
+            # even though the synthesized hunk has no line numbers.
+            lines.extend(f" {line}" for line in target)
+        if edit.op in {"replace", "insert_after", "append"}:
+            lines.extend(f"+{line}" for line in content)
+    return lines or None
 
 
 def _round_item(
