@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/bugfix-real-eval-platform-baseline-gate.md
+bugfix-real-eval-platform-baseline-gate.md: 71e68dadf4b55b0fc7e1093f1595f63bd60212fa
+bugfix-real-eval-platform-baseline-gate.en.md: 797468bdce60d030fd860656cf253b56b9671f12
