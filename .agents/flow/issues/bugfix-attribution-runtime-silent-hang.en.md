@@ -8,7 +8,7 @@ id: bugfix-32
 milestone: bugfix
 depends: []
 priority: P2
-status: ready
+status: done
 scope:
   - apps/api/app/main.py
   - apps/api/app/service/evolution/attribution_skills.py

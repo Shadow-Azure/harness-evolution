@@ -111,6 +111,7 @@ def _coordinator(
         repository,
         settings,
         service,
+        available=settings.bad_case_query_configured,
     )
     return coordinator, fake
 

@@ -22,7 +22,9 @@ from app.db.models.domain import bad_cases, sync_runs, trajectory_payloads
 from app.errors import AppError, ErrorCode
 from app.service.acquisition.bad_case_sync import BadCaseRootSyncService
 from app.third_party_api.session_query.models import SessionTrajectory
+from app.third_party_api.session_source import SessionInfo, SessionSourceSnapshot
 from app.utils.time import now_shanghai
+from tests.bad_case_sync_fakes import StubBadCaseSyncSource
 
 ROOT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 ROOT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
@@ -89,23 +91,32 @@ def _trajectory() -> SessionTrajectory:
 
 
 @dataclass
-class FakeSource:
+class FakeSource(StubBadCaseSyncSource):
     tree: dict[str, tuple[str, ...]]
     failures: dict[str, Exception] | None = None
     calls: list[str] | None = None
 
-    async def list_children(self, session_id: str) -> tuple[str, ...]:
+    async def fetch_session(
+        self,
+        *,
+        session_id: str,
+        expected_parent_id: str | None,
+        snapshot: SessionSourceSnapshot,
+    ) -> SessionInfo:
         if self.calls is not None:
             self.calls.append(session_id)
         if self.failures and session_id in self.failures:
             raise self.failures[session_id]
-        return self.tree.get(session_id, ())
-
-    async def fetch_trajectory(self, session_id: str) -> SessionTrajectory:
-        return _trajectory()
-
-    async def close(self) -> None:
-        return None
+        return SessionInfo(
+            runtime_key="claude-code",
+            agent_kind="main" if expected_parent_id is None else "subagent",
+            parent_agent_id=expected_parent_id,
+            child_session_ids=self.tree.get(session_id, ()),
+            agent_meta=(
+                None if expected_parent_id is None else {"parentAgentId": expected_parent_id}
+            ),
+            trajectory=_trajectory(),
+        )
 
 
 @pytest.mark.asyncio
@@ -200,7 +211,7 @@ async def test_one_root_failure_does_not_block_another_root(database: Database) 
     source = FakeSource(
         {ROOT_A: (), ROOT_B: ("agent-b",)},
         failures={
-            ROOT_B: AppError(
+            "agent-b": AppError(
                 status_code=502,
                 code=ErrorCode.SESSION_QUERY_TIMEOUT,
                 message="timeout",

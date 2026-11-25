@@ -126,6 +126,7 @@ class Settings(BaseSettings):
     session_query_retry_attempts: int = Field(default=2, ge=0, le=5)
     session_query_retry_backoff_seconds: float = Field(default=0.25, ge=0, le=30)
     bad_case_sync_interval_seconds: int = Field(default=300, ge=0)
+    bad_case_sync_provider: str | None = None
     bad_case_sync_batch_size: int = Field(default=20, ge=1, le=1_000)
     bad_case_sync_time_budget_seconds: float = Field(default=600.0, gt=0, le=3_600)
     bad_case_sync_max_agents: int = Field(default=200, ge=1, le=10_000)

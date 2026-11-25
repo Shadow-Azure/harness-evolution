@@ -1086,7 +1086,7 @@ def _cluster_item(facts: _RunFacts, cluster: ProbeClusterRecord) -> StepCluster:
     cases = _cluster_cases(facts, cluster.probe_cluster_id)
     return StepCluster(
         cluster_id=cluster.probe_cluster_id,
-        title=cases[0].title if cases else cluster.probe_cluster_description,
+        title=_cluster_title(cluster.probe_cluster_description),
         description=cluster.probe_cluster_description,
         category=cluster.probe_cluster_type,
         case_count=len(cases),
@@ -1095,6 +1095,24 @@ def _cluster_item(facts: _RunFacts, cluster: ProbeClusterRecord) -> StepCluster:
         rank=cluster.rank,
         cases=cases,
     )
+
+
+def _cluster_title(description: str) -> str:
+    """Render the cluster headline from its root-cause description.
+
+    The stored description is composed as ``{type} 类问题 · {title} · {summary}``
+    (the legacy lexical path stores ``{type} 类问题 · {representative title}``).
+    The header shows only the root-cause title, so the card does not repeat the
+    full description; the expanded section still shows the composed text.
+    """
+    normalized = " ".join(description.split())
+    if not normalized:
+        return "聚类问题"
+    parts = normalized.split(" · ")
+    title = " · ".join(parts[:2]) if len(parts) > 2 else normalized
+    if len(title) <= 80:
+        return title
+    return title[:79].rstrip() + "…"
 
 
 def _round_patch(raw: object) -> StepRoundPatch | None:

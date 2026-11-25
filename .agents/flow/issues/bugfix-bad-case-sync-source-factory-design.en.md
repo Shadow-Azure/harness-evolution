@@ -14,7 +14,7 @@ scope:
   - plans/fullstack-design/README.md
   - .agents/**
 adr:
-  - ../../notes/proposed/architecture/2026-11-23-bad-case-sync-source-factory.md
+  - ../../notes/implemented/architecture/2026-11-23-bad-case-sync-source-factory.md
 github:
   number: 548
   url: https://github.com/Shadow-Azure/harness-evolution/issues/548

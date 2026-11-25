@@ -20,6 +20,7 @@ import { useAuthStore } from "../../stores/auth";
 import { canManageWorkspace } from "../../utils/workspaceDisplay";
 import RunControl from "./components/RunControl.vue";
 import StepClusters from "./components/StepClusters.vue";
+import { caseSessionMap } from "./runDetail";
 
 defineOptions({ name: "ClusterPreviewPage" });
 
@@ -67,13 +68,7 @@ const clustersStep = computed(() => {
   const step = clustersData.value;
   return step?.key === "clusters" ? step : null;
 });
-const clusterSessions = computed<Record<string, string>>(() => {
-  const step = attributionData.value;
-  if (step?.key !== "attribution") return {};
-  return Object.fromEntries(
-    step.payload.rows.map((row) => [row.badCaseId, row.sessionId]),
-  );
-});
+const clusterSessions = computed(() => caseSessionMap(attributionData.value));
 const clusterCount = computed(
   () =>
     clustersStep.value?.payload.clusters.length ??

@@ -11,6 +11,7 @@ const props = defineProps<{
   wid: string;
   step: EvolutionStepIteration;
   blockedStage?: string | null;
+  caseSessions?: Record<string, string>;
 }>();
 
 const rounds = computed(() => props.step.payload.rounds);
@@ -210,7 +211,11 @@ function toggleCommit(roundId: string): void {
           <p class="cb-label">
             来源 bad case（{{ round.cases.length }} 个 · 由归因结论聚类而来）
           </p>
-          <StepCaseTable :cases="round.cases" />
+          <StepCaseTable
+            :cases="round.cases"
+            :wid="wid"
+            :case-sessions="caseSessions"
+          />
         </section>
 
         <section

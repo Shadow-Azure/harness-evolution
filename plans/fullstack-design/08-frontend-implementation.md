@@ -835,6 +835,7 @@ RunDetail.vue
 
 - 卡片头：排名、`category` chip、来源 bad case 数、状态 badge（待执行 / 生成 patch 中 / 推送中 / 评测中 / 决策中 / 已接纳 Δ / 未接纳 Δ / 阻塞）。
 - 展开内容顺序：簇内来源 bad case 列表 → patch diff → candidate ref/commit → 推送状态 → 评测对比 → 最终 commit / 拒绝说明。
+- 展开内容第一段的来源 bad case 表与第 5 步共用 `StepCaseTable`；第一列 ID 可深链错误详情（新窗口打开 `/workspaces/{wid}/sessions/{sid}/errors?case={badCaseId}&tab=attr`），Session 映射由页面读取 `steps/attribution` 的 `badCaseId → sessionId` 得到（[§11](#11-仅聚类页pagesevolutionclusterpreviewvue)）。
 - 生成 patch 中：展示“正在生成/应用 patch、commit candidate”，不显示 candidate ref。
 - 评测中：展示 **candidate ref + commit**（如 `.../candidate/r2`），表示已 push、等待评测；显示 `evalStatus` 与下一次轮询时间。
 - 本地模式：`HE_GIT_PUSH=false` 时 candidate 只存在本地；卡片显示“本地候选（未推送）”，candidate 标签显示“已生成 · 未推送”，推送状态显示“已跳过（本地模式）”，不进入评测。
@@ -866,7 +867,7 @@ RunLogPanel.vue
 - 页面先处理 `preparing`：显示“正在关联 Session / 筛选潜在 / 生成归因 / 聚类”（V2 的 `cluster_only` 也执行 0–4 步，见 [07 §5.11](07-backend-implementation.md)），轮询 `GET /runs/{rid}` 到 `status=completed`，再拉 `steps/clusters`。
 - 顶部 banner："仅聚类分析：未执行 patch 生成与评测迭代" + 「以这批问题启动自进化 →」。
 - 输入概况：关联 Session / 潜在 bad case / 聚类数。
-- 聚类列表：每簇展示分类、来源 bad case 数、严重程度，簇内来源 bad case 表（可展开，ID 可深链错误详情）。
+- 聚类列表：每簇展示分类、来源 bad case 数、严重程度，簇内来源 bad case 表（可展开，ID 可深链错误详情）。簇标题由 `steps/clusters` 的 `description` 单行截断生成，描述是对成员归因结论的根因归纳；降级时为 `{type} 类问题 · {N} 条归因（聚类降级）`，两者都不再取第一个成员 bad case 标题。
 - 来源 bad case 的深链由页面并行读取 `steps/attribution` 得到 `badCaseId → sessionId` 映射后拼出 `/workspaces/{wid}/sessions/{sid}/errors?case={badCaseId}&tab=attr`；不在 `steps/clusters` 契约里新增 session 字段。
 - 数据来自 `mode=cluster_only` 的 run（`GET /runs/{rid}/steps/clusters`）；「启动自进化」用同一条件再创建 `mode=full` 的 run（同样 202）。
 - 状态口径由后端给：`cluster_only` 的可见进度是 5 步，完成态 `progress.stageLabel` 为「第 5/5 步 · 聚类完成」，不出现迭代轮次；页面用中文状态徽标，不直接渲染 `completed` 等原始枚举。

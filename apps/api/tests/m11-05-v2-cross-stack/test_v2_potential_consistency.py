@@ -433,7 +433,7 @@ async def test_cache_reuse_equals_potential_and_non_target_stays_out_of_clusters
     assert non_target_records[0].attribute_type is None
     clusterable = await attributed.list_clusterable_probes(RUN_ATTRIBUTED)
     assert len(clusterable) == POTENTIAL - 1
-    assert CASE_NON_TARGET not in {case_id for _, _, case_id in clusterable}
+    assert CASE_NON_TARGET not in {row.bad_case_id for row in clusterable}
     stored = next(
         item
         for item in await EvolutionRunCandidateRepository(api.database).list(

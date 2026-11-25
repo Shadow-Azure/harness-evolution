@@ -29,17 +29,18 @@ from app.service.evolution.ai_observability import AiAgentCall
 from app.service.evolution.attribution import AttributionRunner, AttributionRunSummary
 from app.service.evolution.attribution_jobs import candidate_snapshot
 from app.service.evolution.cluster import (
-    HYBRID_ALGORITHM,
+    ATTRIBUTION_DRAFT_MAX_CHARS,
+    ATTRIBUTION_HYBRID_ALGORITHM,
     LEXICAL_ALGORITHM,
     SIMILARITY_THRESHOLD,
     TYPE_CONFIDENCE,
     TYPE_IMPACT,
     ClusterDraft,
     ProbeForCluster,
+    build_attribution_drafts,
     cluster_hash,
     cluster_probes,
     cluster_severity,
-    signature_overlap,
 )
 from app.service.evolution.cluster_llm import (
     CallRecord,
@@ -141,6 +142,7 @@ class _ClusterBuild:
     clusters: tuple[ProbeClusterRecord, ...]
     fingerprint: str
     algorithm: str
+    draft_count: int = 0
     severity_comparison: tuple[dict[str, Any], ...] = ()
     degraded: tuple[str, ...] = ()
 
@@ -385,9 +387,14 @@ class EvolutionPrepareService:
             payload: dict[str, Any] = {
                 "clusters": len(built.clusters),
                 "algorithm": built.algorithm,
-                "similarityThreshold": SIMILARITY_THRESHOLD,
                 "clusterHash": built.fingerprint,
             }
+            if built.algorithm == LEXICAL_ALGORITHM:
+                payload["similarityThreshold"] = SIMILARITY_THRESHOLD
+            else:
+                payload["draftCount"] = built.draft_count
+                payload["draftSummaryMaxChars"] = ATTRIBUTION_DRAFT_MAX_CHARS
+                payload["grouping"] = "one-draft-per-attribution"
             if built.severity_comparison:
                 payload["severityFormula"] = [dict(item) for item in built.severity_comparison]
             if built.degraded:
@@ -500,50 +507,59 @@ class EvolutionPrepareService:
 
         Without a bound agent this is the legacy lexical path: the same drafts,
         the same constants, the same rank order, and the same hash. With an
-        agent the lexical drafts still own the partition, and the review and
-        scoring layers may only replace the description, confidence, and
-        severity; the algorithm identity becomes ``hybrid-lexical-llm-v1``.
+        agent every attributed probe becomes its own draft and the review layer
+        merges drafts by shared root cause; the algorithm identity becomes
+        ``hybrid-attribution-llm-v1``.
         """
         rows = await self._attributions.list_clusterable_probes(run.id)
         cases_by_probe: dict[str, set[str]] = {}
-        type_by_probe: dict[str, str] = {}
-        for probe_id, attribute_type, bad_case_id in rows:
-            type_by_probe[probe_id] = attribute_type
-            cases_by_probe.setdefault(probe_id, set()).add(bad_case_id)
-        evidence_case_ids = tuple(dict.fromkeys(bad_case_id for _, _, bad_case_id in rows))
+        for row in rows:
+            cases_by_probe.setdefault(row.probe_id, set()).add(row.bad_case_id)
+        evidence_case_ids = tuple(dict.fromkeys(row.bad_case_id for row in rows))
         evidence = await self._attributions.load_bad_case_evidence(evidence_case_ids)
-        title_by_probe = {
-            probe_id: (
-                evidence[case_id].title if (case_id := min(probe_case_ids)) in evidence else ""
-            )
-            for probe_id, probe_case_ids in cases_by_probe.items()
-        }
-        drafts = cluster_probes(
-            tuple(
-                ProbeForCluster(
-                    probe_id=probe_id,
-                    attribute_type=cast(Any, type_by_probe[probe_id]),
-                    text=title_by_probe.get(probe_id, ""),
-                )
-                for probe_id in dict.fromkeys(probe_id for probe_id, _, _ in rows)
-                if type_by_probe.get(probe_id) in TYPE_CONFIDENCE
-            ),
-        )
         agent = self._agent
         if agent is None:
+            title_by_probe = {
+                probe_id: (
+                    evidence[case_id].title if (case_id := min(case_ids)) in evidence else ""
+                )
+                for probe_id, case_ids in cases_by_probe.items()
+            }
+            drafts = cluster_probes(
+                tuple(
+                    ProbeForCluster(
+                        probe_id=row.probe_id,
+                        attribute_type=cast(Any, row.attribute_type),
+                        text=title_by_probe.get(row.probe_id, ""),
+                    )
+                    for row in rows
+                    if row.attribute_type in TYPE_CONFIDENCE
+                ),
+            )
             writes = _lexical_writes(drafts, cases_by_probe)
             persisted = await self._runs.replace_prepared_clusters(run.id, writes)
             return _ClusterBuild(
                 clusters=persisted,
                 fingerprint=cluster_hash(drafts),
                 algorithm=LEXICAL_ALGORITHM,
+                draft_count=len(drafts),
             )
+        drafts = build_attribution_drafts(
+            tuple(
+                ProbeForCluster(
+                    probe_id=row.probe_id,
+                    attribute_type=cast(Any, row.attribute_type),
+                    text=row.probe_description,
+                )
+                for row in rows
+                if row.attribute_type in TYPE_CONFIDENCE
+            ),
+        )
         enhanced = await self._enhance_clusters(
             run,
             agent,
             drafts,
             cases_by_probe,
-            title_by_probe,
             evidence,
         )
         writes = _enhanced_writes(enhanced, cases_by_probe)
@@ -561,7 +577,8 @@ class EvolutionPrepareService:
         return _ClusterBuild(
             clusters=persisted,
             fingerprint=fingerprint,
-            algorithm=HYBRID_ALGORITHM,
+            algorithm=ATTRIBUTION_HYBRID_ALGORITHM,
+            draft_count=len(drafts),
             severity_comparison=tuple(
                 _severity_comparison(cluster) for cluster in enhanced.clusters
             ),
@@ -574,14 +591,14 @@ class EvolutionPrepareService:
         agent: AIAgentProvider,
         drafts: Sequence[ClusterDraft],
         cases_by_probe: Mapping[str, set[str]],
-        title_by_probe: Mapping[str, str],
         evidence: Mapping[str, BadCaseEvidenceRecord],
     ) -> EnhancedClusters:
-        """Run review and scoring over the lexical drafts and record every call.
+        """Run review and scoring over the attribution drafts and record every call.
 
-        The deterministic statistics are gathered here, after the lexical
-        partition exists, so the prompts can receive counts, signature overlap,
-        and time spans instead of the member lists.
+        The deterministic statistics are gathered here, after the drafts exist,
+        so the prompts can receive counts and time spans instead of the member
+        lists. Titles no longer feed ``signature_overlap``: the attribution
+        conclusion is the grouping signal.
         """
         samples = {
             case_id: ClusterCaseEvidence(
@@ -605,9 +622,6 @@ class EvolutionPrepareService:
             )
             stats_by_draft[index] = ClusterDraftStats(
                 case_ids=case_ids,
-                signature_overlap=signature_overlap(
-                    [title_by_probe.get(probe_id, "") for probe_id in draft.probes],
-                ),
                 time_span_days=_time_span_days(case_ids, evidence),
             )
 
@@ -651,6 +665,7 @@ class EvolutionPrepareService:
             record_call=record_call,
             record_degraded=record_degraded,
             failure_policy=self._failure_policy,
+            grouping="attribution",
         )
 
     async def _prepare_workspace(
@@ -764,15 +779,15 @@ class EvolutionPrepareService:
     async def _attributed_count(self, run: EvolutionRunRecord) -> int:
         """Count distinct included bad cases with an attributed conclusion."""
         rows = await self._attributions.list_clusterable_probes(run.id)
-        return len({bad_case_id for _, _, bad_case_id in rows})
+        return len({row.bad_case_id for row in rows})
 
     async def _category_counts(self, run: EvolutionRunRecord) -> dict[str, int]:
         """Count attributed probes by their closed category."""
         rows = await self._attributions.list_clusterable_probes(run.id)
         counts = dict.fromkeys(TYPE_CONFIDENCE, 0)
-        for _, attribute_type, _ in rows:
-            if attribute_type in counts:
-                counts[attribute_type] += 1
+        for row in rows:
+            if row.attribute_type in counts:
+                counts[row.attribute_type] += 1
         return counts
 
     async def _record_attribution_batches(

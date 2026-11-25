@@ -178,7 +178,12 @@ describe("run detail conformance", () => {
 
   it("renders cluster and iteration source-case tables from the cluster case shape", async () => {
     const clusters = mount(StepClusters, {
-      props: { wid: "ws-test", step: clusterStep, focusCluster: "C1" },
+      props: {
+        wid: "ws-test",
+        step: clusterStep,
+        focusCluster: "C1",
+        caseSessions: { "case-1": "session-1" },
+      },
       global: { stubs: { RouterLink: RouterLinkStub } },
     });
     await clusters.vm.$nextTick();
@@ -193,9 +198,17 @@ describe("run detail conformance", () => {
     ]) {
       expect(clusters.text()).toContain(heading);
     }
+    expect(clusters.text()).toContain("按归因根因聚类");
     expect(clusters.text()).toContain("读取越界");
     expect(clusters.text()).toContain("deep-research");
     expect(clusters.text()).toContain("错误");
+    expect(clusters.get("td.id a").attributes()).toMatchObject({
+      href: "/workspaces/ws-test/sessions/session-1/errors?case=case-1&tab=attr",
+      target: "_blank",
+      rel: "noopener noreferrer",
+      title: "case-1",
+      "aria-label": "来源问题 case-1，在新窗口打开问题描述",
+    });
 
     const iterations = mount(StepIterations, {
       props: { wid: "ws-test", step: iterationStep([round({ status: "evaluating" })]) },

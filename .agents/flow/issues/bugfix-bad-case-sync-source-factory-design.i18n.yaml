@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-bad-case-sync-source-factory-design.md
-bugfix-bad-case-sync-source-factory-design.md: ac9dbe5f0ba1b614fcc1d6a4440e100e8709813d
-bugfix-bad-case-sync-source-factory-design.en.md: 0c036b8908ce04dc8f4102edd690fb3bc3c078f5
+bugfix-bad-case-sync-source-factory-design.md: e74c87b292db85993127901cbf79082018e0a01f
+bugfix-bad-case-sync-source-factory-design.en.md: ae60e7797cadcbf6a48cbceb6248b0e5e4212fff

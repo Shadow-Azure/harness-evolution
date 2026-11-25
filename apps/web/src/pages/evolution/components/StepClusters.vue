@@ -95,7 +95,7 @@ watch(
   <article class="card panel">
     <h3 class="sec-title">
       {{ title ?? "第 5 步 · 聚类与严重度" }}
-      <span class="sub">{{ subtitle ?? "按问题类型聚类，按严重程度降序；每簇含标题与聚类问题描述" }}</span>
+      <span class="sub">{{ subtitle ?? "按归因根因聚类，按严重程度降序；每簇含根因标题与聚类问题描述" }}</span>
     </h3>
     <div class="wz-stats">
       <span class="st"><b>{{ clusters.length }}</b><span>聚类问题</span></span>

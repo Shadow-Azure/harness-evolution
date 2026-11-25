@@ -313,6 +313,12 @@ describe("cluster preview page", () => {
     expect(caseLink.attributes("href")).toBe(
       `/workspaces/${workspaceId}/sessions/session-1/errors?case=badcase-1234567890&tab=attr`,
     );
+    expect(caseLink.attributes("target")).toBe("_blank");
+    expect(caseLink.attributes("rel")).toBe("noopener noreferrer");
+    expect(caseLink.attributes("title")).toBe("badcase-1234567890");
+    expect(caseLink.attributes("aria-label")).toBe(
+      "来源问题 badcase-1234567890，在新窗口打开问题描述",
+    );
     wrapper.unmount();
   });
 

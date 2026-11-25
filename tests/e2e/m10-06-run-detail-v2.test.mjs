@@ -532,6 +532,8 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
       `(() => {
         const cards = [...document.querySelectorAll(".cluster")];
         if (cards.length !== 2) return null;
+        const sourceLinks = [...cards[0].querySelectorAll("td.id a")];
+        if (sourceLinks.length !== 3) return null;
         return {
           firstId: cards[0].id,
           firstOpen: cards[0].classList.contains("open"),
@@ -539,6 +541,11 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
           secondId: cards[1].id,
           secondOpen: cards[1].classList.contains("open"),
           body: document.body.textContent,
+          sourceLinks: sourceLinks.map((link) => ({
+            href: link.getAttribute("href"),
+            target: link.target,
+            rel: link.rel,
+          })),
         };
       })()`,
       "cluster step",
@@ -549,6 +556,19 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
     assert.equal(clusters.secondOpen, false);
     assert.match(clusters.firstText, /严重程度 9\.1/);
     assert.doesNotMatch(clusters.body, /另一个对象的问题/);
+    assert.deepEqual(
+      clusters.sourceLinks.map((link) => link.href).sort(),
+      [
+        "/workspaces/ws-default/sessions/v2-session-1/errors?case=v2-case-1&tab=attr",
+        "/workspaces/ws-default/sessions/v2-session-1/errors?case=v2-case-3&tab=attr",
+        "/workspaces/ws-default/sessions/v2-session-3/errors?case=v2-case-4&tab=attr",
+      ],
+    );
+    assert.ok(
+      clusters.sourceLinks.every(
+        (link) => link.target === "_blank" && link.rel.includes("noopener"),
+      ),
+    );
     await screenshotStep(page, "04-after-clusters.png");
 
     await installCookie(page, await currentLoginCookie());
@@ -1228,11 +1248,17 @@ test("m10-06 step 6 iteration renders every stored bundle patch file", async () 
       `(() => {
         const round = document.querySelector("[data-round-id='v2-round-1']");
         const diff = round?.querySelector(".diff");
-        if (!diff) return null;
+        const sourceLinks = round ? [...round.querySelectorAll("td.id a")] : [];
+        if (!diff || sourceLinks.length !== 3) return null;
         return {
           files: [...diff.querySelectorAll(".fhead")].map((node) => node.textContent.trim()),
           added: [...diff.querySelectorAll(".dline.add")].length,
           deleted: [...diff.querySelectorAll(".dline.del")].length,
+          sourceLinks: sourceLinks.map((link) => ({
+            href: link.getAttribute("href"),
+            target: link.target,
+            rel: link.rel,
+          })),
           pageHorizontalScroll:
             document.documentElement.scrollWidth > document.documentElement.clientWidth,
         };
@@ -1243,6 +1269,19 @@ test("m10-06 step 6 iteration renders every stored bundle patch file", async () 
     assert.ok(bundle.added >= 2, JSON.stringify(bundle));
     assert.ok(bundle.deleted >= 2, JSON.stringify(bundle));
     assert.equal(bundle.pageHorizontalScroll, false);
+    assert.deepEqual(
+      bundle.sourceLinks.map((link) => link.href).sort(),
+      [
+        "/workspaces/ws-default/sessions/v2-session-1/errors?case=v2-case-1&tab=attr",
+        "/workspaces/ws-default/sessions/v2-session-1/errors?case=v2-case-3&tab=attr",
+        "/workspaces/ws-default/sessions/v2-session-3/errors?case=v2-case-4&tab=attr",
+      ],
+    );
+    assert.ok(
+      bundle.sourceLinks.every(
+        (link) => link.target === "_blank" && link.rel.includes("noopener"),
+      ),
+    );
     await evaluate(
       page,
       `document.querySelector("[data-round-id='v2-round-1'] .diff").scrollIntoView({ block: "center" })`,

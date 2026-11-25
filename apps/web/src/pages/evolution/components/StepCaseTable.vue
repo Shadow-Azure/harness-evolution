@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import type { StepClusterCase } from "@harness/contracts";
 
-import { workspacePath } from "../../../router/workspace";
-import { shortBadCaseId } from "../../../utils/badCaseId";
+import { badCaseDeepLink, shortBadCaseId } from "../../../utils/badCaseId";
 import { formatLocalDateTime } from "../runDetail";
 
 const props = defineProps<{
@@ -26,10 +25,7 @@ function typeLabel(type: string): string {
 function caseLink(badCaseId: string): string | null {
   const sessionId = props.caseSessions?.[badCaseId];
   if (!props.wid || !sessionId) return null;
-  return `${workspacePath(
-    props.wid,
-    `sessions/${encodeURIComponent(sessionId)}/errors`,
-  )}?case=${encodeURIComponent(badCaseId)}&tab=attr`;
+  return badCaseDeepLink(props.wid, sessionId, badCaseId, "attr");
 }
 </script>
 
@@ -61,6 +57,10 @@ function caseLink(badCaseId: string): string | null {
             <a
               v-if="caseLink(item.badCaseId)"
               :href="caseLink(item.badCaseId)!"
+              :title="item.badCaseId"
+              :aria-label="`来源问题 ${item.badCaseId}，在新窗口打开问题描述`"
+              target="_blank"
+              rel="noopener noreferrer"
             >{{ shortBadCaseId(item.badCaseId) }}</a>
             <template v-else>
               {{ shortBadCaseId(item.badCaseId) }}
@@ -131,8 +131,25 @@ function caseLink(badCaseId: string): string | null {
 }
 
 .id {
-  color: var(--blue);
+  color: var(--text-dim);
   white-space: nowrap;
+}
+
+.id a {
+  border-bottom: 1px dashed color-mix(in srgb, var(--blue) 45%, transparent);
+  color: var(--blue);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.id a:hover {
+  border-bottom-style: solid;
+}
+
+.id a:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
 }
 
 .type-chip {

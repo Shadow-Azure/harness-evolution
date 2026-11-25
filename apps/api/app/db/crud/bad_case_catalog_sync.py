@@ -1,4 +1,4 @@
-"""Durable cursor state and page upserts for the bad-case catalog sync."""
+"""Durable cursor state and ownership-aware page writes for the catalog sync."""
 
 from __future__ import annotations
 
@@ -9,10 +9,9 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import delete, func, insert, literal, select, update
-from sqlalchemy.dialects.mysql import insert as mysql_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import RowMapping
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
 from app.db.models.domain import (
@@ -21,10 +20,12 @@ from app.db.models.domain import (
     workspace_bad_case_labels,
     workspace_bad_cases,
 )
+from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 
 logger = logging.getLogger(__name__)
 
 STATE_ID = "bad_cases"
+CATALOG_ORIGIN = "catalog"
 
 _UPDATE_COLUMNS = (
     "bad_case_session_id",
@@ -85,11 +86,12 @@ class CatalogSyncState:
 
 
 @dataclass(frozen=True, slots=True)
-class UpsertCounts:
-    """Inserted and updated row counts for one committed page."""
+class PageCounts:
+    """Inserted, updated, and owner-protected row counts for one page."""
 
     inserted: int
     updated: int
+    skipped: int
 
 
 def _state(row: RowMapping) -> CatalogSyncState:
@@ -112,6 +114,8 @@ def _state(row: RowMapping) -> CatalogSyncState:
 def _values(row: CatalogCaseRow) -> dict[str, Any]:
     return {
         "bad_case_id": str(row.bad_case_id),
+        "workspace_id": DEFAULT_WORKSPACE_ID,
+        "origin": CATALOG_ORIGIN,
         "bad_case_session_id": row.bad_case_session_id,
         "bad_case_type": row.bad_case_type,
         "object_name": row.object_name,
@@ -251,24 +255,48 @@ class BadCaseCatalogSyncRepository:
         last_bad_case_id: int,
         pending_count: int,
         now: datetime,
-    ) -> UpsertCounts:
-        """Upsert one page and advance the cursor in the same transaction."""
+    ) -> PageCounts:
+        """Split one page by writer ownership and advance the cursor atomically.
+
+        Catalog sync owns only rows it inserted first. A reported row with the
+        same id is left untouched and counted as skipped, so a later upstream
+        edit can never replace reporter-authored title or description.
+        """
         values = [_values(item) for item in items]
-        ids = [value["bad_case_id"] for value in values]
         async with self._database.transaction() as session:
-            existing: set[str] = set()
-            if ids:
-                existing = set(
-                    (
-                        await session.execute(
-                            select(bad_cases.c.bad_case_id).where(
-                                bad_cases.c.bad_case_id.in_(ids),
-                            ),
-                        )
-                    ).scalars(),
+            ownership = await self._ownership(session, values)
+            pending = [value for value in values if value["bad_case_id"] not in ownership]
+            inserted_ids: set[str] = set()
+            for attempt in range(2):
+                if not pending:
+                    break
+                try:
+                    async with session.begin_nested():
+                        await session.execute(insert(bad_cases).values(pending))
+                except IntegrityError:
+                    if attempt == 1:
+                        raise
+                    ownership = await self._ownership(session, values)
+                    pending = [value for value in pending if value["bad_case_id"] not in ownership]
+                    continue
+                inserted_ids.update(value["bad_case_id"] for value in pending)
+                pending = []
+            updated_ids = {
+                bad_case_id for bad_case_id, origin in ownership.items() if origin == CATALOG_ORIGIN
+            }
+            for value in values:
+                if value["bad_case_id"] not in updated_ids:
+                    continue
+                await session.execute(
+                    update(bad_cases)
+                    .where(
+                        bad_cases.c.bad_case_id == value["bad_case_id"],
+                        bad_cases.c.origin == CATALOG_ORIGIN,
+                    )
+                    .values(**{column: value[column] for column in _UPDATE_COLUMNS}),
                 )
-            if values:
-                await session.execute(self._upsert_statement(values))
+            ids = [value["bad_case_id"] for value in values]
+            if ids:
                 await session.execute(
                     delete(workspace_bad_cases).where(
                         workspace_bad_cases.c.bad_case_id.in_(ids),
@@ -349,10 +377,34 @@ class BadCaseCatalogSyncRepository:
                     updated_at=now,
                 ),
             )
-        return UpsertCounts(
-            inserted=len(values) - len(existing),
-            updated=len(existing),
+        return PageCounts(
+            inserted=len(inserted_ids),
+            updated=len(updated_ids),
+            skipped=len(values) - len(inserted_ids) - len(updated_ids),
         )
+
+    async def _ownership(
+        self,
+        session: AsyncSession,
+        values: Sequence[dict[str, Any]],
+    ) -> dict[str, str]:
+        """Return the current writer origin of every existing page id."""
+        if not values:
+            return {}
+        rows = (
+            (
+                await session.execute(
+                    select(bad_cases.c.bad_case_id, bad_cases.c.origin).where(
+                        bad_cases.c.bad_case_id.in_(
+                            [value["bad_case_id"] for value in values],
+                        ),
+                    ),
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return {str(row["bad_case_id"]): str(row["origin"]) for row in rows}
 
     async def count_bad_cases(self) -> int:
         """Return the current local bad-case row count, or zero when unprovisioned."""
@@ -374,15 +426,3 @@ class BadCaseCatalogSyncRepository:
                 )
                 return 0
             raise
-
-    def _upsert_statement(self, values: list[dict[str, Any]]) -> Any:
-        if self._database.dialect == "mysql":
-            mysql_statement = mysql_insert(bad_cases).values(values)
-            return mysql_statement.on_duplicate_key_update(
-                {column: mysql_statement.inserted[column] for column in _UPDATE_COLUMNS},
-            )
-        sqlite_statement = sqlite_insert(bad_cases).values(values)
-        return sqlite_statement.on_conflict_do_update(
-            index_elements=[bad_cases.c.bad_case_id],
-            set_={column: sqlite_statement.excluded[column] for column in _UPDATE_COLUMNS},
-        )

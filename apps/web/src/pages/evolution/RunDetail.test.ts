@@ -269,6 +269,38 @@ const iterationStep = {
   },
 };
 
+const clustersStep = {
+  key: "clusters",
+  index: 4,
+  title: "聚类与严重度",
+  status: "done",
+  clickable: true,
+  payload: {
+    clusters: [
+      {
+        clusterId: "C1",
+        title: "检索索引读取失败",
+        description: "读取越界",
+        category: "error",
+        caseCount: 1,
+        cases: [
+          {
+            badCaseId: "case-1",
+            title: "读取越界",
+            objectName: "deep-research",
+            badCaseType: "self",
+            triggerAt: "2026-09-01T10:00:00+08:00",
+            createdAt: "2026-09-01T10:05:00+08:00",
+          },
+        ],
+        confidence: 0.82,
+        severity: 7.4,
+        rank: 1,
+      },
+    ],
+  },
+};
+
 function detailSteps(
   statuses: Array<"done" | "active" | "pending">,
 ) {
@@ -671,6 +703,81 @@ describe("evolution run detail page", () => {
     expect(wrapper.text()).toContain("evo/run/candidate/r1");
     expect(wrapper.text()).toContain("评测中");
     expect(wrapper.get("[data-step-key='final']").attributes("disabled")).toBeDefined();
+  });
+
+  it("wires the attribution Session map into step 5 and step 6 source links", async () => {
+    server.use(
+      http.get(`${evolutionBase}/runs/:runId`, () =>
+        HttpResponse.json(
+          detail(
+            run({ status: "running" }),
+            ["done", "done", "done", "done", "active", "pending", "pending"],
+          ),
+        )),
+      http.get(`${evolutionBase}/runs/:runId/steps/range`, () =>
+        HttpResponse.json(rangeStep)),
+      http.get(`${evolutionBase}/runs/:runId/steps/attribution`, () =>
+        HttpResponse.json(attributionStep)),
+      http.get(`${evolutionBase}/runs/:runId/steps/clusters`, () =>
+        HttpResponse.json(clustersStep)),
+    );
+    const clustersWrapper = await mountPage("evo-full-1", "?step=clusters");
+
+    const clusterLink = clustersWrapper.get("td.id a");
+    expect(clusterLink.attributes("href")).toBe(
+      "/workspaces/ws-test/sessions/session-1/errors?case=case-1&tab=attr",
+    );
+    expect(clusterLink.attributes("target")).toBe("_blank");
+    expect(clusterLink.attributes("rel")).toBe("noopener noreferrer");
+
+    const [iterationRound] = iterationStep.payload.rounds;
+    if (!iterationRound) throw new Error("iteration fixture has no round");
+    const mappedIteration = {
+      ...iterationStep,
+      payload: {
+        rounds: [
+          {
+            ...iterationRound,
+            cases: [
+              ...iterationRound.cases,
+              {
+                badCaseId: "case-1",
+                title: "读取越界",
+                objectName: "deep-research",
+                badCaseType: "self",
+                triggerAt: "2026-09-01T10:00:00+08:00",
+                createdAt: "2026-09-01T10:05:00+08:00",
+              },
+            ],
+          },
+        ],
+      },
+    };
+    server.use(
+      http.get(`${evolutionBase}/runs/:runId`, () =>
+        HttpResponse.json(
+          detail(
+            run({ status: "running" }),
+            ["done", "done", "done", "done", "done", "active", "pending"],
+          ),
+        )),
+      http.get(`${evolutionBase}/runs/:runId/steps/range`, () =>
+        HttpResponse.json(rangeStep)),
+      http.get(`${evolutionBase}/runs/:runId/steps/attribution`, () =>
+        HttpResponse.json(attributionStep)),
+      http.get(`${evolutionBase}/runs/:runId/steps/iteration`, () =>
+        HttpResponse.json(mappedIteration)),
+    );
+    const iterationWrapper = await mountPage("evo-full-1", "?step=iteration");
+
+    const caseLink = iterationWrapper
+      .findAll("td.id a")
+      .find((link) => link.attributes("href")?.includes("case=case-1"));
+    expect(caseLink?.attributes("href")).toBe(
+      "/workspaces/ws-test/sessions/session-1/errors?case=case-1&tab=attr",
+    );
+    expect(caseLink?.attributes("target")).toBe("_blank");
+    expect(caseLink?.attributes("rel")).toBe("noopener noreferrer");
   });
 
   it("switches reached steps through the query-string route", async () => {

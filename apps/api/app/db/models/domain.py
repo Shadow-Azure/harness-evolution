@@ -301,6 +301,7 @@ bad_cases = Table(
         nullable=False,
         server_default=DEFAULT_WORKSPACE_ID,
     ),
+    Column("origin", String(16), nullable=False, server_default="catalog"),
     Column("bad_case_session_id", String(36), nullable=False),
     Column("bad_case_type", String(16), nullable=False),
     Column("object_name", String(128), nullable=False),

@@ -1,18 +1,20 @@
 """Bounded LLM review and scoring for the three-layer clustering path.
 
-The design (07 §5.5.2) keeps the member lists in code: the lexical grouping
-layer owns them, the review layer only merges, names, and summarises drafts by
-draft key, and the two scoring calls rate the final cluster from a summary plus
-a bounded sample. Every prompt is therefore a function of ``K`` drafts, ``s``
-samples, and a handful of deterministic statistics — never of the attribution
-volume ``N``.
+The design (07 §5.5.2) keeps the member lists in code: the grouping layer owns
+them, the review layer only merges, names, and summarises drafts by draft key,
+and the two scoring calls rate the final cluster from a summary plus a bounded
+sample. The default grouping is one draft per attribution conclusion; the
+review layer merges those drafts by shared root cause. A review input above the
+draft cap is reviewed in category batches instead of silently reverting to
+title clustering.
 
 Three degradation paths are independent (07 §5.5.2, 06 §5.3): a rejected review
-falls back to the lexical drafts, a failed ``cluster.score`` falls back to the
-category confidence constant, and a failed ``severity.score`` falls back to the
+falls back to category buckets (``attribution`` grouping) or the lexical drafts
+(``lexical`` grouping), a failed ``cluster.score`` falls back to the category
+confidence constant, and a failed ``severity.score`` falls back to the
 ``cluster_severity()`` formula. Degradation never blocks a run and never changes
-the ``hybrid-lexical-llm-v1`` algorithm identity; the recorded ``degraded``
-events explain which layer fell back.
+the run's algorithm identity; the recorded ``degraded`` events explain which
+layer fell back.
 """
 
 from __future__ import annotations
@@ -28,11 +30,14 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from app.service.evolution.cluster import (
+    ATTRIBUTION_HYBRID_ALGORITHM,
     HYBRID_ALGORITHM,
     TYPE_CONFIDENCE,
     TYPE_IMPACT,
+    TYPE_ORDER,
     ClusterDraft,
     ClusterType,
+    attribution_fallback_description,
     cluster_severity,
     signature_overlap,
 )
@@ -73,6 +78,17 @@ DRAFT_SUMMARY_TOKENS = 60
 
 DRAFT_SUMMARY_MAX_CHARS = 240
 """Enforced character bound matching :data:`DRAFT_SUMMARY_TOKENS`."""
+
+ATTRIBUTION_REVIEW_MAX_DRAFTS = 200
+"""Draft cap for one ``cluster.review`` call under attribution grouping.
+
+Above the cap the review runs in category batches so a run with an unusually
+large attribution set still gets a complete partition without an unbounded
+prompt. The event payload records the batch fact as a degradation.
+"""
+
+ReviewGrouping = Literal["lexical", "attribution"]
+"""Grouping mode the review request and fallback follow."""
 
 SAMPLE_TITLE_MAX_CHARS = 120
 """Character bound for one sampled case title."""
@@ -413,8 +429,9 @@ def build_review_request(
     evidence: Mapping[str, ClusterCaseEvidence],
     *,
     stats_by_draft: Mapping[int, ClusterDraftStats],
+    grouping: ReviewGrouping = "lexical",
 ) -> AnalysisRequest:
-    """Build the bounded ``cluster.review`` request for the lexical drafts.
+    """Build the bounded ``cluster.review`` request for the given drafts.
 
     Each draft becomes one block keyed ``D1``..``Dk`` in draft order. A block
     carries the deterministic statistics (type, member count, signature
@@ -424,11 +441,18 @@ def build_review_request(
     ``bad_cases.created_at`` values, i.e. when the cases were reported rather
     than when the incidents happened.
 
+    Under ``attribution`` grouping every draft is one attributed conclusion, so
+    the prompt asks for a merge by shared root cause and forbids merging by
+    bad-case instance, dataset prefix, or title template. Under ``lexical``
+    grouping the drafts are the deterministic lexical clusters.
+
     Args:
-        drafts: Lexical drafts in ``model``, ``prompt``, ``error`` order.
+        drafts: Drafts in closed category order.
         evidence: Case evidence by case id; samples are drawn from it.
         stats_by_draft: Deterministic statistics keyed by 0-based draft index.
             Missing entries fall back to the probe count and no samples.
+        grouping: ``attribution`` for one-draft-per-attribution input;
+            ``lexical`` for the legacy lexical drafts.
 
     Returns:
         One ``AnalysisRequest`` whose output model is ``ClusterReviewOutput``.
@@ -438,13 +462,35 @@ def build_review_request(
     """
     if not drafts:
         raise ValueError("cluster.review needs at least one draft")
-    lines = [
-        "Task: cluster.review — merge lexical draft clusters of attributed bad cases.",
-        "",
-        (
+    if grouping == "attribution":
+        task_line = (
+            "Task: cluster.review — merge one-probe attribution drafts of attributed "
+            "bad cases by their shared root cause."
+        )
+        opening = (
+            "Each draft below is the conclusion of exactly one attribution. Merge drafts "
+            "only when one code-level change would fix every member; you may also leave "
+            "every draft as its own cluster."
+        )
+        title_rule = (
+            '5. "title" names the shared root cause (<= 60 characters) in the language of '
+            'the conclusions; "description" is one sentence about the shared mechanism, '
+            "not a copy of a member bad-case title."
+        )
+    else:
+        task_line = "Task: cluster.review — merge lexical draft clusters of attributed bad cases."
+        opening = (
             "You may only merge drafts, name each resulting cluster, and write an "
             "optional one-sentence description."
-        ),
+        )
+        title_rule = (
+            '5. "title" is a short human label (<= 60 characters) in the language of '
+            'the samples; "description" is optional.'
+        )
+    lines = [
+        task_line,
+        "",
+        opening,
         (
             "Member lists are owned by the caller and are never shown here; "
             "reference drafts only by key."
@@ -468,14 +514,17 @@ def build_review_request(
             "4. The review is merge-only: a draft key may appear exactly once, so "
             "splitting one draft into two clusters is impossible."
         ),
-        (
-            '5. "title" is a short human label (<= 60 characters) in the language of '
-            'the samples; "description" is optional.'
-        ),
+        title_rule,
         "6. Merge only drafts of the same type; never merge across types.",
-        "",
-        "Draft blocks:",
     ]
+    if grouping == "attribution":
+        lines.append(
+            "7. Do not merge drafts merely because they share a bad-case instance, "
+            "dataset/model prefix, title template, or category; those are not a shared "
+            "root cause. Different root causes must stay separate even when their titles "
+            "are identical.",
+        )
+    lines.extend(["", "Draft blocks:"])
     for index, draft in enumerate(drafts):
         key = f"{DRAFT_KEY_PREFIX}{index + 1}"
         stats = stats_by_draft.get(index)
@@ -845,30 +894,33 @@ async def enhance_clusters(
     record_call: RecordCall | None = None,
     record_degraded: RecordDegraded | None = None,
     failure_policy: Literal["strict", "degrade"] = "degrade",
+    grouping: ReviewGrouping = "lexical",
 ) -> EnhancedClusters:
-    """Run the review and scoring layers over lexical drafts with the chosen policy.
+    """Run the review and scoring layers over the drafts with the chosen policy.
 
-    Order of operations is deterministic and costs exactly three bounded
-    ``analyze`` calls for every non-empty run: one ``cluster.review`` call over
-    the lexical drafts, then one batch ``cluster.score`` call over every final
-    cluster, then one batch ``severity.score`` call. The two scoring calls are
-    isolated, so a failed confidence batch changes only confidence and a failed
-    severity batch changes only severity; the cluster count never changes the
-    call count.
+    Order of operations is deterministic: one ``cluster.review`` call over the
+    drafts (or one call per category batch above :data:`ATTRIBUTION_REVIEW_MAX_DRAFTS`
+    under ``attribution`` grouping), then one batch ``cluster.score`` call over
+    every final cluster, then one batch ``severity.score`` call. The two scoring
+    calls are isolated, so a failed confidence batch changes only confidence and
+    a failed severity batch changes only severity; the cluster count never
+    changes the call count.
 
     Args:
         agent: Outbound provider used for the three analysis tasks.
-        drafts: Lexical drafts in ``model``, ``prompt``, ``error`` order.
+        drafts: Drafts in closed category order.
         evidence: Case evidence keyed by case id.
         stats_by_draft: Deterministic statistics keyed by 0-based draft index.
         record_call: Optional sink receiving one record per provider call.
         record_degraded: Optional sink receiving one record per fallback.
         failure_policy: ``strict`` fails the run on the first failed task;
             ``degrade`` keeps the documented deterministic fallbacks.
+        grouping: ``attribution`` for one-draft-per-attribution input;
+            ``lexical`` for the legacy lexical drafts.
 
     Returns:
-        The final clusters, the ``hybrid-lexical-llm-v1`` identity, every
-        degradation, and every call record, in evaluation order.
+        The final clusters, the matching algorithm identity, every degradation,
+        and every call record, in evaluation order.
 
     Raises:
         ClusterAIFailure: When ``failure_policy`` is ``strict`` and any of the
@@ -876,6 +928,7 @@ async def enhance_clusters(
     """
     calls: list[CallRecord] = []
     degraded: list[DegradedCall] = []
+    algorithm = ATTRIBUTION_HYBRID_ALGORITHM if grouping == "attribution" else HYBRID_ALGORITHM
 
     async def note_call(call: CallRecord) -> None:
         calls.append(call)
@@ -888,7 +941,7 @@ async def enhance_clusters(
     if not drafts:
         return EnhancedClusters(
             clusters=(),
-            algorithm=HYBRID_ALGORITHM,
+            algorithm=algorithm,
             degraded=(),
             calls=(),
         )
@@ -901,8 +954,9 @@ async def enhance_clusters(
         note_call,
         note_degraded,
         failure_policy,
+        grouping=grouping,
     )
-    plans = _build_plans(groups, drafts, evidence, stats_by_draft)
+    plans = _build_plans(groups, drafts, evidence, stats_by_draft, grouping=grouping)
     confidence_by_key = await _score_confidences(
         agent, plans, note_call, note_degraded, failure_policy
     )
@@ -935,7 +989,7 @@ async def enhance_clusters(
         )
     return EnhancedClusters(
         clusters=tuple(clusters),
-        algorithm=HYBRID_ALGORITHM,
+        algorithm=algorithm,
         degraded=tuple(degraded),
         calls=tuple(calls),
     )
@@ -946,11 +1000,19 @@ def _build_plans(
     drafts: Sequence[ClusterDraft],
     evidence: Mapping[str, ClusterCaseEvidence],
     stats_by_draft: Mapping[int, ClusterDraftStats],
+    *,
+    grouping: ReviewGrouping = "lexical",
 ) -> tuple[ClusterPlan, ...]:
     """Expand validated groups into deterministic final-cluster scoring plans."""
     plans: list[ClusterPlan] = []
     for index, group in enumerate(groups):
-        stats = _merged_stats(group.draft_indexes, drafts, stats_by_draft, evidence)
+        stats = _merged_stats(
+            group.draft_indexes,
+            drafts,
+            stats_by_draft,
+            evidence,
+            compute_signature_overlap=grouping == "lexical",
+        )
         plans.append(
             ClusterPlan(
                 key=f"{CLUSTER_KEY_PREFIX}{index + 1}",
@@ -990,6 +1052,16 @@ def _output_mapping(result: AnalysisResult) -> Mapping[str, Any]:
     return output
 
 
+class _ReviewFailure(Exception):
+    """One recorded review call failure, classified for the policy decision."""
+
+    def __init__(self, reason: str, cause: BaseException) -> None:
+        """Keep the bounded reason and the original exception for the raise chain."""
+        self.reason = reason
+        self.cause = cause
+        super().__init__(reason)
+
+
 async def _review(
     agent: AIAgentProvider,
     drafts: Sequence[ClusterDraft],
@@ -998,41 +1070,164 @@ async def _review(
     note_call: _CallSink,
     note_degraded: _DegradedSink,
     failure_policy: Literal["strict", "degrade"] = "degrade",
+    *,
+    grouping: ReviewGrouping = "lexical",
 ) -> tuple[_Group, ...]:
-    """Run one review call and return the final cluster groups.
+    """Run the review layer and return the final cluster groups.
 
-    Any provider failure or contract violation degrades the whole review batch
-    to the original drafts: partial acceptance would break the partition. In
-    strict mode the failure is recorded and raised instead.
+    Any provider failure or contract violation degrades the whole review batch:
+    partial acceptance would break the partition. Under ``attribution``
+    grouping degradation falls back to one bucket per category, never to one
+    cluster per probe. In strict mode the failure is recorded and raised.
     """
-    request = build_review_request(drafts, evidence, stats_by_draft=stats_by_draft)
+    if grouping == "attribution" and len(drafts) > ATTRIBUTION_REVIEW_MAX_DRAFTS:
+        return await _review_batched(
+            agent,
+            drafts,
+            evidence,
+            stats_by_draft,
+            note_call,
+            note_degraded,
+            failure_policy,
+        )
+    try:
+        items = await _review_once(
+            agent,
+            drafts,
+            evidence,
+            stats_by_draft,
+            note_call,
+            failure_policy,
+            grouping=grouping,
+        )
+    except _ReviewFailure as failure:
+        if failure_policy == "strict":
+            raise ClusterAIFailure(REVIEW_TASK, failure.reason) from failure.cause
+        await note_degraded(DegradedCall(REVIEW_TASK, failure.reason))
+        return _fallback_groups(drafts, grouping)
+    return _groups_from_review(items, drafts)
+
+
+async def _review_once(
+    agent: AIAgentProvider,
+    drafts: Sequence[ClusterDraft],
+    evidence: Mapping[str, ClusterCaseEvidence],
+    stats_by_draft: Mapping[int, ClusterDraftStats],
+    note_call: _CallSink,
+    failure_policy: Literal["strict", "degrade"],
+    *,
+    grouping: ReviewGrouping,
+) -> tuple[ClusterReviewItem, ...]:
+    """Run exactly one review call, record it, and return the validated items.
+
+    Raises:
+        _ReviewFailure: After the call was recorded, so the caller applies the
+            strict/degrade policy exactly once.
+    """
+    request = build_review_request(
+        drafts,
+        evidence,
+        stats_by_draft=stats_by_draft,
+        grouping=grouping,
+    )
     started = time.perf_counter()
     try:
         result = await agent.analyze(request)
     except Exception as exc:
-        reason = _provider_reason(exc)
         await note_call(_failure_record(REVIEW_TASK, agent, _elapsed_ms(started), exc))
-        if failure_policy == "strict":
-            raise ClusterAIFailure(REVIEW_TASK, reason) from exc
-        await note_degraded(DegradedCall(REVIEW_TASK, reason))
-        return _fallback_groups(drafts)
+        raise _ReviewFailure(_provider_reason(exc), exc) from exc
     elapsed = _elapsed_ms(started)
     try:
         output = ClusterReviewOutput.model_validate(dict(_output_mapping(result)))
         items = validate_review_partition(output, drafts)
     except (ValidationError, TypeError, ValueError, ClusterContractError) as exc:
-        reason = _contract_reason(exc)
         await note_call(
             _result_record(
-                REVIEW_TASK, result, "error" if failure_policy == "strict" else "degraded", elapsed
+                REVIEW_TASK,
+                result,
+                "error" if failure_policy == "strict" else "degraded",
+                elapsed,
             )
         )
-        if failure_policy == "strict":
-            raise ClusterAIFailure(REVIEW_TASK, reason) from exc
-        await note_degraded(DegradedCall(REVIEW_TASK, reason))
-        return _fallback_groups(drafts)
+        raise _ReviewFailure(_contract_reason(exc), exc) from exc
     await note_call(_result_record(REVIEW_TASK, result, "ok", elapsed))
-    return _groups_from_review(items, drafts)
+    return items
+
+
+async def _review_batched(
+    agent: AIAgentProvider,
+    drafts: Sequence[ClusterDraft],
+    evidence: Mapping[str, ClusterCaseEvidence],
+    stats_by_draft: Mapping[int, ClusterDraftStats],
+    note_call: _CallSink,
+    note_degraded: _DegradedSink,
+    failure_policy: Literal["strict", "degrade"],
+) -> tuple[_Group, ...]:
+    """Review an oversized attribution input in category batches.
+
+    The partition stays complete because the batches cover disjoint draft
+    indexes; cross-batch root-cause merges are what the degradation gives up.
+    A failed batch falls back to category buckets for the whole review, never
+    to partial clusters.
+    """
+    batches = _category_batches(drafts)
+    groups: list[_Group] = []
+    try:
+        for batch in batches:
+            subset = tuple(drafts[index] for index in batch)
+            subset_stats = {local: stats_by_draft[index] for local, index in enumerate(batch)}
+            items = await _review_once(
+                agent,
+                subset,
+                evidence,
+                subset_stats,
+                note_call,
+                failure_policy,
+                grouping="attribution",
+            )
+            for group in _groups_from_review(items, subset):
+                groups.append(
+                    _Group(
+                        type=group.type,
+                        title=group.title,
+                        description=group.description,
+                        draft_indexes=tuple(batch[index] for index in group.draft_indexes),
+                        fallback=group.fallback,
+                    ),
+                )
+    except _ReviewFailure as failure:
+        if failure_policy == "strict":
+            raise ClusterAIFailure(REVIEW_TASK, failure.reason) from failure.cause
+        await note_degraded(DegradedCall(REVIEW_TASK, failure.reason))
+        return _fallback_groups(drafts, "attribution")
+    await note_degraded(
+        DegradedCall(
+            REVIEW_TASK,
+            _bounded(
+                f"review input {len(drafts)} drafts exceeds {ATTRIBUTION_REVIEW_MAX_DRAFTS}; "
+                f"reviewed in {len(batches)} category batches without cross-batch merges",
+                MAX_REASON_CHARS,
+            ),
+        ),
+    )
+    return tuple(sorted(groups, key=lambda group: group.draft_indexes[0]))
+
+
+def _category_batches(drafts: Sequence[ClusterDraft]) -> tuple[tuple[int, ...], ...]:
+    """Split drafts into review calls without ever mixing categories.
+
+    Under the cap this is one batch with every draft, which keeps the normal
+    path at exactly one review call. Above the cap each category is chunked in
+    draft order so every prompt stays bounded.
+    """
+    if len(drafts) <= ATTRIBUTION_REVIEW_MAX_DRAFTS:
+        return (tuple(range(len(drafts))),)
+    batches: list[tuple[int, ...]] = []
+    for attribute_type in TYPE_ORDER:
+        indexes = [index for index, draft in enumerate(drafts) if draft.type == attribute_type]
+        for start in range(0, len(indexes), ATTRIBUTION_REVIEW_MAX_DRAFTS):
+            batches.append(tuple(indexes[start : start + ATTRIBUTION_REVIEW_MAX_DRAFTS]))
+    return tuple(batches)
 
 
 async def _score_confidences(
@@ -1159,8 +1354,36 @@ def _groups_from_review(
     return tuple(sorted(groups, key=lambda group: group.draft_indexes[0]))
 
 
-def _fallback_groups(drafts: Sequence[ClusterDraft]) -> tuple[_Group, ...]:
-    """Use the lexical drafts unchanged after a rejected review batch."""
+def _fallback_groups(
+    drafts: Sequence[ClusterDraft],
+    grouping: ReviewGrouping = "lexical",
+) -> tuple[_Group, ...]:
+    """Fall back deterministically after a rejected review batch.
+
+    Under ``attribution`` grouping one bucket per category is the documented
+    fallback: the drafts are one per probe, so reusing them would persist one
+    cluster per attribution and turn every probe into a round. Under
+    ``lexical`` grouping the drafts are already the grouping layer result and
+    are reused unchanged.
+    """
+    if grouping == "attribution":
+        groups: list[_Group] = []
+        for attribute_type in TYPE_ORDER:
+            indexes = tuple(
+                index for index, draft in enumerate(drafts) if draft.type == attribute_type
+            )
+            if not indexes:
+                continue
+            groups.append(
+                _Group(
+                    type=attribute_type,
+                    title=attribution_fallback_description(attribute_type, len(indexes)),
+                    description="",
+                    draft_indexes=indexes,
+                    fallback=True,
+                ),
+            )
+        return tuple(groups)
     return tuple(
         _Group(
             type=draft.type,
@@ -1178,15 +1401,19 @@ def _merged_stats(
     drafts: Sequence[ClusterDraft],
     stats_by_draft: Mapping[int, ClusterDraftStats],
     evidence: Mapping[str, ClusterCaseEvidence],
+    *,
+    compute_signature_overlap: bool = True,
 ) -> ClusterDraftStats:
     """Combine the per-draft statistics of one final cluster deterministically.
 
-    ``signature_overlap`` keeps its documented meaning — the mean pairwise
-    lexical similarity of the cluster's member titles — so it is recomputed from
-    the merged members' titles whenever every member has loaded evidence. The
-    per-draft weighted average is only a fallback for missing evidence: averaging
-    draft values would inflate a merged cluster (for example 0.3704 instead of
-    the true 0.1852 over three members).
+    Under ``lexical`` grouping ``signature_overlap`` keeps its documented
+    meaning — the mean pairwise lexical similarity of the cluster's member
+    titles — so it is recomputed from the merged members' titles whenever every
+    member has loaded evidence. The per-draft weighted average is only a
+    fallback for missing evidence: averaging draft values would inflate a merged
+    cluster (for example 0.3704 instead of the true 0.1852 over three members).
+    Under ``attribution`` grouping the title is no longer a grouping signal, so
+    the statistic stays at the per-draft value instead of being recomputed.
     """
     case_ids = tuple(
         sorted(
@@ -1211,9 +1438,12 @@ def _merged_stats(
         weight += max(stats.member_count, 1)
         if stats.time_span_days is not None:
             draft_spans.append(stats.time_span_days)
-    titles = [evidence[case_id].title for case_id in case_ids if case_id in evidence]
-    if case_ids and len(titles) == len(case_ids):
-        overlap = signature_overlap(titles)
+    if compute_signature_overlap:
+        titles = [evidence[case_id].title for case_id in case_ids if case_id in evidence]
+        if case_ids and len(titles) == len(case_ids):
+            overlap = signature_overlap(titles)
+        else:
+            overlap = round(weighted / weight, 4) if weight else 0.0
     else:
         overlap = round(weighted / weight, 4) if weight else 0.0
     reported: list[datetime] = []
@@ -1427,6 +1657,7 @@ def _bounded(text: str, limit: int) -> str:
 
 
 __all__ = [
+    "ATTRIBUTION_REVIEW_MAX_DRAFTS",
     "CLUSTER_KEY_PREFIX",
     "CLUSTER_SCORE_TASK",
     "DESCRIPTION_MAX_CHARS",
@@ -1454,6 +1685,7 @@ __all__ = [
     "DegradedCall",
     "EnhancedCluster",
     "EnhancedClusters",
+    "ReviewGrouping",
     "SeverityScoreItem",
     "SeverityScoresOutput",
     "build_cluster_score_request",
