@@ -411,16 +411,27 @@ def test_insert_after_accepts_a_unique_multiline_block_anchor(tmp_path: Path) ->
     assert (workspace / "doc.md").read_bytes() == b"l1\nl2\nl3\nl4\nl5\nNEW\nl6\n"
 
 
-def test_replace_still_accepts_a_multiline_anchor_at_model_construction() -> None:
+def test_replace_still_applies_a_multiline_anchor(tmp_path: Path) -> None:
     """replace keeps allowing a cross-line target; only insert_after was narrower."""
-    multiline_replace = EditOp(
-        op="replace",
-        file="a.md",
-        target="line\nbreak",
-        content="x",
-        rationale="r",
+    workspace = tmp_path / "ws"
+    _write(workspace / "doc.md", "one\ntwo\nthree\n")
+    plan = EditPlan(
+        summary="multiline replace",
+        edits=(
+            EditOp(
+                op="replace",
+                file="doc.md",
+                target="one\ntwo",
+                content="ONE",
+                rationale="r",
+            ),
+        ),
     )
-    assert multiline_replace.target == "line\nbreak"
+
+    application = apply_edit_plan(plan, workspace=workspace)
+
+    assert application.report[0].status == "applied"
+    assert (workspace / "doc.md").read_bytes() == b"ONE\nthree\n"
 
 
 def test_summary_rationale_and_content_cap_are_enforced() -> None:
@@ -804,6 +815,13 @@ def test_insert_after_last_line_without_newline(tmp_path: Path) -> None:
         ("one\ntwo\n", "two", "three", "one\ntwo\nthree\n"),
         # A final unterminated line gains its boundary before the insert.
         ("one\ntwo", "two", "three", "one\ntwo\nthree\n"),
+        # A mid-line target on the unterminated final line keeps the tail to EOF.
+        ("one\ntwo", "tw", "x", "one\ntwo\nx\n"),
+        ("alpha\nbeta gamma", "beta", "x", "alpha\nbeta gamma\nx\n"),
+        # A target stopping halfway through a CRLF terminator finishes it.
+        ("l1\r\nl2\r\n", "l1\r", "NEW", "l1\r\nNEW\r\nl2\r\n"),
+        # A target ending with a bare \r keeps its bytes; inserted lines use \n.
+        ("a\rb\rc\r", "b\r", "x", "a\rb\rx\nc\r"),
         # A bare-\r anchor keeps its bytes; inserted lines use \n.
         ("a\rb\rc\r", "b", "x", "a\rb\rx\nc\r"),
         # A CRLF anchor line inserts \r\n-terminated content.
@@ -1275,3 +1293,14 @@ def test_agent_edit_mode_requires_and_selects_the_agent_provider() -> None:
     assert isinstance(source, PatchSource)
     with pytest.raises(ConfigError, match="unknown patch source mode"):
         default_patch_source_factory(_run(eval_config={"patchMode": "llm"}))
+
+
+def test_edit_prompt_states_the_same_anchor_contract_as_the_validator() -> None:
+    """The model-visible prompt states the cross-line, unique-fragment contract."""
+    from app.service.evolution import patch_source
+
+    prompt = patch_source._edit_prompt(_run(), _trace("对象行为异常"), allowed=("skills/**",))
+
+    assert "唯一出现的文本片段" in prompt
+    assert "可跨行" in prompt
+    assert "末行之后" in prompt

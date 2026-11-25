@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/bug-fix/2026-11-25-edit-insert-anchor-multiline.md
-2026-11-25-edit-insert-anchor-multiline.md: 8bf95438a4a9735b03d1cee4993e10914b0eba9b
-2026-11-25-edit-insert-anchor-multiline.en.md: c4ca1089e58d361625a7007b5f385bc0100399a4
+2026-11-25-edit-insert-anchor-multiline.md: 9fb87b7d6842093b5ca0e1e74f8c4f81138b3777
+2026-11-25-edit-insert-anchor-multiline.en.md: ac433e70271a20722b091a4363ca993c2c59fce1

@@ -467,9 +467,11 @@ def _insert_after_text(text: str, target: str, content: str) -> str:
 
     ``target`` may span multiple lines. When it ends with a line terminator the
     insertion point is right after that terminator; otherwise it is the end of
-    the line containing the match's last character, and an unterminated final
-    line gains one. Inserted lines reuse the anchor line's ``\\r\\n`` or ``\\n``
-    style, so a single-line target keeps producing the historical bytes.
+    the line containing the match's last character (the end of the file when
+    that line is unterminated), and an unterminated final line gains one.
+    Inserted lines reuse the anchor line's ``\\r\\n`` or ``\\n`` style; a bare
+    ``\\r`` anchor line keeps its bytes and inserted lines use ``\\n``. A
+    single-line target therefore keeps producing the historical bytes.
     """
     try:
         match_end = text.index(target) + len(target)
@@ -497,8 +499,11 @@ def _insert_after_text(text: str, target: str, content: str) -> str:
             if carriage != -1:
                 ending, prefix, suffix = "\n", text[: carriage + 1], text[carriage + 1 :]
             else:
+                # The match's last line is the unterminated final line, so the
+                # insertion point is the end of the file; finishing that line
+                # must not drop text between the match and EOF.
                 ending = "\n"
-                prefix, suffix = f"{text[:match_end]}{ending}", ""
+                prefix, suffix = f"{text}{ending}", ""
     inserted = content.splitlines() or [""]
     body = "".join(f"{line}{ending}" for line in inserted)
     return f"{prefix}{body}{suffix}"

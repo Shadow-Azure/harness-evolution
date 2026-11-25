@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-`insert_after` 的锚点契约统一为「文件内存在且唯一的文本片段，可以跨行」。模型侧删除 `EditOp._validate_op_fields()` 对含 `\n`/`\r` target 的拒绝（#494 引入的单行规则），其余约束（append 禁 target、delete 禁 content、content 非空与行数上限等）原样保留。应用侧把 `_insert_after_text()` 重写为「整段唯一匹配 + 块末行之后插入」：插入点在 target 自身结尾换行（`\r\n`/`\n`/`\r`）之后，否则在匹配块末字符所在行的下一个行终止符之后，EOF 无终止符时补 `\n`；插入行沿用该终止符风格（`\r\n` 保持 `\r\n`；bare `\r` 锚行字节不动，插入行用 `\n`）。`text.count(target)` 的 0 次 → `skipped_anchor_missing`、>1 次 → `error`（ambiguous）分支原样保留，单行 target 的输出与旧实现逐字节一致。契约同步写进模型可见面：`_edit_prompt()` 的锚点行改为「锚文本必须是文件内唯一出现的文本片段，可跨行；insert_after 把 content 插到该片段末行之后」，07 §5.5.4 的执行流 bullet 与 json5 示例注释同步。回归测试覆盖 4 行块锚点的校验与应用、单行逐字节（行中/行尾/EOF 无终止符/bare-`\r`/CRLF）、块锚缺失与多义、CRLF 块插入，以及生产计划形状的 8 条编辑合成 replay（不含生产原文）。
+`insert_after` 的锚点契约统一为「文件内存在且唯一的文本片段，可以跨行」。模型侧删除 `EditOp._validate_op_fields()` 对含 `\n`/`\r` target 的拒绝（#494 引入的单行规则），其余约束（append 禁 target、delete 禁 content、content 非空与行数上限等）原样保留。应用侧把 `_insert_after_text()` 重写为「整段唯一匹配 + 块末行之后插入」：插入点在 target 自身结尾换行（`\r\n`/`\n`/`\r`）之后，否则在匹配块末字符所在行的下一个行终止符之后，EOF 无终止符时补 `\n`；插入行沿用该终止符风格（`\r\n` 保持 `\r\n`；bare `\r` 锚行字节不动，插入行用 `\n`）；无终止符的末行即文件末尾，插入点是文件末尾，匹配点与 EOF 之间的文本不会被丢弃。`text.count(target)` 的 0 次 → `skipped_anchor_missing`、>1 次 → `error`（ambiguous）分支原样保留，唯一性按不重叠匹配计数（与 `replace`/`delete` 一致）。单行 target 在 `\n`、`\r\n` 与纯 bare `\r` 文件中的输出与旧实现逐字节一致；混合 bare `\r` 与 `\n` 的文件，以及旧实现 `splitlines` 额外切分的 `\v`/`\f`/`\x85`/`\u2028` 等 Unicode 行分隔符，不在该承诺内。契约同步写进模型可见面：`_edit_prompt()` 的锚点行改为「锚文本必须是文件内唯一出现的文本片段，可跨行；insert_after 把 content 插到该片段末行之后」，07 §5.5.4 的执行流 bullet 与 json5 示例注释同步。回归测试覆盖 4 行块锚点的校验与应用、单行逐字节（行中/行尾/EOF 无终止符/bare-`\r`/CRLF）、块锚缺失与多义、CRLF 块插入，以及生产计划形状的 8 条编辑合成 replay（不含生产原文）。
 
 ## Alternatives considered
 
