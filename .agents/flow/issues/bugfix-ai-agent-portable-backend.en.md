@@ -12,6 +12,7 @@ status: ready
 scope:
   - apps/api/app/third_party_api/ai_agent/**
   - apps/api/app/service/evolution/local_attribution.py
+  - apps/api/app/service/evolution/patch_source.py
   - apps/api/app/config.py
   - apps/api/app/main.py
   - apps/api/tests/**
@@ -67,7 +68,7 @@ Fact check on replay validation: `freeze()` writes `agent` (the then-current `pr
 - The upstream skill prompt becomes path-referencing ("Use the {name} skill: read `skills/{name}/SKILL.md` and follow it strictly…"); task text (`INSTRUCTIONS`, input-file description, platform writer contract) stays upstream.
 - `AIAgentProvider` gains `capabilities: ClassVar[frozenset[str]]` (`"analyze"`, `"edit"`, `"skill"`); `supports_skills` prefers the declaration and falls back to override detection for subclasses that do not declare it; `ProviderHealth` gains a structured `auth` field (`ok` / `missing` / `unknown`); preflight prints a capability line.
 - `Settings` gains generic `ai_agent_bin` / `ai_agent_settings`; the old `ai_agent_claude_bin` / `ai_agent_claude_settings` remain readable as compatible aliases; `AIAgentProvider` gains a `from_settings()` classmethod hook for backends that need extra config.
-- In passing: promote `EDIT_PLAN_FILENAME` to a shared package constant (referenced by `patch_source._edit_prompt`) and move `PERMISSION_MODE` from `base.py` into `claude_code.py`.
+- In passing: promote `EDIT_PLAN_FILENAME` to a shared package constant (`patch_source.py` converges in the same change, its `_edit_prompt` literal becomes a reference) and move `PERMISSION_MODE` from `base.py` into `claude_code.py`.
 - Update the "one subclass plus one registry entry" wording in `docs/ai-agent.en.md` / `.md` to the real touchpoint list, and add an Agent Note.
 
 ## Design authority

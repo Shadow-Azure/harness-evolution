@@ -12,6 +12,7 @@ status: ready
 scope:
   - apps/api/app/third_party_api/ai_agent/**
   - apps/api/app/service/evolution/local_attribution.py
+  - apps/api/app/service/evolution/patch_source.py
   - apps/api/app/config.py
   - apps/api/app/main.py
   - apps/api/tests/**
@@ -67,7 +68,7 @@ github:
 - 上游技能 prompt 改为「使用 {name} skill：读取 `skills/{name}/SKILL.md` 并严格遵循……」的路径引用形态；任务文本（`INSTRUCTIONS`、输入文件说明、平台 writer 契约）保持在上游。
 - `AIAgentProvider` 新增 `capabilities: ClassVar[frozenset[str]]` 显式能力声明（`"analyze"`、`"edit"`、`"skill"`），`supports_skills` 优先读声明，未声明时保留按 `run_skill` 覆盖推导的兼容；`ProviderHealth` 新增 `auth`（`ok` / `missing` / `unknown`）结构化字段，`preflight` 输出 provider 能力行。
 - `Settings` 新增 `ai_agent_bin` / `ai_agent_settings` 通用字段，旧 `ai_agent_claude_bin` / `ai_agent_claude_settings` 作为兼容别名继续可读；`AIAgentProvider` 新增 `from_settings()` 类方法钩子，需要额外配置的后端在其中解析自己的命名空间。
-- 顺手项：`EDIT_PLAN_FILENAME` 提升为 `ai_agent` 包共享常量（`patch_source._edit_prompt` 引用它）；`PERMISSION_MODE` 常量从 `base.py` 下移到 `claude_code.py`。
+- 顺手项：`EDIT_PLAN_FILENAME` 提升为 `ai_agent` 包共享常量（`patch_source.py` 同步收敛，`_edit_prompt` 的字面量改为引用它）；`PERMISSION_MODE` 常量从 `base.py` 下移到 `claude_code.py`。
 - 更新 `docs/ai-agent.md` / `.en.md` 的「新增后端只加一个子类与注册项」表述，写清换后端的实际触点；补 Agent Note。
 
 ## 设计依据
