@@ -49,7 +49,7 @@
 
 ## 5. 首次发布与验收
 
-1. 存量机先在 Actions 运行 `Provision`（`install`，确认 `state=ready`）。新机先确认 cloud-init 已安装 bubblewrap，再跑一次 Provision `install` 应用 Ubuntu 24.04 的 AppArmor profile。然后在本分支 PR 合并后（或在 Actions 页手动 `workflow_dispatch` 触发 Deploy）。
+1. Linux 默认使用 bubblewrap，可先在 Actions 的 Provision 运行 `check`，缺包或探针失败时运行 `install`，确认 `state=ready`。使用单条证据工具的主机应在发布前将 `HE_ATTRIBUTION_BWRAP_ENABLED=false` 写入 `/opt/harness/shared/.env`。合并 `main` 并通过 CI 后触发 Deploy，也可在 Actions 手动运行。
 2. 观察 `Deploy` job 全绿；失败看日志定位（常见：Secrets 值粘贴带空行、known_hosts 未收录）。
 3. 服务器探活：`ssh deploy@<IP> "curl -sf http://127.0.0.1:8787/api/health"`，响应应含 `"data":{"ok":true}`。
 4. 启动向导选择 skill 版本 `v7.0.2`，应能解析成功、不再出现「目标文件暂时不可读取」。
@@ -61,7 +61,9 @@
 
 对象绑定与向导重算共用 `AI_AGENT_PROVIDER`、CLI、服务 settings 和密钥。默认 `claude-code`，显式 `fake` 可用缓存。Claude 使用 `ANTHROPIC_MODEL`、共享 settings 和 CLI 默认模型，已冻结的批次保留原快照。上传包与产物位于 `HE_DATA_DIR/attribute`，可用 `HE_ATTRIBUTION_PACKAGE_DIR` 指定持久卷。
 
-Ubuntu 首次 bootstrap 与新建 ECS 的 cloud-init 会安装 bubblewrap。存量机不再手工 SSH 装包：在 Actions 运行 `Provision`，先用 `check` 确认缺包并输出 `ATTRIBUTION_BWRAP_MISSING`，再以 `install` 安装并验证；`state=ready` 表示 `harness` 的最小命名空间探针已退出 0。Ubuntu 24.04 默认用 AppArmor 限制 unprivileged userns；Provision 会安装只放行 bwrap 可执行路径的 `/etc/apparmor.d/bwrap-userns-restrict` 并重试探针，不关闭主机级 `kernel.apparmor_restrict_unprivileged_userns`。仅 `main` 的 dispatch 会通过 job 内检查；使用专用 `PROVISION_SSH_KEY`，deploy 用户仍没有 apt/dpkg 权限。每次运行记录在 Actions run history；脚本只输出固定文案、路径和错误码，不打印环境变量或凭据。排障时可在主机上用服务账号复核同一条探针：
+`HE_ATTRIBUTION_BWRAP_ENABLED` 未设置或为 `true` 时，Linux Claude 在 bubblewrap 命名空间内执行冻结的 Skill。`attribute_log.json` 的 `execution.executionMode` 为 `bubblewrap`。显式设为 `false` 后，模型读取冻结的 Skill 原文，通过 `read_evidence` 读取本条 Badcase 的证据和 Skill 资料，通过 `write_probe_report` 调用平台脚本，日志标记为 `case-tools`。
+
+默认沙箱可用 Provision 的 `check` 检查、`install` 安装并按 `harness` 身份验证 bwrap。新机也可通过可选 cloud-init 预装。Ubuntu 24.04 按需应用 `/etc/apparmor.d/bwrap-userns-restrict`。仅 `main` 可手动运行 Provision，专用 `PROVISION_SSH_KEY` 与日常部署账号分开。服务账号的探针如下。
 
 ```sh
 sudo -u harness bwrap --unshare-all --share-net --die-with-parent --ro-bind / / -- /bin/true
@@ -94,8 +96,8 @@ GROUP BY attribution_skill_name;
 - **迁移失败**：确认 RDS/自建 MySQL 已启动、账号能连；`alembic.ini.release` 在 release 目录内可查注入结果。
 - **切换版本报「目标文件暂时不可读取」**：`/api/health` 的 `data.ok` 为 false，或 `HE_DATA_DIR` 落到了发布目录；检查 `vars.HE_DATA_DIR` 与 `/var/lib/harness-evolution` 属主，必要时重跑 bootstrap。
 - **发布在切换 current 前失败**：看 `release.sh` 输出的 `HE_DATA_DIR` 路径与原因；修复后重跑 Deploy，`.env` 已自动恢复。
-- **PR 的 `deploy-contract` 红**：job 日志里先看 `state=` 与 `error_code=`；缺包是 `ATTRIBUTION_BWRAP_MISSING`，探针失败是 `ATTRIBUTION_BWRAP_UNUSABLE`。在目标机按 Provision `check` → `install` 复核，不要改 preflight 或给 deploy 加 apt。
-- **新增部署运行时前置**：先改 `deploy/attribution-runtime-prerequisites.list`，再在 bootstrap/cloud-init 与 Provision 路径提供安装/验证，更新 `docs/deployment.md` 与 `attribution.preflight`；API 套件与 `deploy-contract` 会指出漏改的文件。
+- **`deploy-contract` 失败时**，先看服务账号的 `bwrap_enabled` 与 `error_code`。CI 缺包时默认和显式开启均应报 `ATTRIBUTION_BWRAP_MISSING`，显式关闭应就绪。安装后仍报 `ATTRIBUTION_BWRAP_UNUSABLE` 表示服务账号的命名空间探针失败。选择沙箱的主机可通过 Provision `check` 和 `install` 复核。
+- **添加沙箱系统依赖时**，更新 `deploy/attribution-runtime-prerequisites.list`、cloud-init 与 Provision 安装路径，同步 `docs/deployment.md` 与 `attribution.preflight`。API 套件与 `deploy-contract` 验证安装和运行行为。
 - **required check**：Settings → Branches → `main` 的保护规则只要求 `ci-ok`；`deploy-contract` 已进入 `ci-ok.needs`，不需要在分支保护里单独添加。
 - **Actions SSH 卡住**：ECS 安全组 22 端口来源是否放行 GitHub Actions runner（runner IP 段动态，先放行 0.0.0.0/0 并禁密码登录）。
 - **Claude Code 未安装或 401**：看 Deploy 的“准备/安装并配置 Claude Code”步骤；`CLAUDE_CODE_MODEL` 与 `CLAUDE_CODE_API_KEY` 必须同时存在；服务器 `~/.claude/settings.json` 的 base URL 要与 key 的区域一致（国内版 `.cn`，国际版 `.io`）。

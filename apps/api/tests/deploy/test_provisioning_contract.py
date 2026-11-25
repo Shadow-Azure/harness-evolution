@@ -132,7 +132,9 @@ def test_contract_script_covers_negative_positive_and_real_preflight() -> None:
     assert "ATTRIBUTION_BWRAP_MISSING" in text
     assert "state=ready" in text
     assert "app.third_party_api.ai_agent.preflight" in text
-    assert "ready=True" in text
+    assert "bwrap_enabled=False ready=True" in text
+    assert "bwrap_enabled=True error_code=ATTRIBUTION_BWRAP_MISSING" in text
+    assert "bwrap_enabled=True ready=True" in text
     assert "runuser" in text and "harness" in text
     assert "bwrap --unshare-all --share-net --die-with-parent --ro-bind / / -- /bin/true" in text
 

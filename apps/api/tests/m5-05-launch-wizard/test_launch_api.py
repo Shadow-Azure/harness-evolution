@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import os
+import sys
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -382,6 +383,40 @@ class _FakeWorkspacePreparer:
         return ()
 
 
+def _configure_case_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, bwrap: bool) -> None:
+    """Exercise the configured Claude path with a deterministic CLI and no host dependencies."""
+    from types import SimpleNamespace
+
+    from app.third_party_api.ai_agent import claude_skill
+    from tests.attribution import case_cli_fixture
+
+    binary = tmp_path / "fixture-cli"
+    binary.write_text(f"#!{sys.executable}\n" + Path(case_cli_fixture.__file__).read_text())
+    binary.chmod(0o700)
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text(json.dumps({"model": "shared-fixture-model"}))
+    monkeypatch.setenv("AI_AGENT_PROVIDER", "claude-code")
+    monkeypatch.setenv("HE_AI_AGENT_CLAUDE_BIN", str(binary))
+    monkeypatch.setenv("HE_AI_AGENT_CLAUDE_SETTINGS", str(settings_file))
+    monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
+    monkeypatch.setattr(
+        claude_skill, "sys", SimpleNamespace(platform="linux", executable=sys.executable)
+    )
+    if bwrap:
+        monkeypatch.delenv("HE_ATTRIBUTION_BWRAP_ENABLED", raising=False)
+        monkeypatch.setattr(claude_skill, "sandbox_preflight_error", lambda: None)
+        # Mark the fixture CLI call at the point where production enters the namespace.
+        monkeypatch.setattr(
+            claude_skill, "_sandbox", lambda *_: ["/usr/bin/env", "TEST_FIXTURE_BWRAP=1"]
+        )
+        return
+    monkeypatch.setenv("HE_ATTRIBUTION_BWRAP_ENABLED", "false")
+    monkeypatch.setattr(
+        claude_skill, "sandbox_preflight_error", lambda: pytest.fail("unexpected bwrap probe")
+    )
+    monkeypatch.setattr(claude_skill, "_sandbox", lambda *_: pytest.fail("unexpected bwrap launch"))
+
+
 @pytest_asyncio.fixture
 async def launch_api(
     tmp_path: Path, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
@@ -391,7 +426,10 @@ async def launch_api(
     from tests.attribution.test_local_runtime import ScriptAgent
 
     provider = getattr(request, "param", "fake")
-    if provider == ScriptAgent.provider_id:
+    if provider in {"bubblewrap", "case-tools"}:
+        _configure_case_cli(tmp_path, monkeypatch, bwrap=provider == "bubblewrap")
+        provider = "claude-code"
+    elif provider == ScriptAgent.provider_id:
         monkeypatch.setitem(factory._REGISTRY, ScriptAgent.provider_id, ScriptAgent)
     revision = (
         f"digest:{definition_file_hash(FakeDefinitionSource.body)}"
@@ -1166,8 +1204,8 @@ async def test_startup_claims_existing_binding_with_shared_provider(
     from app.db.crud.evolution_targets import EvolutionTargetRepository
     from app.errors import AppError
     from app.service.evolution.potential import AttributionPreviewRequest
-    from app.third_party_api.ai_agent import claude_skill, factory
-    from tests.attribution.test_local_runtime import ScriptAgent, Source
+    from app.third_party_api.ai_agent import claude_skill
+    from tests.attribution.test_local_runtime import Source
 
     monkeypatch.delenv("HE_ATTRIBUTION_AGENT", raising=False)
     monkeypatch.delenv("HE_ATTRIBUTION_MODEL", raising=False)
@@ -1203,6 +1241,7 @@ async def test_startup_claims_existing_binding_with_shared_provider(
 
     with monkeypatch.context() as missing:
         missing.setenv("AI_AGENT_PROVIDER", "claude-code")
+        missing.delenv("HE_ATTRIBUTION_BWRAP_ENABLED", raising=False)
         missing.setattr(claude_skill, "sys", SimpleNamespace(platform="linux"))
         missing.setattr(claude_skill, "shutil", SimpleNamespace(which=lambda _: None))
         claim = AsyncMock()
@@ -1240,14 +1279,12 @@ async def test_startup_claims_existing_binding_with_shared_provider(
             getattr(r, "error_code", None) == "ATTRIBUTION_BWRAP_MISSING" for r in caplog.records
         )
 
-    monkeypatch.setitem(factory._REGISTRY, ScriptAgent.provider_id, ScriptAgent)
-    monkeypatch.setattr(ScriptAgent, "default_skill_model", lambda self: "shared-fixture-model")
-    monkeypatch.setenv("AI_AGENT_PROVIDER", ScriptAgent.provider_id)
+    _configure_case_cli(tmp_path, monkeypatch, bwrap=False)
     restarted = create_app(settings(), target_version_resolver=FakeTargetVersionResolver())
     restarted.state.local_attribution.source = Source()
     async with restarted.router.lifespan_context(restarted):
         assert restarted.state.local_attribution.agent is restarted.state.ai_agent
-        async with asyncio.timeout(15):
+        async with asyncio.timeout(120):
             while True:
                 async with restarted.state.database.session() as session:
                     actual, owner, due, failures = (await session.execute(state)).one()
@@ -1273,25 +1310,27 @@ async def test_startup_claims_existing_binding_with_shared_provider(
             json.loads(p.read_bytes()) for p in output.glob(f"{generation}/*/attribute_log.json")
         ]
         assert len(logs) == len(skills)
-        assert all(log["model"] == {"model": "shared-fixture-model"} for log in logs)
+        assert all(log["model"]["model"] == "shared-fixture-model" for log in logs)
+        assert all(log["execution"]["executionMode"] == "case-tools" for log in logs)
 
 
 @pytest.mark.parametrize(
-    "launch_api",
-    ["claude-code" if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1" else "script-test"],
-    indirect=True,
-)
-@pytest.mark.parametrize(
-    "selection",
-    ["other"]
+    ("launch_api", "selection", "expected_mode"),
+    [("claude-code", "other", None)]
     if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1"
-    else ["bound", "implicit", "other"],
+    else [
+        ("bubblewrap", "bound", "bubblewrap"),
+        ("script-test", "implicit", None),
+        ("case-tools", "other", "case-tools"),
+    ],
+    indirect=["launch_api"],
 )
 async def test_local_attribution_from_wizard_to_cluster(
     launch_api: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     selection: str,
+    expected_mode: str | None,
 ) -> None:
     """Start through HTTP and wait for the real job, report transaction and clustering."""
     import io
@@ -1345,7 +1384,7 @@ async def test_local_attribution_from_wizard_to_cluster(
     assert created.json()["attributionSkillName"] == bound_name
     protected = await launch_api.delete(f"{workspace}/attribution-skill-packages/{bound_id}")
     assert protected.status_code == 409
-    async with asyncio.timeout(600 if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") else 15):
+    async with asyncio.timeout(600 if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") else 60):
         while True:
             async with app.state.database.session() as session:
                 due = await session.scalar(
@@ -1432,6 +1471,12 @@ async def test_local_attribution_from_wizard_to_cluster(
             .all()
         )
     assert reports
+    if expected_mode:
+        for batch in (binding_batch.name, accepted.json()["runId"]):
+            output = root / "attribute_output" / batch
+            logs = [json.loads(path.read_bytes()) for path in output.glob("*/attribute_log.json")]
+            assert logs and all(log["execution"]["executionMode"] == expected_mode for log in logs)
+            assert all(log["status"] == "report_validated" for log in logs)
     binding = await launch_api.get(f"{workspace}/evolution/targets/{target_id}/attribution-skill")
     assert binding.status_code == 200
     assert binding.json()["id"] == bound_id

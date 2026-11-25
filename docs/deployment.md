@@ -30,7 +30,7 @@
 
 ## Provision 入口
 
-归因 Skill 的 `bubblewrap` 是系统包，`deploy` 用户没有 apt/dpkg 权限，日常发布只以 `attribution.preflight` 为门禁。存量机用独立 [Provision workflow](../.github/workflows/provision.yml)：`workflow_dispatch` + `environment: production`，仅 `main` 的 dispatch 可执行，模式为 `check` / `install` / `dry-run`。它调用 [provision-bubblewrap.sh](../deploy/provision-bubblewrap.sh)：已安装时只验证、缺失才安装，并以 `harness` 跑命名空间探针；Ubuntu 24.04 的 AppArmor userns 限制由脚本安装的 `/etc/apparmor.d/bwrap-userns-restrict` 放行（只针对 bwrap 可执行路径，不改主机级 sysctl）；`ATTRIBUTION_BWRAP_MISSING` / `ATTRIBUTION_BWRAP_UNUSABLE` 与 preflight 同码。凭据是 `production` 环境的 `PROVISION_SSH_KEY`（专用 root 私钥）与可选的 Variable `PROVISION_SSH_USER`（默认 `root`）；环境 Secret 的读取面与轮换见[部署手册](../plans/deploy-aliyun-playbook.md#4-github-仓库配置网页粘贴)。
+使用默认 Linux 归因沙箱的主机可在 `main` 手动运行 [Provision workflow](../.github/workflows/provision.yml) 的 `check`、`install` 或 `dry-run`。它使用 `production` 环境的专用 `PROVISION_SSH_KEY` 和可选用户 `PROVISION_SSH_USER`（默认 `root`）。[安装脚本](../deploy/provision-bubblewrap.sh) 按需装包并以 `harness` 运行命名空间探针。Ubuntu 24.04 的 AppArmor profile `/etc/apparmor.d/bwrap-userns-restrict` 只放行 bwrap。日常发布使用 `deploy` 账号。凭据轮换见[部署手册](../plans/deploy-aliyun-playbook.md#4-github-仓库配置网页粘贴)。
 
 ## 新机 cloud-init
 
@@ -38,9 +38,7 @@
 
 ## CI 门禁：部署 provisioning 契约
 
-`deploy-contract` 在干净 `ubuntu:24.04` 容器里运行 [verify_provisioning_contract.sh](../apps/api/tests/deploy/verify_provisioning_contract.sh)：缺包负例、provision 安装、`harness` 探针与 `attribution.preflight` 依次通过。[test_provisioning_contract.py](../apps/api/tests/deploy/test_provisioning_contract.py) 随 API 套件静态断言前置清单、bootstrap/cloud-init/Provision 一致与 `release.sh` 的 preflight 顺序。`deploy-contract` 已加入 `ci-ok.needs`，分支保护只要求 `ci-ok`。
-
-新增部署运行时前置与门禁排障见[部署手册](../plans/deploy-aliyun-playbook.md#6-常见问题)。
+`deploy-contract` 在干净的 Ubuntu 24.04 上执行[部署验收脚本](../apps/api/tests/deploy/verify_provisioning_contract.sh)。缺少 bwrap 时，未配置和显式开启均返回 `ATTRIBUTION_BWRAP_MISSING`，显式关闭后预检通过。Provision 安装后，`harness` 的命名空间探针和沙箱预检均须通过。[API 测试](../apps/api/tests/deploy/test_provisioning_contract.py)核对 bootstrap 和 cloud-init 的包清单、Provision 安装步骤及发布预检顺序。分支保护通过 `ci-ok` 汇总此门禁。扩展清单和排障见[部署手册](../plans/deploy-aliyun-playbook.md#6-常见问题)。
 
 ## GitHub 配置
 
@@ -70,7 +68,7 @@ Deploy 将 `vars.HE_DATA_DIR` 和评测 Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_U
 
 ### 归因运行时
 
-绑定归因与向导重算沿用公共 Provider 和模型。Linux Claude 需要 `bubblewrap`：存量机用 [Provision 入口](deployment.md#provision-入口) 安装，新机 cloud-init 装包后再跑一次 Provision `install`。发布在迁移前检查，API 启动复检。用 `journalctl -u harness-api -g attribution.preflight` 查原因。恢复后重启，原绑定自动续跑。服务账号探针、报告核对见[归因验收](../plans/deploy-aliyun-playbook.md#验证-skill-归因)。
+绑定归因与向导重算共用 Provider 和模型。Linux 默认在 [bubblewrap 沙箱](deployment.md#provision-入口)执行 Skill，缺包或探针失败时保留待领取批次。仅在 `/opt/harness/shared/.env` 显式设置 `HE_ATTRIBUTION_BWRAP_ENABLED=false` 时，改用本条证据工具和平台报告脚本。发布在迁移前预检，API 启动复检。修改配置后重启 API，原绑定自动续跑。可用 `journalctl -u harness-api -g attribution.preflight` 核对 `bwrap_enabled` 和 `ready`。见[归因验收](../plans/deploy-aliyun-playbook.md#验证-skill-归因)。
 
 ## Claude Code
 

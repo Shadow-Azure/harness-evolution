@@ -13,7 +13,7 @@ PR #543 给归因运行时加了 `attribution.preflight`：Linux 上缺 `bubblew
 把部署 provisioning 契约前移到 PR 必过检查，分两层：
 
 - **静态契约**（`apps/api/tests/deploy/test_provisioning_contract.py`，随普通 API 套件运行）：`deploy/attribution-runtime-prerequisites.list` 是归因运行时 OS 前置的唯一清单；bootstrap 读取它，cloud-init 镜像它，Provision 脚本安装同一包；`release.sh` 的 preflight 必须在 `ln -sfn current` 之前；`ci.yml` 的 `deploy-contract` 必须在 `ci-ok.needs` 里。任何一条漂移都在 PR 阶段失败。
-- **干净主机运行时契约**（`apps/api/tests/deploy/verify_provisioning_contract.sh`，由 `deploy-contract` job 在 Ubuntu 容器中执行）：先移除预装 `bwrap` 验证 `--check` 以退出码 10 输出 `ATTRIBUTION_BWRAP_MISSING`；再跑真实的 `deploy/provision-bubblewrap.sh --install`，断言 `state=ready`、`bwrap --version` 和 `harness` 的命名空间探针；最后以 `harness` 身份运行候选代码的 `attribution.preflight`，断言 `ready=True`。不使用 mock，CI 与 Provision workflow 共用同一个脚本。
+- `deploy-contract` 在干净 Ubuntu 容器中运行 `apps/api/tests/deploy/verify_provisioning_contract.sh`。移除 bwrap 后，Provision `--check` 须以退出码 10 报缺包，`harness` 在未配置和显式开启时的预检均须返回 `ATTRIBUTION_BWRAP_MISSING`，显式关闭时须就绪。门禁随后运行与 Provision workflow 共用的安装脚本，验证 `state=ready`、`bwrap --version`、服务账号的命名空间探针和启用沙箱的预检。
 - `deploy-contract` 加入 `ci-ok.needs`；分支保护仍只需要 `ci-ok` 一个 required check，增删 lane 不改变仓库设置。
 
 ## Alternatives considered
@@ -26,6 +26,6 @@ PR #543 给归因运行时加了 `attribution.preflight`：Linux 上缺 `bubblew
 ## Consequences
 
 - PR 合并时间增加一个 lane（安装 Python 依赖 + 真实 provision，预计数分钟）；换来的是"新增运行时前置但没有 provisioning 路径"在合并前失败。
-- 归因运行时新增 OS 前置时，必须先改 `deploy/attribution-runtime-prerequisites.list`，再同步 cloud-init 与 Provision 路径；静态契约会指出漏改的位置。
+- 沙箱新增系统依赖时，先改 `deploy/attribution-runtime-prerequisites.list`，再同步 cloud-init 与 Provision 安装路径。
 - 容器内无法加载宿主 AppArmor profile，运行时契约验证的是"包存在且服务账号可用 bwrap"；Ubuntu 24.04 的 AppArmor 修复路径仍由 Provision 脚本与部署手册覆盖。
 - 分支保护必须把 `ci-ok` 设为 required check（仓库设置，一次性人工操作）；只加 job 不改保护时，PR 仍可能绕过。

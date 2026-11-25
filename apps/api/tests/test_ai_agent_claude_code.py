@@ -1149,7 +1149,7 @@ def test_headless_argv_is_the_single_constructor(
     assert [profile.max_turns for profile in profiles] == [None, EDIT_MAX_TURNS]
     assert profiles[0].rules == (
         f"Read({_absolute_rule(analyze_directory / 'schema.json')})",
-        f"Edit({_absolute_rule(analyze_prep.result_path)})",
+        f"Edit({_absolute_rule(analyze_directory / analyze_prep.result_path.name)})",
     )
     assert profiles[1].rules == (
         f"Read({_absolute_rule(edit_directory)}/**)",
