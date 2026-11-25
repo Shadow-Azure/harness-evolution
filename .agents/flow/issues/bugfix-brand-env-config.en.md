@@ -8,7 +8,7 @@ id: bugfix-54
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - .agents/flow/issues/bugfix-brand-env-config*
   - .agents/notes/**
