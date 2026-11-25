@@ -83,6 +83,21 @@ def _component(value: str) -> str:
     return value
 
 
+def _skill_prompt(name: str) -> str:
+    """Build the neutral task text one provider may prefix with its native trigger.
+
+    The path-reference form carries no slash-command syntax: the provider owns
+    the invocation surface, and the platform owns only the task (read the
+    staged guide at its neutral layout, analyze this case's input, report
+    through the platform writer contract).
+    """
+    guide = "skills/" + name + "/SKILL.md"
+    return (
+        f"使用 {name} skill：读取 {guide} 并严格遵循其中的全部指令，"  # noqa: RUF001
+        "分析本目录的 input_badcase.json 并生成归因报告。"
+    )
+
+
 def _json(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False, sort_keys=True, default=str, allow_nan=False)
 
@@ -471,28 +486,38 @@ class LocalAttribution:
             return body
         raise ValueError("target definition unavailable for attribution")
 
-    @staticmethod
     def _stage_attempt(
-        snapshot: Path, work: Path, name: str, manifest: Mapping[str, Any], item: AttributionInput
-    ) -> None:
-        skill = work / ".claude/skills" / name
+        self,
+        snapshot: Path,
+        work: Path,
+        name: str,
+        manifest: Mapping[str, Any],
+        item: AttributionInput,
+    ) -> str:
+        """Stage one case and return the provider's native invocation prefix.
+
+        The service verifies the frozen files, hands them to
+        ``provider.stage_skill`` (which lays out the neutral ``skills/<name>/``
+        shape in its own form), swaps in the platform writer shim, and writes
+        the case inputs. Skill staging and invocation syntax are fully
+        provider-owned; only the neutral layout and the platform writer
+        contract stay upstream.
+        """
+        files: dict[str, bytes] = {}
         for path, digest in manifest["files"].items():
             content = (snapshot / "skill" / path).read_bytes()
             if _digest(content) != digest:
                 raise ValueError(f"frozen Skill file checksum mismatch: {path}")
-            dest = skill / path
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(content)
+            files[path] = content
+        prefix = self.agent.stage_skill(work, name, files)
+        staged = work / "skills" / name / "make_probe_report.py"
         platform = work / ".platform"
         platform.mkdir()
-        writer = skill / "make_probe_report.py"
-        writer.rename(platform / writer.name)
-        shutil.copyfile(writer_entrypoint.__file__, writer)
-        alias = work / ".cac/skills"
-        alias.mkdir(parents=True)
-        (alias / name).symlink_to(skill, target_is_directory=True)
+        staged.rename(platform / staged.name)
+        shutil.copyfile(writer_entrypoint.__file__, staged)
         for filename, text in item.local_input.items():
-            (work / filename).write_text(text)
+            (work / filename).write_text(text, encoding="utf-8")
+        return prefix
 
     @staticmethod
     def _read_emission(work: Path) -> dict[str, Any]:
@@ -535,7 +560,6 @@ class LocalAttribution:
         output.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="attempt-", dir=output) as tmp:
             work = Path(tmp)
-            prompt = f"/{name} input_badcase.json，请分析并生成归因报告"  # noqa: RUF001
             history = output / "logs" / work.name
             history.mkdir(parents=True, mode=0o700)
             log: dict[str, Any] = {
@@ -549,7 +573,6 @@ class LocalAttribution:
                 "skillHash": item.attribution_skill_content_hash,
                 "agent": manifest["agent"],
                 "model": manifest["modelIdentity"],
-                "prompt": prompt,
                 "inputManifest": str((archive.case_path / "manifest.json").relative_to(root)),
                 "startedAt": datetime.now(UTC).isoformat(),
                 "status": "running",
@@ -558,11 +581,15 @@ class LocalAttribution:
             diagnostics: dict[str, Any] = {}
             await asyncio.to_thread(_write_log, history, log)
             try:
-                await asyncio.to_thread(self._stage_attempt, snapshot, work, name, manifest, item)
+                prefix = await asyncio.to_thread(
+                    self._stage_attempt, snapshot, work, name, manifest, item
+                )
+                prompt = f"{prefix}{_skill_prompt(name)}"
                 provider = self._skill_provider(manifest["agent"])
                 if provider.skill_model_identity(manifest["model"]) != manifest["modelIdentity"]:
                     raise ValueError("model configuration differs from the frozen run")
                 log["stage"] = "agent"
+                log["prompt"] = prompt
                 tokens = await provider.run_skill(
                     SkillRunRequest(
                         work, prompt, manifest["model"], self.settings.attribution_timeout_seconds
@@ -636,9 +663,15 @@ def _write_log(history: Path, record: Mapping[str, Any], latest: Path | None = N
         try:
             json.dump(record, tmp, ensure_ascii=False, indent=2, allow_nan=False)
             tmp.flush()
-            os.replace(path, dest)
-        finally:
+        except BaseException:
             path.unlink(missing_ok=True)
+            raise
+    # The rename runs after the handle closes: an open handle blocks os.replace on Windows.
+    try:
+        os.replace(path, dest)
+    except OSError:
+        path.unlink(missing_ok=True)
+        raise
     if latest is not None:
         link = history / "publishing"
         os.link(dest, link)

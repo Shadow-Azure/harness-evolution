@@ -51,7 +51,7 @@
 
 ## Claude 的工作目录与报告
 
-后台与向导用 `run_skill` 执行冻结的 Provider、模型和 Skill，提示词为 `/<skill_name> input_badcase.json，请分析并生成归因报告`。Linux 默认用 bubblewrap，macOS 用 Seatbelt，从 `.claude/skills/<skill_name>/`（别名 `.cac/skills/`）加载 Skill。仅 Linux 显式设 `HE_ATTRIBUTION_BWRAP_ENABLED=false` 时，Claude 才接收冻结的 `SKILL.md` 原文，用 `read_evidence` 分页读取五份输入及 `skill/` 资料，用 `write_probe_report` 以本条 ID 和固定路径调用平台脚本。每次尝试独享 HOME。两种模式均核验回执、按原始输入重算后入库。
+后台与向导用 `run_skill` 执行冻结的 Provider、模型和 Skill；任务文本引用 `skills/<skill_name>/SKILL.md` 中立布局，provider 经 `stage_skill` 适配自身形态并可前置原生前缀。Linux 默认用 bubblewrap，macOS 用 Seatbelt，从 provider 铺盘的布局加载 Skill。仅 Linux 显式设 `HE_ATTRIBUTION_BWRAP_ENABLED=false` 时，Claude 接收冻结的 `SKILL.md` 原文，用 `read_evidence` 读取输入及 `skill/` 资料，用 `write_probe_report` 调用平台脚本。每次尝试独享 HOME。两种模式均核验回执并按原始输入重算后入库。
 
 `attribute_log.json` 记录最近一次结果，`logs/<attempt>/` 保留历史。`execution.executionMode` 标明 `case-tools`、`bubblewrap` 或 `seatbelt`。日志包含提示词、输入清单、Claude 会话 ID、可见对话、工具调用和用量。主会话限读 8 MiB，见 `transcript.status`。`report_validated` 表示复核通过，入库查数据库。
 

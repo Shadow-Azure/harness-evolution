@@ -53,7 +53,11 @@ def register_provider(
 
 
 def build_agent_provider(settings: Settings, *, provider_id: str | None = None) -> AIAgentProvider:
-    """Build the deployment provider, or the explicit provider pinned for replay."""
+    """Build the deployment provider, or the explicit provider pinned for replay.
+
+    Assembly goes through ``from_settings`` so a backend with its own
+    configuration namespace resolves its entries at one construction point.
+    """
     provider_id = (
         (provider_id if provider_id is not None else settings.ai_agent_provider).strip().lower()
     )
@@ -63,7 +67,7 @@ def build_agent_provider(settings: Settings, *, provider_id: str | None = None) 
         raise ValueError(
             f"unknown AI agent provider: {provider_id!r}; expected one of: {choices}",
         )
-    return implementation(settings)
+    return implementation.from_settings(settings)
 
 
 __all__ = [

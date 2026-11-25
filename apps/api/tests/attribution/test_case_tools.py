@@ -15,7 +15,7 @@ from app.third_party_api.attribution import writer_entrypoint
 @pytest.fixture
 def case(tmp_path: Path) -> Path:
     work = tmp_path / "case"
-    skill = work / ".claude/skills/original"
+    skill = work / "skills/original"
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text("Use this case.")
     (skill / "references").mkdir()
@@ -47,7 +47,7 @@ def case(tmp_path: Path) -> Path:
 def test_only_frozen_evidence_and_selected_skill_are_readable(case: Path) -> None:
     other = case.parent / "another-case.txt"
     other.write_text("another case")
-    skill = case / ".claude/skills/original"
+    skill = case / "skills/original"
     (skill / "other.md").symlink_to(other)
     (case / "traces.json").symlink_to(other)
     # Create a page boundary inside a multibyte UTF-8 character.

@@ -46,7 +46,7 @@ class CaseTools:
 
     def __init__(self, directory: Path) -> None:
         self.work = directory.resolve(strict=True)
-        skills = self.work / ".claude/skills"
+        skills = self.work / "skills"
         (self.skill,) = skills.iterdir()
         if self.skill.resolve(strict=True) != self.skill or not self.skill.is_dir():
             raise ValueError("invalid staged Skill")

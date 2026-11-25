@@ -1,13 +1,16 @@
 """Parent contract for outbound AI Agent providers.
 
 Subclasses own one backend each (``fake`` and the real ``claude-code`` CLI).
-Skill-capable providers also execute a frozen Skill in an isolated workspace.
+Skill-capable providers also execute a frozen Skill in an isolated workspace:
+``stage_skill`` adapts the platform's neutral ``work/skills/<name>/`` layout to
+the backend's own skill form and returns an optional native invocation prefix.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, ClassVar, Final
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Self
 
 from app.third_party_api.ai_agent.contracts import (
     AgentProviderError,
@@ -20,6 +23,8 @@ from app.third_party_api.ai_agent.contracts import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from app.config import Settings
 
 ANALYZE_TIMEOUT_SECONDS: Final = 300
@@ -27,9 +32,6 @@ ANALYZE_TIMEOUT_SECONDS: Final = 300
 
 EDIT_TIMEOUT_SECONDS: Final = 1_800
 """Upper bound for one workspace edit call; a code constant, not a deployment knob."""
-
-PERMISSION_MODE: Final = "dontAsk"
-"""Headless permission mode shared by CLI backends; never grants file edits."""
 
 SKILL_UNSUPPORTED: Final = "ATTRIBUTION_PROVIDER_UNSUPPORTED"
 
@@ -39,9 +41,28 @@ class AIAgentProvider(ABC):
 
     provider_id: ClassVar[str]
 
+    capabilities: ClassVar[frozenset[str]] = frozenset({"analyze", "edit"})
+    """Capability faces this backend declares, from ``analyze``/``edit``/``skill``.
+
+    The default mirrors the abstract surface every backend must implement, so a
+    subclass that never declares the classvar keeps the historical behavior:
+    ``supports_skills`` then derives from the ``run_skill`` override. Declaring
+    ``capabilities`` explicitly wins over that derivation, which makes a missing
+    Skill capability enumerable instead of silent.
+    """
+
     def __init__(self, settings: Settings | None = None) -> None:
         """Keep the deployment settings available without re-reading the env."""
         self._settings = settings
+
+    @classmethod
+    def from_settings(cls, settings: Settings | None) -> Self:
+        """Build one provider from the deployment settings.
+
+        Backends with their own configuration namespace override this classmethod
+        to resolve their entries; the default binds the settings unchanged.
+        """
+        return cls(settings)
 
     @property
     def settings(self) -> Settings | None:
@@ -58,7 +79,15 @@ class AIAgentProvider(ABC):
 
     @property
     def supports_skills(self) -> bool:
-        """Whether the deployed provider implements the optional Skill entry point."""
+        """Whether the deployed provider implements the optional Skill entry point.
+
+        An explicit ``capabilities`` declaration is authoritative; subclasses
+        that never declared one fall back to the historical derivation from the
+        ``run_skill`` override so pre-existing backends keep their assembly.
+        """
+        declared = _declared_capabilities(type(self))
+        if declared is not None:
+            return "skill" in declared
         return type(self).run_skill is not AIAgentProvider.run_skill
 
     def skill_preflight_error(self) -> str | None:
@@ -82,6 +111,21 @@ class AIAgentProvider(ABC):
         """Public settings that pin an executable Skill to its model for replay."""
         return {"model": model} if model is not None else {"selection": "provider-default"}
 
+    def stage_skill(self, work: Path, name: str, files: Mapping[str, bytes]) -> str:
+        """Stage the neutral skill layout into ``work`` and return the native prefix.
+
+        ``files`` maps frozen, checksum-verified relative paths to their bytes.
+        A backend lays them out in its best form under ``work/skills/<name>/``
+        or beyond, and returns an optional native invocation prefix; an empty
+        string means the backend needs no prefix. Callers append the prefix to
+        the platform task text, which references ``skills/<name>/SKILL.md``.
+        """
+        raise AgentProviderError(
+            "provider does not support Skill staging",
+            provider_id=self.provider_id,
+            retryable=False,
+        )
+
     async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict[str, Any]) -> int:
         """Return token use; put sanitized attempt details in diagnostics even on failure."""
         raise AgentProviderError(
@@ -95,9 +139,24 @@ class AIAgentProvider(ABC):
         """Return a sanitized health snapshot for startup assembly."""
 
 
+def _declared_capabilities(owner: type[AIAgentProvider]) -> frozenset[str] | None:
+    """Return the closest explicit ``capabilities`` declaration, or ``None``.
+
+    Walking the MRO up to (excluding) this parent keeps subclasses that never
+    declared the classvar on the derivation path, while a mixin between them
+    and this parent still counts as an explicit declaration.
+    """
+    for klass in owner.__mro__:
+        if klass is AIAgentProvider:
+            return None
+        if "capabilities" in klass.__dict__:
+            declared = klass.__dict__["capabilities"]
+            return declared if isinstance(declared, frozenset) else frozenset(declared)
+    return None
+
+
 __all__ = [
     "ANALYZE_TIMEOUT_SECONDS",
     "EDIT_TIMEOUT_SECONDS",
-    "PERMISSION_MODE",
     "AIAgentProvider",
 ]

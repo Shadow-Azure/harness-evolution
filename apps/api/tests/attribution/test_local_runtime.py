@@ -8,9 +8,10 @@ import os
 import runpy
 import sys
 import zipfile
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from sqlalchemy import insert, select
@@ -45,23 +46,38 @@ class Source:
 
 
 class ScriptAgent(FakeAIAgentProvider):
+    """Zero-adaptation stub: declares the skill capability and stages no alias."""
+
     provider_id = "script-test"
     category = "flow"
     verdict = "attributed"
     cause = "流程缺少校验"
+    capabilities: ClassVar[frozenset[str]] = frozenset({"analyze", "edit", "skill"})
+
+    def stage_skill(self, work: Path, name: str, files: Mapping[str, bytes]) -> str:
+        """Reuse the neutral layout unchanged and return no native prefix."""
+        for relative, content in files.items():
+            dest = work / "skills" / name / relative
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(content)
+        return ""
 
     async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict[str, Any]) -> int:
         import asyncio
 
         directory, prompt = request.directory, request.prompt
-        skill = next((directory / ".claude/skills").iterdir()).name
-        assert prompt == f"/{skill} input_badcase.json，请分析并生成归因报告"  # noqa: RUF001
+        skill = next((directory / "skills").iterdir()).name
+        assert prompt == (
+            f"使用 {skill} skill：读取 skills/{skill}/SKILL.md 并严格遵循其中的全部指令，"  # noqa: RUF001
+            "分析本目录的 input_badcase.json 并生成归因报告。"
+        )
+        assert not (directory / ".claude").exists()
         assert (directory / "session_tree.json").is_file()
         assert (directory / "attribute_source.md").is_file()
         row = json.loads((directory / "input_badcase.json").read_bytes())["bad_cases"][0]
         proc = await asyncio.create_subprocess_exec(
             sys.executable,
-            f".claude/skills/{skill}/make_probe_report.py",
+            f"skills/{skill}/make_probe_report.py",
             "--input-badcase",
             "input_badcase.json",
             "--bad-case-id",
@@ -143,7 +159,7 @@ async def test_local_skill_report_to_sqlite(
             "---\nname: acceptance-skill\ndescription: Attribution acceptance case\n---\n"
             "Read input_badcase.json. Treat the reported object as the actual target. "
             "Classify this synthetic case as flow. Use python3 "
-            ".claude/skills/acceptance-skill/make_probe_report.py "
+            "skills/acceptance-skill/make_probe_report.py "
             "to write probe_report.json in the working directory. Stop after success.",
         )
     user_id = await create_user(db, username="acceptance")
@@ -230,7 +246,10 @@ async def test_local_skill_report_to_sqlite(
     )
     audit = json.loads(artifact.with_name("attribute_log.json").read_bytes())
     assert audit["status"] == "report_validated" and audit["badcaseId"] == CASE_ID
-    assert audit["prompt"].startswith(f"/{selected.skill_key} input_badcase.json")
+    assert audit["prompt"].startswith(
+        f"使用 {selected.skill_key} skill：读取 skills/"  # noqa: RUF001
+    )
+    assert audit["prompt"].endswith("并生成归因报告。")
     assert (service.root(run.workspace_id) / audit["inputManifest"]).is_file()
     history = artifact.parent / "logs" / audit["attempt"] / "attribute_log.json"
     assert json.loads(history.read_bytes()) == audit
