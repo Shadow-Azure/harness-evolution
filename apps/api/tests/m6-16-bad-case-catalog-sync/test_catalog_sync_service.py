@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import logging
+from collections.abc import AsyncIterator, Mapping
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -62,6 +64,7 @@ def _item(
     case_id: int,
     *,
     title: str | None = None,
+    bad_case_type: str | None = "self",
     object_name: str | None = "deep-research",
     object_type: str | None = "skill",
     source: str | None = "test",
@@ -69,7 +72,7 @@ def _item(
     return BadCaseItem(
         bad_case_id=case_id,
         bad_case_session_id=f"session-{case_id}",
-        bad_case_type="self",
+        bad_case_type=bad_case_type,
         object_name=object_name,
         object_type=object_type,
         object_version="v1",
@@ -334,6 +337,117 @@ async def test_missing_object_name_and_source_fall_back_to_unknown(
         row = (await session.execute(select(bad_cases))).mappings().one()
     assert row["object_name"] == "unknown"
     assert row["object_type"] == "skill"
+
+
+async def _row_by_id(database: Database, case_id: int) -> Mapping[str, Any]:
+    """Return the stored bad_cases row for one id."""
+    async with database.session() as session:
+        rows = (await session.execute(select(bad_cases))).mappings().all()
+    return {str(row["bad_case_id"]): dict(row) for row in rows}[str(case_id)]
+
+
+@pytest.mark.asyncio
+async def test_null_bad_case_type_falls_back_to_self(database: Database) -> None:
+    """A null upstream type lands as self so type-scoped counts keep the row."""
+    source = FakeSource([_item(1, bad_case_type=None)])
+    service = _service(database, source)
+
+    await service.run(owner="job-1")
+
+    row = await _row_by_id(database, 1)
+    assert row["bad_case_type"] == "self"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("upstream_length", [200, 201, 300])
+async def test_title_is_verbatim_up_to_200_and_truncated_beyond(
+    database: Database,
+    upstream_length: int,
+) -> None:
+    """At most the first 200 characters of an upstream title reach the column."""
+    title = "t" * upstream_length
+    source = FakeSource([_item(1, title=title)])
+    service = _service(database, source)
+
+    await service.run(owner="job-1")
+
+    assert (await _titles(database))["1"] == title[:200]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("explicit_type", ["self", "discovery"])
+async def test_explicit_bad_case_type_and_short_title_stay_verbatim(
+    database: Database,
+    explicit_type: str,
+) -> None:
+    """Explicit types and short titles are never rewritten by the mapping."""
+    source = FakeSource([_item(1, bad_case_type=explicit_type)])
+    service = _service(database, source)
+
+    await service.run(owner="job-1")
+
+    row = await _row_by_id(database, 1)
+    assert row["bad_case_type"] == explicit_type
+    assert row["title"] == "case 1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("bad_case_type", "title_length", "fields"),
+    [
+        (None, 300, "bad_case_type,title"),
+        (None, 10, "bad_case_type"),
+        ("self", 300, "title"),
+    ],
+)
+async def test_normalization_logs_bad_case_id_and_hit_fields(
+    database: Database,
+    bad_case_type: str | None,
+    title_length: int,
+    fields: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Each normalized row logs one record naming the case and the hit fields."""
+    source = FakeSource(
+        [_item(1, bad_case_type=bad_case_type, title="t" * title_length)],
+    )
+    service = _service(database, source)
+
+    with caplog.at_level(
+        logging.INFO,
+        logger="app.service.acquisition.bad_case_catalog_sync",
+    ):
+        await service.run(owner="job-1")
+
+    records = [
+        record
+        for record in caplog.records
+        if record.name == "app.service.acquisition.bad_case_catalog_sync"
+    ]
+    assert [getattr(record, "badCaseId", None) for record in records] == [1]
+    assert [getattr(record, "fields", None) for record in records] == [fields]
+
+
+@pytest.mark.asyncio
+async def test_verbatim_rows_emit_no_normalization_log(
+    database: Database,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A row that needs no normalization emits no normalization record."""
+    source = FakeSource([_item(1)])
+    service = _service(database, source)
+
+    with caplog.at_level(
+        logging.INFO,
+        logger="app.service.acquisition.bad_case_catalog_sync",
+    ):
+        await service.run(owner="job-1")
+
+    assert not [
+        record
+        for record in caplog.records
+        if record.name == "app.service.acquisition.bad_case_catalog_sync"
+    ]
 
 
 @pytest.mark.asyncio

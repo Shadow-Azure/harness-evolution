@@ -108,14 +108,18 @@ Accept: application/json
 | 接口字段 | 表列 | 处理 |
 |---|---|---|
 | `bad_case_id` | `bad_cases.bad_case_id` | 接口是整数，落库转十进制字符串 |
-| `bad_case_title` | `bad_cases.title` | 唯一改名映射 |
+| `bad_case_type` | `bad_cases.bad_case_type` | null 或缺失时取 `self`；显式值原样写入，非空仍限 1–16 字符 |
+| `bad_case_title` | `bad_cases.title` | 唯一改名映射；超过 200 字符截断为前 200 字符，200 字符以内原样保留 |
 | `object_name` | `bad_cases.object_name` | 为空时：`source` 为 `code_reivew` / `code_review` 取 `code-review`；否则取 `source`；`source` 为空取 `unknown` |
 | `object_type` | `bad_cases.object_type` | 为空时取 `skill` |
 | `created_at` / `updated_at` | 同名 | 可选；存在时解析 ISO-8601 带时区时间并按原值写入，缺失时用本次同步时间兜底 |
 
+null/缺失 type 落 `self` 与 title 超 200 截前 200 都是写入映射（`_row`）的归一化规则，不在解析层改写任何值；为承接上游真实形状，传输模型仅放宽这两个字段——`bad_case_type` 允许 null 或缺失、`title` 只保留非空约束——命中归一化时记录一条含 `badCaseId` 与命中字段名的 info 日志，用于区分上游漂移与本地逻辑错误。
+
 ### 3.3 校验、错误与串行
 
 - 严格模型：`extra="forbid"`，缺必填字段、类型不符、id 非递增、页大小超限、`total < len(items)` 都记为 `BAD_CASE_QUERY_INVALID_RESPONSE`。
+- `bad_case_type` 可为 null 或缺失、`title` 不设长度上限（归一化见 §3.2），这是传输模型仅有的两处放宽；其余字段校验、`extra="forbid"` 与页级结构校验不变，任何其他非法形状仍整页记为 `BAD_CASE_QUERY_INVALID_RESPONSE`。
 - 时间戳字段可以缺失：`bad_cases.created_at` / `updated_at` 是 NOT NULL，缺失时用本次同步时间兜底，不判非法；存在但不是带时区 ISO-8601 才算响应非法。
 - 4xx 不重试；401/403 → `BAD_CASE_QUERY_UNAUTHORIZED`；429/5xx/超时按配置重试；重试耗尽 → `BAD_CASE_QUERY_TIMEOUT` / `BAD_CASE_QUERY_REQUEST_FAILED`。
 - `BadCaseCatalogQuerySource` 内部用一把 `asyncio.Lock` 包住每次请求；即使未来有第二个调用方，也不会并发。
