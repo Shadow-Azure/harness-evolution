@@ -10,7 +10,7 @@ depends:
   - bugfix-21
   - bugfix-27
 priority: P2
-status: ready
+status: done
 scope:
   - apps/api/app/service/evolution/**
   - apps/api/tests/**
