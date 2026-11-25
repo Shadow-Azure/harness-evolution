@@ -8,7 +8,7 @@ id: bugfix-59
 milestone: bugfix
 depends: []
 priority: P2
-status: ready
+status: done
 scope:
   - apps/api/app/third_party_api/ai_agent/**
   - apps/api/app/service/evolution/local_attribution.py
