@@ -19,6 +19,7 @@ scope:
   - docs/**
   - plans/**
   - .agents/**
+  - attribute/**
   - scripts/doc-budgets.manifest.json
 adr: []
 github:
