@@ -15,6 +15,7 @@ scope:
   - apps/api/app/service/evolution/patch_source.py
   - apps/api/app/config.py
   - apps/api/app/main.py
+  - apps/api/app/third_party_api/attribution/writer_entrypoint.py
   - apps/api/tests/**
   - docs/**
   - plans/**
