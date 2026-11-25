@@ -158,7 +158,7 @@ async def test_knowledge_migration_adds_columns_index_and_workspace_default(
                 )
             ).scalar_one()
 
-        assert revision == "0032"
+        assert revision == "0033"
         assert dict(event) == {
             "document_id": None,
             "document_revision": None,

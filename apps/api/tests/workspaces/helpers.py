@@ -4,10 +4,13 @@ from datetime import datetime, timedelta
 from typing import Annotated, cast
 
 from fastapi import Depends, FastAPI
-from sqlalchemy import insert, text
+from sqlalchemy import insert
 
 from app.api.deps import require_workspace_role
 from app.db.base import Database
+from app.db.crud.fixtures import (
+    backfill_legacy_associations as fixtures_backfill_legacy_associations,
+)
 from app.db.models.domain import bad_cases, workspace_bad_cases
 from app.db.models.users import users
 from app.db.models.workspace import workspace_members, workspaces
@@ -146,33 +149,12 @@ async def associate_case(
 
 
 async def backfill_legacy_associations(database: Database) -> None:
-    """Mirror migration 0032 for fixtures that seed ownership without associations.
+    """Mirror migration 0033 for fixtures that seed ownership without associations.
 
-    Workspace-scoped reads derive visibility from ``workspace_bad_cases``, so a
-    fixture that writes ``bad_cases.workspace_id`` directly must backfill the
-    matching ``legacy_owner`` rows exactly as the migration would have. The
-    ``NOT EXISTS`` guard makes repeated calls idempotent, so a fixture may call
-    it after seeding and again after adding more owned cases.
+    Delegates to the shared corpus/fixture helper so the migration semantics
+    live in one place; the ``NOT EXISTS`` guard keeps repeated calls idempotent.
     """
-    async with database.transaction() as session:
-        await session.execute(
-            text(
-                """
-                INSERT INTO workspace_bad_cases (
-                    workspace_id, bad_case_id, assignment_source, label, assigned_at
-                )
-                SELECT bc.workspace_id, bc.bad_case_id, 'legacy_owner', NULL, CURRENT_TIMESTAMP
-                FROM bad_cases bc
-                WHERE bc.workspace_id IS NOT NULL
-                  AND NOT EXISTS (
-                    SELECT 1 FROM workspace_bad_cases wbc
-                    WHERE wbc.workspace_id = bc.workspace_id
-                      AND wbc.bad_case_id = bc.bad_case_id
-                      AND wbc.assignment_source = 'legacy_owner'
-                  )
-                """,
-            ),
-        )
+    await fixtures_backfill_legacy_associations(database)
 
 
 def access_token(

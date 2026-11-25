@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -366,7 +366,9 @@ async def test_assignment_failure_rolls_back_fact_and_cursor(database: Database)
 
     state = await repository.get_state()
     async with database.session() as session:
-        facts = (await session.execute(select(bad_cases.c.bad_case_id))).scalars().all()
+        facts: Sequence[str] = (
+            (await session.execute(select(bad_cases.c.bad_case_id))).scalars().all()
+        )
     assert state is not None
     assert state.last_bad_case_id == 0
     assert facts == []

@@ -11,6 +11,7 @@ from sqlalchemy.engine import CursorResult
 
 from app.db.base import Database
 from app.db.crud.attributions import CandidateWrite, ProbeWrite
+from app.db.crud.fixtures import backfill_legacy_associations
 from app.db.models.domain import (
     agent_events,
     agents,
@@ -164,6 +165,7 @@ async def seed_case(
                 updated_at=NOW,
             ),
         )
+    await backfill_legacy_associations(database)
 
 
 async def seed_run(

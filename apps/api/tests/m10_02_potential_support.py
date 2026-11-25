@@ -17,7 +17,7 @@ from sqlalchemy.engine import CursorResult
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.attributions import attribution_cache_key
-from app.db.crud.fixtures import ensure_fixture_external_tables
+from app.db.crud.fixtures import backfill_legacy_associations, ensure_fixture_external_tables
 from app.db.crud.potential import ObjectType, PotentialRepository, window_day_boundaries
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
@@ -343,6 +343,7 @@ async def seed_case(
                 updated_at=created_at,
             ),
         )
+    await backfill_legacy_associations(database)
 
 
 async def seed_probe(
