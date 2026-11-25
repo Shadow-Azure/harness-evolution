@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from app.config import Settings
 from app.third_party_api.ai_agent import (
     ClaudeCodeProvider,
     SkillRunRequest,
@@ -91,8 +92,6 @@ async def test_attribution_uses_shared_service_binary_and_settings(
     snapshot_model: str | None,
     expected: str | None,
 ) -> None:
-    from app.config import Settings
-
     binary = tmp_path / "shared" / "current" / "bin" / "claude"
     binary.parent.mkdir(parents=True)
     binary.write_text(
@@ -131,6 +130,7 @@ print(json.dumps({"subtype": "success", "result": model, "usage": {"input_tokens
         Settings(
             ai_agent_provider="claude-code",
             ai_agent_claude_bin=str(binary),
+            attribution_bwrap_enabled=True,
             ai_agent_claude_settings=str(settings_file),
         ),
     )
@@ -160,8 +160,6 @@ async def test_shared_provider_keeps_concurrent_skill_sessions_separate(
 ) -> None:
     import asyncio
 
-    from app.config import Settings
-
     executable = tmp_path / "claude"
     executable.write_text(
         """#!/usr/bin/env python3
@@ -175,7 +173,8 @@ print(json.dumps({"subtype": "success", "result": name, "usage": {"output_tokens
     executable.chmod(0o700)
     monkeypatch.setattr(claude_skill, "_sandbox", lambda *_: [])
     provider = ClaudeCodeProvider(
-        Settings(ai_agent_claude_bin=str(executable)), settings_path=tmp_path / "settings"
+        Settings(ai_agent_claude_bin=str(executable), attribution_bwrap_enabled=True),
+        settings_path=tmp_path / "settings",
     )
 
     async def invoke(name: str) -> tuple[int, dict[str, Any]]:
@@ -202,7 +201,6 @@ async def test_skill_keeps_private_diagnostics_when_interrupted(
     import asyncio
     from unittest.mock import AsyncMock
 
-    from app.config import Settings
     from app.third_party_api.ai_agent.claude_cli import ClaudeCliCancelled, ClaudeCliResult
 
     binary = tmp_path / "claude"
@@ -217,7 +215,7 @@ async def test_skill_keeps_private_diagnostics_when_interrupted(
         runner.run.return_value = stopped
     monkeypatch.setattr(claude_skill, "_sandbox", lambda *_: ["sandbox"])
     provider = ClaudeCodeProvider(
-        Settings(ai_agent_claude_bin=str(binary)),
+        Settings(ai_agent_claude_bin=str(binary), attribution_bwrap_enabled=True),
         runner=runner,
         settings_path=tmp_path / "settings",
     )

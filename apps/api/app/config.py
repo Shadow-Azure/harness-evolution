@@ -193,6 +193,7 @@ class Settings(BaseSettings):
     attribution_default_skill_path: Path = _ASSET_ROOT / "attribute-badcases" / "SKILL.md"
     attribution_golden_set_path: Path = DEFAULT_ATTRIBUTION_GOLDEN_SET
     attribution_llm: str = "agent-native"
+    attribution_bwrap_enabled: bool = True
     attribution_timeout_seconds: int = Field(default=600, ge=1, le=3600)
     db_dialect: DatabaseDialect = DatabaseDialect.MYSQL
     db_url: str | None = None

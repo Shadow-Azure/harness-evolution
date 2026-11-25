@@ -582,6 +582,7 @@ def create_app(
             "attribution runtime preflight",
             extra={
                 "event": "attribution.preflight",
+                "bwrap_enabled": resolved_settings.attribution_bwrap_enabled,
                 "provider_id": ai_agent_provider.provider_id,
                 "ready": attribution_enabled,
                 "error_code": attribution_error,

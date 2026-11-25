@@ -69,6 +69,7 @@ async def test_failed_cli_envelopes_never_publish_success(
     settings = Settings(
         ai_agent_provider="claude-code",
         ai_agent_claude_bin=str(binary),
+        attribution_bwrap_enabled=True,
         ai_agent_claude_settings=str(tmp_path / "none"),
     )
     work = tmp_path / "attempt"

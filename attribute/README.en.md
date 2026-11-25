@@ -51,9 +51,9 @@ Session and Badcase directory names normally use the original ID. For IDs with c
 
 ## Claude working directory and report
 
-The worker and wizard call `run_skill` with the frozen provider and model. Claude runs `/<skill_name> input_badcase.json，请分析并生成归因报告` with five frozen inputs and the Skill under `.claude/skills/<skill_name>/` (alias `.cac/skills/`). Its isolated home is temporary. The platform verifies the writer invocation and regenerates the report from the original input before publication and database ingestion.
+The worker and wizard call `run_skill` with the frozen provider, model and Skill and the prompt `/<skill_name> input_badcase.json，请分析并生成归因报告`. Linux defaults to bubblewrap and macOS uses Seatbelt. Both sandboxes load the Skill from `.claude/skills/<skill_name>/` (alias `.cac/skills/`). Only an explicit `HE_ATTRIBUTION_BWRAP_ENABLED=false` on Linux selects case tools. Claude then receives the frozen `SKILL.md` as text, uses `read_evidence` to page through the five inputs and `skill/` files, and calls `write_probe_report` with the case ID and paths fixed by the platform. Each attempt has a private home. Both paths verify the writer receipt and regenerate the report from the original input before ingestion.
 
-`attribute_log.json` holds the last finished attempt. Each `logs/<attempt>/` preserves its status, prompt, input manifest, Claude session ID, visible turns, tool calls and results, CLI result and usage. The main transcript read is limited to 8 MiB; see `transcript.status` for partial or unavailable history. The database confirms ingestion after `report_validated`.
+`attribute_log.json` records the latest finished attempt. Each `logs/<attempt>/` keeps its own history. `execution.executionMode` identifies `case-tools`, `bubblewrap` or `seatbelt`. The log includes the prompt, input manifest, Claude session ID, visible turns, tool calls and usage. The transcript read is limited to 8 MiB, with details in `transcript.status`. `report_validated` indicates a verified report. The database confirms ingestion.
 
 ## Trace a report back to its inputs
 

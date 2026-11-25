@@ -11,9 +11,17 @@ from unittest.mock import Mock
 import pytest
 
 from app.config import Settings
-from app.third_party_api.ai_agent import build_agent_provider, claude_skill
+from app.third_party_api.ai_agent import ClaudeCodeProvider, build_agent_provider, claude_skill
 from app.third_party_api.ai_agent.base import SKILL_UNSUPPORTED
 from app.third_party_api.ai_agent.preflight import main
+
+
+def test_linux_provider_without_injected_settings_requires_bwrap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(claude_skill, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(claude_skill, "shutil", SimpleNamespace(which=lambda _: None))
+    assert ClaudeCodeProvider().skill_preflight_error() == "ATTRIBUTION_BWRAP_MISSING"
 
 
 def test_provider_capability_skips_unneeded_linux_probe(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -24,6 +32,12 @@ def test_provider_capability_skips_unneeded_linux_probe(monkeypatch: pytest.Monk
         build_agent_provider(Settings(ai_agent_provider="fake")).skill_preflight_error()
         == SKILL_UNSUPPORTED
     )
+    monkeypatch.setenv("HE_ATTRIBUTION_BWRAP_ENABLED", "false")
+    assert (
+        build_agent_provider(Settings(ai_agent_provider="claude-code")).skill_preflight_error()
+        is None
+    )
+    monkeypatch.setenv("HE_ATTRIBUTION_BWRAP_ENABLED", "true")
     monkeypatch.setattr(claude_skill, "sys", SimpleNamespace(platform="darwin"))
     assert (
         build_agent_provider(Settings(ai_agent_provider="claude-code")).skill_preflight_error()
@@ -49,16 +63,22 @@ def _script(path: Path, source: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("provider", "bwrap_exit", "expected"),
+    ("provider", "enabled", "bwrap_exit", "expected"),
     [
-        (None, None, "ATTRIBUTION_BWRAP_MISSING"),
-        ("claude-code", 1, "ATTRIBUTION_BWRAP_UNUSABLE"),
-        ("claude-code", 0, "ready=True"),
-        ("fake", None, "cache_only=True"),
+        (None, None, None, "ATTRIBUTION_BWRAP_MISSING"),
+        (None, None, 1, "ATTRIBUTION_BWRAP_UNUSABLE"),
+        (None, None, 0, "ready=True"),
+        ("claude-code", "false", None, "ready=True"),
+        ("claude-code", "false", 1, "ready=True"),
+        ("claude-code", "true", None, "ATTRIBUTION_BWRAP_MISSING"),
+        ("claude-code", "true", 1, "ATTRIBUTION_BWRAP_UNUSABLE"),
+        ("claude-code", "true", 0, "ready=True"),
+        ("fake", "true", None, "cache_only=True"),
+        ("claude-code", "invalid", None, "ATTRIBUTION_CONFIG_INVALID"),
     ],
 )
 def test_release_checks_candidate_before_switch_or_migration(
-    tmp_path: Path, provider: str | None, bwrap_exit: int | None, expected: str
+    tmp_path: Path, provider: str | None, enabled: str | None, bwrap_exit: int | None, expected: str
 ) -> None:
     root = Path(__file__).resolve().parents[3]
     shared = tmp_path / "shared"
@@ -109,6 +129,7 @@ runpy.run_module(sys.argv[2], run_name="__main__")
     env_file.write_text(
         "HE_DATA_DIR=/var/lib/he-preflight-test\nHE_JWT_SECRET=fixture-signing-secret\nHE_DB_URL=sqlite:///fixture\n"
         + (f"AI_AGENT_PROVIDER={provider}\n" if provider else "")
+        + (f"HE_ATTRIBUTION_BWRAP_ENABLED={enabled}\n" if enabled else "")
     )
     backup = shared / ".env.bak.candidate"
     backup.write_text("previous-release-environment\n")
@@ -122,6 +143,8 @@ runpy.run_module(sys.argv[2], run_name="__main__")
     )
     output = result.stdout + result.stderr
     assert expected in output, output
+    if enabled != "invalid":
+        assert f"bwrap_enabled={enabled != 'false'}" in output
     assert "fixture-signing-secret" not in output
     blocked = expected.startswith("ATTRIBUTION_")
     assert result.returncode == (1 if blocked else 77), output

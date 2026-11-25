@@ -20,8 +20,8 @@ session unavailable for ``--resume``, so the retry is a new call, not a resumed
 conversation.
 
 Analysis and edits use the deployment environment. Skill calls project only
-their allowed settings into a private home and sandbox. The shared runner
-keeps credentials off argv and bounds stderr for diagnostics.
+their allowed settings into a private home and use case tools or a filesystem sandbox.
+The shared runner keeps credentials off argv and bounds stderr for diagnostics.
 """
 
 from __future__ import annotations
@@ -177,6 +177,7 @@ class ClaudeCodeProvider(AIAgentProvider):
         super().__init__(settings)
         self._runner = runner if runner is not None else AsyncioClaudeCliRunner()
         self._runner_injected = runner is not None
+        self._bwrap_enabled = settings is None or settings.attribution_bwrap_enabled
         self._settings_path_override = settings_path
         self._clock = clock
         self._submission = StructuredSubmission()
@@ -195,7 +196,7 @@ class ClaudeCodeProvider(AIAgentProvider):
         return claude_skill.default_model(self._settings_file())
 
     def skill_preflight_error(self) -> str | None:
-        return claude_skill.sandbox_preflight_error()
+        return claude_skill.sandbox_preflight_error() if self._bwrap_enabled else None
 
     def skill_model_identity(self, model: str | None) -> dict[str, str]:
         return claude_skill.model_identity(model, self._settings_file())
@@ -208,6 +209,7 @@ class ClaudeCodeProvider(AIAgentProvider):
             self._runner,
             self._binary(),
             self._settings_file(),
+            bwrap_enabled=self._bwrap_enabled,
             allow_path_fallback=not self.settings
             or self.settings.ai_agent_claude_bin == DEFAULT_CLAUDE_BIN,
         )

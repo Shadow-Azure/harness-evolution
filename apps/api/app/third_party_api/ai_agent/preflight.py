@@ -9,22 +9,22 @@ from app.third_party_api.ai_agent.factory import build_agent_provider
 
 def main() -> int:
     try:
-        provider = build_agent_provider(Settings())
+        settings = Settings()
+        provider = build_agent_provider(settings)
     except ValueError:
         # A settings validation error can contain environment values.
         print("attribution.preflight error_code=ATTRIBUTION_CONFIG_INVALID", file=sys.stderr)
         return 1
+    status = f"attribution.preflight provider={provider.provider_id}"
+    status += f" bwrap_enabled={settings.attribution_bwrap_enabled}"
     reason = provider.skill_preflight_error()
     if reason == SKILL_UNSUPPORTED:
-        print(f"attribution.preflight provider={provider.provider_id} cache_only=True")
+        print(f"{status} cache_only=True")
         return 0
     if reason:
-        print(
-            f"attribution.preflight provider={provider.provider_id} error_code={reason}",
-            file=sys.stderr,
-        )
+        print(f"{status} error_code={reason}", file=sys.stderr)
         return 1
-    print(f"attribution.preflight provider={provider.provider_id} ready=True")
+    print(f"{status} ready=True")
     return 0
 
 

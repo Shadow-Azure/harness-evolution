@@ -6,7 +6,7 @@ Status: implemented
 
 ## Problem
 
-归因 Skill 在 Linux 上依赖 `bubblewrap`，但它是 OS 包，不在 Python 依赖里。生产机在 bootstrap 加入该包之前初始化，最近的 Deploy 被 `attribution.preflight` 拦下；旧 release 继续服务，但新版本无法上线。日常 Deploy 以 `deploy` 用户运行，sudoers 只覆盖 `systemctl`，没有 apt/dpkg 权限。若把 apt 交给 deploy，等于把 root 交给流水线；若继续人工 SSH 装包，则不可重复、不可审计，也无法覆盖新机。
+Linux 默认在 `bubblewrap` 命名空间中运行归因 Skill。日常 Deploy 账号的 sudoers 只覆盖 `systemctl`。安装系统包需要单独的 root 权限和可审计的操作入口。显式关闭沙箱时使用 API 的 Python 环境提供的单条证据与报告工具。
 
 ## Decision
 
@@ -27,7 +27,7 @@ Status: implemented
 
 ## Consequences
 
-- 存量机需要一次性 root 授权：把专用公钥加入 `authorized_keys` 并写入 `production` 环境的 `PROVISION_SSH_KEY`；之后由 workflow 执行，密钥可轮换，日志不含凭据。
+- 存量机通过 Provision 安装沙箱时需要一次性 root 授权，把专用公钥加入 `authorized_keys` 并写入 `production` 环境的 `PROVISION_SSH_KEY`；之后由 workflow 执行，密钥可轮换，日志不含凭据。
 - `production` 环境目前没有 required reviewers，且 GitHub 的环境 Secret 对同一环境的所有 job 可见；Deploy 也声明该环境，只是代码不引用这个 root key。要按 workflow 收窄，需要单独的 environment 或 required reviewers；当前账号没有创建 environment 的 admin 权限，这是已知限制。
 - `--check` 在缺包时会非零退出并给出 `ATTRIBUTION_BWRAP_MISSING`，因此“检查”本身可能让 workflow 变红；这是有意的可观测信号，安装后同一条命令应变绿。AppArmor profile 随 Provision 安装并持久化在 `/etc/apparmor.d`，重启后由 apparmor.service 重新加载。
 - 新增系统前置时沿用同一模式：脚本提供只读检查与幂等安装，CI 负责在干净主机上验证契约（见 #552），Deploy 继续 fail-closed。

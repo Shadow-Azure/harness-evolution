@@ -30,7 +30,7 @@ Bootstrap is done by [deploy/bootstrap-server.sh](../deploy/bootstrap-server.sh)
 
 ## Provision entry
 
-The attribution Skill's `bubblewrap` is a system package; the `deploy` user has no apt/dpkg rights, and routine releases only use `attribution.preflight` as the gate. Existing hosts use a standalone [Provision workflow](../.github/workflows/provision.yml): `workflow_dispatch` + `environment: production`; only a dispatch from `main` runs; modes are `check` / `install` / `dry-run`. It calls [provision-bubblewrap.sh](../deploy/provision-bubblewrap.sh), which only verifies when installed, installs when missing, and runs a namespace probe as `harness`; on Ubuntu 24.04 the AppArmor userns restriction is opened by the profile the script installs at `/etc/apparmor.d/bwrap-userns-restrict` (only for the resolved bwrap path, not the host-wide sysctl); `ATTRIBUTION_BWRAP_MISSING` / `ATTRIBUTION_BWRAP_UNUSABLE` match the preflight codes. The credentials are the `production` environment's `PROVISION_SSH_KEY` (dedicated root private key) and the optional Variable `PROVISION_SSH_USER` (default `root`); see the [deployment playbook](../plans/deploy-aliyun-playbook.md#4-github-仓库配置网页粘贴) for the secret read scope and rotation.
+Hosts using the default Linux bubblewrap sandbox can dispatch the [Provision workflow](../.github/workflows/provision.yml) from `main` in `check`, `install` or `dry-run` mode. It uses the `production` environment’s `PROVISION_SSH_KEY` and optional `PROVISION_SSH_USER` (default `root`). The [script](../deploy/provision-bubblewrap.sh) installs the package as needed and probes namespaces as `harness`. On Ubuntu 24.04, `/etc/apparmor.d/bwrap-userns-restrict` grants access specifically to bwrap. Routine releases run as `deploy`. See the [deployment playbook](../plans/deploy-aliyun-playbook.md#4-github-仓库配置网页粘贴) for credential rotation.
 
 ## New-host cloud-init
 
@@ -38,9 +38,7 @@ When creating an ECS instance, use [deploy/cloud-init.yaml](../deploy/cloud-init
 
 ## CI gate: deployment provisioning contract
 
-`deploy-contract` runs [verify_provisioning_contract.sh](../apps/api/tests/deploy/verify_provisioning_contract.sh) in a clean `ubuntu:24.04` container: the missing-package negative case, the provision install, the `harness` probe, and `attribution.preflight` must pass in order. [test_provisioning_contract.py](../apps/api/tests/deploy/test_provisioning_contract.py) runs with the API suite and statically asserts the prerequisite list, bootstrap/cloud-init/Provision consistency, and the `release.sh` preflight order. `deploy-contract` is in `ci-ok.needs`; branch protection only needs `ci-ok`.
-
-Adding a deployment runtime prerequisite and gate triage are covered in the [deployment playbook](../plans/deploy-aliyun-playbook.md#6-常见问题).
+`deploy-contract` runs the [deployment checks](../apps/api/tests/deploy/verify_provisioning_contract.sh) on clean Ubuntu 24.04. With bwrap missing, both the default and explicitly enabled modes return `ATTRIBUTION_BWRAP_MISSING`. Explicitly disabling the sandbox passes preflight. After Provision installs the package, the namespace probe and sandbox preflight must both pass as `harness`. The [API tests](../apps/api/tests/deploy/test_provisioning_contract.py) verify the package list used by bootstrap and cloud-init, the Provision install step and the release preflight order. Branch protection requires the aggregate `ci-ok` check. See the [deployment playbook](../plans/deploy-aliyun-playbook.md#6-常见问题) for prerequisite changes and troubleshooting.
 
 ## GitHub configuration
 
@@ -70,7 +68,7 @@ Model review and patch generation take Secrets `AI_AGENT_PROVIDER`, `HE_AI_AGENT
 
 ### Attribution runtime
 
-Binding attribution and wizard recomputation share the provider and model. Linux Claude needs `bubblewrap`: existing hosts install it through the [Provision entry](deployment.en.md#provision-entry), and new hosts run Provision `install` once after cloud-init. Deployment checks before migration and the API checks again on startup. Read the reason with `journalctl -u harness-api -g attribution.preflight`. Restart after recovery to resume the original binding. See the [service-account probe and report verification](../plans/deploy-aliyun-playbook.md#验证-skill-归因).
+Binding attribution and wizard recomputation share the provider and model. Linux runs Skills in [bubblewrap](deployment.en.md#provision-entry) by default. Missing packages or unusable namespaces leave bindings queued. Only `HE_ATTRIBUTION_BWRAP_ENABLED=false` in `/opt/harness/shared/.env` selects case tools and the platform report writer. Release preflight runs before migration and the API checks again at startup. Restart the API after changing the setting to resume existing bindings. Check `bwrap_enabled` and `ready` with `journalctl -u harness-api -g attribution.preflight`. See [attribution verification](../plans/deploy-aliyun-playbook.md#验证-skill-归因).
 
 ## Claude Code
 

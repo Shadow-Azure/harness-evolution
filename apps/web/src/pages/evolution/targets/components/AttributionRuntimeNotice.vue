@@ -13,7 +13,7 @@ defineProps<{ badge?: boolean }>();
     role="status"
   >
     <strong>归因运行时不可用。</strong>
-    已保存的绑定会保留。请管理员检查公共 AI Agent Provider 是否支持 Skill，以及 Linux 上的 bubblewrap 是否可用。运行时恢复并重启后，后台会继续领取待处理批次。
+    已保存的绑定会保留。请管理员检查公共 AI Agent Provider 的 Skill 能力，以及 Linux 服务账号的 bubblewrap 沙箱。需要使用单条证据工具时，请在服务端 .env 显式设置 HE_ATTRIBUTION_BWRAP_ENABLED=false。重启并通过预检后，后台会继续处理原批次。
   </p>
 </template>
 

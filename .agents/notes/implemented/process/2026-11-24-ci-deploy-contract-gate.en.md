@@ -13,7 +13,7 @@ PR #543 added `attribution.preflight` to the attribution runtime: on Linux, a mi
 Move the deployment provisioning contract into the required PR check, in two layers:
 
 - **Static contract** (`apps/api/tests/deploy/test_provisioning_contract.py`, run by the regular API suite): `deploy/attribution-runtime-prerequisites.list` is the single list of attribution runtime OS prerequisites; bootstrap reads it, cloud-init mirrors it, and the Provision script installs the same package; the `release.sh` preflight must come before `ln -sfn current`; the `deploy-contract` job must be in `ci-ok.needs`. Any drift fails at PR time.
-- **Clean-host runtime contract** (`apps/api/tests/deploy/verify_provisioning_contract.sh`, run by the `deploy-contract` job on an Ubuntu container): first remove any preinstalled `bwrap` and verify `--check` exits 10 with `ATTRIBUTION_BWRAP_MISSING`; then run the real `deploy/provision-bubblewrap.sh --install` and assert `state=ready`, `bwrap --version`, and a namespace probe as `harness`; finally run the candidate code's `attribution.preflight` as `harness` and assert `ready=True`. No mocks; CI and the Provision workflow share the same script.
+- `deploy-contract` runs `apps/api/tests/deploy/verify_provisioning_contract.sh` on clean Ubuntu. With bwrap removed, Provision `--check` must exit 10, the service-account preflight must return `ATTRIBUTION_BWRAP_MISSING` for both default and explicitly enabled settings, and the explicit opt-out must be ready. CI then runs the install script shared with the Provision workflow and verifies `state=ready`, `bwrap --version`, the service-account namespace probe and sandbox preflight.
 - Add `deploy-contract` to `ci-ok.needs`; branch protection still needs only `ci-ok` as the required check, so adding or removing lanes does not change repository settings.
 
 ## Alternatives considered
@@ -26,6 +26,6 @@ Move the deployment provisioning contract into the required PR check, in two lay
 ## Consequences
 
 - PR time grows by one lane (Python dependencies plus a real provision, expected to take a few minutes); in return, "new runtime prerequisite without a provisioning path" fails before merge.
-- When the attribution runtime gains an OS prerequisite, change `deploy/attribution-runtime-prerequisites.list` first, then mirror it in cloud-init and the Provision path; the static contract names each missing place.
+- When the sandbox gains an OS prerequisite, update `deploy/attribution-runtime-prerequisites.list`, the cloud-init template and the Provision installation path.
 - A container cannot load a host AppArmor profile, so the runtime contract proves the package exists and the service account can use bwrap; the Ubuntu 24.04 AppArmor remediation remains covered by the Provision script and the deployment playbook.
 - Branch protection must make `ci-ok` the required check (a one-time repository setting); adding only the job without changing protection can still let a PR bypass it.
