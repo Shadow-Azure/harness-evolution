@@ -150,7 +150,9 @@ async def backfill_legacy_associations(database: Database) -> None:
 
     Workspace-scoped reads derive visibility from ``workspace_bad_cases``, so a
     fixture that writes ``bad_cases.workspace_id`` directly must backfill the
-    matching ``legacy_owner`` rows exactly as the migration would have.
+    matching ``legacy_owner`` rows exactly as the migration would have. The
+    ``NOT EXISTS`` guard makes repeated calls idempotent, so a fixture may call
+    it after seeding and again after adding more owned cases.
     """
     async with database.transaction() as session:
         await session.execute(
@@ -159,9 +161,15 @@ async def backfill_legacy_associations(database: Database) -> None:
                 INSERT INTO workspace_bad_cases (
                     workspace_id, bad_case_id, assignment_source, label, assigned_at
                 )
-                SELECT workspace_id, bad_case_id, 'legacy_owner', NULL, CURRENT_TIMESTAMP
-                FROM bad_cases
-                WHERE workspace_id IS NOT NULL
+                SELECT bc.workspace_id, bc.bad_case_id, 'legacy_owner', NULL, CURRENT_TIMESTAMP
+                FROM bad_cases bc
+                WHERE bc.workspace_id IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM workspace_bad_cases wbc
+                    WHERE wbc.workspace_id = bc.workspace_id
+                      AND wbc.bad_case_id = bc.bad_case_id
+                      AND wbc.assignment_source = 'legacy_owner'
+                  )
                 """,
             ),
         )

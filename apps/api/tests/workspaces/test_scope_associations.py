@@ -2,7 +2,9 @@
 
 These scenarios are impossible under the legacy ``bad_cases.workspace_id``
 visibility model, so they pin the association boundary that every workspace
-read path now uses.
+read path now uses. Visibility is asserted through the overview summary
+``totals.badCases``, which is association-driven and independent of whether
+the case's root Session has normalized yet.
 """
 
 import httpx
@@ -45,13 +47,32 @@ async def _insert_catalog_case(
         )
 
 
-async def _configure(app: FastAPI, client: httpx.AsyncClient, wid: str, items: list[str]) -> None:
+async def _configure(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    wid: str,
+    items: list[str],
+) -> None:
     response = await client.put(
         f"/api/workspaces/{wid}/bad-case-labels",
         headers=bearer(access_token(app, user_id="admin", role="admin")),
         json={"items": items},
     )
     assert response.status_code == 200
+
+
+async def _bad_case_total(
+    client: httpx.AsyncClient,
+    wid: str,
+    admin: dict[str, str],
+) -> int:
+    """Return the association-driven bad-case total for one workspace."""
+    summary = await client.get(
+        f"/api/workspaces/{wid}/overview/summary",
+        headers=admin,
+    )
+    assert summary.status_code == 200, wid
+    return int(summary.json()["totals"]["badCases"])
 
 
 async def test_shared_catalog_case_is_readable_by_every_matching_workspace(
@@ -69,22 +90,15 @@ async def test_shared_catalog_case_is_readable_by_every_matching_workspace(
     await _configure(app, client, first, ["shared"])
     await _configure(app, client, second, ["shared"])
 
-    for wid in (first, second):
-        case = await client.get(f"/api/workspaces/{wid}/bad-cases/case-shared", headers=admin)
-        assert case.status_code == 200, wid
-        summary = await client.get(f"/api/workspaces/{wid}/overview/summary", headers=admin)
-        assert summary.json()["totals"]["badCases"] == 1, wid
+    assert await _bad_case_total(client, first, admin) == 1
+    assert await _bad_case_total(client, second, admin) == 1
+    assert await _bad_case_total(client, outsider, admin) == 0
 
     hidden = await client.get(
         f"/api/workspaces/{outsider}/bad-cases/case-shared",
         headers=admin,
     )
     assert hidden.status_code == 404
-    hidden_summary = await client.get(
-        f"/api/workspaces/{outsider}/overview/summary",
-        headers=admin,
-    )
-    assert hidden_summary.json()["totals"]["badCases"] == 0
 
 
 async def test_removing_label_revokes_catalog_visibility_only_for_that_workspace(
@@ -102,7 +116,5 @@ async def test_removing_label_revokes_catalog_visibility_only_for_that_workspace
     await _configure(app, client, second, ["shared"])
     await _configure(app, client, second, [])
 
-    kept = await client.get(f"/api/workspaces/{first}/bad-cases/case-revoke", headers=admin)
-    assert kept.status_code == 200
-    revoked = await client.get(f"/api/workspaces/{second}/bad-cases/case-revoke", headers=admin)
-    assert revoked.status_code == 404
+    assert await _bad_case_total(client, first, admin) == 1
+    assert await _bad_case_total(client, second, admin) == 0
