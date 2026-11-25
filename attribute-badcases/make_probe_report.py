@@ -1,53 +1,10 @@
 #!/usr/bin/env python3
 """Generate one `probe_report.json` with a fixed, machine-valid structure.
 
-The attribution skill previously let the model write the whole JSON file by
-hand, which invited structure drift (unexpected keys, broken nesting, wrong
-ids). This script flips that: **structure is owned by the program**, the model
-only fills the open-ended attribution content through command-line arguments.
-
-Model-provided fields (via CLI arguments):
-
-- `probe_object`      the **actual** attribution target — may differ from the
-  input `object` when the bad case is a discovery (检视正报) and the real
-  defect owner is an upstream skill/agent.
-- `object_version`    the **actual** attribution target's version. Required
-  whenever `probe_object` differs from the reported `object`: the reported
-  version belongs to the reporting object, so inheriting it would file the
-  discovery under a version its target never had.
-- `probe_type`        `skill` / `agent` / `knowledge`
-- `attribute_type`    one of a closed enum
-- `probe_description`
-- `probe_analysis`
-- optional `detail_description`, `proposal.*`
-
-Script-owned / derived fields (never editable by the caller):
-
-- `probe_id`          `{session_id}_{probe_object}_{bad_case_id}`
-- `from_bad_cases`    from the bad-case row — `bad_case_id` / `type` /
-  `object` / `object_version` / `bad_case_type` /
-  `bad_case_session_id` / `title` / `reason` / `source` all taken
-  verbatim from `input_badcase.json`. `object` and its `object_version`
-  here are the **reported** object, not the model-provided `probe_object`.
-
-Usage::
-
-    python make_probe_report.py   
-        --input-badcase <session>/input_badcase.json   
-        --bad-case-id <id>   
-        --probe_object "<actual attribution target>"   
-        --object-version "<actual attribution target version>"   
-        --attribute-type prompt   
-        --probe-description "<...>"   
-        --probe-analysis "<...>"   
-        [--probe_type skill]   
-        [--detail-description "<...>"]   
-        [--proposal-target-skill code-review]   
-        [--proposal-target-location "..."]   
-        [--proposal-change "..."]   
-        [--proposal-expected-behavior "..."]   
-        [--proposal-evaluation-plan "..."]   
-        [--output <path>]
+The selected_target comes from input_badcase.json. The caller supplies a verdict
+about that target, a root cause or evidence gap, an analysis with evidence
+references, and optionally the identity of a known causal object and a proposal.
+The original reporting object is preserved in from_bad_cases.
 
 Returns 0 and prints the written JSON path on success; prints the error and
 returns non-zero on validation failure.
@@ -61,9 +18,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-# Closed set aligned with the attribution consumer
-
-# (`attribution_runner._parse_badcase_result` marks these as "has_issue").
+CONCLUSIONS = ("attributed", "non_target", "inconclusive")
 
 ATTRIBUTE_TYPES: tuple[str, ...] = ("prompt", "model", "error", "flow", "context", "unknown")
 
@@ -131,12 +86,16 @@ def build_report(
     *,
     session_id: str,
     bad_case: dict[str, Any],
-    probe_object: str,
+    selected_target: dict[str, Any],
+    conclusion: str,
+    root_cause: str,
+    evidence_references: list[str],
+    probe_object: str | None,
     object_version: str | None,
     attribute_type: str,
     probe_description: str,
     probe_analysis: str,
-    probe_type: str,
+    probe_type: str | None,
     detail_description: str | None,
     proposal: dict[str, Any] | None,
 ) -> dict[str, Any]:
@@ -147,27 +106,29 @@ def build_report(
     the real defect owner is upstream. The reported `object` and its version
     are preserved verbatim inside `from_bad_cases`.
     """
+    if not isinstance(selected_target, dict) or not _text(selected_target.get("name")).strip():
+        raise ValidationError("input_badcase.json has no selected_target name")
+    if conclusion not in CONCLUSIONS:
+        raise ValidationError("invalid --conclusion")
+    if conclusion == "attributed" and attribute_type == "unknown":
+        raise ValidationError("attributed requires a known --attribute-type")
+    if not root_cause.strip():
+        raise ValidationError("--root-cause requires a cause or an evidence gap")
+    if any(not ref.strip() or len(ref) > 512 for ref in evidence_references):
+        raise ValidationError("each --evidence-ref must be 1 to 512 characters")
     if probe_type == "agents":
         probe_type = "agent"
-    if probe_type not in ("skill", "agent", "knowledge"):
+    if probe_type and probe_type not in ("skill", "agent", "knowledge"):
         raise ValidationError(f"invalid --probe_type: {probe_type}")
-    if not probe_object:
-        raise ValidationError("--probe_object is required (the actual attribution target)")
+    if not probe_object and (object_version or probe_type):
+        raise ValidationError("--probe_object is required with a causal object type or version")
     bad_case_id = _text(bad_case.get("bad_case_id"))
     if not bad_case_id:
         raise ValidationError("bad-case row has no 'bad_case_id'")
 
-    reported_object = _text(bad_case.get("object"))
-    resolved_version = _resolve_object_version(
-        probe_object=probe_object,
-        reported_object=reported_object,
-        reported_version=_text(bad_case.get("object_version")),
-        requested_version=object_version.strip() if isinstance(object_version, str) else "",
-    )
-
     from_bad_case: dict[str, Any] = {
         "bad_case_id": bad_case_id,
-        "type": _text(bad_case.get("type")) or probe_type,
+        "type": _text(bad_case.get("type")),
         "object": _text(bad_case.get("object")),
         "object_version": _text(bad_case.get("object_version")),
         "bad_case_type": _text(bad_case.get("bad_case_type")),
@@ -180,15 +141,25 @@ def build_report(
         from_bad_case["detail_description"] = detail_description
 
     report: dict[str, Any] = {
-        "probe_id": f"{session_id}*{probe_object}*{bad_case_id}",
-        "probe_type": probe_type,
-        "probe_object": probe_object,
-        "object_version": resolved_version,
+        "probe_id": f"{session_id}*{selected_target['name']}*{bad_case_id}",
+        "selected_target": selected_target,
+        "conclusion": conclusion,
+        "root_cause": root_cause,
+        "evidence_references": evidence_references,
         "attribute_type": attribute_type,
         "probe_description": probe_description,
         "probe_analysis": probe_analysis,
         "from_bad_cases": [from_bad_case],
     }
+    if probe_object:
+        report["probe_object"] = probe_object
+        report["probe_type"] = probe_type or DEFAULT_BAD_CASE_TYPE
+        report["object_version"] = _resolve_object_version(
+            probe_object=probe_object,
+            reported_object=_text(bad_case.get("object")),
+            reported_version=_text(bad_case.get("object_version")),
+            requested_version=(object_version or "").strip(),
+        )
     if proposal:
         report["proposal"] = proposal
     return report
@@ -206,12 +177,18 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
                         help="Path to the session's input_badcase.json")
     parser.add_argument("--bad-case-id", required=True,
                         help="The bad_case_id this probe report is for")
-    parser.add_argument("--probe_object", required=True,
+    parser.add_argument("--conclusion", required=True, choices=CONCLUSIONS,
+                        help="Whether the selected target caused this particular bad case")
+    parser.add_argument("--root-cause", required=True,
+                        help="Cause supported by evidence, or the gap preventing a determination")
+    parser.add_argument("--evidence-ref", action="append", default=[],
+                        help="Trace coordinate supporting the verdict; repeat for multiple references")
+    parser.add_argument("--probe_object",
                         help="The actual attribution target (may differ from input 'object' for discoveries)")
     parser.add_argument("--object-version", dest="object_version", default=None,
                         help="The actual attribution target's version; required when "
                             "--probe_object differs from the reported object")
-    parser.add_argument("--probe_type", default=DEFAULT_BAD_CASE_TYPE,
+    parser.add_argument("--probe_type",
                         help="Probe kind: 'skill', 'agent' or 'knowledge' (default 'skill')")
     parser.add_argument("--attribute-type", required=True, choices=ATTRIBUTE_TYPES,
                         help="Closed attribution category (prompt/model/error/flow/context/unknown)")
@@ -262,6 +239,10 @@ def main(argv: list[str] | None = None) -> int:
         report = build_report(
             session_id=session_id,
             bad_case=bad_case,
+            selected_target=session_data.get("selected_target"),
+            conclusion=args.conclusion,
+            root_cause=args.root_cause,
+            evidence_references=args.evidence_ref,
             probe_object=args.probe_object,
             object_version=args.object_version,
             attribute_type=args.attribute_type,
