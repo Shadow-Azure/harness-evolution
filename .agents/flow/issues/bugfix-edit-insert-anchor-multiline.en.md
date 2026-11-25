@@ -9,7 +9,7 @@ milestone: bugfix
 depends:
   - bugfix-46
 priority: P2
-status: ready
+status: in-progress
 scope:
   - apps/api/app/third_party_api/ai_agent/edits.py
   - apps/api/app/service/evolution/patch_source.py
@@ -17,7 +17,8 @@ scope:
   - docs/**
   - plans/**
   - .agents/**
-adr: []
+adr:
+  - ../../notes/implemented/bug-fix/2026-11-25-edit-insert-anchor-multiline.md
 github:
   number: 599
   url: https://github.com/Shadow-Azure/harness-evolution/issues/599
