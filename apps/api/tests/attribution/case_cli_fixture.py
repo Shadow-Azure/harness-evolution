@@ -28,6 +28,12 @@ async def _write_sandbox_report(args: list[str]) -> None:
         "input_badcase.json",
         "--bad-case-id",
         row["bad_case_id"],
+        "--conclusion",
+        "attributed",
+        "--root-cause",
+        "fixture cause",
+        "--evidence-ref",
+        "fixture:L1",
         "--probe_object",
         row["object"],
         "--probe_type",
@@ -78,6 +84,9 @@ async def _write_case_tool_report(args: list[str]) -> None:
             "write_probe_report",
             {
                 "report": {
+                    "conclusion": "attributed",
+                    "root_cause": "fixture cause",
+                    "evidence_references": ["fixture:L1"],
                     "probe_object": row["object"],
                     "probe_type": row["type"],
                     "attribute_type": "flow",

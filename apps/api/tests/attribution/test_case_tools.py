@@ -91,6 +91,9 @@ def test_only_frozen_evidence_and_selected_skill_are_readable(case: Path) -> Non
 
 def test_only_platform_writer_chooses_paths_and_case_identity(case: Path) -> None:
     fields = {
+        "conclusion": "attributed",
+        "root_cause": "fixture cause",
+        "evidence_references": ["fixture:L1"],
         "probe_object": "reporter",
         "probe_type": "agent",
         "attribute_type": "context",
@@ -109,6 +112,9 @@ def test_only_platform_writer_chooses_paths_and_case_identity(case: Path) -> Non
     report = json.loads(output.read_bytes())
     assert report["from_bad_cases"][0]["bad_case_id"] == "case-one"
     assert report["probe_description"] == fields["probe_description"]
+    assert report["conclusion"] == "attributed"
+    assert report["root_cause"] == "fixture cause"
+    assert report["evidence_references"] == ["fixture:L1"]
     assert json.loads((case / ".platform/receipt.json").read_bytes()) == {
         "path": output.name,
         "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),

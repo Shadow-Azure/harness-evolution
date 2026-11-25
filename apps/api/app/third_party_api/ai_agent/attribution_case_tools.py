@@ -27,8 +27,11 @@ class ReportFields(BaseModel):
     """Analysis fields accepted by the platform writer. Paths and case ID belong to the server."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
-    probe_object: str
-    probe_type: Literal["skill", "agent", "knowledge"] = "skill"
+    conclusion: Literal["attributed", "non_target", "inconclusive"]
+    root_cause: str
+    evidence_references: list[str] = []
+    probe_object: str | None = None
+    probe_type: Literal["skill", "agent", "knowledge"] | None = None
     object_version: str | None = None
     attribute_type: Literal["prompt", "model", "error", "flow", "context", "unknown"]
     probe_description: str
@@ -100,15 +103,38 @@ class CaseTools:
             sys.executable,
             "-I",
             str(writer),
-            "--input-badcase",
-            str(input_path),
+            f"--input-badcase={input_path}",
             f"--bad-case-id={case['bad_case_id']}",
-            "--output",
-            str(output),
+            f"--conclusion={report.conclusion}",
+            f"--root-cause={report.root_cause}",
+            f"--output={output}",
+            *(f"--evidence-ref={reference}" for reference in report.evidence_references),
         ]
-        for name, value in report.model_dump(exclude_none=True).items():
-            flag = name if name in {"probe_type", "probe_object"} else name.replace("_", "-")
-            args.append(f"--{flag}={value}")
+        if report.probe_object is not None:
+            args.append(f"--probe_object={report.probe_object}")
+        if report.probe_type is not None:
+            args.append(f"--probe_type={report.probe_type}")
+        if report.object_version is not None:
+            args.append(f"--object-version={report.object_version}")
+        args.extend(
+            (
+                f"--attribute-type={report.attribute_type}",
+                f"--probe-description={report.probe_description}",
+                f"--probe-analysis={report.probe_analysis}",
+            ),
+        )
+        if report.detail_description is not None:
+            args.append(f"--detail-description={report.detail_description}")
+        for name, flag in (
+            ("proposal_target_skill", "--proposal-target-skill"),
+            ("proposal_target_location", "--proposal-target-location"),
+            ("proposal_change", "--proposal-change"),
+            ("proposal_expected_behavior", "--proposal-expected-behavior"),
+            ("proposal_evaluation_plan", "--proposal-evaluation-plan"),
+        ):
+            value = getattr(report, name)
+            if value is not None:
+                args.append(f"{flag}={value}")
         result = subprocess.run(  # noqa: S603 - the verified shim and both paths are platform-owned.
             args,
             cwd=self.work,
