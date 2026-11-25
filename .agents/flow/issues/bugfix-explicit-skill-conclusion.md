@@ -1,10 +1,10 @@
-# 修复归因 Skill 将外部根因标记为当前对象缺陷
+﻿# 修复归因 Skill 将外部根因标记为当前对象缺陷
 
 [English](bugfix-explicit-skill-conclusion.en.md) | 中文
 
 ```yaml flow
 kind: issue
-id: bugfix-56
+id: bugfix-58
 milestone: bugfix
 depends: []
 priority: P2

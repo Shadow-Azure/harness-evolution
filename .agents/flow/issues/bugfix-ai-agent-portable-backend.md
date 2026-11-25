@@ -1,10 +1,10 @@
-# AI Agent 后端可替换：中立技能布局、显式能力协议与通用配置入口
+﻿# AI Agent 后端可替换：中立技能布局、显式能力协议与通用配置入口
 
 [English](bugfix-ai-agent-portable-backend.en.md) | 中文
 
 ```yaml flow
 kind: issue
-id: bugfix-57
+id: bugfix-59
 milestone: bugfix
 depends: []
 priority: P2

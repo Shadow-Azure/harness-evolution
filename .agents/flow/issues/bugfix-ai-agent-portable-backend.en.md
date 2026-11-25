@@ -1,10 +1,10 @@
-# Portable AI agent backends: neutral skill layout, explicit capabilities, and a generic config entry
+﻿# Portable AI agent backends: neutral skill layout, explicit capabilities, and a generic config entry
 
 English | [中文](bugfix-ai-agent-portable-backend.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-57
+id: bugfix-59
 milestone: bugfix
 depends: []
 priority: P2
