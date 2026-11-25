@@ -63,5 +63,13 @@ export type WorkspaceCredentialListResponse =
 /** One-time credential creation response; `credential` is never persisted. */
 export type WorkspaceCredentialCreated = components["schemas"]["WorkspaceCredentialCreated"];
 
+/** One label rule set plus its current distinct assignment count. */
+export type WorkspaceBadCaseLabelConfiguration =
+  components["schemas"]["WorkspaceBadCaseLabelConfiguration"];
+
+/** Complete replacement set for one workspace's accepted public labels. */
+export type WorkspaceBadCaseLabelRequest =
+  components["schemas"]["WorkspaceBadCaseLabelRequest"];
+
 /** Current user plus every workspace they can see for this session. */
 export type SessionPayload = components["schemas"]["SessionPayload"];

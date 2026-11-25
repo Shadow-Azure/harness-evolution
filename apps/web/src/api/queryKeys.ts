@@ -27,6 +27,8 @@ export const queryKeys = {
     ["ws", workspaceId, "admin", "member-candidates", query] as const,
   adminCredentials: (workspaceId: string) =>
     ["ws", workspaceId, "admin", "credentials"] as const,
+  adminBadCaseLabels: (workspaceId: string) =>
+    ["ws", workspaceId, "admin", "bad-case-labels"] as const,
   attributionSkillPackages: (workspaceId: string) =>
     ["ws", workspaceId, "admin", "attribution-skill-packages"] as const,
   users: () => ["users"] as const,
