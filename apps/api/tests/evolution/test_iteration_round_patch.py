@@ -193,3 +193,118 @@ async def test_iteration_projects_single_and_multi_file_stored_bundles(
     ]
 
     assert rounds[3]["patch"] is None
+
+
+async def test_iteration_projects_persisted_diff_and_synthesizes_historical_blocks(
+    iteration_api: httpx.AsyncClient,
+) -> None:
+    """Step 6 renders the real diff, and old rounds get intent change blocks."""
+    real_diff = (
+        "diff --git a/SKILL.md b/SKILL.md\n"
+        "--- a/SKILL.md\n"
+        "+++ b/SKILL.md\n"
+        "@@ -1 +1 @@\n"
+        "-旧行\n"
+        "+新行\n"
+    )
+    single = PatchBundle(
+        files=(Patch(file="SKILL.md", lines=("旧行", "新行")),),
+        note="真实 diff",
+        unified_diff=real_diff,
+    )
+    stored = _stored_patch(single)
+    assert stored["diff"] == real_diff
+
+    full_file = [
+        "---",
+        "- **所有模式**",
+        "## 验收矩阵",
+        "旧锚点",
+        "## 门禁",
+        "## 覆盖度",
+    ]
+    historical = {
+        "files": [{"file": "SKILL.md", "lines": full_file, "overwrite": True}],
+        "file": "SKILL.md",
+        "lines": full_file,
+        "overwrite": True,
+        "note": "建立验收矩阵",
+        "intent": {
+            "summary": "建立验收矩阵",
+            "edits": [
+                {
+                    "op": "replace",
+                    "file": "SKILL.md",
+                    "target": "旧锚点",
+                    "content": "新内容",
+                    "rationale": "替换失效门禁",
+                },
+                {
+                    "op": "insert_after",
+                    "file": "SKILL.md",
+                    "target": "## 门禁",
+                    "content": "- 新增验收矩阵",
+                    "rationale": "补覆盖度关卡",
+                },
+                {
+                    "op": "append",
+                    "file": "SKILL.md",
+                    "content": "## 覆盖度",
+                    "rationale": "追加覆盖度段",
+                },
+                {
+                    "op": "replace",
+                    "file": "SKILL.md",
+                    "target": "不存在的锚点",
+                    "content": "未应用编辑",
+                    "rationale": "anchor missing, report skipped",
+                },
+            ],
+        },
+        "report": [
+            {"index": 0, "op": "replace", "file": "SKILL.md", "status": "applied"},
+            {"index": 1, "op": "insert_after", "file": "SKILL.md", "status": "applied"},
+            {"index": 2, "op": "append", "file": "SKILL.md", "status": "applied"},
+            {
+                "index": 3,
+                "op": "replace",
+                "file": "SKILL.md",
+                "status": "skipped_anchor_missing",
+            },
+        ],
+    }
+    data = load_fixture("iteration")
+    data["run"]["progressUnit"] = 7
+    data["rounds"] = [
+        _round("round-diff", 1, stored),
+        _round("round-history", 2, historical),
+        _round(
+            "round-no-diff",
+            3,
+            {"file": "SKILL.md", "lines": ["---", "- **所有模式**"]},
+        ),
+    ]
+    await seed_fixture(_database(iteration_api), data)
+
+    response = await iteration_api.get(
+        f"/api/workspaces/ws-default/evolution/runs/{data['run']['id']}/steps/iteration",
+    )
+
+    assert response.status_code == 200, response.text
+    rounds = response.json()["payload"]["rounds"]
+
+    assert rounds[0]["patch"]["diff"] == real_diff.splitlines()
+
+    history_diff = rounds[1]["patch"]["diff"]
+    assert history_diff[0] == "diff --git a/SKILL.md b/SKILL.md"
+    assert "@@ 编辑 1 · replace @@" in history_diff
+    assert "-旧锚点" in history_diff
+    assert "+新内容" in history_diff
+    assert " ## 门禁" in history_diff
+    assert "+- 新增验收矩阵" in history_diff
+    assert "+## 覆盖度" in history_diff
+    # The 478-line whole file must never be presented as the diff itself.
+    assert "- **所有模式**" not in history_diff
+    assert "未应用编辑" not in history_diff
+
+    assert rounds[2]["patch"]["diff"] is None

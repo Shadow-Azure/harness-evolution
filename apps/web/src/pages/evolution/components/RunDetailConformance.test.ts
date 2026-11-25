@@ -558,23 +558,35 @@ describe("run detail conformance", () => {
     expect(commit.text()).toContain(finalCommit.slice(0, 12));
   });
 
-  it("renders one diff block per stored file and colors patch lines", () => {
+  it("colors only the content lines of the real unified diff", () => {
     const wrapper = mount(DiffView, {
       props: {
         patch: {
           files: [
             {
               file: "SKILL.md",
-              lines: ["@@ -1 +1 @@", "-old", "+new", " context"],
-              overwrite: false,
-            },
-            {
-              file: "config/synthetic-review.json",
-              lines: ["- 10", "+ 60"],
+              lines: ["---", "- **所有模式**", "+ 新增说明"],
               overwrite: true,
             },
           ],
           note: "多文件修复",
+          diff: [
+            "diff --git a/SKILL.md b/SKILL.md",
+            "index 1111111..2222222 100644",
+            "--- a/SKILL.md",
+            "+++ b/SKILL.md",
+            "@@ -1,3 +1,3 @@",
+            "---",
+            "-**所有模式**",
+            "+**新增模式**",
+            " 保持不变",
+            "diff --git a/config/synthetic-review.json b/config/synthetic-review.json",
+            "--- a/config/synthetic-review.json",
+            "+++ b/config/synthetic-review.json",
+            "@@ -1 +1 @@",
+            '-  "requestTimeoutSeconds": 30',
+            '+  "requestTimeoutSeconds": 60',
+          ],
         },
       },
     });
@@ -584,13 +596,54 @@ describe("run detail conformance", () => {
       "config/synthetic-review.json",
     ]);
     const lines = wrapper.findAll(".dline");
-    expect(lines).toHaveLength(6);
+    expect(lines.map((node) => node.text())).toEqual([
+      "@@ -1,3 +1,3 @@",
+      "---",
+      "-**所有模式**",
+      "+**新增模式**",
+      "保持不变",
+      "@@ -1 +1 @@",
+      '-  "requestTimeoutSeconds": 30',
+      '+  "requestTimeoutSeconds": 60',
+    ]);
     expect(lines[0]?.classes()).toContain("hunk");
     expect(lines[1]?.classes()).toContain("del");
-    expect(lines[2]?.classes()).toContain("add");
-    expect(lines[3]?.classes()).toContain("ctx");
-    expect(lines[4]?.classes()).toContain("del");
-    expect(lines[5]?.classes()).toContain("add");
+    expect(lines[2]?.classes()).toContain("del");
+    expect(lines[3]?.classes()).toContain("add");
+    expect(lines[4]?.classes()).toContain("ctx");
+    expect(lines[5]?.classes()).toContain("hunk");
+    expect(lines[6]?.classes()).toContain("del");
+    expect(lines[7]?.classes()).toContain("add");
+    expect(wrapper.findAll(".dline.del")).toHaveLength(3);
+  });
+
+  it("renders a neutral whole-file preview when no diff was stored", () => {
+    const wrapper = mount(DiffView, {
+      props: {
+        patch: {
+          files: [
+            {
+              file: "SKILL.md",
+              lines: [
+                "---",
+                "- **所有模式**",
+                "+ 不是新增",
+                "普通正文",
+              ],
+              overwrite: true,
+            },
+          ],
+          note: "历史轮次",
+          diff: null,
+        },
+      },
+    });
+
+    expect(wrapper.find(".preview-note").text()).toContain("整文件预览");
+    expect(wrapper.findAll(".fhead").map((node) => node.text())).toEqual(["SKILL.md"]);
+    expect(wrapper.findAll(".dline.del")).toHaveLength(0);
+    expect(wrapper.findAll(".dline.add")).toHaveLength(0);
+    expect(wrapper.findAll(".dline.preview")).toHaveLength(4);
   });
 
   it("renders attribution summary rows with cached and fresh sources", () => {

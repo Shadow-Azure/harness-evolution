@@ -1,9 +1,11 @@
 """Restore durable round patch dictionaries into the shared bundle type.
 
-The candidate writer persists a bundle as ``files[] / note / intent / report``
-plus the legacy single-file keys when the bundle has one file. Readers must go
-through this module instead of validating the raw dictionary with a closed
-model: the stored shape is the writer's concern, while each read surface
+The candidate writer persists a bundle as ``files[] / note / diff / intent /
+report`` plus the legacy single-file keys when the bundle has one file. ``diff``
+is the candidate commit's real unified diff, written after the commit succeeds;
+older rows simply lack it and readers fall back to a neutral preview. Readers
+must go through this module instead of validating the raw dictionary with a
+closed model: the stored shape is the writer's concern, while each read surface
 projects only the fields it exposes.
 """
 
@@ -32,6 +34,8 @@ def stored_bundle(raw: object) -> PatchBundle | None:
         note = PLACEHOLDER_PATCH_NOTE
     intent = _stored_intent(raw.get("intent"))
     report = _stored_report(raw.get("report"))
+    diff = raw.get("diff")
+    unified_diff = diff if isinstance(diff, str) else ""
     files: list[Patch] = []
     raw_files = raw.get("files")
     if isinstance(raw_files, list):
@@ -51,6 +55,7 @@ def stored_bundle(raw: object) -> PatchBundle | None:
             note=note,
             intent=intent,
             report=report,
+            unified_diff=unified_diff,
         )
     except ValueError:
         return None

@@ -533,6 +533,12 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
     assert published.status == "evaluating"
     assert published.candidate_commit is not None
     assert published.candidate_ref is not None
+    assert published.patch is not None
+    candidate_diff = published.patch.get("diff")
+    assert isinstance(candidate_diff, str)
+    assert candidate_diff.startswith("diff --git ")
+    assert "+++ b/" in candidate_diff
+    assert ".harness-evolution/candidate-r1.md" in candidate_diff
     accepted_candidate_commit = published.candidate_commit
     submitted = await submitter.submit(run, published)
     assert submitted.eval_external_id is not None

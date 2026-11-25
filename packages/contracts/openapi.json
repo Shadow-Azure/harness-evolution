@@ -8984,8 +8984,22 @@
       },
       "StepRoundPatch": {
         "additionalProperties": false,
-        "description": "Patch preview projected from the round's stored bundle.\n\nThe durable shape carries ``files[]`` plus ``note``/``intent``/``report``,\nand single-file rounds also keep the legacy ``file``/``lines`` keys. This\nread model is built from :func:`stored_bundle` instead of validating the\nraw dictionary, so a later writer field cannot break step 6 again.",
+        "description": "Patch preview projected from the round's stored bundle.\n\nThe durable shape carries ``files[]`` plus ``note``/``diff``/``intent``/\n``report``, and single-file rounds also keep the legacy ``file``/``lines``\nkeys. This read model is built from :func:`stored_bundle` instead of\nvalidating the raw dictionary, so a later writer field cannot break step 6\nagain.\n\n``diff`` is the candidate commit's unified diff, already split into lines.\nNew rounds persist it; historical rounds that lack it get a change-block\ndiff synthesized from the applied ``intent``/``report`` pair, and ``None``\nmeans no diff can be produced, so the client must show the neutral\nwhole-file preview instead of classifying lines.",
         "properties": {
+          "diff": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff"
+          },
           "files": {
             "items": {
               "$ref": "#/components/schemas/StepRoundFilePatch"

@@ -5731,12 +5731,21 @@ export interface components {
          * StepRoundPatch
          * @description Patch preview projected from the round's stored bundle.
          *
-         *     The durable shape carries ``files[]`` plus ``note``/``intent``/``report``,
-         *     and single-file rounds also keep the legacy ``file``/``lines`` keys. This
-         *     read model is built from :func:`stored_bundle` instead of validating the
-         *     raw dictionary, so a later writer field cannot break step 6 again.
+         *     The durable shape carries ``files[]`` plus ``note``/``diff``/``intent``/
+         *     ``report``, and single-file rounds also keep the legacy ``file``/``lines``
+         *     keys. This read model is built from :func:`stored_bundle` instead of
+         *     validating the raw dictionary, so a later writer field cannot break step 6
+         *     again.
+         *
+         *     ``diff`` is the candidate commit's unified diff, already split into lines.
+         *     New rounds persist it; historical rounds that lack it get a change-block
+         *     diff synthesized from the applied ``intent``/``report`` pair, and ``None``
+         *     means no diff can be produced, so the client must show the neutral
+         *     whole-file preview instead of classifying lines.
          */
         StepRoundPatch: {
+            /** Diff */
+            diff?: string[] | null;
             /** Files */
             files: components["schemas"]["StepRoundFilePatch"][];
             /** Note */

@@ -62,10 +62,10 @@ class PatchBundle:
     auditable EditPlan when the change came from an agent, and ``report`` holds
     the per-edit outcomes. When ``intent`` is present, ``note`` must equal
     ``intent.summary`` so the commit message and the audited intent cannot
-    drift apart. ``unified_diff`` is reserved for the real ``git diff`` that
-    the agent-edit source collects before committing (bugfix-21); the default
-    legacy wrapper leaves it empty, and ``CandidateWorkspace.unified_diff``
-    always carries the git-produced diff after the commit.
+    drift apart. ``unified_diff`` carries the real ``git diff`` of the
+    committed candidate; a source leaves it empty because the diff only exists
+    after the commit, and the candidate service fills it when it persists the
+    round patch.
 
     Hash compatibility is a hard requirement: a single-file bundle returns
     :attr:`Patch.sha256` byte-for-byte, so ``Harness-Patch-Hash`` trailers from

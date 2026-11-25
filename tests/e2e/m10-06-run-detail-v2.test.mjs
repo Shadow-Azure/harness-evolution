@@ -1254,6 +1254,9 @@ test("m10-06 step 6 iteration renders every stored bundle patch file", async () 
           files: [...diff.querySelectorAll(".fhead")].map((node) => node.textContent.trim()),
           added: [...diff.querySelectorAll(".dline.add")].length,
           deleted: [...diff.querySelectorAll(".dline.del")].length,
+          deletedTexts: [...diff.querySelectorAll(".dline.del")].map((node) =>
+            node.textContent.trim(),
+          ),
           sourceLinks: sourceLinks.map((link) => ({
             href: link.getAttribute("href"),
             target: link.target,
@@ -1266,8 +1269,9 @@ test("m10-06 step 6 iteration renders every stored bundle patch file", async () 
       "multi-file bundle patch diff",
     );
     assert.deepEqual(bundle.files, ["SKILL.md", "config/synthetic-review.json"]);
-    assert.ok(bundle.added >= 2, JSON.stringify(bundle));
-    assert.ok(bundle.deleted >= 2, JSON.stringify(bundle));
+    assert.equal(bundle.added, 2, JSON.stringify(bundle));
+    assert.equal(bundle.deleted, 1, JSON.stringify(bundle));
+    assert.deepEqual(bundle.deletedTexts, ['-  "requestTimeoutSeconds": 30']);
     assert.equal(bundle.pageHorizontalScroll, false);
     assert.deepEqual(
       bundle.sourceLinks.map((link) => link.href).sort(),
@@ -1300,11 +1304,17 @@ test("m10-06 step 6 iteration renders every stored bundle patch file", async () 
         if (!diff) return null;
         return {
           files: [...diff.querySelectorAll(".fhead")].map((node) => node.textContent.trim()),
+          added: diff.querySelectorAll(".dline.add").length,
+          deleted: diff.querySelectorAll(".dline.del").length,
+          previewNote: diff.querySelector(".preview-note")?.textContent.trim() ?? "",
         };
       })()`,
       "legacy single-file patch diff",
     );
     assert.deepEqual(legacy.files, ["SKILL.md"]);
+    assert.equal(legacy.added, 0);
+    assert.equal(legacy.deleted, 0);
+    assert.ok(legacy.previewNote.includes("整文件预览"));
     await evaluate(
       page,
       `document.querySelector("[data-round-id='v2-round-2'] .diff").scrollIntoView({ block: "center" })`,

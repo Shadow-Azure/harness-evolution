@@ -843,7 +843,7 @@ RunDetail.vue
 - 已接纳：展示 **amend 后的 commit**（保留追溯信息并追加 current/candidate/delta/verdict），以及 `Harness-Evaluated-Commit`（评测时的 commit）。commit 区块默认只显示 12 位 hash 与首行 subject；完整 `finalCommit.message`（Markdown）通过「查看完整 commit message」展开，复用 `renderMarkdown()` 渲染标题、列表、链接与 trailer，不得按纯文本插值；仅单行 message 不显示展开入口。
 - 未接纳：显示“candidate 已删除，run 分支不变”；不展示 commit hash。
 - blocked：显示是 patch、push 还是 eval 阶段失败；patch/push 阶段保留本轮中间状态，可重试。
-- `DiffView`：行首 `+`/`-`/`@@` 着色；原型的 diff 行数组直接渲染即可，不需要解析 unified diff。
+- `DiffView`：`patch.diff` 存在时按文件块渲染真实 unified diff——`@@` 标 hunk、内容行按 `+`/`-` 着色，`diff --git` / `index` / `---` / `+++` 等文件头行作为文件标题或元数据，不参与增删计数；`diff` 为 `null` 时显示中性的「候选文件内容（整文件预览）」，不对 `---`、Markdown 列表做 `+`/`-` 分类。后端已按行拆好数组，前端不解析 diff 文本重新生成变更。
 - `EvalCompare`：两条横向条（current 灰 / candidate 绿或红），宽度按 `max(cur,cand)*1.06` 归一（原型算法）。
 
 ### 10.4 执行日志与异常（`pages/evolution/components/RunLogPanel.vue`）
