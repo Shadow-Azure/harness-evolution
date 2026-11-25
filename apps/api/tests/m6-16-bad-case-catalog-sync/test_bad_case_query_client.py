@@ -209,6 +209,7 @@ async def test_fetch_page_allows_overlong_title() -> None:
         {"bad_case_session_id": ""},
         {"bad_case_session_id": "s" * 37},
         {"bad_case_type": "x" * 17},
+        {"bad_case_type": ""},
         {"bad_case_title": ""},
     ],
 )
