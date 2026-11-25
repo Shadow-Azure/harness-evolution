@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+  # merge queue：队列构建基于最新 main 的合并结果跑 required checks（ci-ok）。
+  merge_group:
   push:
     branches: [main]
 
