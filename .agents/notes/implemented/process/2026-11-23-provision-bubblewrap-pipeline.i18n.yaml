@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/process/2026-11-23-provision-bubblewrap-pipeline.md
-2026-11-23-provision-bubblewrap-pipeline.md: c632a7bd3df4a2bba31960f9a9dc35adb60b29d7
-2026-11-23-provision-bubblewrap-pipeline.en.md: 54447bed8ba344ae057c497b3388e4da53d6ab97
+2026-11-23-provision-bubblewrap-pipeline.md: 31b2023992116c453f3502ed133fcf9115137179
+2026-11-23-provision-bubblewrap-pipeline.en.md: 33eab198e0f94bee47b9a127ebce5b6bafbc2a2d

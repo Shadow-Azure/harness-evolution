@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
-#   pnpm run record:i18n -- .agents/flow/issues/bugfix-evolution-label-allowlist.md
-bugfix-evolution-label-allowlist.md: 13f44ddc4732ed5acd356ab787e5643ffc1fd56f
-bugfix-evolution-label-allowlist.en.md: 38051300563d45850f98d30d595d0a28429e2231
+#   pnpm run record:i18n -- .agents\flow\issues\bugfix-evolution-label-allowlist.md
+bugfix-evolution-label-allowlist.md: 97cf8afc0d37fbf677d1a4e43e1f55b324c5ea5c
+bugfix-evolution-label-allowlist.en.md: 619c59fd7b972288bd1cf009f6a04f1aff27ea8d

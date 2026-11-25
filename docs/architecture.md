@@ -24,7 +24,7 @@
 Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-仅健康、登录、刷新、IdP 回调、票据 SSE 与凭据上报公开；其余走 Bearer JWT，建空间、用户管理、sync 与上游 pull 限全局管理员。access 30 分钟，refresh cookie 14 天且 httpOnly、SameSite=Strict，Secure 随协议（可用 `HE_COOKIE_SECURE` 覆盖）；鉴权与错误共用边界。
+仅健康、品牌配置、登录、刷新、IdP 回调、票据 SSE 与凭据上报公开；其余走 Bearer JWT，建空间、用户管理、sync 与上游 pull 限全局管理员。access 30 分钟，refresh cookie 14 天、httpOnly、SameSite=Strict，Secure 随协议（`HE_COOKIE_SECURE` 覆盖）；鉴权与错误同边界。
 
 Web 先恢复 `auth/session`；身份留内存，401 单飞刷新，退出清缓存。页面在 `/workspaces/:wid` 下按空间与角色收口；无空间路由重定向到记住的空间、唯一空间或选择页。
 

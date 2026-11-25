@@ -19,7 +19,10 @@ from app.config import Settings
 from app.db.crud.attribution_skill_packages import AttributionSkillPackageRepository
 from app.db.crud.attribution_skills import AttributionSkillRepository
 from app.db.crud.attributions import AttributionRepository
+from app.db.crud.problems import ProblemRepository
+from app.db.crud.read_scope import WorkspaceReadScope
 from app.db.models.domain import evolution_targets, probe_reports
+from app.service.bad_cases.attribution import AttributionReadService
 from app.service.evolution.attribution import AttributionRunner
 from app.service.evolution.attribution_skill_packages import AttributionSkillPackageService
 from app.service.evolution.attribution_skills import AttributionSkillService
@@ -44,6 +47,8 @@ class Source:
 class ScriptAgent(FakeAIAgentProvider):
     provider_id = "script-test"
     category = "flow"
+    verdict = "attributed"
+    cause = "流程缺少校验"
 
     async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict[str, Any]) -> int:
         import asyncio
@@ -61,14 +66,21 @@ class ScriptAgent(FakeAIAgentProvider):
             "input_badcase.json",
             "--bad-case-id",
             row["bad_case_id"],
-            "--probe_object",
-            row["object"],
+            "--conclusion",
+            self.verdict,
+            "--evidence-ref",
+            "event:main:1",
+            "--root-cause",
+            self.cause,
+            "--proposal-change",
+            "复核并如实汇报验证结果",
+            *(("--probe_object", row["object"]) if self.verdict != "inconclusive" else ()),
             "--attribute-type",
             self.category,
             "--probe-description",
-            "流程缺少校验",
+            self.cause,
             "--probe-analysis",
-            "缺少复核步骤",
+            f"{self.cause}。依据见输入中的 {row['bad_case_id']}。",
             "--output",
             "probe_report.json",
             cwd=directory,
@@ -78,15 +90,29 @@ class ScriptAgent(FakeAIAgentProvider):
 
 
 @pytest.mark.parametrize(
-    "category",
-    ["flow"] if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1" else ["flow", "context"],
+    ("category", "verdict", "cause"),
+    [("flow", "attributed", "目标流程缺少校验")]
+    if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1"
+    else [
+        ("flow", "attributed", "目标流程缺少校验"),
+        ("context", "attributed", "目标丢失输入上下文"),
+        ("error", "non_target", "评分环境过期。修改目标只能改善汇报"),
+        ("error", "inconclusive", "已观测到错误。缺少判断归属的轨迹"),
+    ],
 )
 async def test_local_skill_report_to_sqlite(
-    category: str, attribution_harness: Harness, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    category: str,
+    verdict: str,
+    cause: str,
+    attribution_harness: Harness,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Use a real CLI only when explicitly enabled for a synthetic acceptance run."""
     db = attribution_harness.database
     monkeypatch.setattr(ScriptAgent, "category", category)
+    monkeypatch.setattr(ScriptAgent, "verdict", verdict)
+    monkeypatch.setattr(ScriptAgent, "cause", cause)
     use_claude = os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1"
     monkeypatch.setitem(factory._REGISTRY, ScriptAgent.provider_id, ScriptAgent)
     settings = Settings(
@@ -215,19 +241,93 @@ async def test_local_skill_report_to_sqlite(
         assert len(list(artifact.parent.glob("logs/*/attribute_log.json"))) == 2
         assert failure["attempt"] != audit["attempt"]
     assert persisted["report_payload"]["sourceReport"] == json.loads(artifact.read_bytes())
-    if selected != default:
-        assert persisted["attribute_type"] == category
+    source = persisted["report_payload"]["sourceReport"]
+    assert source["selected_target"]["name"] == run.target_name
+    assert (
+        persisted["conclusion"] == source["conclusion"] == persisted["report_payload"]["conclusion"]
+    )
+    if not use_claude:
+        assert source["conclusion"] == verdict
+        assert source["root_cause"] == cause
+        assert source["proposal"]["change"]
+        assert source["evidence_references"] == ["event:main:1"]
+        assert any(
+            e["reference"] == "event:main:1" for e in persisted["report_payload"]["evidence"]
+        )
+        assert persisted["attribute_type"] == (category if verdict == "attributed" else None)
+    assert bool(await store.list_clusterable_probes(run.id)) == (
+        source["conclusion"] == "attributed"
+    )
+    detail = await AttributionReadService(store, ProblemRepository(db)).detail(
+        CASE_ID, linked[CASE_ID], WorkspaceReadScope.for_workspace(run.workspace_id)
+    )
+    assert detail.conclusion == source["conclusion"]
+    assert detail.report is not None and detail.report.source_report == source
     tampered = persisted["report_payload"]["sourceReport"].copy()
     tampered["probe_id"] = "wrong-session"
 
     original = tampered["from_bad_cases"][0]
-    input_text = json.dumps({"session_id": run.id, "bad_cases": [original]})
+    input_text = json.dumps(
+        {
+            "session_id": run.id,
+            "selected_target": source["selected_target"],
+            "bad_cases": [original],
+        }
+    )
     with pytest.raises(ValueError, match="canonical"):
         canonical_report(packages.writer_path, input_text, tampered, artifact.parent)
     assert json.loads(artifact.read_bytes())["probe_id"] != "wrong-session"
     assert persisted["execution_manifest"]["modelConfigFingerprint"] != "none"
     replay = await runner.run(replace(run, id=OTHER_RUN_ID), [potential_case()], True)
     assert replay.reused == 1
+    assert await store.list_clusterable_probes(OTHER_RUN_ID) == await store.list_clusterable_probes(
+        run.id
+    )
+
+
+@pytest.mark.parametrize(
+    "args",
+    [[], ["--conclusion", "maybe"], ["--conclusion", "attributed", "--attribute-type", "unknown"]],
+    ids=["missing-verdict", "invalid-verdict", "unclassified-positive"],
+)
+def test_writer_rejects_invalid_verdicts(tmp_path: Path, args: list[str]) -> None:
+    """A missing or malformed verdict can never yield a new report."""
+    writer = Settings().attribution_default_skill_path.with_name("make_probe_report.py")
+    data = tmp_path / "input_badcase.json"
+    output = tmp_path / "probe_report.json"
+    data.write_text(
+        json.dumps(
+            {
+                "session_id": "session",
+                "selected_target": {"name": "target", "type": "skill", "version": "v1"},
+                "bad_cases": [{"bad_case_id": "case"}],
+            }
+        )
+    )
+    main = runpy.run_path(str(writer))["main"]
+    argv = [
+        "--input-badcase",
+        str(data),
+        "--bad-case-id",
+        "case",
+        "--root-cause",
+        "Unknown",
+        "--attribute-type",
+        "error",
+        "--probe-description",
+        "Finding",
+        "--probe-analysis",
+        "Trace",
+        "--output",
+        str(output),
+        *args,
+    ]
+    try:
+        code = main(argv)
+    except SystemExit as exc:
+        code = exc.code
+    assert code == 2
+    assert not output.exists()
 
 
 def test_handwritten_report_has_no_writer_receipt(tmp_path: Path) -> None:
@@ -249,6 +349,10 @@ def test_writer_target_type_preserves_reported_source(kind: str, expected: str) 
     writer = Settings().attribution_default_skill_path.with_name("make_probe_report.py")
     report = runpy.run_path(str(writer))["build_report"](
         session_id="root",
+        selected_target={"name": "target", "type": "skill", "version": "v1"},
+        conclusion="non_target",
+        root_cause="upstream owner",
+        evidence_references=[],
         bad_case={"bad_case_id": "case", "type": "skill", "object": "reporter"},
         probe_object="owner",
         object_version="v1",
@@ -280,8 +384,10 @@ def test_frozen_plural_writer_is_validated_before_normalization(tmp_path: Path) 
         "import pathlib,sys\npathlib.Path(sys.argv[-1]).write_text(" + repr(json.dumps(draft)) + ")"
     )
     with pytest.raises(ValueError, match="provenance"):
-        canonical_report(writer, original, {**draft, "probe_id": "tampered"}, tmp_path)
-    report = canonical_report(writer, original, draft, tmp_path)
+        canonical_report(
+            writer, original, {**draft, "probe_id": "tampered"}, tmp_path, explicit_conclusion=False
+        )
+    report = canonical_report(writer, original, draft, tmp_path, explicit_conclusion=False)
     assert (
         json.loads((tmp_path / "probe_report.json").read_bytes())
         == report
@@ -363,9 +469,14 @@ def test_canonical_report_retains_detail_and_proposal_for_verified_input(tmp_pat
     """Keep optional fields and preserve the last valid report when validation fails."""
     writer = Settings().attribution_default_skill_path.with_name("make_probe_report.py")
     row = {"bad_case_id": "case", "type": "skill", "object": "reporter"}
-    original = json.dumps({"session_id": "session", "bad_cases": [row]})
+    target = {"name": "target", "type": "skill", "version": "v1"}
+    original = json.dumps({"session_id": "session", "selected_target": target, "bad_cases": [row]})
     report = runpy.run_path(str(writer))["build_report"](
         session_id="session",
+        selected_target=target,
+        conclusion="non_target",
+        root_cause="Missing input from upstream",
+        evidence_references=["event:agent:1"],
         bad_case=row,
         probe_type="agent",
         probe_object="owner",
@@ -378,6 +489,8 @@ def test_canonical_report_retains_detail_and_proposal_for_verified_input(tmp_pat
     )
     assert canonical_report(writer, original, report, tmp_path) == report
     for invalid, reason in (
+        ({"conclusion": None}, "report field conclusion"),
+        ({"selected_target": {"name": "another"}}, "canonical"),
         ({"probe_type": None}, "probe_type"),
         ({"probe_object": ""}, "report field"),
         ({"from_bad_cases": []}, "provenance"),

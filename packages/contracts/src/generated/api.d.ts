@@ -62,6 +62,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/app-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * App Config
+         * @description Report the brand resolved from the API environment at startup.
+         */
+        get: operations["app_config_api_app_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/callback": {
         parameters: {
             query?: never;
@@ -2111,6 +2131,23 @@ export interface components {
              * @enum {string}
              */
             status: "idle" | "queued" | "running" | "completed" | "failed" | "interrupted";
+        };
+        /**
+         * AppConfigBrand
+         * @description Deployment brand name and subtitle exposed to every visitor.
+         */
+        AppConfigBrand: {
+            /** Name */
+            name: string;
+            /** Subtitle */
+            subtitle: string;
+        };
+        /**
+         * AppConfigResponse
+         * @description Public runtime configuration shared by the login page and the shell.
+         */
+        AppConfigResponse: {
+            brand: components["schemas"]["AppConfigBrand"];
         };
         /**
          * AttributeStats
@@ -6679,6 +6716,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    app_config_api_app_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppConfigResponse"];
                 };
             };
         };

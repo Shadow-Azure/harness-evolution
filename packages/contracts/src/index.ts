@@ -26,6 +26,9 @@ export type DatabaseHealth = components["schemas"]["DatabaseHealthResponse"];
 /** 健康检查响应；前端用它区分 API 可达与服务阶段。 */
 export type HealthResponse = components["schemas"]["HealthResponse"];
 
+/** 公开运行期配置；品牌名与副标题由部署环境覆盖，默认值与内置文案一致。 */
+export type AppConfigResponse = components["schemas"]["AppConfigResponse"];
+
 /** Login request accepted by the identity API. */
 export type LoginRequest = components["schemas"]["LoginRequest"];
 

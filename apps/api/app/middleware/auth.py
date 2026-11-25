@@ -12,6 +12,7 @@ from app.service.identity.principals import principal_from_claims
 
 _PUBLIC_API_PATHS = {
     "/api/health",
+    "/api/app-config",
     "/api/auth/login",
     "/api/auth/refresh",
     "/api/auth/callback",

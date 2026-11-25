@@ -345,7 +345,7 @@ export function buildLaneModel(tree: SessionTree, selectedCaseId?: string): Lane
 ```text
 Index.vue（无顶栏；桌面双栏卡片，≤760px 单列）
 ├── 左栏（静态产品事实，不读取用户目录）
-│   ├── 品牌标记与「轨迹诊断与自进化」
+│   ├── 品牌标记与品牌名/副标题（默认 Harness Evolution / 轨迹诊断与自进化）
 │   ├── 工作空间隔离 / 归因进入进化流程 / 默认 10 个 Session 三条说明
 │   └── 页脚：内部部署、不开放公开注册
 └── 右栏（aria-labelledby="login-form-title"）
@@ -358,6 +358,7 @@ Index.vue（无顶栏；桌面双栏卡片，≤760px 单列）
 ```
 
 - 布局：桌面卡片 `min(920px, 100%)` 左右两栏；≤760px 单列并隐藏长能力说明与左栏页脚，390px 下无横向溢出。
+- 品牌：品牌名与副标题在挂载前从公开 `GET /api/app-config` 读取一次并写入 `stores/appConfig`，默认值为 `Harness Evolution` / 「轨迹诊断与自进化」；部署方可用 `HE_BRAND_NAME` / `HE_BRAND_SUBTITLE` 覆盖，接口失败或响应不合法时保持默认且不阻塞页面；长品牌名以省略号截断；顶栏、登录页与改密卡共用品牌名，副标题用于顶栏与登录页。
 - 左栏只写产品事实，不渲染账号、邮箱或可点选账号；原型里的账号按钮是打桩演示，生产不复制。
 - 键盘：左栏无焦点元素，Tab 顺序为用户名、密码、登录按钮；错误提示保持内联 `role=alert` 与 `aria-live=polite`。
 - 视觉：卡片背景、圆角、边框、间距与断点取自 `styles/tokens.css`，大卡片阴影为 `--shadow-auth-card`。

@@ -6,7 +6,7 @@ English | [中文](2026-11-23-provision-bubblewrap-pipeline.md)
 
 ## Problem
 
-On Linux the attribution Skill depends on `bubblewrap`, but that is an OS package, not a Python dependency. The production host was initialized before bootstrap included it, so the latest Deploy was stopped by `attribution.preflight`; the previous release keeps serving, but the new version cannot ship. Routine Deploy runs as the `deploy` user, whose sudoers only covers `systemctl` and has no apt/dpkg rights. Giving apt to deploy is equivalent to giving root to the pipeline, while continuing manual SSH package installation is neither repeatable nor auditable and does not cover new hosts.
+The default Linux attribution runtime uses the `bubblewrap` namespace sandbox. The routine Deploy account has sudo rights for `systemctl`. Installing an OS package requires separate root access and an auditable entry point. An explicit opt-out uses case-scoped evidence and report tools from the API’s Python environment.
 
 ## Decision
 
@@ -27,7 +27,7 @@ Provisioning of OS packages goes through a standalone `Provision` workflow, deco
 
 ## Consequences
 
-- Existing hosts need a one-time root authorization: add the dedicated public key to `authorized_keys` and store the private key in the `production` environment's `PROVISION_SSH_KEY`; the workflow then runs it, the key can rotate, and logs contain no credentials.
+- Existing hosts using Provision to install the sandbox need one-time root authorization. Add the dedicated public key to `authorized_keys` and store the private key in the `production` environment's `PROVISION_SSH_KEY`; the workflow then runs it, the key can rotate, and logs contain no credentials.
 - The `production` environment currently has no required reviewers, and GitHub exposes environment secrets to every job in the same environment; Deploy also declares that environment but never references the root key in code. Truly scoping it to one workflow needs a separate environment or required reviewers; this account lacks the admin rights to create an environment, so this is a known limitation.
 - `--check` exits non-zero with `ATTRIBUTION_BWRAP_MISSING` when the package is absent, so the check itself can make the workflow red; that is the intended observable signal, and the same command turns green after installation. The AppArmor profile is installed by Provision and persists in `/etc/apparmor.d`, where apparmor.service reloads it on boot.
 - New system prerequisites follow the same pattern: the script offers a read-only check and an idempotent install, CI verifies the contract on a clean host (see #552), and Deploy stays fail-closed.

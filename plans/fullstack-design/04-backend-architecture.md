@@ -276,7 +276,7 @@ git 推送的托管平台差异收敛在 `third_party_api/git/`：`GitPushProvid
 | `AppError`（其他业务错误） | 400 | `*_ERROR` |
 | 未捕获异常 | 500 | `INTERNAL`（响应不含堆栈，日志含 request_id） |
 
-- 请求上下文：当前 JWT 鉴权中间件把 `sub` 解析进 `RequestContext.principal`；公开端点为 `/api/health`、`/api/auth/login`、`/api/auth/refresh`，配置 IdP 时还包括 `/api/auth/callback`；其余业务请求要求登录，`/api/events` 走一次性票据。`must_change_password` 的账号只放行改密、登出、`me` 与 `auth/session`，其余 `403 PASSWORD_CHANGE_REQUIRED`（[07 §8.2](07-backend-implementation.md)）。
+- 请求上下文：当前 JWT 鉴权中间件把 `sub` 解析进 `RequestContext.principal`；公开端点为 `/api/health`、`/api/app-config`、`/api/auth/login`、`/api/auth/refresh`，配置 IdP 时还包括 `/api/auth/callback`；其余业务请求要求登录，`/api/events` 走一次性票据。`must_change_password` 的账号只放行改密、登出、`me` 与 `auth/session`，其余 `403 PASSWORD_CHANGE_REQUIRED`（[07 §8.2](07-backend-implementation.md)）。
 - 日志：`structlog` 风格的结构化字段（`request_id / module / principal / duration_ms / code`），不打印轨迹原文（可能含敏感内容）。
 - CORS：只允许配置的正式域名（`HE_CORS_ORIGINS`）；同源托管后可关闭。
 - 限流（轻量）：登录端点按 IP 限速（如 10 次/分钟），防暴力破解；业务端点暂不限流（组织内部）。

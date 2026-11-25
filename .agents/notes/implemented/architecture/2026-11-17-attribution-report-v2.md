@@ -12,6 +12,8 @@ Status: implemented
 
 `probe_reports` 继续作为唯一报告事实源，以可空 JSON 列增量保存 `probe-report/v2` 结构化 payload 和 `attribution-execution/v1` 不可变执行清单。V2 新写入以清单的规范 JSON SHA-256 作为 `cache_key`，清单覆盖 workspace、Badcase、目标 revision、策略、引擎、Skill revision/content hash、模型配置指纹、上下文 snapshot hash 和输出 schema；旧行与未提供清单的写入继续使用七元缓存键。结论扩为 `attributed|non_target|inconclusive`，其中证据不足是 `inconclusive` 且不进入聚类，执行异常仍阻塞 run 而不生成报告。当前规则引擎使用注册表解析出的不可变 Skill revision，并以 `model=none` 作为模型占位；后续上下文快照和 Agent 执行器只替换其余清单输入。
 
+本地 Skill 对本例与被评估对象的因果关系显式给出三态结论。平台脚本从输入复制被评估对象，Skill 分别填写根因或证据缺口、带轨迹引用的分析及可选建议。相同对象身份无法证明因果关系。未完成的旧快照缺少显式结论时以证据不足入库并附警告。
+
 ## Alternatives considered
 
 新增第二张 V2 报告表会制造两套报告 ID 与读取优先级，因此否决。原地把所有旧行回填成伪 V2 会声称不存在的 Skill 和上下文证据，因此保留 nullable legacy 兼容。单独增加 `attribution_executions` 审计表被推迟到调度与可观测性迭代：当前 runner 只有同步单次尝试和 run 级阻塞状态，此时建表会先固化尚未设计的重试状态机。

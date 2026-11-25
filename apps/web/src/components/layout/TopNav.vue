@@ -11,6 +11,7 @@ import {
 import { queryKeys } from "../../api/queryKeys";
 import { formatApiError } from "../../app/apiError";
 import { useCurrentUser, useLogout } from "../../composables/useAuth";
+import { useAppConfigStore } from "../../stores/appConfig";
 import { useAuthStore } from "../../stores/auth";
 import {
   forgetLastWorkspace,
@@ -40,6 +41,7 @@ const props = defineProps({
 const { data: user } = useCurrentUser();
 const { isLoading, refetch: logoutUser } = useLogout();
 const auth = useAuthStore();
+const appConfig = useAppConfigStore();
 const queryClient = useQueryClient();
 const route = useRoute();
 const isProcessing = ref(false);
@@ -328,7 +330,7 @@ onBeforeUnmount(() => {
 <template>
   <header class="topbar">
     <RouterLink
-      aria-label="Harness Evolution"
+      :aria-label="appConfig.brand.name"
       class="brand"
       :to="overviewPath"
     >
@@ -337,8 +339,8 @@ onBeforeUnmount(() => {
         aria-hidden="true"
       />
       <span class="brand-copy">
-        <strong>Harness Evolution</strong>
-        <small>轨迹诊断与自进化</small>
+        <strong>{{ appConfig.brand.name }}</strong>
+        <small>{{ appConfig.brand.subtitle }}</small>
       </span>
     </RouterLink>
 
@@ -553,7 +555,16 @@ onBeforeUnmount(() => {
 .brand-copy {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  max-width: 220px;
   line-height: 1.3;
+}
+
+.brand-copy strong,
+.brand-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .brand-copy strong {

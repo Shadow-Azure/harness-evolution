@@ -8,7 +8,7 @@ id: bugfix-54
 milestone: bugfix
 depends: []
 priority: P2
-status: ready
+status: done
 scope:
   - .agents/flow/issues/bugfix-brand-env-config*
   - .agents/notes/**
@@ -18,13 +18,18 @@ scope:
   - packages/contracts/**
   - apps/web/**
   - tests/e2e/**
+  - docs/architecture.md
+  - docs/architecture.en.md
+  - docs/architecture.i18n.yaml
   - docs/deployment.md
   - docs/deployment.en.md
   - docs/deployment.i18n.yaml
+  - plans/**
   - plans/fullstack-design/05-api-design.md
   - plans/fullstack-design/08-frontend-implementation.md
   - scripts/doc-budgets.manifest.json
-adr: []
+adr:
+  - ../../notes/implemented/feature/2026-11-25-brand-env-config.md
 github:
   number: 594
   url: https://github.com/Shadow-Azure/harness-evolution/issues/594
@@ -113,7 +118,7 @@ HE_BRAND_NAME='Acme Diagnostics' HE_BRAND_SUBTITLE='Acme Self-Evolution' pnpm te
 - 契约：`pnpm contract:check` 必须无 diff；新增公开路径同步 OpenAPI 快照与生成类型。
 - Web/API：`pnpm lint:web`、`pnpm typecheck:web`、`pnpm lint:api`、`pnpm typecheck:api` 与对应测试 job 通过。
 - 文档：`.env.example` 与设计说明改动后运行 `pnpm verify:docs`，新增 Agent Note 通过 `pnpm lint:docs`。
-- 流程：issue 处于 ready，提交与 PR 标题带 `(#N)`；PR 关联 `Bugfix 问题修复` milestone，合入前运行 `pnpm verify:flow` 与 `pnpm verify:flow-online`。
+- 流程：issue 已激活（in-progress），提交与 PR 标题带 `(#N)`；PR 关联 `Bugfix 问题修复` milestone，合入前运行 `pnpm verify:flow` 与 `pnpm verify:flow-online`。
 - UI 变更：PR 描述附同视口、同主题的 before（当前文案）与 after（配置文案）截图，标明基线与候选提交。
 
 ## 非目标
