@@ -537,7 +537,9 @@ def _edit_prompt(
     lines.extend(
         (
             "## 修复要求",
-            f"- file 必须落在允许范围 {list(allowed)!r} 内；锚文本必须存在且唯一。",
+            f"- file 必须落在允许范围 {list(allowed)!r} 内；"
+            "锚文本必须是文件内唯一出现的文本片段，可跨行；"
+            "insert_after 把 content 插到该片段末行之后。",
             f"- 最多 {EDIT_BUDGET} 条编辑，单条内容最多 {MAX_CONTENT_LINES} 行；"
             "优先最小、可回退的真实修复。",
             "- 提交格式：{summary, edits:[{op,file,target,content,rationale}]}。",

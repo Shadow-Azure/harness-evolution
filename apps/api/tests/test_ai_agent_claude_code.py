@@ -1648,6 +1648,7 @@ async def test_health_check_skips_the_probe_when_the_binary_is_absent(
     assert "not found" in health.detail
 
 
+@pytest.mark.skipif(os.name != "posix", reason="process-group signals are POSIX-only")
 async def test_default_runner_escalates_sigint_to_sigkill(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1685,6 +1686,7 @@ async def test_default_runner_escalates_sigint_to_sigkill(
     assert result.returncode == -9
 
 
+@pytest.mark.skipif(os.name != "posix", reason="process-group signals are POSIX-only")
 async def test_default_runner_cleans_up_and_reraises_cancellation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

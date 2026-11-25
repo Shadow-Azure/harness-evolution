@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -98,9 +99,22 @@ def _trace(text: str) -> CandidateTrace:
 
 
 def _write(path: Path, text: str) -> None:
-    """Create a parent directory and write exact UTF-8 content."""
+    """Create a parent directory and write exact UTF-8 bytes without newline translation."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    path.write_bytes(text.encode("utf-8"))
+
+
+def _symlinks_supported() -> bool:
+    """Probe once whether this host permits creating a symlink at all."""
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "link").symlink_to(Path(tmp) / "missing-target")
+    except (NotImplementedError, OSError):
+        return False
+    return True
+
+
+_NO_SYMLINK = not _symlinks_supported()
 
 
 def test_four_ops_apply_to_real_files(tmp_path: Path) -> None:
@@ -373,12 +387,32 @@ def test_op_specific_fields_are_enforced(
         EditOp(op=op, file="a.md", target=target, content=content, rationale="r")
 
 
-@pytest.mark.parametrize("target", ["line\nbreak", "line\rbreak"])
-def test_insert_after_rejects_a_multiline_anchor_at_model_construction(target: str) -> None:
-    """The single-line anchor rule fails the plan before any file is touched."""
-    with pytest.raises(ValidationError, match="single-line substring"):
-        EditOp(op="insert_after", file="a.md", target=target, content="x", rationale="r")
+def test_insert_after_accepts_a_unique_multiline_block_anchor(tmp_path: Path) -> None:
+    """A unique four-line block anchor validates and applies after its last line."""
+    workspace = tmp_path / "ws"
+    _write(workspace / "doc.md", "l1\nl2\nl3\nl4\nl5\nl6\n")
+    plan = EditPlan(
+        summary="multiline block",
+        edits=(
+            EditOp(
+                op="insert_after",
+                file="doc.md",
+                target="l2\nl3\nl4\nl5\n",
+                content="NEW",
+                rationale="r",
+            ),
+        ),
+    )
 
+    validated = EditPlan.model_validate(plan.model_dump())
+    application = apply_edit_plan(validated, workspace=workspace)
+
+    assert application.report[0].status == "applied"
+    assert (workspace / "doc.md").read_bytes() == b"l1\nl2\nl3\nl4\nl5\nNEW\nl6\n"
+
+
+def test_replace_still_accepts_a_multiline_anchor_at_model_construction() -> None:
+    """replace keeps allowing a cross-line target; only insert_after was narrower."""
     multiline_replace = EditOp(
         op="replace",
         file="a.md",
@@ -586,6 +620,7 @@ def test_directory_target_and_glob_directory_match_are_errors(tmp_path: Path) ->
     assert "regular file" in application.report[0].message
 
 
+@pytest.mark.skipif(_NO_SYMLINK, reason="symlink creation requires Developer Mode on Windows")
 def test_symlink_escape_is_an_error(tmp_path: Path) -> None:
     """A symlink that resolves outside the workspace is rejected before write."""
     workspace = tmp_path / "ws"
@@ -607,6 +642,7 @@ def test_symlink_escape_is_an_error(tmp_path: Path) -> None:
     assert outside.read_text(encoding="utf-8") == "secret\n"
 
 
+@pytest.mark.skipif(_NO_SYMLINK, reason="symlink creation requires Developer Mode on Windows")
 @pytest.mark.parametrize("protected", [".harness-evolution", ".git"])
 def test_symlink_into_a_protected_directory_is_an_error(
     tmp_path: Path,
@@ -633,6 +669,7 @@ def test_symlink_into_a_protected_directory_is_an_error(
     assert secret.read_text(encoding="utf-8") == "secret\n"
 
 
+@pytest.mark.skipif(_NO_SYMLINK, reason="symlink creation requires Developer Mode on Windows")
 def test_symlink_outside_allowed_paths_is_an_error(tmp_path: Path) -> None:
     """The resolved target, not just the lexical path, must satisfy the scope."""
     workspace = tmp_path / "ws"
@@ -695,7 +732,6 @@ def test_bypassed_edit_with_an_unsafe_path_is_an_error(tmp_path: Path) -> None:
     [
         ("append", None, None, "content is required"),
         ("replace", None, "x", "target is required"),
-        ("insert_after", "line\nbreak", "x", "single-line"),
         ("insert_after", "line", None, "content is required"),
         ("replace", "line", None, "content is required"),
     ],
@@ -757,6 +793,266 @@ def test_insert_after_last_line_without_newline(tmp_path: Path) -> None:
 
     assert application.report[0].status == "applied"
     assert (workspace / "doc.md").read_text(encoding="utf-8") == "one\ntwo\nthree\n"
+
+
+@pytest.mark.parametrize(
+    ("text", "target", "content", "expected"),
+    [
+        # A mid-line match inserts after that line's terminator.
+        ("alpha beta\ngamma\n", "beta", "x", "alpha beta\nx\ngamma\n"),
+        # A line-end match reuses the anchor line's own newline.
+        ("one\ntwo\n", "two", "three", "one\ntwo\nthree\n"),
+        # A final unterminated line gains its boundary before the insert.
+        ("one\ntwo", "two", "three", "one\ntwo\nthree\n"),
+        # A bare-\r anchor keeps its bytes; inserted lines use \n.
+        ("a\rb\rc\r", "b", "x", "a\rb\rx\nc\r"),
+        # A CRLF anchor line inserts \r\n-terminated content.
+        ('x: {"a": 1}\r\ny\r\n', 'x: {"a": 1}', "z", 'x: {"a": 1}\r\nz\r\ny\r\n'),
+    ],
+)
+def test_insert_after_single_line_targets_reproduce_exact_bytes(
+    tmp_path: Path,
+    text: str,
+    target: str,
+    content: str,
+    expected: str,
+) -> None:
+    """Single-line anchors keep producing the historical byte-for-byte output."""
+    workspace = tmp_path / "ws"
+    _write(workspace / "doc.md", text)
+    plan = EditPlan(
+        summary="single-line bytes",
+        edits=(
+            EditOp(
+                op="insert_after",
+                file="doc.md",
+                target=target,
+                content=content,
+                rationale="r",
+            ),
+        ),
+    )
+
+    application = apply_edit_plan(plan, workspace=workspace)
+
+    assert application.report[0].status == "applied"
+    assert (workspace / "doc.md").read_bytes() == expected.encode("utf-8")
+
+
+def test_insert_after_multiline_block_without_trailing_newline(tmp_path: Path) -> None:
+    """A block that ends mid-file inserts after its last line's terminator."""
+    workspace = tmp_path / "ws"
+    _write(workspace / "doc.md", "l1\nl2\nl3\n")
+    plan = EditPlan(
+        summary="block mid-file",
+        edits=(
+            EditOp(op="insert_after", file="doc.md", target="l1\nl2", content="NEW", rationale="r"),
+        ),
+    )
+
+    application = apply_edit_plan(plan, workspace=workspace)
+
+    assert application.report[0].status == "applied"
+    assert (workspace / "doc.md").read_bytes() == b"l1\nl2\nNEW\nl3\n"
+
+
+def test_insert_after_target_ending_with_newline_adds_no_blank_line(tmp_path: Path) -> None:
+    """A target that ends with its own newline puts the insert right after it."""
+    workspace = tmp_path / "ws"
+    _write(workspace / "doc.md", "l1\nl2\nl3\nl4\n")
+    plan = EditPlan(
+        summary="terminated anchor",
+        edits=(
+            EditOp(
+                op="insert_after",
+                file="doc.md",
+                target="l1\nl2\n",
+                content="NEW",
+                rationale="r",
+            ),
+        ),
+    )
+
+    application = apply_edit_plan(plan, workspace=workspace)
+
+    assert application.report[0].status == "applied"
+    assert (workspace / "doc.md").read_bytes() == b"l1\nl2\nNEW\nl3\nl4\n"
+
+
+def test_insert_after_multiline_block_missing_and_ambiguous(tmp_path: Path) -> None:
+    """A multi-line block anchor follows the same 0/2 occurrence contract."""
+    workspace = tmp_path / "ws"
+    _write(workspace / "missing.md", "l1\nl2\nl3\n")
+    _write(workspace / "dup.md", "l1\nl2\nl1\nl2\nl3\n")
+    missing = EditPlan(
+        summary="missing block",
+        edits=(
+            EditOp(
+                op="insert_after",
+                file="missing.md",
+                target="l1\nl2\nl4\n",
+                content="x",
+                rationale="r",
+            ),
+        ),
+    )
+    ambiguous = EditPlan(
+        summary="ambiguous block",
+        edits=(
+            EditOp(
+                op="insert_after",
+                file="dup.md",
+                target="l1\nl2\n",
+                content="x",
+                rationale="r",
+            ),
+        ),
+    )
+
+    missing_application = apply_edit_plan(missing, workspace=workspace)
+    ambiguous_application = apply_edit_plan(ambiguous, workspace=workspace)
+
+    assert missing_application.report[0].status == "skipped_anchor_missing"
+    assert "anchor not found" in missing_application.report[0].message
+    assert ambiguous_application.report[0].status == "error"
+    assert "anchor is ambiguous" in ambiguous_application.report[0].message
+    assert (workspace / "missing.md").read_bytes() == b"l1\nl2\nl3\n"
+    assert (workspace / "dup.md").read_bytes() == b"l1\nl2\nl1\nl2\nl3\n"
+
+
+def test_insert_after_multiline_block_keeps_crlf_ending(tmp_path: Path) -> None:
+    """A multi-line block in a CRLF file inserts CRLF-terminated lines."""
+    workspace = tmp_path / "ws"
+    _write(workspace / "doc.md", "l1\r\nl2\r\nl3\r\nl4\r\nl5\r\n")
+    plan = EditPlan(
+        summary="crlf block",
+        edits=(
+            EditOp(
+                op="insert_after",
+                file="doc.md",
+                target="l2\r\nl3\r\nl4\r\n",
+                content="NEW1\nNEW2",
+                rationale="r",
+            ),
+        ),
+    )
+
+    application = apply_edit_plan(plan, workspace=workspace)
+
+    assert application.report[0].status == "applied"
+    assert (workspace / "doc.md").read_bytes() == (
+        b"l1\r\nl2\r\nl3\r\nl4\r\nNEW1\r\nNEW2\r\nl5\r\n"
+    )
+
+
+def test_production_shaped_plan_replays_with_every_edit_applied(tmp_path: Path) -> None:
+    """A production-shaped 8-edit plan with a block anchor validates and applies."""
+    workspace = tmp_path / "ws"
+    skill = (
+        "# demo skill\n"
+        "\n"
+        "## 概述\n"
+        "把上游轨迹整理成周报。\n"
+        "\n"
+        "## 步骤\n"
+        "### 输入\n"
+        "读取 sessions 列表\n"
+        "过滤已归档条目\n"
+        "\n"
+        "### 输出\n"
+        "生成 summary.md\n"
+        "附带统计表\n"
+        "\n"
+        "### 验收模板\n"
+        "运行 fixtures:check 确认 corpus 有效\n"
+        "运行 test:api 确认回归全绿\n"
+        "确认 git diff 只含目标文件\n"
+        "\n"
+        "## 限制\n"
+        "不读取生产凭据。\n"
+    )
+    _write(workspace / "skills" / "demo" / "SKILL.md", skill)
+    regression_evidence = "\n".join(f"回归证据第 {index} 行" for index in range(1, 29))
+    block_anchor = (
+        "### 验收模板\n"
+        "运行 fixtures:check 确认 corpus 有效\n"
+        "运行 test:api 确认回归全绿\n"
+        "确认 git diff 只含目标文件\n"
+    )
+    raw_plan = {
+        "summary": "补齐验收模板回归证据并修正统计口径",
+        "edits": [
+            {
+                "op": "replace",
+                "file": "skills/demo/SKILL.md",
+                "target": "把上游轨迹整理成周报。",
+                "content": "把上游轨迹整理成带异常标注的周报。",
+                "rationale": "概述缺异常标注口径",
+            },
+            {
+                "op": "insert_after",
+                "file": "skills/demo/SKILL.md",
+                "target": block_anchor,
+                "content": regression_evidence,
+                "rationale": "验收模板缺回归证据",
+            },
+            {
+                "op": "insert_after",
+                "file": "skills/demo/SKILL.md",
+                "target": "### 输出",
+                "content": "输出前先按对象去重。",
+                "rationale": "输出缺去重前提",
+            },
+            {
+                "op": "delete",
+                "file": "skills/demo/SKILL.md",
+                "target": "过滤已归档条目\n",
+                "rationale": "该输入步骤已由上游保证",
+            },
+            {
+                "op": "append",
+                "file": "skills/demo/SKILL.md",
+                "content": "维护备注：本文件为测试合成副本。",  # noqa: RUF001
+                "rationale": "标注合成来源",
+            },
+            {
+                "op": "replace",
+                "file": "skills/demo/SKILL.md",
+                "target": "附带统计表",
+                "content": "附带统计表（含错误分级）。",  # noqa: RUF001
+                "rationale": "统计缺错误分级",
+            },
+            {
+                "op": "insert_after",
+                "file": "skills/demo/SKILL.md",
+                "target": "## 限制\n",
+                "content": "凭据零感知同样适用于评测网关。",
+                "rationale": "限制缺网关侧口径",
+            },
+            {
+                "op": "append",
+                "file": "skills/demo/SKILL.md",
+                "content": "完。",
+                "rationale": "收尾标记",
+            },
+        ],
+    }
+
+    plan = EditPlan.model_validate(raw_plan)
+    application = apply_edit_plan(plan, workspace=workspace)
+
+    final = (workspace / "skills" / "demo" / "SKILL.md").read_bytes().decode("utf-8")
+    assert [status.status for status in application.report] == ["applied"] * 8
+    assert application.files == ("skills/demo/SKILL.md",)
+    inserted = plan.edits[1].content
+    assert inserted is not None
+    assert len(inserted.splitlines()) == 28
+    assert f"{block_anchor}{regression_evidence}\n" in final
+    assert "### 输出\n输出前先按对象去重。\n生成 summary.md\n" in final
+    assert "附带统计表（含错误分级）。\n" in final  # noqa: RUF001
+    assert "过滤已归档条目" not in final
+    assert "## 限制\n凭据零感知同样适用于评测网关。\n不读取生产凭据。\n" in final
+    assert final.endswith("维护备注：本文件为测试合成副本。\n完。\n")  # noqa: RUF001
 
 
 def test_replace_with_identical_content_is_applied_but_not_changed(tmp_path: Path) -> None:
