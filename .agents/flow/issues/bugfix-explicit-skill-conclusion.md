@@ -4,11 +4,11 @@
 
 ```yaml flow
 kind: issue
-id: bugfix-56
+id: bugfix-58
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - attribute-badcases/**
   - apps/api/app/service/evolution/local_attribution.py
