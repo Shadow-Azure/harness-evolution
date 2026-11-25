@@ -158,18 +158,16 @@ class EditOp(BaseModel):
     def _validate_op_fields(self) -> Self:
         """Enforce the op-specific required and forbidden fields.
 
-        ``insert_after`` anchors one physical line, so a multi-line target is a
-        model error rather than an applier error: the plan fails before any
-        file is touched and the retry prompt gets a field-level message.
+        ``insert_after`` anchors the unique text fragment that content is
+        inserted after; the fragment may span multiple lines, and the applier
+        resolves the end of its last line, so no line count is enforced here.
         """
         if self.op == "append":
             if self.target is not None:
                 raise ValueError("append must not set target")
             _require_non_blank(self.content, field="content", op=self.op)
         elif self.op in _ANCHORED_OPS:
-            target = _require_non_blank(self.target, field="target", op=self.op)
-            if self.op == "insert_after" and ("\n" in target or "\r" in target):
-                raise ValueError("target must be a single-line substring")
+            _require_non_blank(self.target, field="target", op=self.op)
             if self.op == "delete":
                 if self.content is not None:
                     raise ValueError("delete must not set content")
@@ -465,18 +463,52 @@ def _append_text(text: str, content: str) -> str:
 
 
 def _insert_after_text(text: str, target: str, content: str) -> str:
-    """Insert content lines directly after the unique line containing ``target``."""
-    lines = text.splitlines(keepends=True)
-    anchor_index = next((index for index, line in enumerate(lines) if target in line), None)
-    if anchor_index is None:  # pragma: no cover - counted before this call
-        raise EditPlanError("insert_after anchor is not contained in one line")
-    anchor = lines[anchor_index]
-    ending = "\r\n" if anchor.endswith("\r\n") else "\n"
+    """Insert content lines directly after the unique block matched by ``target``.
+
+    ``target`` may span multiple lines. When it ends with a line terminator the
+    insertion point is right after that terminator; otherwise it is the end of
+    the line containing the match's last character (the end of the file when
+    that line is unterminated), and an unterminated final line gains one.
+    Inserted lines reuse the anchor line's ``\\r\\n`` or ``\\n`` style; a bare
+    ``\\r`` anchor line keeps its bytes and inserted lines use ``\\n``. In files
+    whose lines end in ``\\n``, ``\\r\\n``, or bare ``\\r``, a single-line target
+    therefore keeps producing the historical bytes; mixed terminator styles and
+    other Unicode line separators are outside the contract.
+    """
+    try:
+        match_end = text.index(target) + len(target)
+    except ValueError:  # pragma: no cover - counted before this call
+        raise EditPlanError("insert_after anchor is not contained in the file") from None
+    if target.endswith("\r\n"):
+        ending, prefix, suffix = "\r\n", text[:match_end], text[match_end:]
+    elif target.endswith("\r"):
+        if text.startswith("\n", match_end):
+            # The target stops halfway through a CRLF terminator; finish it.
+            match_end += 1
+            ending = "\r\n"
+        else:
+            ending = "\n"
+        prefix, suffix = text[:match_end], text[match_end:]
+    elif target.endswith("\n"):
+        ending, prefix, suffix = "\n", text[:match_end], text[match_end:]
+    else:
+        newline = text.find("\n", match_end)
+        if newline != -1:
+            ending = "\r\n" if newline > 0 and text[newline - 1] == "\r" else "\n"
+            prefix, suffix = text[: newline + 1], text[newline + 1 :]
+        else:
+            carriage = text.find("\r", match_end)
+            if carriage != -1:
+                ending, prefix, suffix = "\n", text[: carriage + 1], text[carriage + 1 :]
+            else:
+                # The match's last line is the unterminated final line, so the
+                # insertion point is the end of the file; finishing that line
+                # must not drop text between the match and EOF.
+                ending = "\n"
+                prefix, suffix = f"{text}{ending}", ""
     inserted = content.splitlines() or [""]
-    if not anchor.endswith(("\n", "\r")):
-        lines[anchor_index] = f"{anchor}{ending}"
-    lines.insert(anchor_index + 1, "".join(f"{line}{ending}" for line in inserted))
-    return "".join(lines)
+    body = "".join(f"{line}{ending}" for line in inserted)
+    return f"{prefix}{body}{suffix}"
 
 
 def _apply_one(edit: EditOp, text: str, index: int) -> _EditOutcome:
@@ -494,15 +526,6 @@ def _apply_one(edit: EditOp, text: str, index: int) -> _EditOutcome:
         raise EditPlanError(_constraint_message(index, edit.file, edit.op, "target is required"))
 
     if edit.op == "insert_after":
-        if "\n" in target or "\r" in target:
-            raise EditPlanError(
-                _constraint_message(
-                    index,
-                    edit.file,
-                    edit.op,
-                    "target must be a single-line substring",
-                ),
-            )
         occurrences = text.count(target)
         if occurrences == 0:
             return _EditOutcome(

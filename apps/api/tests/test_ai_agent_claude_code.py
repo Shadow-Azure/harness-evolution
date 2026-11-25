@@ -1766,6 +1766,7 @@ def test_from_settings_resolves_generic_and_legacy_entries(tmp_path: Path) -> No
     assert both._settings_file() == tmp_path / "generic-settings.json"
 
 
+@pytest.mark.skipif(os.name != "posix", reason="process-group signals are POSIX-only")
 async def test_default_runner_escalates_sigint_to_sigkill(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1803,6 +1804,7 @@ async def test_default_runner_escalates_sigint_to_sigkill(
     assert result.returncode == -9
 
 
+@pytest.mark.skipif(os.name != "posix", reason="process-group signals are POSIX-only")
 async def test_default_runner_cleans_up_and_reraises_cancellation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
