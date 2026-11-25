@@ -413,8 +413,10 @@ erDiagram
   "cases": [ { "badCaseId": "BC-HC-0007", "title": "检索索引读取失败",
     "objectName": "deep-research", "badCaseType": "self",
     "triggerAt": "2026-09-06T09:12:00+08:00", "createdAt": "2026-09-06T09:20:00+08:00" } ],
-  "patch": { "files": [ { "file": "SKILL.md", "lines": ["+ 读取索引前校验快照字段"], "overwrite": false } ],
-    "note": "启用快照字段校验" },
+  "patch": { "files": [ { "file": "SKILL.md", "lines": ["整文件新内容"], "overwrite": false } ],
+    "note": "启用快照字段校验",
+    "diff": ["diff --git a/SKILL.md b/SKILL.md", "--- a/SKILL.md", "+++ b/SKILL.md",
+      "@@ -1 +1 @@", "- 读取索引", "+ 读取索引前校验快照字段"] },
   "candidate": { "ref": "evo/20261023-evo-20261023-01/candidate/r1", "commit": "ab12…",
     "message": "evolve(deep-research@v2.0.0): 针对「检索索引读取失败」的候选变更" },
   "push": { "status": "succeeded", "attempts": 1, "error": null },
@@ -423,7 +425,7 @@ erDiagram
   "finalCommit": { "hash": "cd34…", "message": "evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取\n\n## 问题\n…" } }
 ```
 
-`patch` 从落库 bundle 投影，`files[]` 顺序与 candidate commit 的文件顺序一致；`overwrite` 表示该文件以整文件覆盖写入。单文件轮次的落库字典另外保留 legacy 顶层 `file / lines / overwrite`，以及 `note / intent / report`；读取侧必须先还原 bundle 再显式投影，**禁止把落库字典直接交给 `extra="forbid"` 读模型**。历史轮次只有 `file / lines / note` 时等价于一个 `files` 项，`note` 缺失仍为 `null`。
+`patch` 从落库 bundle 投影，`files[]` 顺序与 candidate commit 的文件顺序一致；`overwrite` 表示该文件以整文件覆盖写入。`diff` 是 candidate commit 的真实 `git diff`（按行拆分的字符串数组）：写侧在 candidate commit 成功后把 `CandidateWorkspace.unified_diff` 写入 `round.patch.diff`；读取侧原样投影，不再让客户端把整文件行当 diff 着色。单文件轮次的落库字典另外保留 legacy 顶层 `file / lines / overwrite`，以及 `note / diff / intent / report`；读取侧必须先还原 bundle 再显式投影，**禁止把落库字典直接交给 `extra="forbid"` 读模型**。历史轮次没有 `diff` 时，读取侧按 `intent` 中 `report.status == "applied"` 的编辑合成 `- / + / @@` 变更块；既无 diff 也无可用 intent 时 `diff` 为 `null`，客户端降级为无着色的整文件预览而不是把 `---`、Markdown 列表当作删除。历史轮次只有 `file / lines / note` 时等价于一个 `files` 项，`note` 缺失仍为 `null`。
 
 `finalCommit.message` 是 amend 后的完整 commit message（Markdown）：首行是 `evolve(<target>): <subject>`，其后是 `## 问题`、`## 分析`、`## 改动`、`## 追溯` 等正文段，末尾可带 `---` 与 `Harness-*` trailer。展示层必须把首行当 subject，其余交给 Markdown 渲染；禁止把整段 message 按纯文本插值。旧 run 的单行 message 仍合法，按 subject 展示即可。
 
@@ -1456,7 +1458,7 @@ root-sync 状态表的 `last_error` 直接保存稳定码，per-report source �
 | `ERROR_META[title]`（单结论） | `BadCase.attributionCount` + 归因列表（§4.19） | 一个 bad case × 多对象·版本；`reason` / `reasoning(Markdown)` / `category` / `conclusion` 由归因行承载 |
 | `REPORTS[]` | `bad_case_analysis` 关联的 `probe_reports` 行 | 不再有独立产品实体「问题报告」；物理 `probe_id` 映射为 `attributionId` |
 | `RUNS[]` | `RunCard` / `RunDetail` | V2 映射为 `stats.sessions/versionUnresolvedSessions/potential/attributed/reused/byCategory` |
-| `PATCH.deser` | `patch.files[].file/lines/overwrite` | 多文件逐项渲染，legacy 单文件归一为一个 `files` 项；行数组原样传给前端着色 |
+| `PATCH.deser` | `patch.diff`（优先）+ `patch.files[]` | 新轮次逐行渲染真实 unified diff；无 diff 的轮次按 `intent/report` 合成变更块，再缺失则用 `files[]` 作无着色整文件预览 |
 
 V2 新增映射（2026-11-11）：
 
