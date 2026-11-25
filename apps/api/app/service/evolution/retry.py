@@ -9,7 +9,11 @@ from typing import Any, Protocol, TypeVar, cast
 
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.probe_query import ProbeHitRow
-from app.db.models.evolution import EvolutionRoundRecord, EvolutionRunRecord
+from app.db.models.evolution import (
+    EvolutionEvaluationRecord,
+    EvolutionRoundRecord,
+    EvolutionRunRecord,
+)
 from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
 from app.service.evolution.advance import build_candidate_trace
@@ -84,6 +88,13 @@ class EvalResubmitter(Protocol):
         previous_external_id: str | None = None,
     ) -> EvolutionRoundRecord:
         """Persist the new external evaluation id and poll deadline."""
+
+    async def resubmit_run_evaluation(
+        self,
+        run: EvolutionRunRecord,
+        kind: str,
+    ) -> EvolutionEvaluationRecord:
+        """Resubmit one cleared baseline or test-final evaluation."""
 
 
 class ProbeSourceReader(Protocol):
@@ -199,23 +210,48 @@ class EvolutionRetryService:
 
         event_stage = _BLOCKED_STAGE_TO_EVENT_STAGE[blocked_stage]
         cleared_round: EvolutionRoundRecord | None = None
+        cleared_run_evals: list[EvolutionEvaluationRecord] = []
         previous_eval_id: str | None = None
         if blocked_stage == "eval":
-            failed = await self._failed_eval_round(run.id)
-            if failed is None:
-                raise RuntimeError("blocked evaluation round not found")
-            previous_eval_id = failed.eval_external_id
-            cleared_round = await self._runs.reset_round_for_eval_retry(
-                run.id,
-                failed.id,
-            )
+            failed_run_evals = await self._runs.list_failed_run_evaluations(run.id)
+            if failed_run_evals:
+                for failed_run_eval in failed_run_evals:
+                    cleared_run_evals.append(
+                        await self._runs.reset_run_eval_for_retry(
+                            failed_run_eval.id,
+                        ),
+                    )
+                previous_eval_id = failed_run_evals[0].eval_external_id
+            else:
+                failed = await self._failed_eval_round(run.id)
+                if failed is None:
+                    raise RuntimeError("blocked evaluation round not found")
+                previous_eval_id = failed.eval_external_id
+                cleared_round = await self._runs.reset_round_for_eval_retry(
+                    run.id,
+                    failed.id,
+                )
         await self._resume(run.id, stage=event_stage, job_id=job.id)
         refreshed = await self._runs.get_run(run.id)
         if refreshed is not None:
             run = refreshed
         await checkpoint(self._runs, run.id)
+        dispatched: Mapping[str, Any]
         try:
-            if blocked_stage == "eval":
+            if blocked_stage == "eval" and cleared_run_evals:
+                submitter = self._require_stage(self._eval_submitter, "eval submitter")
+                resubmitted_evaluations = [
+                    await submitter.resubmit_run_evaluation(run, cleared.kind)
+                    for cleared in cleared_run_evals
+                ]
+                dispatched = {
+                    "kind": cleared_run_evals[0].kind,
+                    "evalExternalId": resubmitted_evaluations[0].eval_external_id,
+                    "resubmittedKinds": [evaluation.kind for evaluation in resubmitted_evaluations],
+                    "previousEvalExternalId": previous_eval_id,
+                    "jobId": job.id,
+                }
+            elif blocked_stage == "eval":
                 if cleared_round is None:
                     raise RuntimeError("evaluation retry round was not prepared")
                 dispatched = await self._resubmit_eval(
@@ -243,6 +279,21 @@ class EvolutionRetryService:
         }
         result.update(dispatched)
         return result
+
+    async def _pending_run_eval(
+        self,
+        run_id: str,
+    ) -> EvolutionEvaluationRecord | None:
+        """Return a cleared run-level evaluation awaiting resubmission."""
+        for kind in ("validation_baseline", "test_baseline", "test_final"):
+            evaluation = await self._runs.get_run_evaluation(run_id, kind)
+            if (
+                evaluation is not None
+                and evaluation.eval_external_id is None
+                and evaluation.eval_status in {"pending", "failed", "timeout"}
+            ):
+                return evaluation
+        return None
 
     async def _dispatch(
         self,
@@ -278,6 +329,16 @@ class EvolutionRetryService:
         job: JobRunRecord,
     ) -> Mapping[str, Any]:
         """Resume an interrupted retry job from its durable round/final facts."""
+        pending_run_eval = await self._pending_run_eval(run.id)
+        if pending_run_eval is not None and self._eval_submitter is not None:
+            resubmitted = await self._eval_submitter.resubmit_run_evaluation(
+                run,
+                pending_run_eval.kind,
+            )
+            return {
+                "kind": resubmitted.kind,
+                "evalExternalId": resubmitted.eval_external_id,
+            }
         stale_eval = await self._stale_eval_round(run.id)
         if stale_eval is not None:
             previous_eval_id = stale_eval.eval_external_id

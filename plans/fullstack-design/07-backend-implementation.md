@@ -942,26 +942,27 @@ async def block_run(run, stage: str, error: Exception, retryable: bool,
 
 ### 5.7 评测接入与轮询（gateway 由上游入参决定）
 
-**gateway 选择上游传入**：`POST /runs` / `POST /cluster-previews` 的 body 可带可选的 `eval` 配置（如 `{"mode": "http", "baseUrl": "...", "apiKeyRef": "HE_EVAL_API_KEY"}`——密钥永远走 env 引用，配置值不落库）；建行时快照到 `evolution_runs.eval_config`，缺省用全局 `HE_EVAL_*` 构造。`engine.gateway()` 按该快照构造，同一进程内不同 run 可接不同评测平台；外部字段变化只改 `EvalMapper` / `HttpEvalGateway`。
+**gateway 由注册表按快照选择**：`POST /runs` / `POST /cluster-previews` 的 body 可带可选的 `eval` 配置（如 `{"mode": "ai-eval-platform", "baseUrl": "...", "apiKeyRef": "HE_EVAL_API_KEY"}`——密钥永远走 env 引用，配置值不落库）；建行时把 provider 选择与 target 的 `validationProjectId`/`testProjectId`/`primaryMetricKey`/`subDir` 一起快照到 `evolution_runs.eval_config`，缺省用全局 `HE_EVAL_*` 构造。`third_party_api/eval_gateway/factory.py` 的 `EvalGatewayFactory` 持有 provider 注册表；`BaseEvalGateway(ABC)` 承载冻结配置、鉴权、超时与错误边界，平台子类只做协议与字段映射。`engine.gateway()` 按该快照构造，同一进程内不同 run 可接不同评测平台；换平台只加子类与注册一行。
 
 评测等待不能放在 JobRunner 的 handler 里 `sleep`，否则单 worker 会被占住。用独立轻量循环：
 
 ```python
 async def eval_poller_loop():
     while not stopped:
-        due = await evolution_rounds.list_eval_due(now())          # eval_status=evaluating AND next_poll_at<=now
-        for round in due:
-            engine = EngineFactory.for_run(await runs.get(round.run_id), deps)
+        due = await list_due_evals(now())   # rounds + evolution_evaluations, next_poll_at<=now
+        for item in due:
+            engine = EngineFactory.for_run(await runs.get(item.run_id), deps)
             gw = engine.gateway()                                  # 该 run 的评测接入（创建期快照）
-            status = await gw.get_status(round.eval_external_id)
+            status = await gw.get_status(item.eval_external_id)
             if status.status in ('queued', 'running'):
-                await evolution_rounds.set_eval_next_poll(round.id, now() + timedelta(minutes=5))
+                await set_next_poll(item, now() + timedelta(minutes=5))
             elif status.status == 'completed':
-                result = await gw.get_result(round.eval_external_id)
-                await evolution_rounds.save_eval_result(round.id, result)
-                await jobs.submit('evolution_apply', {'evolution_round_id': round.id}, ref_id=round.run_id)
+                measurement = await gw.get_result(item.eval_external_id)
+                await save_measurement(item, measurement)
+                if item.is_round:
+                    await jobs.submit('evolution_apply', {'evolution_round_id': item.id}, ref_id=item.run_id)
             elif status.status in ('failed', 'timeout'):
-                await block_run_by_id(round.run_id, stage='eval', error=status.message)
+                await block_run_by_id(item.run_id, stage='eval', error=status.message)
         await asyncio.sleep(30)
 ```
 
@@ -971,22 +972,24 @@ async def eval_poller_loop():
 - `eval_poller` 只做 DB 读写和外部 HTTP，不执行 git，也不持有 JobRunner 全局锁。
 - 评测失败/超时 → `run.status=blocked`、`blocked_stage=eval`；不自动重新提交，等 `/retry` 或人工处理。
 
-评测适配层（Protocol 接缝，接口 + 实现成对）：
+评测适配层（ABC 父类 + 注册表 + 平台子类）：
 
 ```python
-class EvalGateway(Protocol):
+class BaseEvalGateway(ABC):
     async def submit(self, req: EvalRequest) -> EvalSubmission: ...
     async def get_status(self, eval_id: str) -> EvalStatus: ...
-    async def get_result(self, eval_id: str) -> EvalResult: ...
+    async def get_result(self, eval_id: str) -> EvalMeasurement: ...
 ```
 
-- `EvalRequest` / `EvalResult` 是内部稳定模型；
-- `HttpEvalGateway` 负责 URL、鉴权、超时；
-- `EvalMapper` 负责内部模型 ↔ 外部 JSON；
-- 外部接口字段变化时只改 `EvalMapper` 和 `HttpEvalGateway`，业务 service 不动；
-- V1 可用 `FakeEvalGateway` 返回占位分数，但 push 必须真实发生。
+- `EvalRequest` 携带 purpose、模板 ID、subDir、尝试次数与 lineage；`EvalSubmission` 可带平台 warnings；`EvalMeasurement` 只有主指标值、方向与原始指标项。
+- `AiEvalPlatformGateway` 封装 launch、status、results、错误信封与服务令牌；状态 11 态折 5 态，`partial` 受最低完成率护栏，`paused_budget` 直接失败。
+- 401/403/404/422 判不可重试并保留平台错误码；5xx、429 与网络错误标 `retryable`，poller 只推迟下一次轮询。
+- 裁决不依赖平台 verdict：`get_result` 只返回测量值，service 层 `eval_gate.py` 与基线比较；fake 与真实平台走同一套门控。
+- run 级评测（验证集基线、测试集基线、测试集终评）存 `evolution_evaluations`，与逐轮评测共用 poller；基线失败同样 `blocked(stage=eval)`，`/retry` 清理后重提。
 
 ### 5.8 应用评测结果、重试与终评（`FullEvolutionEngine.apply_round` / `finalize` / `retry`）
+
+裁决在 service 层 `eval_gate.py`：轮次 N 的基线取最近一个已接纳轮的候选分，没有则取 `validation_baseline`；候选必须按指标方向严格优于基线，平票拒绝。接纳后基线顺延到该轮候选分，拒绝时 run 分支与基线都不动。全部迭代终结后提交测试集终评，`evolution_finals.init_score` 取测试集基线分、`best_score` 取测试集终评分，`verdict` 要求有接纳轮且终评分严格更优。
 
 ```python
 # full.py —— apply 阶段：apply_eval 只解包 job，核心是 apply_round（retry 复用）

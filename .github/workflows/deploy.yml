@@ -349,15 +349,22 @@ jobs:
           ENTRIES=("HE_DATA_DIR $(printf '%s' "$DATA_DIR" | base64 | tr -d '\n')")
           ENTRIES+=("HE_GIT_PUSH_PROVIDER $(printf '%s' "$GIT_PUSH_PROVIDER" | base64 | tr -d '\n')")
           ENTRIES+=("GIT_ASKPASS $(printf '%s' '/opt/harness/shared/git-askpass.sh' | base64 | tr -d '\n')")
-          [ -n "${HE_EVAL_MODE:-}" ] && ENTRIES+=("HE_EVAL_MODE $(printf '%s' "${HE_EVAL_MODE:-}" | base64 | tr -d '\n')")
-          [ -n "${HE_EVAL_BASE_URL:-}" ] && ENTRIES+=("HE_EVAL_BASE_URL $(printf '%s' "${HE_EVAL_BASE_URL:-}" | base64 | tr -d '\n')")
-          [ -n "${HE_EVAL_API_KEY:-}" ] && ENTRIES+=("HE_EVAL_API_KEY $(printf '%s' "${HE_EVAL_API_KEY:-}" | base64 | tr -d '\n')")
-          # 代理不可用时显式移除旧值，避免上一轮成功的 HE_GIT_PROXY 被继续使用。
+          # 三个评测键与 Secret 同名：存在且非空则写入，缺失或空则显式 unset，
+          # 避免删除 Secret 后服务器旧值继续生效。
           UNSET_ARGS=""
+          for name in HE_EVAL_MODE HE_EVAL_BASE_URL HE_EVAL_API_KEY; do
+            value="${!name:-}"
+            if [ -n "$value" ]; then
+              ENTRIES+=("$name $(printf '%s' "$value" | base64 | tr -d '\n')")
+            else
+              UNSET_ARGS="$UNSET_ARGS --unset $name"
+            fi
+          done
+          # 代理不可用时显式移除旧值，避免上一轮成功的 HE_GIT_PROXY 被继续使用。
           if [ -n "${GIT_PROXY_URL:-}" ]; then
             ENTRIES+=("HE_GIT_PROXY $(printf '%s' "$GIT_PROXY_URL" | base64 | tr -d '\n')")
           else
-            UNSET_ARGS="--unset HE_GIT_PROXY"
+            UNSET_ARGS="$UNSET_ARGS --unset HE_GIT_PROXY"
           fi
           # token 只经 base64 + stdin 传输，不进入 SSH 命令行或日志；secret 被移除时
           # 显式 unset，避免旧 PAT 留在服务器 .env 里继续生效。

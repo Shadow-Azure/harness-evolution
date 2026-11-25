@@ -7,24 +7,29 @@ from typing import Any, cast
 
 from sqlalchemy import delete, func, insert, null, select, update
 from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
 from app.db.crud.evolution_lock import lock_run_row
 from app.db.crud.jobs import queued_job_values
 from app.db.models.evolution import (
+    EVALUATION_KINDS,
     ClusterWrite,
+    EvolutionEvaluationRecord,
     EvolutionFinalRecord,
     EvolutionRoundRecord,
     EvolutionRunRecord,
     EvolutionRunSummaryRecord,
     ProbeClusterLinkRecord,
     ProbeClusterRecord,
+    evolution_evaluations,
     evolution_finals,
     evolution_rounds,
     evolution_runs,
     probe_cluster_probes,
     probe_clusters,
+    record_from_evolution_evaluation,
     record_from_evolution_final,
     record_from_evolution_round,
     record_from_evolution_run,
@@ -1562,10 +1567,12 @@ class EvolutionRepository:
         current_score = result.get("currentScore")
         candidate_score = result.get("candidateScore")
         if (
-            isinstance(current_score, bool)
-            or isinstance(candidate_score, bool)
-            or not isinstance(current_score, (int, float))
+            isinstance(candidate_score, bool)
             or not isinstance(candidate_score, (int, float))
+            or (
+                current_score is not None
+                and (isinstance(current_score, bool) or not isinstance(current_score, (int, float)))
+            )
         ):
             raise ValueError("evaluation result scores are invalid")
         async with self._database.transaction() as session:
@@ -1591,7 +1598,11 @@ class EvolutionRepository:
                         eval_next_poll_at=None,
                         eval_finished_at=finished_at,
                         eval_result=deepcopy(dict(result)),
-                        eval_current=float(current_score),
+                        eval_current=(
+                            float(current_score)
+                            if isinstance(current_score, (int, float))
+                            else None
+                        ),
                         eval_candidate=float(candidate_score),
                         eval_error=None,
                     ),
@@ -1605,6 +1616,307 @@ class EvolutionRepository:
                 .values(eval_status="completed"),
             )
         return True
+
+    async def get_run_evaluation(
+        self,
+        run_id: str,
+        kind: str,
+    ) -> EvolutionEvaluationRecord | None:
+        """Return one run-level evaluation by its stable kind, if present."""
+        self._require_evaluation_kind(kind)
+        async with self._database.session() as session:
+            row = (
+                (
+                    await session.execute(
+                        select(evolution_evaluations).where(
+                            evolution_evaluations.c.run_id == run_id,
+                            evolution_evaluations.c.kind == kind,
+                        ),
+                    )
+                )
+                .mappings()
+                .first()
+            )
+        if row is None:
+            return None
+        return record_from_evolution_evaluation(cast(Mapping[str, Any], row))
+
+    async def ensure_run_evaluation(
+        self,
+        run_id: str,
+        kind: str,
+    ) -> EvolutionEvaluationRecord:
+        """Create the pending run-level evaluation row exactly once."""
+        self._require_evaluation_kind(kind)
+        existing = await self.get_run_evaluation(run_id, kind)
+        if existing is not None:
+            return existing
+        evaluation_id = new_id()
+        created = now_shanghai()
+        try:
+            async with self._database.transaction() as session:
+                await session.execute(
+                    insert(evolution_evaluations).values(
+                        id=evaluation_id,
+                        run_id=run_id,
+                        kind=kind,
+                        eval_status="pending",
+                        eval_attempts=0,
+                        eval_paused_seconds=0,
+                        created_at=created,
+                    ),
+                )
+        except IntegrityError:
+            pass
+        current = await self.get_run_evaluation(run_id, kind)
+        if current is None:
+            raise RuntimeError("created run evaluation disappeared")
+        return current
+
+    async def mark_run_eval_submitted(
+        self,
+        evaluation_id: str,
+        *,
+        external_id: str,
+        started_at: datetime,
+        next_poll_at: datetime,
+    ) -> EvolutionEvaluationRecord:
+        """Persist the platform identifier and first durable poll deadline."""
+        if not external_id.strip():
+            raise ValueError("external evaluation id must not be blank")
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_evaluations)
+                    .where(
+                        evolution_evaluations.c.id == evaluation_id,
+                        evolution_evaluations.c.eval_external_id.is_(None),
+                        evolution_evaluations.c.eval_status.in_(
+                            ("pending", "failed", "timeout"),
+                        ),
+                    )
+                    .values(
+                        eval_external_id=external_id,
+                        eval_status="evaluating",
+                        eval_attempts=evolution_evaluations.c.eval_attempts + 1,
+                        eval_next_poll_at=next_poll_at,
+                        eval_started_at=started_at,
+                        eval_finished_at=None,
+                        eval_result=null(),
+                        eval_error=None,
+                    ),
+                ),
+            )
+            if result.rowcount != 1:
+                raise StageConflict(
+                    status_code=409,
+                    current=0,
+                    target=1,
+                    reason="run evaluation cannot enter external evaluation",
+                )
+        current = await self._required_run_evaluation(evaluation_id)
+        return current
+
+    async def list_run_eval_due(
+        self,
+        now: datetime,
+        *,
+        limit: int = 100,
+    ) -> tuple[EvolutionEvaluationRecord, ...]:
+        """Return due run-level evaluations for running full-mode runs."""
+        if limit < 1:
+            raise ValueError("evaluation scan limit must be positive")
+        async with self._database.session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(evolution_evaluations)
+                        .join(
+                            evolution_runs,
+                            evolution_runs.c.id == evolution_evaluations.c.run_id,
+                        )
+                        .where(
+                            evolution_evaluations.c.eval_status == "evaluating",
+                            evolution_evaluations.c.eval_external_id.is_not(None),
+                            evolution_evaluations.c.eval_next_poll_at.is_not(None),
+                            evolution_evaluations.c.eval_next_poll_at <= now,
+                            evolution_runs.c.mode == "full",
+                            evolution_runs.c.status == "running",
+                        )
+                        .order_by(
+                            evolution_evaluations.c.eval_next_poll_at,
+                            evolution_evaluations.c.run_id,
+                            evolution_evaluations.c.kind,
+                        )
+                        .limit(limit),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(record_from_evolution_evaluation(cast(Mapping[str, Any], row)) for row in rows)
+
+    async def list_failed_run_evaluations(
+        self,
+        run_id: str,
+    ) -> tuple[EvolutionEvaluationRecord, ...]:
+        """Return run-level evaluations that failed or timed out."""
+        async with self._database.session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(evolution_evaluations)
+                        .where(
+                            evolution_evaluations.c.run_id == run_id,
+                            evolution_evaluations.c.eval_status.in_(
+                                ("failed", "timeout"),
+                            ),
+                        )
+                        .order_by(evolution_evaluations.c.created_at),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(record_from_evolution_evaluation(cast(Mapping[str, Any], row)) for row in rows)
+
+    async def mark_run_eval_waiting(
+        self,
+        evaluation_id: str,
+        *,
+        next_poll_at: datetime,
+    ) -> EvolutionEvaluationRecord:
+        """Push one run-level evaluation's durable poll deadline forward."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_evaluations)
+                .where(
+                    evolution_evaluations.c.id == evaluation_id,
+                    evolution_evaluations.c.eval_status == "evaluating",
+                )
+                .values(eval_next_poll_at=next_poll_at),
+            )
+        return await self._required_run_evaluation(evaluation_id)
+
+    async def save_run_eval_result(
+        self,
+        evaluation_id: str,
+        *,
+        result: Mapping[str, Any],
+        score: float,
+        finished_at: datetime,
+    ) -> bool:
+        """Persist one completed run-level measurement exactly once."""
+        if isinstance(score, bool) or not isinstance(score, (int, float)):
+            raise ValueError("evaluation score is invalid")
+        async with self._database.transaction() as session:
+            changed = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_evaluations)
+                    .where(
+                        evolution_evaluations.c.id == evaluation_id,
+                        evolution_evaluations.c.eval_status == "evaluating",
+                        evolution_evaluations.c.eval_external_id.is_not(None),
+                        evolution_evaluations.c.eval_result.is_(None),
+                    )
+                    .values(
+                        eval_status="completed",
+                        eval_next_poll_at=None,
+                        eval_finished_at=finished_at,
+                        eval_result=deepcopy(dict(result)),
+                        eval_score=float(score),
+                        eval_error=None,
+                    ),
+                ),
+            )
+            return changed.rowcount == 1
+
+    async def mark_run_eval_failed(
+        self,
+        evaluation_id: str,
+        *,
+        status: str,
+        error: str,
+        finished_at: datetime,
+    ) -> bool:
+        """Persist one failed run-level evaluation without overwriting completed rows."""
+        if status not in {"failed", "timeout"}:
+            raise ValueError("run evaluation failure status must be failed or timeout")
+        async with self._database.transaction() as session:
+            changed = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_evaluations)
+                    .where(
+                        evolution_evaluations.c.id == evaluation_id,
+                        evolution_evaluations.c.eval_status.in_(
+                            ("evaluating", "pending"),
+                        ),
+                        evolution_evaluations.c.eval_result.is_(None),
+                    )
+                    .values(
+                        eval_status=status,
+                        eval_next_poll_at=None,
+                        eval_finished_at=finished_at,
+                        eval_error=error,
+                    ),
+                ),
+            )
+            return changed.rowcount == 1
+
+    async def reset_run_eval_for_retry(
+        self,
+        evaluation_id: str,
+    ) -> EvolutionEvaluationRecord:
+        """Clear one failed run-level evaluation so it can be submitted again."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_evaluations)
+                .where(
+                    evolution_evaluations.c.id == evaluation_id,
+                    evolution_evaluations.c.eval_status.in_(("failed", "timeout")),
+                )
+                .values(
+                    eval_status="pending",
+                    eval_external_id=None,
+                    eval_next_poll_at=None,
+                    eval_paused_seconds=0,
+                    eval_started_at=None,
+                    eval_finished_at=None,
+                    eval_result=null(),
+                    eval_error=None,
+                ),
+            )
+        return await self._required_run_evaluation(evaluation_id)
+
+    async def _required_run_evaluation(
+        self,
+        evaluation_id: str,
+    ) -> EvolutionEvaluationRecord:
+        """Return one run-level evaluation or fail loudly on a vanished row."""
+        async with self._database.session() as session:
+            row = (
+                (
+                    await session.execute(
+                        select(evolution_evaluations).where(
+                            evolution_evaluations.c.id == evaluation_id,
+                        ),
+                    )
+                )
+                .mappings()
+                .first()
+            )
+        if row is None:
+            raise LookupError("evolution run evaluation not found")
+        return record_from_evolution_evaluation(cast(Mapping[str, Any], row))
+
+    @staticmethod
+    def _require_evaluation_kind(kind: str) -> None:
+        """Reject unknown run-level evaluation kinds before touching storage."""
+        if kind not in EVALUATION_KINDS:
+            raise ValueError(f"unknown run evaluation kind: {kind}")
 
     async def mark_eval_failed(
         self,
@@ -1732,6 +2044,7 @@ class EvolutionRepository:
         final_commit: str,
         final_message: str,
         finished_at: datetime,
+        eval_result: Mapping[str, Any] | None = None,
     ) -> EvolutionRoundRecord:
         """Persist one accepted amended commit and successful run push."""
         async with self._database.transaction() as session:
@@ -1749,6 +2062,7 @@ class EvolutionRepository:
                         commit_hash=final_commit,
                         commit_message=final_message,
                         finished_at=finished_at,
+                        **_eval_projection(eval_result),
                     ),
                 ),
             )
@@ -1781,6 +2095,7 @@ class EvolutionRepository:
         round_id: str,
         *,
         finished_at: datetime,
+        eval_result: Mapping[str, Any] | None = None,
     ) -> EvolutionRoundRecord:
         """Persist one rejected round while keeping the run branch untouched."""
         async with self._database.transaction() as session:
@@ -1798,6 +2113,7 @@ class EvolutionRepository:
                         finished_at=finished_at,
                         commit_hash=None,
                         commit_message=None,
+                        **_eval_projection(eval_result),
                     ),
                 ),
             )
@@ -1954,6 +2270,28 @@ class EvolutionRepository:
 def _nullable_json(value: Any) -> Any:
     """Persist an absent JSON value as SQL NULL so null predicates match."""
     return null() if value is None else deepcopy(value)
+
+
+def _eval_projection(
+    eval_result: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Project a gated result onto the round's evaluation columns."""
+    if eval_result is None:
+        return {}
+    current = eval_result.get("currentScore")
+    candidate = eval_result.get("candidateScore")
+    if (
+        isinstance(current, bool)
+        or isinstance(candidate, bool)
+        or not isinstance(current, (int, float))
+        or not isinstance(candidate, (int, float))
+    ):
+        raise ValueError("gated evaluation result scores are invalid")
+    return {
+        "eval_current": float(current),
+        "eval_candidate": float(candidate),
+        "eval_result": deepcopy(dict(eval_result)),
+    }
 
 
 async def _run_cursor(session: AsyncSession, run_id: str) -> tuple[int, str]:

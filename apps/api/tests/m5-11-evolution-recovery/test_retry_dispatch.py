@@ -31,7 +31,6 @@ from app.service.events import EventBus
 from app.service.evolution.apply_final import EvolutionApplyService
 from app.service.evolution.engine.contracts import (
     EvalGatewayConfig,
-    FakeEvalGateway,
     RunBlocked,
 )
 from app.service.evolution.eval_poller import EvolutionEvalSubmitter
@@ -41,6 +40,7 @@ from app.service.evolution.git_candidate import (
     EvolutionCandidateService,
 )
 from app.service.evolution.retry import EvolutionRetryService
+from app.third_party_api.eval_gateway.fake import FakeEvalGateway
 from app.third_party_api.git.workspace import (
     CandidateBundle,
     CandidateWorkspace,

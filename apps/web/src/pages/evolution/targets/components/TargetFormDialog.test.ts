@@ -18,6 +18,7 @@ const target: EvolutionTarget = {
   defaultRef: "main",
   validationProjectId: "val-deep-research",
   testProjectId: "test-deep-research",
+  primaryMetricKey: "resolved_rate",
   enabled: true,
 };
 
@@ -50,6 +51,7 @@ async function fillRequired(
     defaultRef?: string;
     validationProjectId?: string;
     testProjectId?: string;
+    primaryMetricKey?: string;
   } = {},
 ) {
   await wrapper.get('input[name="objectName"]').setValue(
@@ -70,6 +72,9 @@ async function fillRequired(
   await wrapper
     .get('input[name="testProjectId"]')
     .setValue(values.testProjectId ?? "  test-2026-q3  ");
+  await wrapper
+    .get('input[name="primaryMetricKey"]')
+    .setValue(values.primaryMetricKey ?? "  resolved_rate  ");
   await flushPromises();
 }
 
@@ -140,6 +145,7 @@ describe("TargetFormDialog", () => {
         defaultRef: "main",
         validationProjectId: "val-2026-q3",
         testProjectId: "test-2026-q3",
+        primaryMetricKey: "resolved_rate",
         enabled: true,
       },
     ]]);
@@ -180,6 +186,7 @@ describe("TargetFormDialog", () => {
     expect(wrapper.text()).toContain("请填写基线分支或标签");
     expect(wrapper.text()).toContain("请填写验证集测试工程 ID");
     expect(wrapper.text()).toContain("请填写测试集测试工程 ID");
+    expect(wrapper.text()).toContain("请填写主指标 key");
     expect(wrapper.emitted("submit")).toBeUndefined();
   });
 
@@ -188,11 +195,13 @@ describe("TargetFormDialog", () => {
     await fillRequired(wrapper, {
       validationProjectId: "val 2026",
       testProjectId: "test\t2026",
+      primaryMetricKey: "resolved rate",
     });
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
     expect(wrapper.text()).toContain("工程 ID 不能包含空格或控制字符");
+    expect(wrapper.text()).toContain("主指标 key 不能包含空格或控制字符");
     expect(wrapper.emitted("submit")).toBeUndefined();
   });
 

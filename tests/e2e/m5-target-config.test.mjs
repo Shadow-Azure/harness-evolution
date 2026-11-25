@@ -219,6 +219,11 @@ async function fillTargetForm(page, values) {
     "input[name='testProjectId']",
     values.testProjectId ?? "test-m5-e2e",
   );
+  await setInput(
+    page,
+    "input[name='primaryMetricKey']",
+    values.primaryMetricKey ?? "resolved_rate",
+  );
 }
 
 async function runTool(action, value) {
@@ -782,6 +787,7 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
     assert.ok(created);
     assert.equal(created.validationProjectId, "val-m5-e2e");
     assert.equal(created.testProjectId, "test-m5-e2e");
+    assert.equal(created.primaryMetricKey, "resolved_rate");
     assert.match(
       await evaluate(
         page,

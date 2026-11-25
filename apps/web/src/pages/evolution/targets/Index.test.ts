@@ -44,6 +44,7 @@ const target: EvolutionTarget = {
   defaultRef: "main",
   validationProjectId: "val-deep-research",
   testProjectId: "test-deep-research",
+  primaryMetricKey: "resolved_rate",
   enabled: true,
 };
 
@@ -252,6 +253,9 @@ describe("target configuration page", () => {
       .get('input[name="validationProjectId"]')
       .setValue("val-2026-q3");
     await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await wrapper
+      .get('input[name="primaryMetricKey"]')
+      .setValue("resolved_rate");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -265,6 +269,7 @@ describe("target configuration page", () => {
       defaultRef: "main",
       validationProjectId: "val-2026-q3",
       testProjectId: "test-2026-q3",
+      primaryMetricKey: "resolved_rate",
       enabled: true,
     });
     expect(wrapper.getComponent(TargetFormDialog).props("modelValue")).toBe(false);
@@ -300,6 +305,9 @@ describe("target configuration page", () => {
       .get('input[name="validationProjectId"]')
       .setValue("val-2026-q3");
     await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await wrapper
+      .get('input[name="primaryMetricKey"]')
+      .setValue("resolved_rate");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -346,6 +354,9 @@ describe("target configuration page", () => {
       .get('input[name="validationProjectId"]')
       .setValue("val-2026-q3");
     await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await wrapper
+      .get('input[name="primaryMetricKey"]')
+      .setValue("resolved_rate");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -402,6 +413,9 @@ describe("target configuration page", () => {
       .get('input[name="validationProjectId"]')
       .setValue("val-2026-q3");
     await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await wrapper
+      .get('input[name="primaryMetricKey"]')
+      .setValue("resolved_rate");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -449,6 +463,9 @@ describe("target configuration page", () => {
       .get('input[name="validationProjectId"]')
       .setValue("val-2026-q3");
     await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await wrapper
+      .get('input[name="primaryMetricKey"]')
+      .setValue("resolved_rate");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -495,6 +512,9 @@ describe("target configuration page", () => {
       .get('input[name="validationProjectId"]')
       .setValue("val-2026-q3");
     await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await wrapper
+      .get('input[name="primaryMetricKey"]')
+      .setValue("resolved_rate");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -538,6 +558,9 @@ describe("target configuration page", () => {
       .get('input[name="validationProjectId"]')
       .setValue("val-2026-q3");
     await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await wrapper
+      .get('input[name="primaryMetricKey"]')
+      .setValue("resolved_rate");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -586,6 +609,9 @@ describe("target configuration page", () => {
       .get('input[name="validationProjectId"]')
       .setValue("val-2026-q3");
     await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await wrapper
+      .get('input[name="primaryMetricKey"]')
+      .setValue("resolved_rate");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -716,6 +742,9 @@ describe("target configuration page", () => {
       .get('input[name="validationProjectId"]')
       .setValue("val-2026-q3");
     await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await wrapper
+      .get('input[name="primaryMetricKey"]')
+      .setValue("resolved_rate");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -831,6 +860,7 @@ describe("target configuration page", () => {
       defaultRef: "main",
       validationProjectId: "val-deep-research",
       testProjectId: "test-deep-research",
+      primaryMetricKey: "resolved_rate",
       enabled: false,
     });
   });

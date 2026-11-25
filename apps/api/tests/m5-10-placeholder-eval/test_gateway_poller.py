@@ -32,11 +32,12 @@ from app.service.evolution.engine.contracts import (
     EvalResult,
     EvalStatus,
     EvalSubmission,
-    FakeEvalGateway,
 )
 from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.eval_poller import EvolutionEvalPoller
 from app.service.evolution.stages import EvolutionStageService
+from app.third_party_api.eval_gateway.base import EvalGatewayError
+from app.third_party_api.eval_gateway.fake import FakeEvalGateway
 
 NOW = datetime(2026, 10, 28, 12, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
 
@@ -200,9 +201,9 @@ async def test_fake_gateway_implements_submit_status_result_contract() -> None:
     assert isinstance(submission, EvalSubmission)
     assert submission.eval_id == "fake:run-eval:round-eval:" + "b" * 40
     assert status == EvalStatus(status="completed")
-    assert result.current_score == 81.5
     assert result.candidate_score == 87.0
-    assert result.external_verdict == "accept"
+    assert result.primary_metric_key == "score"
+    assert result.direction == "higher_is_better"
 
 
 def test_eval_result_rejects_malformed_metrics() -> None:
@@ -255,26 +256,27 @@ def test_eval_result_rejects_boolean_scores_from_payload() -> None:
         )
 
 
-@pytest.mark.parametrize(
-    ("key", "value"),
-    [
-        ("currentScore", True),
-        ("candidateScore", "90"),
-        ("candidateScore", float("nan")),
-    ],
-)
-async def test_fake_gateway_rejects_invalid_scores(key: str, value: object) -> None:
-    """The fake gateway cannot bypass the result constructor's score contract."""
-    config = {
-        "currentScore": 80.0,
-        "candidateScore": 90.0,
-        "verdict": "accept",
-    }
-    config[key] = value
-    gateway = FakeEvalGateway(EvalGatewayConfig.from_mapping(config))
+@pytest.mark.parametrize("value", [True, "90", float("nan")])
+async def test_fake_gateway_rejects_invalid_candidate_scores(value: object) -> None:
+    """The fake gateway cannot bypass the measurement score contract."""
+    gateway = FakeEvalGateway(
+        EvalGatewayConfig.from_mapping(
+            {"currentScore": 80.0, "candidateScore": value},
+        ),
+    )
 
-    with pytest.raises(ValueError, match="scores"):
+    with pytest.raises(EvalGatewayError, match="scores"):
         await gateway.get_result("fake:run-eval:round-eval:" + "b" * 40)
+
+
+async def test_fake_gateway_rejects_invalid_baseline_scores() -> None:
+    """A baseline evaluation validates its currentScore measurement too."""
+    gateway = FakeEvalGateway(
+        EvalGatewayConfig.from_mapping({"currentScore": True}),
+    )
+
+    with pytest.raises(EvalGatewayError, match="scores"):
+        await gateway.get_result("fake:run-eval:validation_baseline:" + "b" * 40)
 
 
 async def test_poller_skips_not_due_and_restarts_queued_poll(
@@ -343,12 +345,12 @@ async def test_poller_completed_saves_result_once_and_submits_apply(
     assert round_ is not None
     assert round_.status == "evaluating"
     assert round_.eval_status == "completed"
-    assert round_.eval_current == 80.0
+    assert round_.eval_current is None
     assert round_.eval_candidate == 90.0
     assert round_.eval_result == {
-        "currentScore": 80.0,
         "candidateScore": 90.0,
-        "externalVerdict": "accept",
+        "primaryMetricKey": "score",
+        "direction": "higher_is_better",
         "metrics": [{"apiKey": "<redacted>", "score": 1}],
     }
     assert "s3cr3t" not in str(round_.eval_result)
@@ -379,7 +381,7 @@ async def test_poller_completed_saves_result_once_and_submits_apply(
         cast(Any, EmptyCaseTitles()),
     ).step("run-eval", "iteration")
     assert step.key == "iteration"
-    assert step.payload.rounds[0].eval.current == 80.0
+    assert step.payload.rounds[0].eval.current is None
     assert step.payload.rounds[0].eval.candidate == 90.0
 
     assert await poller.run_once() == 0

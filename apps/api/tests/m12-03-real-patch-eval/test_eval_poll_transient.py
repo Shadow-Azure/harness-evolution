@@ -26,11 +26,11 @@ from app.db.migrate import upgrade_database
 from app.db.models.evolution import evolution_rounds, probe_clusters
 from app.service.evolution.engine.contracts import (
     EvalGatewayConfig,
-    EvalResult,
+    EvalMeasurement,
     EvalStatus,
 )
 from app.service.evolution.eval_poller import EvolutionEvalPoller
-from app.third_party_api.eval_gateway.mapper import HttpEvalError
+from app.third_party_api.eval_gateway.base import EvalGatewayError
 
 SH = ZoneInfo("Asia/Shanghai")
 NOW = datetime(2026, 11, 18, 10, 0, tzinfo=SH)
@@ -49,20 +49,20 @@ class _RetryableGateway:
     async def get_status(self, eval_id: str) -> EvalStatus:
         del eval_id
         if self._fail_status:
-            raise HttpEvalError(
+            raise EvalGatewayError(
                 "evaluation platform status request failed",
                 retryable=self._retryable,
             )
         return EvalStatus(status="completed")
 
-    async def get_result(self, eval_id: str) -> EvalResult:
+    async def get_result(self, eval_id: str) -> EvalMeasurement:
         del eval_id
         if self._fail_status:
             raise AssertionError("a deferred round must not request its result yet")
-        return EvalResult(
-            current_score=80.0,
+        return EvalMeasurement(
             candidate_score=85.0,
-            external_verdict="accept",
+            primary_metric_key="resolved_rate",
+            direction="higher_is_better",
         )
 
 
@@ -75,12 +75,12 @@ class _HealedGateway:
         del eval_id
         return EvalStatus(status="completed")
 
-    async def get_result(self, eval_id: str) -> EvalResult:
+    async def get_result(self, eval_id: str) -> EvalMeasurement:
         del eval_id
-        return EvalResult(
-            current_score=80.0,
+        return EvalMeasurement(
             candidate_score=85.0,
-            external_verdict="accept",
+            primary_metric_key="resolved_rate",
+            direction="higher_is_better",
         )
 
 

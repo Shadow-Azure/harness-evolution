@@ -639,6 +639,7 @@ async def test_knowledge_target_accepts_digest_and_previews_without_version(
             "defaultRef": revision,
             "validationProjectId": "validation",
             "testProjectId": "test",
+            "primaryMetricKey": "resolved_rate",
             "enabled": True,
         },
     )
@@ -697,6 +698,7 @@ async def test_knowledge_target_accepts_digest_and_previews_without_version(
             "defaultRef": "tag:release-7",
             "validationProjectId": "validation",
             "testProjectId": "test",
+            "primaryMetricKey": "resolved_rate",
             "enabled": True,
         },
     )
@@ -846,6 +848,7 @@ async def test_catalog_keeps_knowledge_targets_out_of_the_wizard(
             "defaultRef": revision,
             "validationProjectId": "validation",
             "testProjectId": "test",
+            "primaryMetricKey": "resolved_rate",
             "enabled": True,
         },
     )

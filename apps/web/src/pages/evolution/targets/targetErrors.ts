@@ -8,7 +8,8 @@ export type TargetFormField =
   | "subDir"
   | "defaultRef"
   | "validationProjectId"
-  | "testProjectId";
+  | "testProjectId"
+  | "primaryMetricKey";
 
 /** Bounded git command metadata returned with a remote validation failure. */
 export interface TargetCommandDetails {
@@ -34,6 +35,7 @@ const TARGET_FIELDS = new Set<TargetFormField>([
   "defaultRef",
   "validationProjectId",
   "testProjectId",
+  "primaryMetricKey",
 ]);
 
 const REASON_COPY: Record<string, { message: string; suggestion: string }> = {
@@ -86,6 +88,16 @@ const PROJECT_ID_COPY = {
 const PROJECT_ID_REASONS = {
   project_id_required: PROJECT_ID_COPY,
   project_id_format: PROJECT_ID_COPY,
+};
+
+const PRIMARY_METRIC_KEY_COPY = {
+  message: "主指标 key 无效",
+  suggestion: "去掉空格或控制字符，或填写 1–128 个字符的指标 key，如 resolved_rate。",
+};
+
+const PRIMARY_METRIC_KEY_REASONS = {
+  metric_key_required: PRIMARY_METRIC_KEY_COPY,
+  metric_key_format: PRIMARY_METRIC_KEY_COPY,
 };
 
 const FALLBACK_SUMMARY = "仓库或 ref 无效，请检查地址、子目录与基线";
@@ -156,6 +168,12 @@ export function targetServerError(errorValue: unknown): TargetServerError {
       return structuredError(errorValue.details, PROJECT_ID_REASONS, {
         summary: PROJECT_ID_COPY.message,
         suggestion: PROJECT_ID_COPY.suggestion,
+      });
+    }
+    if (errorValue.code === "PRIMARY_METRIC_KEY_INVALID") {
+      return structuredError(errorValue.details, PRIMARY_METRIC_KEY_REASONS, {
+        summary: PRIMARY_METRIC_KEY_COPY.message,
+        suggestion: PRIMARY_METRIC_KEY_COPY.suggestion,
       });
     }
     if (errorValue.code === "TARGET_EXISTS") {

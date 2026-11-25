@@ -125,6 +125,10 @@ class FakeEval:
         self.submitted.append(round_.id)
         return SimpleNamespace(**{**vars(round_), "eval_external_id": "eval-1"})
 
+    async def submit_baselines(self, run: Any) -> None:
+        """No-op: baselines are outside this advance-resume contract."""
+        del run
+
 
 def _job(run_id: str) -> JobRunRecord:
     """Build the durable job identity under test."""

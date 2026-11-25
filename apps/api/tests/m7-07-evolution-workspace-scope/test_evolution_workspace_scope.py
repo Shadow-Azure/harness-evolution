@@ -256,6 +256,7 @@ async def test_targets_are_workspace_scoped_and_write_is_space_admin(
         "defaultRef": "main",
         "validationProjectId": "val-set",
         "testProjectId": "test-set",
+        "primaryMetricKey": "resolved_rate",
         "enabled": True,
     }
 

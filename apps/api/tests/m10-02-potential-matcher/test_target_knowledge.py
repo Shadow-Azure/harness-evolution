@@ -41,6 +41,7 @@ def knowledge_write(
         default_ref=default_ref,
         validation_project_id="validation",
         test_project_id="test",
+        primary_metric_key="resolved_rate",
         enabled=True,
     )
 
