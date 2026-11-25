@@ -231,7 +231,7 @@ completed = subprocess.run(
      "--probe-description", "流程缺少校验",
      "--probe-analysis", "缺少复核步骤",
      "--output", "probe_report.json"],
-    cwd=work, check=False)
+    cwd=work, check=False, stdout=subprocess.DEVNULL)
 print(json.dumps({"usage": {"input_tokens": 4, "output_tokens": 6}}))
 sys.exit(completed.returncode)
 """

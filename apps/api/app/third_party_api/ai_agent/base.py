@@ -115,10 +115,12 @@ class AIAgentProvider(ABC):
         """Stage the neutral skill layout into ``work`` and return the native prefix.
 
         ``files`` maps frozen, checksum-verified relative paths to their bytes.
-        A backend lays them out in its best form under ``work/skills/<name>/``
-        or beyond, and returns an optional native invocation prefix; an empty
-        string means the backend needs no prefix. Callers append the prefix to
-        the platform task text, which references ``skills/<name>/SKILL.md``.
+        The neutral files must exist verbatim under ``work/skills/<name>/`` so
+        the platform task text (which references ``skills/<name>/SKILL.md``) and
+        the platform writer contract keep working for every backend; a backend
+        may additionally materialize its own form beyond that directory and
+        returns an optional native invocation prefix (an empty string means no
+        prefix). Callers append the prefix to the platform task text.
         """
         raise AgentProviderError(
             "provider does not support Skill staging",

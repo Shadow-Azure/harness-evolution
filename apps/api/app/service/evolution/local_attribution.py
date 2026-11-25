@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -486,22 +485,26 @@ class LocalAttribution:
             return body
         raise ValueError("target definition unavailable for attribution")
 
+    @staticmethod
     def _stage_attempt(
-        self,
         snapshot: Path,
         work: Path,
         name: str,
         manifest: Mapping[str, Any],
         item: AttributionInput,
+        provider: AIAgentProvider,
     ) -> str:
         """Stage one case and return the provider's native invocation prefix.
 
-        The service verifies the frozen files, hands them to
-        ``provider.stage_skill`` (which lays out the neutral ``skills/<name>/``
-        shape in its own form), swaps in the platform writer shim, and writes
-        the case inputs. Skill staging and invocation syntax are fully
-        provider-owned; only the neutral layout and the platform writer
-        contract stay upstream.
+        The service verifies the frozen files, splits the platform writer out of
+        the file set, and hands the rest (with the writer replaced by the shim)
+        to ``provider.stage_skill``. Splitting before staging matters: the
+        provider may materialize a copy of the neutral layout (hosts without
+        symlink privilege), and that copy must already carry the shim — an agent
+        following the frozen guide to ``.claude/skills/<name>/`` would otherwise
+        run the original writer and leave no receipt. Skill staging and
+        invocation syntax are fully provider-owned; only the neutral layout and
+        the platform writer contract stay upstream.
         """
         files: dict[str, bytes] = {}
         for path, digest in manifest["files"].items():
@@ -509,12 +512,14 @@ class LocalAttribution:
             if _digest(content) != digest:
                 raise ValueError(f"frozen Skill file checksum mismatch: {path}")
             files[path] = content
-        prefix = self.agent.stage_skill(work, name, files)
-        staged = work / "skills" / name / "make_probe_report.py"
+        original_writer = files.pop("make_probe_report.py", None)
+        if original_writer is None:
+            raise ValueError("frozen Skill does not bundle the platform writer")
         platform = work / ".platform"
         platform.mkdir()
-        staged.rename(platform / staged.name)
-        shutil.copyfile(writer_entrypoint.__file__, staged)
+        (platform / "make_probe_report.py").write_bytes(original_writer)
+        files["make_probe_report.py"] = Path(writer_entrypoint.__file__).read_bytes()
+        prefix = provider.stage_skill(work, name, files)
         for filename, text in item.local_input.items():
             (work / filename).write_text(text, encoding="utf-8")
         return prefix
@@ -581,13 +586,13 @@ class LocalAttribution:
             diagnostics: dict[str, Any] = {}
             await asyncio.to_thread(_write_log, history, log)
             try:
-                prefix = await asyncio.to_thread(
-                    self._stage_attempt, snapshot, work, name, manifest, item
-                )
-                prompt = f"{prefix}{_skill_prompt(name)}"
                 provider = self._skill_provider(manifest["agent"])
                 if provider.skill_model_identity(manifest["model"]) != manifest["modelIdentity"]:
                     raise ValueError("model configuration differs from the frozen run")
+                prefix = await asyncio.to_thread(
+                    self._stage_attempt, snapshot, work, name, manifest, item, provider
+                )
+                prompt = f"{prefix}{_skill_prompt(name)}"
                 log["stage"] = "agent"
                 log["prompt"] = prompt
                 tokens = await provider.run_skill(

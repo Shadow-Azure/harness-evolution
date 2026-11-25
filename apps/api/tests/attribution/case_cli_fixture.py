@@ -18,7 +18,7 @@ async def _write_sandbox_report(args: list[str]) -> None:
     work = Path.cwd()
     skill = next((work / ".claude/skills").iterdir())
     assert (skill / "SKILL.md").is_file() and args[-1].startswith(
-        f"/{skill.name} input_badcase.json"
+        f"/{skill.name} 使用 {skill.name} skill"
     )
     row = json.loads((work / "input_badcase.json").read_bytes())["bad_cases"][0]
     writer = await asyncio.create_subprocess_exec(
@@ -28,6 +28,10 @@ async def _write_sandbox_report(args: list[str]) -> None:
         "input_badcase.json",
         "--bad-case-id",
         row["bad_case_id"],
+        "--conclusion",
+        "attributed",
+        "--root-cause",
+        "fixture root cause",
         "--probe_object",
         row["object"],
         "--probe_type",
@@ -65,7 +69,7 @@ async def _write_case_tool_report(args: list[str]) -> None:
         Path(args[args.index("--append-system-prompt-file") + 1]).read_text
     )
     assert (skill / "SKILL.md").read_text() in guide
-    assert args[-1].startswith(f"/{skill.name} input_badcase.json")
+    assert args[-1].startswith(f"/{skill.name} 使用 {skill.name} skill")
     async with Client(StdioServerParameters(command=spec["command"], args=spec["args"])) as client:
         assert {tool.name for tool in (await client.list_tools()).tools} == {
             "read_evidence",
@@ -81,6 +85,8 @@ async def _write_case_tool_report(args: list[str]) -> None:
                     "probe_object": row["object"],
                     "probe_type": row["type"],
                     "attribute_type": "flow",
+                    "conclusion": "attributed",
+                    "root_cause": "fixture root cause",
                     "probe_description": "fixture observation",
                     "probe_analysis": "fixture evidence",
                 }

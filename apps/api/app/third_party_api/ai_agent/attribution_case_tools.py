@@ -31,6 +31,8 @@ class ReportFields(BaseModel):
     probe_type: Literal["skill", "agent", "knowledge"] = "skill"
     object_version: str | None = None
     attribute_type: Literal["prompt", "model", "error", "flow", "context", "unknown"]
+    conclusion: Literal["attributed", "non_target", "inconclusive"]
+    root_cause: str
     probe_description: str
     probe_analysis: str
     detail_description: str | None = None

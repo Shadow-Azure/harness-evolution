@@ -23,9 +23,10 @@ SubmissionParsedBy = Literal["strict", "json5", "repair"]
 ProviderAuth = Literal["ok", "missing", "unknown"]
 """Structured credential state a provider reports for its own deployment.
 
-``ok`` means the backend can authenticate, ``missing`` means a usable
-deployment runs without credentials, and ``unknown`` means the state could not
-be verified (for example the executable itself was unavailable).
+``ok`` means a bare-mode credential source is declared (the backend can
+authenticate), ``missing`` means a working deployment declares none, and
+``unknown`` means the probe never reached a working deployment (for example an
+unavailable executable), so the state could not be read.
 """
 
 EDIT_PLAN_FILENAME: Final = ".harness-evolution/edits.json5"

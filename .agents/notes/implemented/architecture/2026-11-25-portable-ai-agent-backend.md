@@ -26,6 +26,8 @@ Status: implemented
 ## Consequences
 
 - 旧快照补跑沿用新任务文本：prompt 不在冻结范围，`agent` / `modelIdentity` 校验不受影响，视为可接受的执行语义演进；`{"claude", "...ClaudeBackend"} → "claude-code"` 别名与 `skill_model_identity` 相等校验语义完全不变，存量快照（含旧名）用例保持绿。
+- 重放时铺盘与执行统一走快照冻结的 provider：`_stage_attempt` 在建目录之前解析 `_skill_provider(manifest["agent"])`，部署切换到别的技能后端后补跑旧 claude 快照仍由 Claude 建 `.claude/skills` 别名并返回 `/{name} ` 前缀。
+- 平台 writer shim 属于交给 `stage_skill` 的冻结文件集：原稿先落 `.platform/`，中立布局里的 `make_probe_report.py` 已是 shim——无符号链接权限、provider 复制中立布局时，`.claude/skills` 别名同样持有 shim，agent 按冻结说明执行也不会漏写回执。
 - case-tools 模式（Linux 关 bwrap）改从中立布局读取冻结 `SKILL.md`：`attribution_case_tools` 与 `claude_skill._case_tool_options` 的反软链逃逸守卫只在中立布局（全真实文件）上执行，厂商链接仅供 CLI 自身的技能发现。
 - preflight 现在会以 ≤10s 超时探活 provider（真实后端执行一次 `--version`）：能力行的 `auth`/`bin` 来自这次探测，发布脚本的既有判定 token（`ready=True` / `cache_only=True` / `ATTRIBUTION_*`）保持不变。
 - `docs/ai-agent.md` 词数预算从 850 提至 1000：触点清单、能力协议与通用配置名是常驻事实，压缩会丢掉「换后端要碰什么」的可操作性。

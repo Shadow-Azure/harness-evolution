@@ -29,6 +29,12 @@ def case(tmp_path: Path) -> Path:
         json.dumps(
             {
                 "session_id": "one-session",
+                "selected_target": {
+                    "name": "reporter",
+                    "type": "skill",
+                    "version": "v1",
+                    "revision": "v1",
+                },
                 "bad_cases": [
                     {
                         "bad_case_id": "case-one",
@@ -94,6 +100,8 @@ def test_only_platform_writer_chooses_paths_and_case_identity(case: Path) -> Non
         "probe_object": "reporter",
         "probe_type": "agent",
         "attribute_type": "context",
+        "conclusion": "attributed",
+        "root_cause": "平台 writer 校验根因字段",
         "probe_description": "--output=just literal analysis",
         "probe_analysis": "说明",
     }
