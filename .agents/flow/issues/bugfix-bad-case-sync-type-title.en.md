@@ -10,7 +10,7 @@ depends:
   - m6-16
   - m6-17
 priority: P2
-status: ready
+status: done
 scope:
   - .agents/flow/issues/bugfix-bad-case-sync-type-title*
   - .agents/flow/issues/bugfix-edit-insert-anchor-multiline*
