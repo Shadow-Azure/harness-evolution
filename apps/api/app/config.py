@@ -171,8 +171,20 @@ class Settings(BaseSettings):
         default="claude-code",
         validation_alias=AliasChoices("AI_AGENT_PROVIDER", "HE_AI_AGENT_PROVIDER"),
     )
+    # Deprecated Claude-specific aliases kept for existing deploy injection; reads
+    # normalize through effective_ai_agent_bin / effective_ai_agent_settings.
     ai_agent_claude_bin: str = "~/.local/bin/claude"
     ai_agent_claude_settings: str | None = None
+    ai_agent_bin: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AI_AGENT_BIN", "HE_AI_AGENT_BIN"),
+    )
+    """Provider-agnostic binary entry; ``None`` defers to the legacy Claude alias."""
+    ai_agent_settings: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AI_AGENT_SETTINGS", "HE_AI_AGENT_SETTINGS"),
+    )
+    """Provider-agnostic settings entry; ``None`` defers to the legacy Claude alias."""
     ai_agent_failure_policy: Literal["strict", "degrade"] | None = None
     blocked_sweep_seconds: float = Field(default=30.0, ge=1)
     web_base_url: str | None = None
@@ -393,6 +405,25 @@ class Settings(BaseSettings):
             raise ValueError("AI_AGENT_CLAUDE_BIN must not be empty")
         return normalized
 
+    @field_validator("ai_agent_bin")
+    @classmethod
+    def validate_ai_agent_bin(cls, value: str | None) -> str | None:
+        """Apply the legacy rule to the generic entry: a blank bin fails startup."""
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("AI_AGENT_BIN must not be empty")
+        return normalized
+
+    @field_validator("ai_agent_settings")
+    @classmethod
+    def validate_ai_agent_settings(cls, value: str | None) -> str | None:
+        """Treat a blank generic settings path as unset, matching the legacy alias."""
+        if value is None:
+            return None
+        return value.strip() or None
+
     @field_validator("ai_agent_failure_policy", mode="before")
     @classmethod
     def treat_blank_failure_policy_as_unset(cls, value: object) -> object:
@@ -425,6 +456,30 @@ class Settings(BaseSettings):
         if self.ai_agent_failure_policy is None:
             raise RuntimeError("ai_agent_failure_policy was not resolved")
         return self.ai_agent_failure_policy
+
+    @property
+    def effective_ai_agent_bin(self) -> str:
+        """Return the AI agent binary entry; the generic name wins over the legacy alias.
+
+        The three deployment combinations are deterministic: a set generic entry
+        always wins, a set legacy entry applies when the generic one is unset,
+        and neither set falls back to the shared deployment default. A blank
+        generic value cannot occur (validation fails startup).
+        """
+        if self.ai_agent_bin is not None:
+            return self.ai_agent_bin
+        return self.ai_agent_claude_bin
+
+    @property
+    def effective_ai_agent_settings(self) -> str | None:
+        """Return the AI agent settings entry; the generic name wins over the legacy alias.
+
+        ``None`` means unset, and the generic ``None`` default is what keeps a
+        legacy-only deployment working while a generic value always wins.
+        """
+        if self.ai_agent_settings is not None:
+            return self.ai_agent_settings
+        return self.ai_agent_claude_settings
 
     @field_validator("oidc_client_secret_env")
     @classmethod

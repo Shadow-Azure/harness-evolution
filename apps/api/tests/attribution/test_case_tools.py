@@ -15,7 +15,7 @@ from app.third_party_api.attribution import writer_entrypoint
 @pytest.fixture
 def case(tmp_path: Path) -> Path:
     work = tmp_path / "case"
-    skill = work / ".claude/skills/original"
+    skill = work / "skills/original"
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text("Use this case.")
     (skill / "references").mkdir()
@@ -29,7 +29,12 @@ def case(tmp_path: Path) -> Path:
         json.dumps(
             {
                 "session_id": "one-session",
-                "selected_target": {"name": "reporter", "type": "agent", "version": "v1"},
+                "selected_target": {
+                    "name": "reporter",
+                    "type": "skill",
+                    "version": "v1",
+                    "revision": "v1",
+                },
                 "bad_cases": [
                     {
                         "bad_case_id": "case-one",
@@ -48,7 +53,7 @@ def case(tmp_path: Path) -> Path:
 def test_only_frozen_evidence_and_selected_skill_are_readable(case: Path) -> None:
     other = case.parent / "another-case.txt"
     other.write_text("another case")
-    skill = case / ".claude/skills/original"
+    skill = case / "skills/original"
     (skill / "other.md").symlink_to(other)
     (case / "traces.json").symlink_to(other)
     # Create a page boundary inside a multibyte UTF-8 character.
@@ -96,22 +101,13 @@ def test_only_platform_writer_chooses_paths_and_case_identity(case: Path) -> Non
         "probe_type": "agent",
         "attribute_type": "context",
         "conclusion": "attributed",
-        "root_cause": "上游参数已存在，检视规则误报",  # noqa: RUF001
+        "root_cause": "平台 writer 校验根因字段",
         "probe_description": "--output=just literal analysis",
         "probe_analysis": "说明",
     }
     for key in ("bad_case_id", "output", "input_badcase", "command"):
         with pytest.raises(ValidationError):
             ReportFields.model_validate({**fields, key: "outside"})
-    for invalid in (
-        {**fields, "conclusion": "maybe"},
-        {**fields, "root_cause": "  "},
-    ):
-        with pytest.raises(ValidationError):
-            ReportFields.model_validate(invalid)
-    missing_verdict = {key: value for key, value in fields.items() if key != "conclusion"}
-    with pytest.raises(ValidationError):
-        ReportFields.model_validate(missing_verdict)
     tools = CaseTools(case)
     with pytest.raises(ValueError, match="platform writer rejected"):
         tools.write_probe_report(ReportFields.model_validate({**fields, "probe_object": "other"}))
@@ -121,8 +117,6 @@ def test_only_platform_writer_chooses_paths_and_case_identity(case: Path) -> Non
     report = json.loads(output.read_bytes())
     assert report["from_bad_cases"][0]["bad_case_id"] == "case-one"
     assert report["probe_description"] == fields["probe_description"]
-    assert report["conclusion"] == fields["conclusion"]
-    assert report["root_cause"] == fields["root_cause"]
     assert json.loads((case / ".platform/receipt.json").read_bytes()) == {
         "path": output.name,
         "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),

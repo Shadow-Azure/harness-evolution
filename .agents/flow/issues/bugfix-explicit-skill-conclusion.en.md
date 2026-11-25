@@ -1,4 +1,4 @@
-# Preserve explicit Skill verdicts for external causes
+﻿# Preserve explicit Skill verdicts for external causes
 
 English | [中文](bugfix-explicit-skill-conclusion.md)
 

@@ -1,4 +1,4 @@
-# 修复归因 Skill 将外部根因标记为当前对象缺陷
+﻿# 修复归因 Skill 将外部根因标记为当前对象缺陷
 
 [English](bugfix-explicit-skill-conclusion.en.md) | 中文
 

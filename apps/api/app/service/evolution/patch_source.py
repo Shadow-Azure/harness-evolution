@@ -27,7 +27,11 @@ from app.db.models.evolution import EvolutionRunRecord
 from app.service.evolution.ai_observability import AiAgentCall
 from app.service.evolution.engine.contracts import ConfigError
 from app.third_party_api.ai_agent.base import AIAgentProvider
-from app.third_party_api.ai_agent.contracts import AgentProviderError, EditRequest
+from app.third_party_api.ai_agent.contracts import (
+    EDIT_PLAN_FILENAME,
+    AgentProviderError,
+    EditRequest,
+)
 from app.third_party_api.ai_agent.edits import (
     EDIT_BUDGET,
     MAX_CONTENT_LINES,
@@ -526,7 +530,7 @@ def _edit_prompt(
             evidence.append(f"- {line}")
     lines = [
         "你在受控工作区里为自进化候选生成编辑计划：先只读探索，再把结构化 EditPlan 写入 "
-        ".harness-evolution/edits.json5，不要直接编辑任何其他文件。",
+        f"{EDIT_PLAN_FILENAME}，不要直接编辑任何其他文件。",
         f"对象：{run.target_name}@{run.target_version}（{run.target_type}）",
         f"问题簇：{title}",
     ]

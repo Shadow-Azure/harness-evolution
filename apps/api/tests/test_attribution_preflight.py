@@ -57,6 +57,35 @@ def test_invalid_preflight_settings_do_not_disclose_values(
     )
 
 
+def test_preflight_prints_the_fake_capability_line(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The deterministic provider enumerates skills=no, auth=ok, bin=present."""
+    monkeypatch.setenv("AI_AGENT_PROVIDER", "fake")
+
+    assert main() == 0
+
+    out = capsys.readouterr().out.strip()
+    assert "attribution.preflight provider=fake skills=no auth=ok bin=present" in out
+    assert "bwrap_enabled=True" in out
+    assert out.endswith("cache_only=True")
+
+
+def test_preflight_capability_line_reports_a_missing_binary(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An absent deployment binary leaves auth unknown and bin missing."""
+    monkeypatch.setenv("AI_AGENT_PROVIDER", "claude-code")
+    monkeypatch.setenv("HE_AI_AGENT_CLAUDE_BIN", str(Path("nonexistent") / "claude"))
+    monkeypatch.setenv("HE_ATTRIBUTION_BWRAP_ENABLED", "false")
+
+    assert main() == 0
+
+    out = capsys.readouterr().out.strip()
+    assert "provider=claude-code skills=yes auth=unknown bin=missing" in out
+    assert out.endswith("ready=True")
+
+
 def _script(path: Path, source: str) -> None:
     path.write_text(source)
     path.chmod(0o755)

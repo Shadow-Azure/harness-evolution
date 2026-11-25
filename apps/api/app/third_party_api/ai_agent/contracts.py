@@ -11,7 +11,7 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from pydantic import BaseModel
 
@@ -19,6 +19,23 @@ from app.third_party_api.ai_agent.edits import EditPlan
 
 SubmissionParsedBy = Literal["strict", "json5", "repair"]
 """Tier of the submission parse ladder that produced the accepted literal."""
+
+ProviderAuth = Literal["ok", "missing", "unknown"]
+"""Structured credential state a provider reports for its own deployment.
+
+``ok`` means a bare-mode credential source is declared (the backend can
+authenticate), ``missing`` means a working deployment declares none, and
+``unknown`` means the probe never reached a working deployment (for example an
+unavailable executable), so the state could not be read.
+"""
+
+EDIT_PLAN_FILENAME: Final = ".harness-evolution/edits.json5"
+"""The one file an edit phase may write; every CLI backend submits to this name.
+
+The EditPlan submission filename is a cross-layer contract (07 §5.5.4), so it
+lives here instead of inside one subclass; ``claude_code`` re-exports it for
+its historical import path.
+"""
 
 
 def _require_non_empty(value: str, name: str) -> None:
@@ -218,18 +235,27 @@ class EditResult:
 
 @dataclass(frozen=True, slots=True)
 class ProviderHealth:
-    """Sanitized health snapshot returned by a provider's startup probe."""
+    """Sanitized health snapshot returned by a provider's startup probe.
+
+    ``auth`` is the structured credential state (``ok`` / ``missing`` /
+    ``unknown``) so assembly and preflight can enumerate it instead of parsing
+    free-form details; ``unknown`` covers probes that never reached a working
+    deployment.
+    """
 
     provider_id: str
     healthy: bool
     detail: str | None = None
     latency_ms: int | None = None
+    auth: ProviderAuth = "unknown"
 
     def __post_init__(self) -> None:
         """Reject a blank provider and negative latency."""
         _require_non_empty(self.provider_id, "ProviderHealth.provider_id")
         if self.latency_ms is not None:
             _require_non_negative(self.latency_ms, "ProviderHealth.latency_ms")
+        if self.auth not in {"ok", "missing", "unknown"}:
+            raise ValueError("ProviderHealth.auth must be ok, missing, or unknown")
 
 
 class AgentProviderError(RuntimeError):
@@ -274,6 +300,7 @@ class AgentProviderError(RuntimeError):
 
 
 __all__ = [
+    "EDIT_PLAN_FILENAME",
     "AgentCallTrace",
     "AgentProviderError",
     "AgentUsage",
@@ -281,6 +308,7 @@ __all__ = [
     "AnalysisResult",
     "EditRequest",
     "EditResult",
+    "ProviderAuth",
     "ProviderHealth",
     "SkillRunRequest",
     "SubmissionParsedBy",

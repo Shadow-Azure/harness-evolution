@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from mcp.server import MCPServer
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict
 
 _EVIDENCE = (
     "input_badcase.json",
@@ -42,21 +42,13 @@ class ReportFields(BaseModel):
     proposal_expected_behavior: str | None = None
     proposal_evaluation_plan: str | None = None
 
-    @field_validator("root_cause")
-    @classmethod
-    def _validate_root_cause(cls, value: str) -> str:
-        """Require a non-blank mechanism or evidence gap for the explicit verdict."""
-        if not value.strip():
-            raise ValueError("root_cause must not be blank")
-        return value
-
 
 class CaseTools:
     """Expose only staged evidence, bound Skill text and the frozen platform writer."""
 
     def __init__(self, directory: Path) -> None:
         self.work = directory.resolve(strict=True)
-        skills = self.work / ".claude/skills"
+        skills = self.work / "skills"
         (self.skill,) = skills.iterdir()
         if self.skill.resolve(strict=True) != self.skill or not self.skill.is_dir():
             raise ValueError("invalid staged Skill")

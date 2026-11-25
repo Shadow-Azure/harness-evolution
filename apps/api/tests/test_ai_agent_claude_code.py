@@ -28,17 +28,14 @@ from app.third_party_api.ai_agent import (
     ClaudeCodeProvider,
     EditRequest,
 )
-from app.third_party_api.ai_agent.base import (
-    ANALYZE_TIMEOUT_SECONDS,
-    EDIT_TIMEOUT_SECONDS,
-    PERMISSION_MODE,
-)
+from app.third_party_api.ai_agent.base import ANALYZE_TIMEOUT_SECONDS, EDIT_TIMEOUT_SECONDS
 from app.third_party_api.ai_agent.claude_code import (
     ANALYZE_TOOLS,
     EDIT_MAX_TURNS,
     EDIT_PLAN_FILENAME,
     EDIT_TOOLS,
     HEALTH_TIMEOUT_SECONDS,
+    PERMISSION_MODE,
     READ_ONLY_TOOLS,
     SUBMISSION_TOOL,
     AsyncioClaudeCliRunner,
@@ -1646,6 +1643,127 @@ async def test_health_check_skips_the_probe_when_the_binary_is_absent(
     assert health.healthy is False
     assert health.detail is not None
     assert "not found" in health.detail
+
+
+async def test_health_check_auth_reflects_the_credential_sources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """auth=ok needs env key or apiKeyHelper; a working binary without both is missing."""
+    runner = MockRunner(
+        ClaudeCliResult(returncode=0, stdout="2.1.278\n", stderr=""),
+        ClaudeCliResult(returncode=0, stdout="2.1.278\n", stderr=""),
+    )
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path), runner=runner, settings_path=tmp_path / "settings.json"
+    )
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert (await provider.health_check()).auth == "missing"
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fixture-key")
+    assert (await provider.health_check()).auth == "ok"
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    helper = tmp_path / "settings.json"
+    helper.write_text(json.dumps({"apiKeyHelper": "/opt/harness/helper"}), encoding="utf-8")
+    provider = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=MockRunner(ClaudeCliResult(0, "2.1.278\n", "")),
+        settings_path=helper,
+    )
+    assert (await provider.health_check()).auth == "ok"
+
+
+async def test_health_check_auth_stays_unknown_without_a_working_deployment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Binary absence and probe failure both leave the credential state unknown."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fixture-key")
+    absent = ClaudeCodeProvider(
+        _settings(tmp_path, binary=tmp_path / "absent-claude"),
+        settings_path=tmp_path / "settings.json",
+    )
+    assert (await absent.health_check()).auth == "unknown"
+
+    runner = MockRunner(ClaudeCliResult(returncode=1, stdout="", stderr="broken"))
+    broken = ClaudeCodeProvider(
+        _settings(tmp_path), runner=runner, settings_path=tmp_path / "settings.json"
+    )
+    assert (await broken.health_check()).auth == "unknown"
+
+    failing = ClaudeCodeProvider(
+        _settings(tmp_path),
+        runner=FailingRunner(OSError("spawn failed")),
+        settings_path=tmp_path / "settings.json",
+    )
+    assert (await failing.health_check()).auth == "unknown"
+
+
+def test_stage_skill_stages_the_neutral_layout_and_returns_the_native_prefix(
+    tmp_path: Path,
+) -> None:
+    """The provider lays out the neutral shape and aliases it for the native trigger."""
+    provider = ClaudeCodeProvider(settings=None)
+    work = tmp_path / "attempt"
+    work.mkdir()
+
+    prefix = provider.stage_skill(
+        work,
+        "attribute-badcases",
+        {"SKILL.md": b"# guide", "references/deep.md": b"evidence notes"},
+    )
+
+    assert prefix == "/attribute-badcases "
+    assert (work / "skills/attribute-badcases/SKILL.md").read_bytes() == b"# guide"
+    assert (work / "skills/attribute-badcases/references/deep.md").read_bytes() == b"evidence notes"
+    alias = work / ".claude/skills/attribute-badcases"
+    assert (alias / "SKILL.md").read_bytes() == b"# guide"
+    assert (alias / "references/deep.md").read_bytes() == b"evidence notes"
+
+
+def test_stage_skill_materializes_the_alias_where_symlinks_are_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A host without symlink privilege still gets a usable aliased layout."""
+
+    def refuse(self: Path, target: Path, *, target_is_directory: bool = False) -> None:
+        raise OSError("symlink privilege refused")
+
+    monkeypatch.setattr(Path, "symlink_to", refuse)
+    provider = ClaudeCodeProvider(settings=None)
+    work = tmp_path / "attempt"
+    work.mkdir()
+
+    prefix = provider.stage_skill(work, "attr", {"SKILL.md": b"# guide"})
+
+    assert prefix == "/attr "
+    assert (work / "skills/attr/SKILL.md").read_bytes() == b"# guide"
+    assert (work / ".claude/skills/attr/SKILL.md").read_bytes() == b"# guide"
+
+
+def test_from_settings_resolves_generic_and_legacy_entries(tmp_path: Path) -> None:
+    """Assembly sees one normalized entry across the three deployment combinations."""
+    legacy = ClaudeCodeProvider.from_settings(
+        Settings(_env_file=None, ai_agent_claude_bin=str(tmp_path / "legacy"))  # type: ignore[call-arg]
+    )
+    assert legacy._binary() == str(tmp_path / "legacy")
+
+    generic = ClaudeCodeProvider.from_settings(
+        Settings(_env_file=None, ai_agent_bin=str(tmp_path / "generic"))  # type: ignore[call-arg]
+    )
+    assert generic._binary() == str(tmp_path / "generic")
+
+    both = ClaudeCodeProvider.from_settings(
+        Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            ai_agent_bin=str(tmp_path / "generic"),
+            ai_agent_claude_bin=str(tmp_path / "legacy"),
+            ai_agent_settings=str(tmp_path / "generic-settings.json"),
+            ai_agent_claude_settings=str(tmp_path / "legacy-settings.json"),
+        )
+    )
+    assert both._binary() == str(tmp_path / "generic")
+    assert both._settings_file() == tmp_path / "generic-settings.json"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="process-group signals are POSIX-only")

@@ -65,10 +65,10 @@ log "3/5 验证缺包时两种归因模式的发布预检"
 if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
   useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
 fi
-missing='attribution.preflight provider=claude-code bwrap_enabled=True error_code=ATTRIBUTION_BWRAP_MISSING'
+missing='attribution.preflight provider=claude-code skills=yes auth=unknown bin=missing bwrap_enabled=True error_code=ATTRIBUTION_BWRAP_MISSING'
 assert_preflight 1 "$missing"
 assert_preflight 1 "$missing" HE_ATTRIBUTION_BWRAP_ENABLED=true
-assert_preflight 0 'attribution.preflight provider=claude-code bwrap_enabled=False ready=True' \
+assert_preflight 0 'attribution.preflight provider=claude-code skills=yes auth=unknown bin=missing bwrap_enabled=False ready=True' \
   HE_ATTRIBUTION_BWRAP_ENABLED=false
 
 log "4/5 真实 Provision 安装并验证命名空间"
@@ -87,6 +87,6 @@ runuser -u "$SERVICE_USER" -- env -i "PATH=$PROBE_PATH" \
   fail "服务账号 $SERVICE_USER 的命名空间探针失败"
 
 log "5/5 验证服务账号 $SERVICE_USER 使用默认沙箱的发布预检"
-assert_preflight 0 'attribution.preflight provider=claude-code bwrap_enabled=True ready=True'
+assert_preflight 0 'attribution.preflight provider=claude-code skills=yes auth=unknown bin=missing bwrap_enabled=True ready=True'
 
 log "PASS：默认沙箱与显式关闭时的部署契约均通过"
