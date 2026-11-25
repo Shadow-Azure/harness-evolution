@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
 import runpy
+import shutil
 import sys
 import zipfile
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, ClassVar, cast
 
 import pytest
 from sqlalchemy import insert, select
@@ -23,6 +27,7 @@ from app.db.crud.problems import ProblemRepository
 from app.db.crud.read_scope import WorkspaceReadScope
 from app.db.models.domain import evolution_targets, probe_reports
 from app.service.bad_cases.attribution import AttributionReadService
+from app.service.evolution import local_attribution
 from app.service.evolution.attribution import AttributionRunner
 from app.service.evolution.attribution_skill_packages import AttributionSkillPackageService
 from app.service.evolution.attribution_skills import AttributionSkillService
@@ -34,6 +39,7 @@ from app.third_party_api.ai_agent import (
     build_agent_provider,
     factory,
 )
+from app.third_party_api.attribution import writer_entrypoint
 from tests.attribution.support import CASE_ID, NOW, OTHER_RUN_ID, Harness, potential_case
 from tests.attribution.test_m10_03_runner import load_run
 from tests.workspaces.helpers import create_user
@@ -45,23 +51,38 @@ class Source:
 
 
 class ScriptAgent(FakeAIAgentProvider):
+    """Zero-adaptation stub: declares the skill capability and stages no alias."""
+
     provider_id = "script-test"
     category = "flow"
     verdict = "attributed"
     cause = "流程缺少校验"
+    capabilities: ClassVar[frozenset[str]] = frozenset({"analyze", "edit", "skill"})
+
+    def stage_skill(self, work: Path, name: str, files: Mapping[str, bytes]) -> str:
+        """Reuse the neutral layout unchanged and return no native prefix."""
+        for relative, content in files.items():
+            dest = work / "skills" / name / relative
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(content)
+        return ""
 
     async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict[str, Any]) -> int:
         import asyncio
 
         directory, prompt = request.directory, request.prompt
-        skill = next((directory / ".claude/skills").iterdir()).name
-        assert prompt == f"/{skill} input_badcase.json，请分析并生成归因报告"  # noqa: RUF001
+        skill = next((directory / "skills").iterdir()).name
+        assert prompt == (
+            f"使用 {skill} skill：读取 skills/{skill}/SKILL.md 并严格遵循其中的全部指令，"  # noqa: RUF001
+            "分析本目录的 input_badcase.json 并生成归因报告。"
+        )
+        assert not (directory / ".claude").exists()
         assert (directory / "session_tree.json").is_file()
         assert (directory / "attribute_source.md").is_file()
         row = json.loads((directory / "input_badcase.json").read_bytes())["bad_cases"][0]
         proc = await asyncio.create_subprocess_exec(
             sys.executable,
-            f".claude/skills/{skill}/make_probe_report.py",
+            f"skills/{skill}/make_probe_report.py",
             "--input-badcase",
             "input_badcase.json",
             "--bad-case-id",
@@ -87,6 +108,38 @@ class ScriptAgent(FakeAIAgentProvider):
         )
         assert await proc.wait() == 0
         return 10
+
+
+class FrozenTrackingAgent(ScriptAgent):
+    """Frozen-snapshot backend: records who staged and who executed the case."""
+
+    provider_id = "frozen-tracking"
+    stage_calls = 0
+    run_calls = 0
+
+    def stage_skill(self, work: Path, name: str, files: Mapping[str, bytes]) -> str:
+        type(self).stage_calls += 1
+        return super().stage_skill(work, name, files)
+
+    async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict[str, Any]) -> int:
+        type(self).run_calls += 1
+        return await super().run_skill(request, diagnostics=diagnostics)
+
+
+class DeployTrackingAgent(ScriptAgent):
+    """Deployment backend after a provider switch: must not drive a frozen case."""
+
+    provider_id = "deploy-tracking"
+    stage_calls = 0
+    run_calls = 0
+
+    def stage_skill(self, work: Path, name: str, files: Mapping[str, bytes]) -> str:
+        type(self).stage_calls += 1
+        return super().stage_skill(work, name, files)
+
+    async def run_skill(self, request: SkillRunRequest, *, diagnostics: dict[str, Any]) -> int:
+        type(self).run_calls += 1
+        return await super().run_skill(request, diagnostics=diagnostics)
 
 
 @pytest.mark.parametrize(
@@ -143,7 +196,7 @@ async def test_local_skill_report_to_sqlite(
             "---\nname: acceptance-skill\ndescription: Attribution acceptance case\n---\n"
             "Read input_badcase.json. Treat the reported object as the actual target. "
             "Classify this synthetic case as flow. Use python3 "
-            ".claude/skills/acceptance-skill/make_probe_report.py "
+            "skills/acceptance-skill/make_probe_report.py "
             "to write probe_report.json in the working directory. Stop after success.",
         )
     user_id = await create_user(db, username="acceptance")
@@ -230,7 +283,10 @@ async def test_local_skill_report_to_sqlite(
     )
     audit = json.loads(artifact.with_name("attribute_log.json").read_bytes())
     assert audit["status"] == "report_validated" and audit["badcaseId"] == CASE_ID
-    assert audit["prompt"].startswith(f"/{selected.skill_key} input_badcase.json")
+    assert audit["prompt"].startswith(
+        f"使用 {selected.skill_key} skill：读取 skills/"  # noqa: RUF001
+    )
+    assert audit["prompt"].endswith("并生成归因报告。")
     assert (service.root(run.workspace_id) / audit["inputManifest"]).is_file()
     history = artifact.parent / "logs" / audit["attempt"] / "attribute_log.json"
     assert json.loads(history.read_bytes()) == audit
@@ -283,6 +339,136 @@ async def test_local_skill_report_to_sqlite(
     assert await store.list_clusterable_probes(OTHER_RUN_ID) == await store.list_clusterable_probes(
         run.id
     )
+
+
+def test_stage_attempt_hands_the_writer_shim_to_the_provider(tmp_path: Path) -> None:
+    """The staged file set carries the shim; the frozen writer lands in ``.platform``.
+
+    A provider materializes the neutral layout (and may copy it when the host
+    refuses symlinks); both the neutral path and the copy must expose the shim
+    so an agent that follows the frozen guide still hits the platform receipt.
+    """
+    snapshot = tmp_path / "snapshot"
+    skill = snapshot / "skill"
+    skill.mkdir(parents=True)
+    guide = b"# Guide\n"
+    original_writer = b"print('frozen writer')\n"
+    (skill / "SKILL.md").write_bytes(guide)
+    (skill / "make_probe_report.py").write_bytes(original_writer)
+    manifest = {
+        "files": {
+            "SKILL.md": hashlib.sha256(guide).hexdigest(),
+            "make_probe_report.py": hashlib.sha256(original_writer).hexdigest(),
+        }
+    }
+    work = tmp_path / "work"
+    work.mkdir()
+    shim = Path(writer_entrypoint.__file__).read_bytes()
+    staged: dict[str, bytes] = {}
+
+    class RecordingProvider(FakeAIAgentProvider):
+        provider_id = "recording"
+
+        def stage_skill(self, work: Path, name: str, files: Mapping[str, bytes]) -> str:
+            staged.update(files)
+            neutral = work / "skills" / name
+            for relative, content in files.items():
+                destination = neutral / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(content)
+            # The copy-shaped alias a no-symlink host gets.
+            shutil.copytree(neutral, work / ".claude" / "skills" / name)
+            return ""
+
+    prefix = LocalAttribution._stage_attempt(
+        snapshot,
+        work,
+        "attribute-badcases",
+        manifest,
+        cast(Any, SimpleNamespace(local_input={"input_badcase.json": "{}"})),
+        RecordingProvider(),
+    )
+
+    assert prefix == ""
+    assert staged["SKILL.md"] == guide
+    assert staged["make_probe_report.py"] == shim
+    assert (work / ".platform" / "make_probe_report.py").read_bytes() == original_writer
+    alias = work / ".claude" / "skills" / "attribute-badcases" / "make_probe_report.py"
+    assert alias.read_bytes() == shim
+    assert (work / "skills/attribute-badcases/SKILL.md").read_bytes() == guide
+    assert (work / "input_badcase.json").read_text(encoding="utf-8") == "{}"
+
+
+async def test_skill_case_drives_staging_from_the_frozen_provider(
+    attribution_harness: Harness,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A deployment switch still replays an old snapshot through its frozen provider."""
+    db = attribution_harness.database
+    FrozenTrackingAgent.stage_calls = 0
+    FrozenTrackingAgent.run_calls = 0
+    DeployTrackingAgent.stage_calls = 0
+    DeployTrackingAgent.run_calls = 0
+    monkeypatch.setitem(factory._REGISTRY, FrozenTrackingAgent.provider_id, FrozenTrackingAgent)
+    monkeypatch.setitem(factory._REGISTRY, DeployTrackingAgent.provider_id, DeployTrackingAgent)
+    # Canonical re-invocation is covered by its own tests; keep this case about provider identity.
+    monkeypatch.setattr(local_attribution, "canonical_report", lambda *args, **kwargs: args[2])
+    settings = Settings(
+        attribution_package_dir=tmp_path / "attribute",
+        ai_agent_provider=DeployTrackingAgent.provider_id,
+        attribution_timeout_seconds=150,
+    )
+    packages = AttributionSkillPackageService(
+        AttributionSkillPackageRepository(db),
+        settings.attribution_package_dir,
+        settings.attribution_default_skill_path,
+    )
+    skills = AttributionSkillService(AttributionSkillRepository(db))
+    frozen_settings = Settings(
+        attribution_package_dir=tmp_path / "attribute",
+        ai_agent_provider=FrozenTrackingAgent.provider_id,
+        attribution_timeout_seconds=150,
+    )
+    frozen_service = LocalAttribution(
+        frozen_settings,
+        packages,
+        skills,
+        db,
+        Source(),
+        build_agent_provider(frozen_settings),
+    )
+    service = LocalAttribution(
+        settings,
+        packages,
+        skills,
+        db,
+        Source(),
+        build_agent_provider(settings),
+    )
+    run = await load_run(db)
+    selected = await frozen_service.resolve(run.workspace_id, "")
+    assert selected.skill_key == "attribute-badcases"
+    run = replace(
+        run,
+        attribution_engine=ENGINE,
+        attribution_skill_key=selected.skill_key,
+        attribution_skill_revision=selected.revision,
+        attribution_skill_content_hash=selected.content_hash,
+    )
+    store = AttributionRepository(db)
+    runner = AttributionRunner(
+        store,
+        engine_factory=service.engine,
+        skill_resolver=service,
+        prepare_input=service.prepare_input,
+    )
+
+    summary = await runner.run(run, [potential_case()], True)
+
+    assert summary.created == 1
+    assert (FrozenTrackingAgent.stage_calls, FrozenTrackingAgent.run_calls) == (1, 1)
+    assert (DeployTrackingAgent.stage_calls, DeployTrackingAgent.run_calls) == (0, 0)
 
 
 @pytest.mark.parametrize(

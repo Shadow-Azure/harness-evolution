@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from copy import deepcopy
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import ValidationError
 
@@ -66,6 +66,9 @@ class FakeAIAgentProvider(AIAgentProvider):
     """Deterministic provider that needs no external service or credentials."""
 
     provider_id = "fake"
+
+    capabilities: ClassVar[frozenset[str]] = frozenset({"analyze", "edit"})
+    """Minimal explicit protocol sample: no ``skill``, so attribution stays cache-only."""
 
     def __init__(
         self,
@@ -134,12 +137,13 @@ class FakeAIAgentProvider(AIAgentProvider):
         )
 
     async def health_check(self) -> ProviderHealth:
-        """Report a healthy deterministic backend."""
+        """Report a healthy deterministic backend that needs no credentials."""
         return ProviderHealth(
             provider_id=self.provider_id,
             healthy=True,
             detail="deterministic fake provider",
             latency_ms=self._latency_ms,
+            auth="ok",
         )
 
 

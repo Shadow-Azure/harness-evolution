@@ -9,8 +9,11 @@ from pathlib import Path
 
 def main() -> int:
     """Record the successful writer output for the parent to validate and regenerate."""
-    # This file is copied to .claude/skills/<name>/make_probe_report.py.
-    work = Path(__file__).resolve().parents[3]
+    # This file is copied to skills/<name>/make_probe_report.py in the attempt's
+    # neutral layout. The attempt root is the ancestor that holds .platform, so
+    # the shim never depends on one staging depth.
+    staged = Path(__file__).resolve()
+    work = next((p for p in staged.parents if (p / ".platform").is_dir()), staged.parents[-1])
     writer = work / ".platform" / "make_probe_report.py"
     result = subprocess.run(  # noqa: S603 - fixed interpreter and pinned script
         [sys.executable, "-I", str(writer), *sys.argv[1:]],

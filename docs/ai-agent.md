@@ -7,8 +7,8 @@
 ## 分层
 
 - `apps/api/app/third_party_api/ai_agent/` 是唯一出站缝：业务服务只调 `build_agent_provider`，不 import 厂商模块，也不按后端名分支。
-- `AIAgentProvider` 只定契约，两个能力面是 `analyze`（结构化分析）与 `edit_workspace`（提交编辑计划）。
-- 工厂按 `AI_AGENT_PROVIDER` 选注册表里的子类：`claude-code` 是默认项，`fake` 给单测与 CI 确定性结果；新增后端只加一个子类与注册项。
+- `AIAgentProvider` 只定契约：`analyze`（结构化分析）、`edit_workspace`（提交编辑计划）与可选技能面 `stage_skill`/`run_skill`（归因随 provider 一起切换）。子类用 `capabilities` 显式声明能力面（`analyze`/`edit`/`skill`），未声明的旧子类仍按 `run_skill` 覆盖推导；`ProviderHealth.auth`（`ok`/`missing`/`unknown`）与 preflight 能力行让鉴权与二进制可用性可枚举。
+- 工厂按 `AI_AGENT_PROVIDER` 选注册表里的子类，经 `from_settings` 装配：`claude-code` 是默认项，`fake` 给单测与 CI 确定性结果。换后端 = 一个子类 + 一个注册项：技能后端在 `stage_skill` 把平台中立布局 `work/skills/<name>/` 适配成自己的形态并返回原生前缀（Claude 建 `.claude/skills/<name>` 软链并返回 `/{name} `，通用后端空串零适配），配置在 `from_settings` 读 `HE_AI_AGENT_BIN`/`HE_AI_AGENT_SETTINGS`（新名优先，未设回落旧名）；服务层与业务代码零改动。
 
 ## Analyze 任务
 
@@ -45,8 +45,9 @@ submissionParseFailures submissionValidationFailures
 | 设置 | 默认 | 说明 |
 |---|---|---|
 | `AI_AGENT_PROVIDER` | `claude-code` | 选择注册子类；`fake` 供确定性测试 |
-| `HE_AI_AGENT_CLAUDE_BIN` | `~/.local/bin/claude` | Claude Code CLI 路径；部署注入稳定 `current` 路径 |
-| `HE_AI_AGENT_CLAUDE_SETTINGS` | 空 | 显式 settings 路径；空时用 `CLAUDE_CONFIG_DIR`/`~/.claude` |
+| `HE_AI_AGENT_BIN` / `HE_AI_AGENT_SETTINGS` | 空 | 通用后端配置入口；新名优先，未设时回落 `HE_AI_AGENT_CLAUDE_*` |
+| `HE_AI_AGENT_CLAUDE_BIN` | `~/.local/bin/claude` | Claude Code CLI 路径（deprecated 别名）；部署注入稳定 `current` 路径 |
+| `HE_AI_AGENT_CLAUDE_SETTINGS` | 空 | 显式 settings 路径（deprecated 别名）；空时用 `CLAUDE_CONFIG_DIR`/`~/.claude` |
 | `HE_AI_AGENT_FAILURE_POLICY` | 按 provider | `strict`（真实默认）/`degrade`（`fake` 默认）；未知值启动失败 |
 | `HE_PATCH_SOURCE_MODE` | `placeholder` | 可选 `minimal-config`、`agent-edit`；`agent-edit` 需已配置的 provider |
 
