@@ -871,12 +871,6 @@
 .evo-app .kind-choice::before { content: ""; width: 14px; height: 14px; border: 1px solid var(--border); border-radius: 50%; background: var(--bg-card); }
 .evo-app .kind-choice.active { color: var(--text); }
 .evo-app .kind-choice.active::before { border-color: var(--blue); background: radial-gradient(circle, var(--blue) 0 3px, var(--bg-card) 3.5px); }
-.evo-app .proto-switch { position: relative; display: inline-flex; width: 40px; height: 20px; flex: none; }
-.evo-app .proto-switch input { position: absolute; opacity: 0; pointer-events: none; }
-.evo-app .proto-switch-track { width: 40px; height: 20px; border-radius: 999px; background: var(--border); transition: background .15s ease; }
-.evo-app .proto-switch-track::after { content: ""; display: block; width: 16px; height: 16px; margin: 2px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(30,40,60,.18); transition: transform .15s ease; }
-.evo-app .proto-switch input:checked + .proto-switch-track { background: var(--blue); }
-.evo-app .proto-switch input:checked + .proto-switch-track::after { transform: translateX(20px); }
 .evo-app .switch-row { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 11.5px; }
 .evo-app .form-error { margin: 0 0 12px; padding: 8px 10px; border-radius: 8px; color: var(--red); background: color-mix(in srgb, var(--red) 7%, var(--bg-card)); border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border)); font-size: 12px; }
 .evo-app .target-loading { display: inline-flex; align-items: center; gap: 6px; color: var(--blue); font-size: 11px; }
@@ -5801,7 +5795,6 @@ function evRenderTargetDialog() {
           <div class="f-row"><div class="f-label">验证集测试工程 ID <span class="req">*</span></div><input class="inp" data-ev-target-field="validationProjectId" value="${evEsc(f.validationProjectId)}"></div>
           <div class="f-row"><div class="f-label">测试集测试工程 ID <span class="req">*</span></div><input class="inp" data-ev-target-field="testProjectId" value="${evEsc(f.testProjectId)}"></div>
           <div class="f-row span-2"><div class="f-label">主指标 key <span class="req">*</span></div><input class="inp" data-ev-target-field="primaryMetricKey" value="${evEsc(f.primaryMetricKey)}" placeholder="如 resolved_rate"><div class="field-note">平台 results 中用于逐轮比较与终评的主指标 metric_key。</div></div>
-          <div class="f-row span-2"><div class="f-label">启用</div><div class="switch-row"><label class="proto-switch"><input type="checkbox" data-ev-target-field="enabled" ${f.enabled ? 'checked' : ''}><span class="proto-switch-track"></span></label><span>${f.enabled ? '进入启动向导候选' : '保留配置但不进入向导'}</span></div></div>
         </div>
       </div>
       <div class="modal-foot"><button class="btn" data-action="ev-target-close">取消</button><button class="btn primary" data-action="ev-target-save">${d.mode === 'create' ? '新增配置' : '保存配置'}</button></div>
