@@ -1246,6 +1246,8 @@ async def prepare(self, job) -> None:
 
 ### 5.12 潜在匹配（`service/evolution/potential.py`）
 
+`PotentialMatcher` 接收 `agent_match_by_name`（来自 `HE_AGENT_MATCH_BY_NAME`，默认关闭）；开关开启且 `target_type=agent` 时 `associated_sessions` 忽略 `observed_revisions`，其余匹配、潜在策略与缓存口径不变。
+
 ```python
 @dataclass(frozen=True)
 class MatchCondition:

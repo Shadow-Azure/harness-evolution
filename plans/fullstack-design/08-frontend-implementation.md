@@ -731,6 +731,8 @@ V1 向导只用于理解历史 run；生产入口一律四步。
 
 > V2 路径为 `/workspaces/:wid/evolution/targets`（按空间隔离）；下文交互对两代路径相同。
 
+`HE_AGENT_MATCH_BY_NAME` 开启时，agent 目标详情只展示 `defaultRef` 单版本；配置表单与交互不变。
+
 ```text
 Index.vue
 ├── 页头：标题 + "新增配置"
