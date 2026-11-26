@@ -16,6 +16,8 @@ Status: implemented
 
 平台侧错误按可重试性区分：401/403/404/422 判不可重试并进入 `blocked(stage=eval)`，错误信息带平台错误码；5xx、429 与网络错误标为可重试，poller 只推迟下次轮询，仍受 2h 超时封顶。基线或终评失败同样走 `blocked(stage=eval)`，`/retry` 先清理失败行再重新提交，不重跑已接纳的迭代。
 
+launch 的 `asset_override` 必须指向平台运行时生成的资产路径，而不是 HE 目标仓库的源码路径。OpenSpec 快照把对象放在 `skills/`、`agents/`、`commands/`，平台执行 `codespec init` 后发布为 `.claude/skills/`、`.claude/agents/*.md`、`.claude/commands/`；网关按目标类型做这层映射并显式带 `asset_types`，避免平台无法推断类型或源码与生成资产路径冲突。
+
 ## Alternatives considered
 
 让平台继续返回 verdict：平台契约不提供，且会重新把接纳规则耦合进每个平台子类。把基线存在 `evolution_rounds` 上：基线与终评不属于任何轮，复用轮表会破坏 `(run_id, seq)` 唯一性与轮生命周期。候选结果一落库就用当时的基线裁决：基线未完成时只能猜一个分数，等于把观测时序当作结论。只在真实平台启用基线与终评：会让 fake 模式与生产走不同裁决路径，测试无法覆盖真实门控。测试集终评读取各轮验证分：无法回答留出测试集上的独立验收问题。

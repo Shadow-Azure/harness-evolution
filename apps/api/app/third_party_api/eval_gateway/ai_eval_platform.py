@@ -169,15 +169,15 @@ class AiEvalPlatformGateway(BaseEvalGateway):
         )
 
     def _asset_override(self, request: EvalRequest, sub_dir: str) -> dict[str, Any]:
-        """Map one HE target onto the platform's whole-field asset override."""
+        """Map one HE target onto the platform's built asset paths."""
         override: dict[str, Any] = {
             "ref": request.ref or request.commit,
             "commit": request.commit,
         }
         if sub_dir:
-            override["asset_paths"] = [sub_dir]
-            if request.target_type == "agent":
-                override["asset_types"] = {sub_dir: "subagent"}
+            path, asset_type = _platform_asset_path(sub_dir, request.target_type)
+            override["asset_paths"] = [path]
+            override["asset_types"] = {path: asset_type}
         return override
 
     @staticmethod
@@ -191,6 +191,37 @@ class AiEvalPlatformGateway(BaseEvalGateway):
         if request.parent_commit:
             lineage["parentCommit"] = request.parent_commit
         return lineage
+
+
+def _platform_asset_path(sub_dir: str, target_type: str) -> tuple[str, str]:
+    """Translate a source-tree target directory to the platform's built asset path.
+
+    OpenSpec snapshots keep the source tree at ``skills/``/``agents/``/
+    ``commands/`` while the platform's runtime ``codespec init`` publishes the
+    agent-visible assets under ``.claude/``. The launch override must name the
+    built path, otherwise the platform cannot infer the asset type or collides
+    the source and generated file maps.
+    """
+
+    path = sub_dir.strip().strip("/")
+    if path.startswith(".claude/"):
+        return path, _asset_type_for(target_type)
+    if path.startswith("skills/"):
+        return f".claude/{path}", "skill"
+    if path.startswith("commands/"):
+        return f".claude/{path}", "command"
+    if path.startswith("agents/"):
+        name = path.removeprefix("agents/")
+        if name.endswith("/AGENT.md"):
+            name = name[: -len("/AGENT.md")]
+        elif name.endswith(".md"):
+            name = name[: -len(".md")]
+        return f".claude/agents/{name}.md", "subagent"
+    return path, _asset_type_for(target_type)
+
+
+def _asset_type_for(target_type: str) -> str:
+    return "subagent" if target_type == "agent" else "skill"
 
 
 def _completion_percent(payload: Mapping[str, Any]) -> float | None:

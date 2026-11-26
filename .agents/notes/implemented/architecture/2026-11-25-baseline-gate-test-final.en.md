@@ -16,6 +16,8 @@ Run-level evaluations live in the new `evolution_evaluations` table with `kind` 
 
 Platform errors distinguish retryability: 401/403/404/422 are final and enter `blocked(stage=eval)` with the platform error code; 5xx, 429 and network errors are retryable, so the poller only defers the next poll, still capped by the 2h timeout. A failed baseline or test final also takes `blocked(stage=eval)`; `/retry` clears the failed row and resubmits without rerunning accepted iterations.
 
+The launch `asset_override` names the platform's runtime-generated asset path, not the HE target repository's source path. OpenSpec snapshots keep objects under `skills/`, `agents/` and `commands/`, while the platform publishes them under `.claude/skills/`, `.claude/agents/*.md` and `.claude/commands/` after `codespec init`; the gateway maps the target type through that layout and sends explicit `asset_types`, so the platform can infer the type and does not collide source and generated file maps.
+
 ## Alternatives considered
 
 Keep the platform verdict: the platform contract does not provide one, and it would re-couple acceptance rules into every platform subclass. Store baselines on `evolution_rounds`: baselines and the final belong to no turn, and reusing the turn table would break the `(run_id, seq)` uniqueness and turn lifecycle. Decide as soon as the candidate result lands: an incomplete baseline would force a guessed score, treating observation timing as a conclusion. Enable baselines and final only on the real platform: fake mode would then take a different decision path from production and tests could not cover the real gate. Compute the test-set final from per-turn validation scores: it cannot answer the held-out test-set acceptance question.
