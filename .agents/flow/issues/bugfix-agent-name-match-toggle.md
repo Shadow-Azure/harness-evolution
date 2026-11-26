@@ -11,7 +11,7 @@ depends:
   - m11-03
   - m11-04
 priority: P2
-status: in-progress
+status: done
 scope:
   - .agents/**
   - .env.example
