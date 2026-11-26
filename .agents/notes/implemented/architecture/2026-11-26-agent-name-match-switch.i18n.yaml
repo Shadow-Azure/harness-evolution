@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/architecture/2026-11-26-agent-name-match-switch.md
+2026-11-26-agent-name-match-switch.md: e37e351e05a4be0afe54abd307ab0729b30e5978
+2026-11-26-agent-name-match-switch.en.md: 20a912947d835cf48a543f262cb343658db80309
