@@ -46,6 +46,7 @@ TARGET_SKILL = "target-m11-03-skill"
 TARGET_AGENT = "target-m11-03-agent"
 TARGET_KNOWLEDGE = "target-m11-03-knowledge"
 TARGET_DISABLED = "target-m11-03-disabled"
+TARGET_DISABLED_FIRST = "target-m11-03-disabled-first"
 TARGET_B = "target-m11-03-b"
 SESSION_A = "m11-03-session-a"
 SESSION_B = "m11-03-session-b"
@@ -503,6 +504,15 @@ async def target_overview_api(tmp_path: Path) -> AsyncIterator[TargetOverviewApi
         )
         await seed_target(
             database,
+            workspace_id=WORKSPACE_A,
+            target_id=TARGET_DISABLED_FIRST,
+            object_type="agent",
+            object_name="a-disabled-agent",
+            default_ref="v0.1.0",
+            enabled=False,
+        )
+        await seed_target(
+            database,
             workspace_id=WORKSPACE_B,
             target_id=TARGET_B,
             object_type="skill",
@@ -592,7 +602,24 @@ async def test_target_list_summary_states_and_versions(
     assert knowledge["versions"] == ["digest:aaa"]
     assert knowledge["attributed"] == 1
     assert TARGET_DISABLED not in {item["targetId"] for item in body["items"]}
+    assert TARGET_DISABLED_FIRST not in {item["targetId"] for item in body["items"]}
     assert TARGET_B not in {item["targetId"] for item in body["items"]}
+    assert body["disabled"] == [
+        {
+            "targetId": TARGET_DISABLED_FIRST,
+            "objectType": "agent",
+            "objectName": "a-disabled-agent",
+            "attributionSkillName": None,
+            "defaultRef": "v0.1.0",
+        },
+        {
+            "targetId": TARGET_DISABLED,
+            "objectType": "skill",
+            "objectName": "disabled-skill",
+            "attributionSkillName": None,
+            "defaultRef": "v1.0.0",
+        },
+    ]
 
 
 async def test_target_list_pages_and_empty_workspace(
@@ -609,6 +636,10 @@ async def test_target_list_pages_and_empty_workspace(
     assert body["total"] == 3
     assert len(body["items"]) == 1
     assert body["items"][0]["objectName"] == "kb-doc"
+    assert [item["targetId"] for item in body["disabled"]] == [
+        TARGET_DISABLED_FIRST,
+        TARGET_DISABLED,
+    ]
 
     empty = await target_overview_api.client.get(
         f"/api/workspaces/{target_overview_api.workspace_c}/overview/targets",

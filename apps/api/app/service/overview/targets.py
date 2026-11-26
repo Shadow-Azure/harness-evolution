@@ -54,6 +54,7 @@ from app.service.overview.target_schemas import (
     TargetDetailStats,
     TargetDetailTarget,
     TargetDetailVersion,
+    TargetOverviewDisabledItem,
     TargetOverviewItem,
     TargetOverviewListResponse,
     TargetOverviewSummary,
@@ -628,8 +629,9 @@ class TargetOverviewService:
         workspace_id: str,
         query: TargetOverviewQuery,
     ) -> TargetOverviewListResponse:
-        """Return summary totals and one evolvable-sorted target page."""
+        """Return summary totals, one evolvable-sorted page, and disabled identities."""
         analyses = await self._analyses(workspace_id, query.window, ())
+        disabled = await self._disabled_targets(workspace_id)
         ordered = sorted(
             analyses,
             key=lambda analysis: (
@@ -652,9 +654,36 @@ class TargetOverviewService:
                 unanalyzed=sum(analysis.unanalyzed for analysis in analyses),
             ),
             items=[_overview_item(analysis) for analysis in page],
+            disabled=[
+                TargetOverviewDisabledItem(
+                    target_id=target.id,
+                    object_type=target.object_type,
+                    object_name=target.object_name,
+                    attribution_skill_name=target.attribution_skill_name,
+                    default_ref=target.default_ref,
+                )
+                for target in disabled
+            ],
             total=len(ordered),
             page=query.page,
             page_size=query.page_size,
+        )
+
+    async def _disabled_targets(
+        self,
+        workspace_id: str,
+    ) -> tuple[EvolutionTargetRecord, ...]:
+        """Return this workspace's disabled targets ordered by object name."""
+        targets = await self._targets.list(workspace_ids=(workspace_id,))
+        return tuple(
+            sorted(
+                (target for target in targets if not target.enabled),
+                key=lambda target: (
+                    target.object_name.casefold(),
+                    target.object_type,
+                    target.id,
+                ),
+            ),
         )
 
     async def trend(

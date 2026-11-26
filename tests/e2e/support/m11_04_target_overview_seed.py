@@ -44,6 +44,7 @@ EXTRA_TARGET_IDS = [
     "40000000-0000-4000-8000-000000000004",
     "40000000-0000-4000-8000-000000000005",
 ]
+DISABLED_TARGET_ID = "40000000-0000-4000-8000-000000000006"
 
 NON_TARGET_AT = datetime(2026, 10, 24, 9, 10, tzinfo=SHANGHAI)
 UNANALYZED_AT = datetime(2026, 10, 24, 9, 20, tzinfo=SHANGHAI)
@@ -193,6 +194,31 @@ async def _seed(data_dir: Path) -> None:
                             updated_at=NON_TARGET_AT,
                         ),
                     )
+            disabled_exists = (
+                await session.execute(
+                    select(evolution_targets.c.id).where(
+                        evolution_targets.c.id == DISABLED_TARGET_ID,
+                    ),
+                )
+            ).first()
+            if disabled_exists is None:
+                await session.execute(
+                    evolution_targets.insert().values(
+                        id=DISABLED_TARGET_ID,
+                        workspace_id=workspace_id,
+                        object_type="skill",
+                        object_name="m11-04-retired",
+                        repo_url="https://example.invalid/m11-04.git",
+                        sub_dir="skills/retired",
+                        default_ref="main",
+                        validation_project_id="val-m11-04-retired",
+                        test_project_id="test-m11-04-retired",
+                        primary_metric_key="resolved_rate",
+                        enabled=False,
+                        created_at=NON_TARGET_AT,
+                        updated_at=NON_TARGET_AT,
+                    ),
+                )
         await backfill_legacy_associations(database)
         print(
             f"seeded m11-04 target overview data in {data_dir} for {workspace_id}",

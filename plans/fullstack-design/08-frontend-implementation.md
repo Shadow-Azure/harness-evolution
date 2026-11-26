@@ -507,7 +507,7 @@ Index.vue
 │   ├── OverviewOpsContext.vue（空间额度 / 上报地址 / 当前空间摘要）
 │   ├── BadCaseTable.vue（8 条/页 + 列表级日期/来源/类型筛选 + 空态）
 │   ├── TargetsOverview.vue（对象统计条 + 趋势三态 chip + 两块分布）
-│   ├── TargetSideList.vue（5 条/页，可进化降序，增编删入口）
+│   ├── TargetSideList.vue（5 条/页，可进化降序；启用对象后追加置灰的已停用分组，可启用/编辑/移除）
 │   ├── TargetDetailCard.vue（单对象分析卡：对象+版本多选+独立时间窗）
 │   └── PotentialCaseTable.vue（8 条/页 + 对象/来源/状态筛选）
 └── 空态：图表空态 + 列表空态 + 无对象时「去配置进化对象」
@@ -533,6 +533,7 @@ Index.vue
 | 下钻 | 行内 **bad case ID 链接**（新窗口）→ `/workspaces/:wid/sessions/:sid/errors?case=&tab=desc`；整行不可点（原型第十七轮决策） |
 | 粒度降级 | 日粒度窗口 >92 天时服务端降级周并回传实际粒度，前端在副标题提示「已按周展示」 |
 | 对象列表操作 | 空间管理员可「+ 新增 / 编辑 / 移除」，复用 targets 表单弹窗；移除后失效总览缓存 |
+| 停用对象 | `TargetSideList` 在分页的启用对象之后追加「已停用对象」分组：置灰、标注「已停用」，只展示对象/版本与归因 Skill，提供启用/编辑/移除。停用对象不进入筛选、趋势、两块分布、单对象选择器与潜在 bad case 列表；启用沿用对象表单的 `EvolutionTargetWrite` 校验，成功后失效总览并回到启用列表与统计 |
 | 返回保持 | 页头入口走应用内路由，浏览器后退/前进恢复总览原 URL；启动成功后的运行详情同样 push 进历史，不覆盖筛选 |
 | 刷新恢复 | 从 URL 解析全部筛选并与 `wid` 校验，不匹配重定向（§1.4 的守卫规则同源） |
 

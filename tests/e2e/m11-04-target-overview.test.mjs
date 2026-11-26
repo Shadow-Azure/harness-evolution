@@ -236,7 +236,11 @@ function expectedLogEntry(entry) {
   );
 }
 
-async function screenshot(page, name, full = true) {
+async function screenshot(
+  page,
+  name,
+  { full = true, width = 1440, height = 980, deviceScaleFactor = 1 } = {},
+) {
   if (!screenshotDir) return;
   await mkdir(screenshotDir, { recursive: true });
   await page.session.send("Page.enable");
@@ -245,9 +249,9 @@ async function screenshot(page, name, full = true) {
     `document.querySelector("[data-testid='overview-page']")?.scrollHeight ?? 0`,
   );
   await page.session.send("Emulation.setDeviceMetricsOverride", {
-    width: 1440,
-    height: full ? Math.max(980, Number(contentHeight) + 70) : 980,
-    deviceScaleFactor: 1,
+    width,
+    height: full ? Math.max(height, Number(contentHeight) + 70) : height,
+    deviceScaleFactor,
     mobile: false,
   });
   await new Promise((resolve) => setTimeout(resolve, 200));
@@ -278,7 +282,7 @@ before(async () => {
   };
   git(["init", "--bare", "-b", "main", originDir], root);
   git(["clone", originDir, workDir], root);
-  for (const name of ["synthetic-review", "extra-1", "extra-2", "extra-3", "extra-4", "extra-5"]) {
+  for (const name of ["synthetic-review", "extra-1", "extra-2", "extra-3", "extra-4", "extra-5", "retired"]) {
     await mkdir(path.join(workDir, "skills", name), { recursive: true });
     await writeFile(path.join(workDir, "skills", name, "SKILL.md"), `# ${name}\n`);
   }
@@ -432,8 +436,8 @@ test("m11-04 target overview renders, filters, paginates, and analyses one objec
       page,
       `document.querySelector("[data-testid='overview-page']").scrollTop = 0`,
     );
-    await screenshot(page, "01-targets-overview.png", false);
-    await screenshot(page, "06-targets-overview-full.png", true);
+    await screenshot(page, "01-targets-overview.png", { full: false });
+    await screenshot(page, "06-targets-overview-full.png");
 
     await click(page, "[data-testid='ov-target-side-next']");
     await waitForUrlParam(page, "tpage", "2");
@@ -559,6 +563,111 @@ test("m11-04 target overview prompts for configuration when no target exists", a
       "empty target overview",
     );
     await screenshot(page, "04-targets-empty.png");
+    assert.deepEqual(violations, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test("m11-04 target overview shows disabled objects and re-enables them", async () => {
+  const page = await createBrowserPage();
+  const violations = browserViolations(page.session, {
+    isExpectedLogEntry: expectedLogEntry,
+  });
+  try {
+    await installBrowser(page, await loginCookie());
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1500,
+      height: 1200,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+    await page.session.send("Emulation.setEmulatedMedia", {
+      features: [{ name: "prefers-color-scheme", value: "light" }],
+    });
+
+    const ready = await navigateTargets(page);
+    assert.equal(ready.targets, "6");
+    assert.equal(ready.sideItems, 5);
+
+    await click(page, "[data-testid='ov-target-side-next']");
+    await waitForUrlParam(page, "tpage", "2");
+    await waitForDocument(
+      page.session,
+      `document.querySelectorAll("[data-testid^='ov-target-side-item-']").length === 1`,
+      "second target page",
+    );
+    await screenshot(page, "disabled-target-side-page2.png", {
+      full: false,
+      width: 1500,
+      height: 1200,
+      deviceScaleFactor: 2,
+    });
+
+    const disabled = await evaluate(
+      page,
+      `(() => {
+        const row = document.querySelector("[data-testid^='ov-target-side-disabled-row-']");
+        const group = document.querySelector("[data-testid='ov-target-side-disabled-group']");
+        const stats = document.querySelector("[data-testid='ov-target-stat-targets']")?.textContent?.trim();
+        const detailTarget = document.querySelector("[data-testid='ov-target-detail-target']");
+        const caseTarget = document.querySelector("[data-testid='ov-target-case-target']");
+        return {
+          exists: Boolean(row),
+          text: row?.textContent ?? "",
+          group: group?.textContent?.trim() ?? "",
+          stats,
+          enable: Boolean(row?.querySelector("[data-testid^='ov-target-side-enable-']")),
+          selectable: Boolean(row?.querySelector(".select")),
+          inDetail: detailTarget
+            ? [...detailTarget.options].some((option) => option.value === "40000000-0000-4000-8000-000000000006")
+            : null,
+          inCases: caseTarget
+            ? [...caseTarget.options].some((option) => option.value === "40000000-0000-4000-8000-000000000006")
+            : null,
+        };
+      })()`,
+    );
+    assert.equal(disabled.exists, true, "disabled target must stay visible");
+    assert.match(disabled.text, /m11-04-retired/);
+    assert.match(disabled.text, /已停用/);
+    assert.match(disabled.group, /已停用对象/);
+    assert.equal(disabled.stats, "6");
+    assert.equal(disabled.enable, true);
+    assert.equal(disabled.selectable, false);
+    assert.equal(disabled.inDetail, false);
+    assert.equal(disabled.inCases, false);
+
+    await click(page, "[data-testid^='ov-target-side-enable-']");
+    const enabled = await waitForDocument(
+      page.session,
+      `(() => {
+        const stats = document.querySelector("[data-testid='ov-target-stat-targets']")?.textContent?.trim();
+        if (stats === "7") return { ok: true, error: "" };
+        const error = document.querySelector(".operation-error")?.textContent?.trim() ?? "";
+        return error ? { ok: false, error } : null;
+      })()`,
+      "enabled target returns to the statistics",
+    );
+    assert.equal(enabled.ok, true, enabled.error);
+    const restored = await evaluate(
+      page,
+      `(() => ({
+        disabled: document.querySelector("[data-testid^='ov-target-side-disabled-row-']") !== null,
+        group: document.querySelector("[data-testid='ov-target-side-disabled-group']") !== null,
+        stats: document.querySelector("[data-testid='ov-target-stat-targets']")?.textContent?.trim(),
+      }))()`,
+    );
+    assert.equal(restored.disabled, false);
+    assert.equal(restored.group, false);
+    assert.equal(restored.stats, "7");
+    await screenshot(page, "disabled-target-enabled-page1.png", {
+      full: false,
+      width: 1500,
+      height: 1200,
+      deviceScaleFactor: 2,
+    });
+
     assert.deepEqual(violations, []);
   } finally {
     await page.close();
