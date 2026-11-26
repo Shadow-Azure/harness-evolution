@@ -122,7 +122,7 @@ pnpm verify:docs
 
 - 配置单测：未设置/false 为关闭；true 为开启；非法值在启动校验时报错。
 - 匹配器与总览单测：关闭时既有 digest 版本行与关联数不变；开启时 agent 目标只有一行、纳入定义 hash 不同的同名 Session；skill 目标在开启时仍按 digest 版本行。
-- 总览报告：开关开启时，带历史 digest 报告的 case 仍挂在唯一版本行，attributed/nonTarget 计数与关闭时一致，不因别名缺失归零。
+- 总览报告：开关开启时，带历史 digest 报告的 case 仍挂在唯一版本行并被计入，不因别名缺失归零；同名 Session 扩大后计数可以增加，但不能丢掉这些历史报告。
 - 文档门禁：`docs/architecture` 中英配对重录，`pnpm verify:docs` 与 `pnpm verify:flow` 全绿。
 - 浏览器核对：同一 fixture、同一视口与主题下，开关关闭显示现有 digest 版本行，开启只显示配置 ref 一行；截图随 PR 描述提交。
 

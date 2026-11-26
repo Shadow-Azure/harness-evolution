@@ -122,7 +122,7 @@ pnpm verify:docs
 
 - Config tests: unset/false means off; true means on; an invalid value fails startup validation.
 - Matcher and overview tests: off keeps existing digest version rows and counts; on gives an agent target one row and includes same-name Sessions with a different definition hash; a skill target keeps digest rows with the switch on.
-- Overview reports: with the switch on, cases that only have historical digest reports still attach to the single version row, and attributed/nonTarget counts match the switch-off result instead of dropping to zero because aliases are missing.
+- Overview reports: with the switch on, cases that only have historical digest reports still attach to the single version row and are counted instead of dropping to zero because aliases are missing; the wider same-name Session set may raise the totals, but those historical reports must not be lost.
 - Document gates: `docs/architecture` is re-recorded in both languages; `pnpm verify:docs` and `pnpm verify:flow` pass.
 - Browser check: with the same fixture, viewport and theme, off shows the existing digest version rows and on shows only the configured-ref row; screenshots go into the PR description.
 
