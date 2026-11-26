@@ -35,15 +35,17 @@ Let C select reports from A while preserving the original reporter and self/disc
 
 ## Prototype comparison
 
-| Existing creation form on main at 36160c8e | Proposed first step |
+| Before · create from the details form | After · enter details and continue |
 | --- | --- |
-| ![Current form](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/5f9948f9738f2059038d871ec90f5cbfabd7dcd9/plans/ui-prototype-v2/evidence/candidate-rules/before-create.png) | ![Proposed form](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/5f9948f9738f2059038d871ec90f5cbfabd7dcd9/plans/ui-prototype-v2/evidence/candidate-rules/after-create.png) |
+| ![Before · create from the details form](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/8a7f30f2c03609ac22d41c30214f5859e6f1074d/plans/ui-prototype-v2/evidence/candidate-rules/before-create.png) | ![After · enter details and continue](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/8a7f30f2c03609ac22d41c30214f5859e6f1074d/plans/ui-prototype-v2/evidence/candidate-rules/after-create.png) |
 
-| A selects its own self reports | C executes after A reports |
+| Step two · configure sources in the same dialog | Existing target · inspect one reporting source |
 | --- | --- |
-| ![A preview](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/5f9948f9738f2059038d871ec90f5cbfabd7dcd9/plans/ui-prototype-v2/evidence/candidate-rules/rule-A.png) | ![C preview](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/5f9948f9738f2059038d871ec90f5cbfabd7dcd9/plans/ui-prototype-v2/evidence/candidate-rules/rule-C.png) |
+| ![Step two · configure sources in the same dialog](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/8a7f30f2c03609ac22d41c30214f5859e6f1074d/plans/ui-prototype-v2/evidence/candidate-rules/create-rules.png) | ![Existing target · inspect one reporting source](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/8a7f30f2c03609ac22d41c30214f5859e6f1074d/plans/ui-prototype-v2/evidence/candidate-rules/source-reports.png) |
 
-[Download the interactive HTML](https://github.com/Shadow-Azure/harness-evolution/blob/5f9948f9738f2059038d871ec90f5cbfabd7dcd9/plans/ui-prototype-v2/harness-evolution.html?raw=true). Open it with `?u=admin&page=overview&tab=targets&demo=candidate-rules`.
+![Source picker with aligned self and discovery counts for the selected period](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/8a7f30f2c03609ac22d41c30214f5859e6f1074d/plans/ui-prototype-v2/evidence/candidate-rules/source-counts.png)
+
+[Download the single-file prototype](https://github.com/Shadow-Azure/harness-evolution/blob/8a7f30f2c03609ac22d41c30214f5859e6f1074d/plans/ui-prototype-v2/harness-evolution.html?raw=true). Open the file with `?u=admin&page=overview&tab=targets&demo=candidate-rules`, open candidate rules on C, and view the reports on source A.
 
 ## Design authority
 
@@ -51,19 +53,19 @@ See [Database design §7.5](../../../plans/fullstack-design/06-database-design.m
 
 ## Implementation
 
-1. Both create flows validate object details, then open candidate rules. Save the object, Skill binding and policy together on final confirmation. Back preserves both drafts. Cancel creates nothing and schedules no job. Existing objects save metadata directly. Their overview cards show the active policy and a separate rule editor. Members can inspect rules and managers can edit.
-2. Offer default, default plus custom sources, and custom sources only. Match exact Skill/Agent type and name, including the target itself. Support historical suggestions and free text without registering a source target. Require at least one report type per rule and one valid source for a custom mode.
+1. Both create flows validate object details, then show a single-column rule form in the same-sized dialog. Keep the title, step indicator and footer in place. Save the object, Skill binding and policy together on final confirmation. Back preserves both drafts. Cancel creates nothing and schedules no job. Existing objects save metadata directly. Their overview cards show the active policy and a separate rule editor. Members can inspect rules and managers can edit.
+2. Offer default, default plus custom sources, and custom sources only. Match exact Skill/Agent type and name, including the target itself. Only offer distinct names reported in this workspace for the chosen kind. Switching kind clears the name. Sources need no target registration. Keep the picker within the card width, with right-aligned self and discovery counts for the selected date range, including zeros. Require at least one report type per rule and one valid source for a custom mode.
 3. Evaluate any target invocation in the same root Session. Support strictly before, strictly after, or presence only. Directional rules require a real anchor and comparable coordinates. Explain unknown order and post-processing anchors. Preserve default self and post-processing semantics.
-4. Show proposed, added and removed cases, with per-rule anchor and invocation evidence. Count each case once per target version. Preview automatic attribution candidates and keep historical reports visible separately.
+4. Place a view-reports button beside report types on each source card. Query the bad case table for that one source, selected types, workspace and time window. Show results in the right pane for existing targets or a temporary dialog during creation. Preserve the draft on return. Filter the list by type and labels, including unlabelled records and the union of multiple labels. Reports without trace anchors remain visible. Evaluate execution order during candidate matching and count overlapping matches once per target version.
 5. Share the matcher across overview, automatic attribution, the wizard and runs. Consume included cases only. Snapshot the applied rule version, match reasons and coordinates for each run or batch. Read legacy targets using the default policy.
 
 ## Implementation steps
 
-Define storage, compatibility, role checks, validation, preview and save APIs. Extend the shared matcher and batch snapshots. Wire both create flows, overview and wizard to the saved policy.
+Define storage, compatibility, role checks, validation, persistence, reporting-source enumeration, per-type counts and per-source listing APIs. Extend the shared matcher and batch snapshots. Wire both create flows, per-source report lists, overview and wizard to the saved policy.
 
 ## Dependencies and boundary
 
-Apply workspace scope and any applicable [label filter from #582](https://github.com/Shadow-Azure/harness-evolution/issues/582) first. Historical scan triggers, lookback and cache reuse conditions remain design decisions.
+Apply workspace scope and any applicable [label filter from #582](https://github.com/Shadow-Azure/harness-evolution/issues/582) first. Historical scan triggers, lookback and cache reuse conditions remain design decisions. Confirm the backing field for report labels during integration.
 
 ## Verification
 
@@ -72,10 +74,12 @@ Use the linked prototype and A/B/C traces below. Run the same fixtures through A
 ## Acceptance
 
 - [ ] Final confirmation creates the object atomically. Cancel or failure leaves no partial object or job. Editing existing metadata remains a single step.
+- [ ] On desktop and narrow screens, the source menu fits within the card and counts align. The fixture shows 3 / 2 for Skill A and 0 / 1 for Agent ReviewBot.
+- [ ] Viewing A from C with both types selected shows five reports, including BC-1071 without an anchor. Viewing a second card for B shows its two reports. Viewing, filtering and returning preserve the unsaved policy.
 - [ ] On `A1 → B1 → A2 → B2`, A selecting its own self reports and Session presence includes both A1 and A2. Requiring a later A includes only the A1 report, witnessed by A2.
 - [ ] On `A1 → C1`, C accepts the A report with a later-C rule. On `C1 → A1 → C2`, C2 witnesses the match and overlapping rules produce one case.
-- [ ] Separate source kinds with identical names. Respect report type, order evidence, Session and workspace. An unobserved typed source saves and previews zero cases.
-- [ ] Under identical inputs preview, automatic batches and runs select the same IDs. Removed candidates retain accessible historical reports and snapshots.
+- [ ] Separate source kinds with identical names. Respect report type, order evidence, Session and workspace. Only previously reported sources of the selected kind are selectable. Show zero when a report type is absent in the time window.
+- [ ] Under identical inputs overview candidates, automatic batches and runs select the same IDs. Removed candidates retain accessible historical reports and snapshots.
 
 ## Gates and CI
 
