@@ -738,13 +738,13 @@ Index.vue
 └── TargetFormDialog.vue（新增/编辑）
     ├── objectType（skill/agent）
     ├── objectName
+    ├── attributionSkill（空间 Skill 包选择器；默认取对象原绑定，缺省为空间默认包；历史内联提示词显示“历史内联提示词（只读）”，不主动换包）
     ├── repoUrl（git 远端地址，https/ssh；不写 token）
     ├── subDir（相对仓库根，如 skills/deep-research）
     ├── defaultRef（可编辑组合框；直接输入分支或 tag，已保存对象的 tag 作为建议；启动向导的版本字段复用同一输入优先模式，并额外接受 commit SHA）
     ├── validationProjectId（验证集测试工程 ID，必填，不透明字符串）
     ├── testProjectId（测试集测试工程 ID，必填，不透明字符串）
-    ├── primaryMetricKey（平台 results 主指标 metric_key，必填，如 resolved_rate）
-    └── attributionSkill（空间 Skill 包选择器；默认取对象原绑定，缺省为空间默认包；历史内联提示词显示“历史内联提示词（只读）”，不主动换包）
+    └── primaryMetricKey（平台 results 主指标 metric_key，必填，如 resolved_rate）
 ```
 
 - 写操作可见性（V2）：空间管理员及以上可写本空间配置；成员/只读只读（后端按空间角色校验）。全局管理员可写任意空间。

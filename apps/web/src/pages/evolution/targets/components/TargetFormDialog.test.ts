@@ -350,6 +350,7 @@ describe("TargetFormDialog", () => {
     ]);
     expect(wrapper.find(".el-switch").exists()).toBe(false);
     expect(wrapper.text()).not.toContain("进入启动向导候选");
+    expect(wrapper.text()).not.toContain("保留配置但不进入向导");
 
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -366,6 +367,7 @@ describe("TargetFormDialog", () => {
 
     expect(wrapper.find(".el-switch").exists()).toBe(false);
     expect(wrapper.text()).not.toContain("进入启动向导候选");
+    expect(wrapper.text()).not.toContain("保留配置但不进入向导");
 
     await wrapper.get("form").trigger("submit");
     await flushPromises();
