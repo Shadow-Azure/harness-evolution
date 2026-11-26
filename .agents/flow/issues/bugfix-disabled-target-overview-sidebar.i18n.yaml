@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-disabled-target-overview-sidebar.md
-bugfix-disabled-target-overview-sidebar.md: c00c74fcf3ee004a999c6dcef8eff22e69a11e6f
-bugfix-disabled-target-overview-sidebar.en.md: 30acc16f8c1a5c09352fa1b2e0b72114c018c29a
+bugfix-disabled-target-overview-sidebar.md: 429abc04c6092495534ba6880b83006ee6897116
+bugfix-disabled-target-overview-sidebar.en.md: 2c06e625a5636fdc3e5bb75d1c1f7c8ce1731e98
