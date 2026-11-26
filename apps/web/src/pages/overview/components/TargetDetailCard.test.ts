@@ -3,12 +3,14 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
-import type { TargetDetailResponse, TargetOverviewItem } from "@harness/contracts";
+import type { TargetDetailResponse } from "@harness/contracts";
+
+import type { TargetOverviewItemView } from "../../../api/overview";
 
 import { DEFAULT_OVERVIEW_STATE } from "../overviewUrl";
 import TargetDetailCard from "./TargetDetailCard.vue";
 
-const targets: TargetOverviewItem[] = [
+const targets: TargetOverviewItemView[] = [
   {
     targetId: "target-1",
     objectType: "skill",
@@ -87,6 +89,26 @@ describe("TargetDetailCard", () => {
     expect(wrapper.findAll("[data-testid='ov-target-detail-version-row']")).toHaveLength(2);
     expect(wrapper.findAll("[data-testid='ov-target-detail-source-row']")).toHaveLength(1);
     expect(wrapper.text()).toContain("当前查看全部 2 个");
+  });
+
+  it("shows configuration members when the target row exposes them", () => {
+    const multiTargets: TargetOverviewItemView[] = [
+      {
+        ...targets[0]!,
+        members: [
+          { objectType: "skill", objectName: "synthetic-review", subDir: "skills/synthetic-review" },
+          { objectType: "skill", objectName: "review-helper", subDir: "skills/review-helper" },
+        ],
+      },
+    ];
+    const wrapper = mountCard({ targets: multiTargets });
+
+    const members = wrapper.get("[data-testid='ov-target-detail-members']");
+    expect(members.text()).toContain("skill:synthetic-review");
+    expect(members.text()).toContain("skill:review-helper");
+    expect(wrapper.get("[data-testid='ov-target-detail-target']").text()).toContain(
+      "2 个对象",
+    );
   });
 
   it("emits independent target, version, limit, and window changes", async () => {

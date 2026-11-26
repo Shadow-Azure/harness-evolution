@@ -37,6 +37,14 @@ class TargetOverviewSummary(IdentityModel):
     unanalyzed: int = Field(ge=0)
 
 
+class TargetOverviewMember(IdentityModel):
+    """One member chip of a configuration row."""
+
+    object_type: EvolutionObjectType
+    object_name: str = Field(min_length=1, max_length=128)
+    sub_dir: str = ""
+
+
 class TargetVersionOption(IdentityModel):
     """One selectable version: canonical identity plus its display evidence.
 
@@ -81,6 +89,7 @@ class TargetOverviewItem(IdentityModel):
         ge=0,
     )
     unanalyzed: int = Field(ge=0)
+    members: list[TargetOverviewMember] = Field(default_factory=list)
     evolvable: int = Field(
         ge=0,
         description="Attributed plus unanalyzed potential rows; the list sort key.",
@@ -189,6 +198,7 @@ class TargetDetailTarget(IdentityModel):
     default_ref: str = Field(max_length=128)
     versions: list[str]
     version_options: list[TargetVersionOption] = Field(default_factory=list)
+    members: list[TargetOverviewMember] = Field(default_factory=list)
 
 
 class TargetDetailStats(IdentityModel):

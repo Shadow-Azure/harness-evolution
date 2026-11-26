@@ -2513,13 +2513,12 @@ export interface components {
             /** From */
             from?: string | null;
             policy?: components["schemas"]["PotentialPolicy"] | null;
+            /** Targetid */
+            targetId?: string | null;
             /** Targetname */
-            targetName: string;
-            /**
-             * Targettype
-             * @enum {string}
-             */
-            targetType: "skill" | "agent" | "knowledge";
+            targetName?: string | null;
+            /** Targettype */
+            targetType?: ("skill" | "agent" | "knowledge") | null;
             /** Targetversion */
             targetVersion?: string | null;
             /** To */
@@ -3159,6 +3158,36 @@ export interface components {
             file: string;
         };
         /**
+         * CatalogConfig
+         * @description One enabled configuration with all of its members.
+         */
+        CatalogConfig: {
+            /** Defaultref */
+            defaultRef: string;
+            /** Id */
+            id: string;
+            /** Members */
+            members: components["schemas"]["CatalogMember"][];
+            /** Name */
+            name: string;
+            /** Repourl */
+            repoUrl: string;
+            /** Versions */
+            versions: string[];
+        };
+        /**
+         * CatalogMember
+         * @description One member of a selectable evolution configuration.
+         */
+        CatalogMember: {
+            /** Objectname */
+            objectName: string;
+            /** Objecttype */
+            objectType: string;
+            /** Subdir */
+            subDir: string;
+        };
+        /**
          * CatalogModel
          * @description One normalized model and its usage across the trace corpus.
          */
@@ -3198,13 +3227,15 @@ export interface components {
         };
         /**
          * CatalogTargets
-         * @description Enabled targets grouped by the kind selectable in the wizard.
+         * @description Enabled targets grouped by member kind and by configuration.
          */
         CatalogTargets: {
             /** Agent */
             agent: components["schemas"]["CatalogTarget"][];
             /** Skill */
             skill: components["schemas"]["CatalogTarget"][];
+            /** Targets */
+            targets?: components["schemas"]["CatalogConfig"][];
         };
         /**
          * ChangePasswordRequest
@@ -3322,7 +3353,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_PENDING" | "BAD_CASE_SESSION_UNAVAILABLE" | "BAD_CASE_SESSION_MISMATCH" | "ATTRIBUTION_NOT_FOUND" | "ATTRIBUTION_SKILL_NOT_FOUND" | "ATTRIBUTION_SKILL_EXISTS" | "ATTRIBUTION_SKILL_INVALID" | "ATTRIBUTION_SKILL_PACKAGE_NOT_FOUND" | "ATTRIBUTION_SKILL_PACKAGE_EXISTS" | "ATTRIBUTION_SKILL_PACKAGE_INVALID" | "ATTRIBUTION_SKILL_PACKAGE_TOO_LARGE" | "ATTRIBUTION_QUALITY_GATE_FAILED" | "ATTRIBUTION_ENGINE_UNAVAILABLE" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_CONTROL_CONFLICT" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "PRIMARY_METRIC_KEY_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "TARGET_CONTENT_UNRESOLVED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "EXTERNAL_SCHEMA_DRIFT" | "EXTERNAL_READ_FORBIDDEN" | "EXTERNAL_READ_FAILED" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_PENDING" | "BAD_CASE_SESSION_UNAVAILABLE" | "BAD_CASE_SESSION_MISMATCH" | "ATTRIBUTION_NOT_FOUND" | "ATTRIBUTION_SKILL_NOT_FOUND" | "ATTRIBUTION_SKILL_EXISTS" | "ATTRIBUTION_SKILL_INVALID" | "ATTRIBUTION_SKILL_PACKAGE_NOT_FOUND" | "ATTRIBUTION_SKILL_PACKAGE_EXISTS" | "ATTRIBUTION_SKILL_PACKAGE_INVALID" | "ATTRIBUTION_SKILL_PACKAGE_TOO_LARGE" | "ATTRIBUTION_QUALITY_GATE_FAILED" | "ATTRIBUTION_ENGINE_UNAVAILABLE" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_CONTROL_CONFLICT" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "PRIMARY_METRIC_KEY_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "TARGET_CONTENT_UNRESOLVED" | "MEMBER_ALREADY_CONFIGURED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "EXTERNAL_SCHEMA_DRIFT" | "EXTERNAL_READ_FORBIDDEN" | "EXTERNAL_READ_FAILED" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -3458,6 +3489,8 @@ export interface components {
              */
             status: "preparing" | "running" | "blocked" | "completed" | "failed" | "interrupted";
             target: components["schemas"]["EvolutionRunTarget"];
+            /** Targets */
+            targets?: components["schemas"]["EvolutionRunTarget"][];
             /** Title */
             title: string;
             window: components["schemas"]["EvolutionRunWindow"];
@@ -3569,6 +3602,8 @@ export interface components {
             /** Steps */
             steps: components["schemas"]["EvolutionRunStep"][];
             target: components["schemas"]["EvolutionRunTarget"];
+            /** Targets */
+            targets?: components["schemas"]["EvolutionRunTarget"][];
             /** Title */
             title: string;
             window: components["schemas"]["EvolutionRunWindow"];
@@ -3791,6 +3826,11 @@ export interface components {
             /** Name */
             name: string;
             /**
+             * Subdir
+             * @default
+             */
+            subDir: string;
+            /**
              * Targetrevision
              * @description Resolved file-matching revision (digest:<sha256(body)> for skill/agent/knowledge file targets); null on historical runs.
              */
@@ -3843,6 +3883,8 @@ export interface components {
             repoUrl: string;
             /** Subdir */
             subDir: string;
+            /** Subdirs */
+            subDirs?: string[];
             /** Workspacepath */
             workspacePath: string | null;
         };
@@ -4041,26 +4083,22 @@ export interface components {
             /** Defaultref */
             defaultRef: string;
             definition?: components["schemas"]["TargetDefinitionPreview"] | null;
-            /**
-             * Enabled
-             * @default true
-             */
+            /** Enabled */
             enabled: boolean;
             /** Id */
             id: string;
+            /** Members */
+            members: components["schemas"]["EvolutionTargetMember"][];
             /** Objectname */
-            objectName: string;
-            /**
-             * Objecttype
-             * @enum {string}
-             */
-            objectType: "skill" | "agent" | "knowledge";
+            objectName?: string | null;
+            /** Objecttype */
+            objectType?: ("skill" | "agent" | "knowledge") | null;
             /** Primarymetrickey */
             primaryMetricKey: string;
             /** Repourl */
             repoUrl: string;
             /** Subdir */
-            subDir: string;
+            subDir?: string | null;
             /** Testprojectid */
             testProjectId: string;
             /** Validationprojectid */
@@ -4073,6 +4111,37 @@ export interface components {
         EvolutionTargetList: {
             /** Items */
             items: components["schemas"]["EvolutionTarget"][];
+        };
+        /**
+         * EvolutionTargetMember
+         * @description Persisted member with its frozen definition preview.
+         */
+        EvolutionTargetMember: {
+            definition?: components["schemas"]["TargetDefinitionPreview"] | null;
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent" | "knowledge";
+            /** Subdir */
+            subDir: string;
+        };
+        /**
+         * EvolutionTargetMemberWrite
+         * @description One skill or agent member of a target configuration.
+         */
+        EvolutionTargetMemberWrite: {
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent" | "knowledge";
+            /** Subdir */
+            subDir: string;
         };
         /**
          * EvolutionTargetVersions
@@ -4098,19 +4167,18 @@ export interface components {
              * @default true
              */
             enabled: boolean;
+            /** Members */
+            members?: components["schemas"]["EvolutionTargetMemberWrite"][];
             /** Objectname */
-            objectName: string;
-            /**
-             * Objecttype
-             * @enum {string}
-             */
-            objectType: "skill" | "agent" | "knowledge";
+            objectName?: string | null;
+            /** Objecttype */
+            objectType?: ("skill" | "agent" | "knowledge") | null;
             /** Primarymetrickey */
             primaryMetricKey: string;
             /** Repourl */
             repoUrl: string;
             /** Subdir */
-            subDir: string;
+            subDir?: string | null;
             /** Testprojectid */
             testProjectId: string;
             /** Validationprojectid */
@@ -4463,13 +4531,12 @@ export interface components {
              */
             pageSize: number;
             policy?: components["schemas"]["PotentialPolicy"] | null;
+            /** Targetid */
+            targetId?: string | null;
             /** Targetname */
-            targetName: string;
-            /**
-             * Targettype
-             * @enum {string}
-             */
-            targetType: "skill" | "agent" | "knowledge";
+            targetName?: string | null;
+            /** Targettype */
+            targetType?: ("skill" | "agent" | "knowledge") | null;
             /** Targetversion */
             targetVersion?: string | null;
             /** To */
@@ -4629,13 +4696,12 @@ export interface components {
              */
             pageSize: number;
             policy?: components["schemas"]["PotentialPolicy"] | null;
+            /** Targetid */
+            targetId?: string | null;
             /** Targetname */
-            targetName: string;
-            /**
-             * Targettype
-             * @enum {string}
-             */
-            targetType: "skill" | "agent" | "knowledge";
+            targetName?: string | null;
+            /** Targettype */
+            targetType?: ("skill" | "agent" | "knowledge") | null;
             /** Targetversion */
             targetVersion?: string | null;
             /** To */
@@ -5138,13 +5204,12 @@ export interface components {
              * @default 4
              */
             pageSize: number;
+            /** Targetid */
+            targetId?: string | null;
             /** Targetname */
-            targetName: string;
-            /**
-             * Targettype
-             * @enum {string}
-             */
-            targetType: "skill" | "agent" | "knowledge";
+            targetName?: string | null;
+            /** Targettype */
+            targetType?: ("skill" | "agent" | "knowledge") | null;
             /** Targetversion */
             targetVersion?: string | null;
             /** To */
@@ -5628,6 +5693,8 @@ export interface components {
             targetType: "skill" | "agent" | "knowledge";
             /** Targetversion */
             targetVersion: string;
+            /** Targets */
+            targets?: components["schemas"]["StepRangeTarget"][];
             /** To */
             to?: string | null;
             /** Workspaceid */
@@ -5661,6 +5728,28 @@ export interface components {
              * @default 0
              */
             sessions: number;
+        };
+        /**
+         * StepRangeTarget
+         * @description One member shown by the selection step.
+         */
+        StepRangeTarget: {
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent" | "knowledge";
+            /**
+             * Subdir
+             * @default
+             */
+            subDir: string;
+            /** Targetrevision */
+            targetRevision?: string | null;
+            /** Targetversion */
+            targetVersion: string;
         };
         /**
          * StepRound
@@ -5780,6 +5869,8 @@ export interface components {
              * @default 0
              */
             badCaseCount: number;
+            /** Members */
+            members?: string[];
             /** Objecttriggerat */
             objectTriggerAt: string | null;
             /**
@@ -6002,6 +6093,8 @@ export interface components {
         TargetDetailTarget: {
             /** Defaultref */
             defaultRef: string;
+            /** Members */
+            members?: components["schemas"]["TargetOverviewMember"][];
             /** Objectname */
             objectName: string;
             /**
@@ -6054,6 +6147,8 @@ export interface components {
              * @description Attributed plus unanalyzed potential rows; the list sort key.
              */
             evolvable: number;
+            /** Members */
+            members?: components["schemas"]["TargetOverviewMember"][];
             /** Nontarget */
             nonTarget: number;
             /** Objectname */
@@ -6096,6 +6191,24 @@ export interface components {
             summary: components["schemas"]["TargetOverviewSummary"];
             /** Total */
             total: number;
+        };
+        /**
+         * TargetOverviewMember
+         * @description One member chip of a configuration row.
+         */
+        TargetOverviewMember: {
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent" | "knowledge";
+            /**
+             * Subdir
+             * @default
+             */
+            subDir: string;
         };
         /**
          * TargetOverviewSummary

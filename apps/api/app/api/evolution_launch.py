@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request, Security, status
 
 from app.api.deps import authorize_workspace, visible_workspace_ids
 from app.api.security import BEARER_AUTH
-from app.errors import ErrorResponse
+from app.errors import AppError, ErrorCode, ErrorResponse
 from app.service.evolution.launch import EvolutionLaunchService
 from app.service.evolution.probe_query import (
     ProbeQueryRequest,
@@ -49,11 +49,25 @@ async def _launch_workspace(
     body: ProbeQueryRequest,
 ) -> str:
     """Resolve the launch target's workspace and enforce the write role."""
-    config = await targets_from(request).enabled_config(
-        body.target_type,
-        body.target_name,
-        workspace_ids=await visible_workspace_ids(request),
-    )
+    targets = targets_from(request)
+    workspace_ids = await visible_workspace_ids(request)
+    if body.target_id is not None:
+        config = await targets.enabled_config_by_id(
+            body.target_id,
+            workspace_ids=workspace_ids,
+        )
+    elif body.target_type is not None and body.target_name is not None:
+        config = await targets.enabled_config(
+            body.target_type,
+            body.target_name,
+            workspace_ids=workspace_ids,
+        )
+    else:
+        raise AppError(
+            status_code=422,
+            code=ErrorCode.VALIDATION_INVALID,
+            message="target identity is required",
+        )
     await authorize_workspace(request, config.workspace_id, "space_admin")
     return config.workspace_id
 

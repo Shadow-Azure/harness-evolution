@@ -16,6 +16,7 @@ from app.service.evolution.engine.contracts import (
     EvalStatus,
     EvalStatusValue,
     EvalSubmission,
+    EvalTarget,
     FrozenValue,
     freeze_json,
 )
@@ -169,15 +170,22 @@ class AiEvalPlatformGateway(BaseEvalGateway):
         )
 
     def _asset_override(self, request: EvalRequest, sub_dir: str) -> dict[str, Any]:
-        """Map one HE target onto the platform's built asset paths."""
+        """Map every HE member onto the platform's built asset paths."""
         override: dict[str, Any] = {
             "ref": request.ref or request.commit,
             "commit": request.commit,
         }
-        if sub_dir:
-            path, asset_type = _platform_asset_path(sub_dir, request.target_type)
-            override["asset_paths"] = [path]
-            override["asset_types"] = {path: asset_type}
+        targets = request.targets or (
+            (EvalTarget(request.target_type, request.target_name, sub_dir),) if sub_dir else ()
+        )
+        paths = [
+            _platform_asset_path(item.sub_dir, item.object_type)
+            for item in targets
+            if item.sub_dir.strip()
+        ]
+        if paths:
+            override["asset_paths"] = [path for path, _ in paths]
+            override["asset_types"] = {path: kind for path, kind in paths}
         return override
 
     @staticmethod

@@ -3,7 +3,6 @@ import type {
   EvolutionTarget,
   EvolutionTargetWrite,
   OverviewWindow,
-  TargetOverviewItem,
   TargetState,
 } from "@harness/contracts";
 import { ElMessage } from "element-plus/es/components/message/index";
@@ -16,6 +15,7 @@ import {
   type TargetCaseFilters,
   type TargetDetailFilters,
   type TargetOverviewFilters,
+  type TargetOverviewItemView,
 } from "../../../api/overview";
 import { ApiError } from "../../../api/http";
 import { queryKeys } from "../../../api/queryKeys";
@@ -92,7 +92,7 @@ const sharedFilters = computed<TargetOverviewFilters>(() => ({
   ...overviewSharedWindow(props.state),
 }));
 const targetsQuery = useOverviewTargets(workspaceId, sharedFilters);
-const targetItems = computed<TargetOverviewItem[]>(
+const targetItems = computed<TargetOverviewItemView[]>(
   () => targetsQuery.data.value?.items ?? [],
 );
 const summary = computed(() => targetsQuery.data.value?.summary ?? null);
@@ -313,7 +313,7 @@ function openCreate(): void {
   dialogOpen.value = true;
 }
 
-function openEdit(item: TargetOverviewItem): void {
+function openEdit(item: TargetOverviewItemView): void {
   if (!props.canManage) return;
   const target =
     evolutionTargetsData.value?.items.find(
@@ -349,7 +349,7 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
   }
 }
 
-async function removeTarget(item: TargetOverviewItem): Promise<void> {
+async function removeTarget(item: TargetOverviewItemView): Promise<void> {
   operationError.value = "";
   try {
     await ElMessageBox.confirm(

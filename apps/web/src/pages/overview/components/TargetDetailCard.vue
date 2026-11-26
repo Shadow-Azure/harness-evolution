@@ -2,10 +2,11 @@
 import type {
   OverviewWindow,
   TargetDetailResponse,
-  TargetOverviewItem,
+  TargetVersionOption,
 } from "@harness/contracts";
 import { computed } from "vue";
 
+import type { TargetOverviewItemView } from "../../../api/overview";
 import ErrorState from "../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
 import type {
@@ -17,7 +18,7 @@ const LIMITS: DetailVersionLimit[] = [5, 10, 20, "all"];
 
 const props = defineProps({
   targets: {
-    type: Array as () => TargetOverviewItem[],
+    type: Array as () => TargetOverviewItemView[],
     default: () => [],
   },
   state: {
@@ -65,7 +66,7 @@ const versionOptions = computed<string[]>(
   () => props.detail?.target.versions ?? activeTarget.value?.versions ?? [],
 );
 const versionMeta = computed(() => {
-  const options =
+  const options: TargetVersionOption[] =
     props.detail?.target.versionOptions ??
     activeTarget.value?.versionOptions ??
     [];
@@ -77,6 +78,10 @@ const versionMeta = computed(() => {
   );
 });
 const selectedVersions = computed(() => new Set(props.state.detailVersions));
+const activeMembers = computed(() => activeTarget.value?.members ?? []);
+const activeMemberCount = computed(() =>
+  activeMembers.value.length > 1 ? activeMembers.value.length : 0,
+);
 
 function versionRef(version: string): string {
   return versionMeta.value.get(version)?.ref ?? version;
@@ -216,7 +221,7 @@ function versionChanged(version: string, event: Event): void {
               :key="item.targetId"
               :value="item.targetId"
             >
-              {{ item.objectName }} · {{ item.objectType }}
+              {{ item.objectName }} · {{ item.objectType }}<template v-if="(item.members?.length ?? 0) > 1"> · {{ item.members?.length }} 个对象</template>
             </option>
           </select>
         </label>
@@ -311,6 +316,21 @@ function versionChanged(version: string, event: Event): void {
             跟随总览
           </button>
         </div>
+      </div>
+
+      <div
+        v-if="activeMemberCount > 1"
+        class="member-strip"
+        data-testid="ov-target-detail-members"
+      >
+        <span class="label">配置成员</span>
+        <span
+          v-for="member in activeMembers"
+          :key="`${member.objectType}:${member.objectName}`"
+          class="chip member"
+          :title="member.subDir"
+        >{{ member.objectType }}:{{ member.objectName }}</span>
+        <span class="hint">单对象分析按该配置首个成员展开；成员明细来自后端 members。</span>
       </div>
 
       <LoadingSkeleton
@@ -512,6 +532,30 @@ function versionChanged(version: string, event: Event): void {
   border-color: var(--blue);
   background: var(--blue);
   color: var(--bg-card);
+}
+
+.member-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 10px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.chip.member {
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--purple) 30%, var(--border));
+  border-radius: 999px;
+  color: var(--purple);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.member-strip .hint {
+  color: var(--text-faint);
+  font-size: 10.5px;
 }
 
 .td-toolbar {

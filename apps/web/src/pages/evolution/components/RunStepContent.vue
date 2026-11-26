@@ -22,6 +22,12 @@ defineProps<{
   focusCluster?: string;
   canWrite?: boolean;
   caseSessions?: Record<string, string>;
+  sharedProject?: {
+    validationProjectId: string;
+    testProjectId: string;
+    primaryMetricKey: string;
+  } | null;
+  subDirs?: string[];
 }>();
 defineEmits<{
   "missing-cluster-focus": [];
@@ -47,6 +53,8 @@ defineEmits<{
     v-else-if="step?.key === 'range'"
     :step="step"
     :target-revision="run.target.targetRevision"
+    :shared-project="sharedProject"
+    :sub-dirs="subDirs"
   />
   <StepSessions
     v-else-if="step?.key === 'sessions'"

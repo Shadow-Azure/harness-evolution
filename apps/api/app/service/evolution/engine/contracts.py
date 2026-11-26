@@ -172,6 +172,15 @@ EVAL_PURPOSES: tuple[EvalPurpose, ...] = (
 
 
 @dataclass(frozen=True, slots=True)
+class EvalTarget:
+    """One repository asset submitted to the evaluation platform."""
+
+    object_type: str
+    object_name: str
+    sub_dir: str
+
+
+@dataclass(frozen=True, slots=True)
 class EvalRequest:
     """Stable internal request passed to every evaluation implementation."""
 
@@ -191,6 +200,7 @@ class EvalRequest:
     attempt: int = 1
     round_seq: int = 0
     parent_commit: str = ""
+    targets: tuple[EvalTarget, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

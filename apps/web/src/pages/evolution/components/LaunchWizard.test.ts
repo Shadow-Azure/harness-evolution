@@ -134,6 +134,59 @@ const targetCatalog = {
       versions: ["v1.0.0"],
     },
   ],
+  targets: [
+    {
+      id: "tgt-1",
+      name: "deep-research",
+      repoUrl: "https://git.example.com/skills.git",
+      defaultRef: "v2.0.0",
+      versions: ["v2.0.0", "v1.9.0"],
+      members: [
+        { objectType: "skill", objectName: "deep-research", subDir: "skills/deep-research" },
+        { objectType: "skill", objectName: "code-review", subDir: "skills/code-review" },
+      ],
+    },
+    {
+      id: "tgt-2",
+      name: "Explore",
+      repoUrl: "https://git.example.com/agents.git",
+      defaultRef: "v1.0.0",
+      versions: ["v1.0.0"],
+      members: [
+        { objectType: "agent", objectName: "Explore", subDir: "agents/explore" },
+      ],
+    },
+  ],
+};
+
+const targetConfigDetail = {
+  items: [
+    {
+      id: "tgt-1",
+      repoUrl: "https://git.example.com/skills.git",
+      defaultRef: "v2.0.0",
+      validationProjectId: "val-skills-2026q4",
+      testProjectId: "test-skills-2026q4",
+      primaryMetricKey: "resolved_rate",
+      enabled: true,
+      members: [
+        { objectType: "skill", objectName: "deep-research", subDir: "skills/deep-research" },
+        { objectType: "skill", objectName: "code-review", subDir: "skills/code-review" },
+      ],
+    },
+    {
+      id: "tgt-2",
+      repoUrl: "https://git.example.com/agents.git",
+      defaultRef: "v1.0.0",
+      validationProjectId: "val-agents-2026q4",
+      testProjectId: "test-agents-2026q4",
+      primaryMetricKey: "resolved_rate",
+      enabled: true,
+      members: [
+        { objectType: "agent", objectName: "Explore", subDir: "agents/explore" },
+      ],
+    },
+  ],
 };
 
 const focusBadCase = {
@@ -176,6 +229,9 @@ function useHandlers(options: HandlerOptions = {}): void {
     ),
     http.get(`/api${ws}/attribution-skill-packages`, () =>
       HttpResponse.json({ items: [{ id: "default-attribute-badcases", skillName: "attribute-badcases" }] }),
+    ),
+    http.get(`${apiBase}/targets`, () =>
+      HttpResponse.json(targetConfigDetail),
     ),
     http.get(`${apiBase}/targets/tgt-1/versions`, () =>
       HttpResponse.json({
@@ -307,7 +363,7 @@ async function reachStep4(wrapper: VueWrapper): Promise<void> {
 }
 
 describe("launch wizard", { timeout: 30000 }, () => {
-  it("keeps unconfigured objects out of the selector and validates every required field", async () => {
+  it("selects one configuration by first member and member count and validates every required field", async () => {
     useHandlers();
     const { wrapper } = await mountWizard();
 
@@ -315,16 +371,9 @@ describe("launch wizard", { timeout: 30000 }, () => {
       .get("[data-testid='wizard-target']")
       .findAll("option")
       .map((option) => option.text());
-    expect(options).toContain("deep-research");
-    expect(options).not.toContain("Explore");
-    await wrapper.findAll(".seg button")[1]!.trigger("click");
-    await flushPromises();
-    expect(
-      wrapper
-        .get("[data-testid='wizard-target']")
-        .findAll("option")
-        .map((option) => option.text()),
-    ).toContain("Explore");
+    expect(options).toContain("deep-research · 2 个对象");
+    expect(options).toContain("Explore");
+    expect(options).not.toContain("code-review");
 
     await wrapper.get("[data-testid='wizard-next']").trigger("click");
     await flushPromises();
@@ -344,6 +393,24 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(
       wrapper.get("[data-testid='wizard-target']").attributes("aria-invalid"),
     ).toBe("true");
+  });
+
+  it("shows read-only configuration members and the shared test project summary", async () => {
+    useHandlers();
+    const { wrapper } = await mountWizard();
+    await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
+    await flushPromises();
+
+    const panel = wrapper.get("[data-testid='wizard-members']");
+    expect(panel.text()).toContain("skill:deep-research");
+    expect(panel.text()).toContain("skill:code-review");
+    expect(panel.text()).toContain("skills/deep-research");
+    expect(panel.text()).toContain("skills/code-review");
+    expect(panel.text()).toContain("验证集");
+    expect(panel.text()).toContain("val-skills-2026q4");
+    expect(panel.text()).toContain("test-skills-2026q4");
+    expect(panel.text()).toContain("resolved_rate");
+    expect(panel.text()).toContain("一次评测提交全部成员资产");
   });
 
   it("fills the bad-case window from the three relative presets", async () => {
@@ -453,7 +520,10 @@ describe("launch wizard", { timeout: 30000 }, () => {
     const sessionBodies: unknown[] = [];
     useHandlers();
     server.use(
-      http.get(`${apiBase}/targets/tgt-1/versions`, () =>
+      http.get(`${apiBase}/targets`, () =>
+      HttpResponse.json(targetConfigDetail),
+    ),
+    http.get(`${apiBase}/targets/tgt-1/versions`, () =>
         HttpResponse.json({
           versions: ["v2.0.0", "v1.9.0"],
           defaultRef: "main",
@@ -563,8 +633,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
     await reachStep2(wrapper);
     expect(sessionBodies).toEqual([
       {
-        targetType: "skill",
-        targetName: "deep-research",
+        targetId: "tgt-1",
         targetVersion: "v2.0.0",
         from: "2026-10-01",
         to: "2026-10-31",
@@ -584,8 +653,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
     await flushPromises();
     expect(potentialBodies).toEqual([
       {
-        targetType: "skill",
-        targetName: "deep-research",
+        targetId: "tgt-1",
         targetVersion: "v2.0.0",
         from: "2026-10-01",
         to: "2026-10-31",
@@ -611,8 +679,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
     await flushPromises();
     expect(attributionBodies).toEqual([
       {
-        targetType: "skill",
-        targetName: "deep-research",
+        targetId: "tgt-1",
         targetVersion: "v2.0.0",
         from: "2026-10-01",
         to: "2026-10-31",
@@ -815,8 +882,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
 
     expect(bodies).toEqual([
       {
-        targetType: "skill",
-        targetName: "deep-research",
+        targetId: "tgt-1",
         targetVersion: "v2.0.0",
         from: "2026-10-01",
         to: "2026-10-31",
@@ -885,7 +951,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
     await reachStep2(wrapper);
 
     expect(wrapper.get("[data-testid='wizard-session-empty']").text()).toContain(
-      "没有对象出现过的 Session",
+      "没有成员出现过的 Session",
     );
     expect(
       wrapper

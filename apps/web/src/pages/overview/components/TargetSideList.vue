@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { TargetOverviewItem } from "@harness/contracts";
 import { computed } from "vue";
 
+import type { TargetOverviewItemView } from "../../../api/overview";
 import ErrorState from "../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
 import AttributionRuntimeNotice from "../../evolution/targets/components/AttributionRuntimeNotice.vue";
@@ -11,7 +11,7 @@ const PAGE_SIZE = 5;
 const props = defineProps({
   runtimeUnavailable: Boolean,
   items: {
-    type: Array as () => TargetOverviewItem[],
+    type: Array as () => TargetOverviewItemView[],
     default: () => [],
   },
   page: {
@@ -44,8 +44,8 @@ const emit = defineEmits<{
   "update:page": [value: number];
   toggle: [targetId: string];
   create: [];
-  edit: [item: TargetOverviewItem];
-  remove: [item: TargetOverviewItem];
+  edit: [item: TargetOverviewItemView];
+  remove: [item: TargetOverviewItemView];
   retry: [];
 }>();
 
@@ -64,7 +64,11 @@ function isSelected(id: string): boolean {
   return selectedSet.value.has(id);
 }
 
-function primaryVersion(item: TargetOverviewItem): string {
+function membersOf(item: TargetOverviewItemView) {
+  return item.members && item.members.length > 0 ? item.members : [];
+}
+
+function primaryVersion(item: TargetOverviewItemView): string {
   return (
     item.versionOptions?.[0]?.ref ??
     item.versions[0] ??
@@ -72,7 +76,7 @@ function primaryVersion(item: TargetOverviewItem): string {
   );
 }
 
-function evolvable(item: TargetOverviewItem): number {
+function evolvable(item: TargetOverviewItemView): number {
   return item.attributed + item.unanalyzed;
 }
 </script>
@@ -150,6 +154,18 @@ function evolvable(item: TargetOverviewItem): number {
                 <b>{{ item.objectName }}</b>
                 <span class="mono">@{{ primaryVersion(item) }}</span>
               </span>
+            </span>
+            <span
+              v-if="membersOf(item).length > 1"
+              class="members"
+              data-testid="ov-target-side-members"
+            >
+              <span
+                v-for="member in membersOf(item)"
+                :key="`${member.objectType}:${member.objectName}`"
+                class="chip"
+                :title="member.subDir"
+              >{{ member.objectType }}:{{ member.objectName }}</span>
             </span>
             <span class="meta">
               归因 Skill · {{ item.attributionSkillName || "未绑定" }}
@@ -337,6 +353,22 @@ function evolvable(item: TargetOverviewItem): number {
   color: var(--text-faint);
   font-family: var(--mono);
   font-size: 10px;
+}
+
+.members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.members .chip {
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--purple) 30%, var(--border));
+  border-radius: 999px;
+  color: var(--purple);
+  font-family: var(--mono);
+  font-size: 9px;
 }
 
 .meta {

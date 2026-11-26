@@ -20,6 +20,7 @@ import {
 } from "../../composables/useEvolutionRunDetail";
 import { useEvolutionRunStep } from "../../composables/useEvolutionRunStep";
 import { useRunEvents } from "../../composables/useRunEvents";
+import { useEvolutionTargets } from "../../composables/useEvolutionTargets";
 import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import { workspacePath } from "../../router/workspace";
 import { useAuthStore } from "../../stores/auth";
@@ -32,6 +33,8 @@ import {
   caseSessionMap,
   formatLocalDateTime,
   resolveRunStepKey,
+  runTargetLabel,
+  runTargets,
   workspacePushStatusLabel,
 } from "./runDetail";
 
@@ -58,6 +61,40 @@ const {
 const isActive = computed(
   () => run.value?.status === "preparing" || run.value?.status === "running",
 );
+const runMembers = computed(() => (run.value ? runTargets(run.value) : []));
+const runConfigs = useEvolutionTargets(computed(() => workspaceId.value));
+/**
+ * Resolve the configuration that launched this run by its first member.
+ *
+ * Members are globally unique to one configuration, so the identity lookup is
+ * stable even when the run shell predates `target_config_id` exposure.
+ */
+const runConfig = computed(() => {
+  const first = runMembers.value[0];
+  if (!first) return null;
+  return (
+    runConfigs.data.value?.items.find((item) =>
+      item.members.some(
+        (member) =>
+          member.objectType === first.type && member.objectName === first.name,
+      ),
+    ) ?? null
+  );
+});
+const sharedProject = computed(() => {
+  const config = runConfig.value;
+  if (!config) return null;
+  return {
+    validationProjectId: config.validationProjectId,
+    testProjectId: config.testProjectId,
+    primaryMetricKey: config.primaryMetricKey,
+  };
+});
+const changeScope = computed(() => {
+  const workspace = run.value?.workspace;
+  if (!workspace) return [];
+  return workspace.subDirs?.length ? workspace.subDirs : [workspace.subDir];
+});
 const loadedSeq = ref(0);
 /**
  * Seed the SSE cursor once from the run snapshot's high-water mark.
@@ -531,6 +568,11 @@ function clearMissingClusterFocus(): void {
       <header class="detail-head">
         <h1>{{ run.title }}</h1>
         <span
+          v-if="runMembers.length > 1"
+          class="badge members"
+          data-testid="run-member-count"
+        >{{ runMembers.length }} 个对象</span>
+        <span
           class="badge"
           :class="statusClass"
         >{{ statusLabel }}</span>
@@ -674,10 +716,18 @@ function clearMissingClusterFocus(): void {
           <div class="kv-grid">
             <div class="kv">
               <div class="k">
-                进化对象
+                进化对象 · {{ runTargetLabel(run) }}
               </div>
-              <div class="v">
-                <span class="chip kind">{{ run.target.type }}:{{ run.target.name }}</span>
+              <div
+                class="v target-chips"
+                data-testid="run-target-members"
+              >
+                <span
+                  v-for="member in runMembers"
+                  :key="`${member.type}:${member.name}`"
+                  class="chip kind"
+                  :title="member.subDir || undefined"
+                >{{ member.type }}:{{ member.name }}</span>
               </div>
             </div>
             <div class="kv">
@@ -697,6 +747,23 @@ function clearMissingClusterFocus(): void {
                   class="revision muted"
                   data-testid="run-target-revision-missing"
                 >历史运行未记录 revision</span>
+                <span
+                  v-if="runMembers.length > 1"
+                  class="muted"
+                > · 全部成员共用</span>
+              </div>
+            </div>
+            <div
+              v-if="sharedProject"
+              class="kv"
+              data-testid="run-test-project"
+            >
+              <div class="k">
+                测试工程
+              </div>
+              <div class="v">
+                <span class="mono">验证集 {{ sharedProject.validationProjectId || "—" }} · 测试集 {{ sharedProject.testProjectId || "—" }} · 主指标 {{ sharedProject.primaryMetricKey || "—" }}</span>
+                <span class="muted"> · 成员共用</span>
               </div>
             </div>
             <div class="kv">
@@ -859,10 +926,18 @@ function clearMissingClusterFocus(): void {
               </div>
               <div class="kv">
                 <div class="k">
-                  子目录
+                  改动范围
                 </div>
-                <div class="v mono">
-                  {{ run.workspace.subDir }}
+                <div
+                  class="v mono"
+                  data-testid="run-change-scope"
+                >
+                  <div
+                    v-for="dir in changeScope"
+                    :key="dir"
+                  >
+                    {{ dir }}/**
+                  </div>
                 </div>
               </div>
               <div class="kv">
@@ -969,6 +1044,8 @@ function clearMissingClusterFocus(): void {
           :focus-cluster="focusCluster"
           :can-write="canManage"
           :case-sessions="caseSessions"
+          :shared-project="sharedProject"
+          :sub-dirs="run.workspace.subDirs"
           @page-change="stepPage = $event"
           @missing-cluster-focus="clearMissingClusterFocus"
         />
@@ -1034,6 +1111,11 @@ function clearMissingClusterFocus(): void {
 .badge.space {
   background: color-mix(in srgb, var(--blue) 8%, transparent);
   color: var(--text-dim);
+}
+
+.badge.members {
+  background: color-mix(in srgb, var(--purple) 10%, transparent);
+  color: var(--purple);
 }
 
 .badge {
@@ -1213,6 +1295,28 @@ function clearMissingClusterFocus(): void {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px 20px;
   margin-bottom: 14px;
+}
+
+.target-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.kv .v .chip {
+  display: inline-block;
+  padding: 1px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.kv .v .chip.kind {
+  border-color: color-mix(in srgb, var(--purple) 35%, transparent);
+  background: color-mix(in srgb, var(--purple) 9%, transparent);
+  color: var(--purple);
+  font-family: var(--mono);
 }
 
 .workspace-grid {

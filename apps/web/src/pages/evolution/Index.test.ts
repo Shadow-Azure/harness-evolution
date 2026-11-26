@@ -37,7 +37,7 @@ const run = (
   controlState: "running", canPause: false, canResume: false,
   title: `${runId} title`,
   mode: "full",
-  target: { type: "skill", name: "deep-research", version: "v2.0.0" },
+  target: { type: "skill", name: "deep-research", version: "v2.0.0", subDir: "skills/deep-research" },
   window: { from: "2026-08-20", to: "2026-09-10" },
   models: ["glm-5.3"],
   policy: { preset: "default" },

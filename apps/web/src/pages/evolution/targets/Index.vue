@@ -20,6 +20,7 @@ import AttributionRuntimeNotice from "./components/AttributionRuntimeNotice.vue"
 import { useAttributionSkillPackages } from "../../../composables/useAttributionSkillPackages";
 import TargetFormDialog from "./components/TargetFormDialog.vue";
 import { targetServerError, type TargetServerError } from "./targetErrors";
+import { targetDisplayName, targetMembers } from "./targetMembers";
 
 defineOptions({ name: "TargetConfigPage" });
 
@@ -72,15 +73,19 @@ function openEdit(target: EvolutionTarget): void {
 
 function targetWrite(target: EvolutionTarget): EvolutionTargetWrite {
   return {
-    objectType: target.objectType,
-    objectName: target.objectName,
     repoUrl: target.repoUrl,
-    subDir: target.subDir,
     defaultRef: target.defaultRef,
     validationProjectId: target.validationProjectId,
     testProjectId: target.testProjectId,
     primaryMetricKey: target.primaryMetricKey,
     enabled: target.enabled,
+    members: targetMembers(target).map(
+      ({ objectType, objectName, subDir }) => ({
+        objectType,
+        objectName,
+        subDir,
+      }),
+    ),
   };
 }
 
@@ -88,7 +93,7 @@ async function removeTarget(target: EvolutionTarget): Promise<void> {
   operationError.value = "";
   try {
     await ElMessageBox.confirm(
-      `删除 ${target.objectName} 的配置？有进行中 run 时不可删除。`,
+      `删除 ${targetDisplayName(target)} 的配置？有进行中 run 时不可删除。`,
       "删除进化对象",
       {
         type: "warning",

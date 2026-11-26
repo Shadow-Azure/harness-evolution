@@ -6,9 +6,14 @@ import type {
 import { computed, nextTick, reactive, ref, watch } from "vue";
 
 import type {
-  TargetFormField,
+  TargetMemberFieldName,
   TargetServerError,
+  TargetTopField,
 } from "../targetErrors";
+import {
+  targetMembers,
+  type TargetMember,
+} from "../targetMembers";
 
 const props = withDefaults(
   defineProps<{
@@ -40,18 +45,16 @@ const emit = defineEmits<{
   submit: [body: EvolutionTargetWrite];
 }>();
 
-type FormErrors = Partial<
-  Record<
-    | "objectName"
-    | "repoUrl"
-    | "subDir"
-    | "defaultRef"
-    | "validationProjectId"
-    | "testProjectId"
-    | "primaryMetricKey",
-    string
-  >
+type FormErrors = Partial<Record<TargetTopField, string>>;
+
+type MemberErrors = Record<
+  number,
+  Partial<Record<TargetMemberFieldName, string>>
 >;
+
+interface MemberDraft extends TargetMember {
+  key: number;
+}
 
 const PROJECT_ID_INVALID = (value: string): boolean =>
   Array.from(value).some((character) => {
@@ -59,18 +62,19 @@ const PROJECT_ID_INVALID = (value: string): boolean =>
     return /\s/u.test(character) || code <= 0x1f || code === 0x7f;
   });
 
-const form = reactive<EvolutionTargetWrite>({
-  objectType: "skill",
-  objectName: "",
+const form = reactive({
   repoUrl: "",
-  subDir: "",
   defaultRef: "",
   validationProjectId: "",
   testProjectId: "",
   primaryMetricKey: "",
+  attributionPackageId: null as string | null,
   enabled: true,
 });
+const members = ref<MemberDraft[]>([]);
 const errors = reactive<FormErrors>({});
+const memberErrors = reactive<MemberErrors>({});
+const memberListError = ref("");
 const versionAutocomplete = ref<{ focus: () => void } | null>(null);
 const formElement = ref<HTMLFormElement | null>(null);
 const serverErrorDismissed = ref(false);
@@ -113,57 +117,180 @@ const versionHelp = computed(() => {
   return "可直接输入分支或 tag。";
 });
 
-function serverErrorFor(field: TargetFormField): TargetServerError | null {
+function serverErrorFor(field: TargetTopField): TargetServerError | null {
   return visibleServerError.value?.field === field
     ? visibleServerError.value
     : null;
 }
 
-function hasFieldError(field: TargetFormField): boolean {
+function hasFieldError(field: TargetTopField): boolean {
   return Boolean(errors[field] || serverErrorFor(field));
 }
 
-function fieldMessage(field: TargetFormField): string {
+function fieldMessage(field: TargetTopField): string {
   return serverErrorFor(field)?.message ?? errors[field] ?? "";
 }
 
-function fieldSuggestion(field: TargetFormField): string {
+function fieldSuggestion(field: TargetTopField): string {
   return serverErrorFor(field)?.suggestion ?? "";
 }
 
-function fieldAriaInvalid(field: TargetFormField): "true" | undefined {
+function fieldAriaInvalid(field: TargetTopField): "true" | undefined {
   return hasFieldError(field) ? "true" : undefined;
 }
 
-function fieldDescribedBy(field: TargetFormField): string | undefined {
+function fieldDescribedBy(field: TargetTopField): string | undefined {
   return hasFieldError(field) ? `target-${field}-error` : undefined;
 }
 
-function onFieldInput(field: TargetFormField, value: string): void {
+function onFieldInput(field: TargetTopField, value: string): void {
   if (value.trim()) delete errors[field];
   if (serverErrorFor(field)) serverErrorDismissed.value = true;
+}
+
+function memberFieldPath(
+  index: number,
+  field: TargetMemberFieldName,
+): string {
+  return `members[${index}].${field}`;
+}
+
+function memberErrorId(
+  index: number,
+  field: TargetMemberFieldName,
+): string {
+  return `target-members-${index}-${field}-error`;
+}
+
+function memberServerError(
+  index: number,
+  field: TargetMemberFieldName,
+): TargetServerError | null {
+  const value = visibleServerError.value;
+  return value?.field === memberFieldPath(index, field) ? value : null;
+}
+
+function hasMemberError(
+  index: number,
+  field: TargetMemberFieldName,
+): boolean {
+  return Boolean(memberErrors[index]?.[field] || memberServerError(index, field));
+}
+
+function memberMessage(
+  index: number,
+  field: TargetMemberFieldName,
+): string {
+  return memberServerError(index, field)?.message
+    ?? memberErrors[index]?.[field]
+    ?? "";
+}
+
+function memberSuggestion(
+  index: number,
+  field: TargetMemberFieldName,
+): string {
+  return memberServerError(index, field)?.suggestion ?? "";
+}
+
+function memberAriaInvalid(
+  index: number,
+  field: TargetMemberFieldName,
+): "true" | undefined {
+  return hasMemberError(index, field) ? "true" : undefined;
+}
+
+function memberDescribedBy(
+  index: number,
+  field: TargetMemberFieldName,
+): string | undefined {
+  return hasMemberError(index, field)
+    ? memberErrorId(index, field)
+    : undefined;
+}
+
+function onMemberInput(
+  index: number,
+  field: TargetMemberFieldName,
+  value: string,
+): void {
+  if (value.trim()) {
+    const row = memberErrors[index];
+    if (row) delete row[field];
+  }
+  if (memberServerError(index, field)) serverErrorDismissed.value = true;
+}
+
+let nextMemberKey = 0;
+
+function memberDraft(member: TargetMember): MemberDraft {
+  return { key: nextMemberKey++, ...member };
+}
+
+function emptyMember(): MemberDraft {
+  return memberDraft({
+    objectType: "skill",
+    objectName: "",
+    subDir: "",
+  });
+}
+
+function addMember(): void {
+  members.value.push(emptyMember());
+  memberListError.value = "";
+  if (visibleServerError.value) serverErrorDismissed.value = true;
+}
+
+function removeMember(index: number): void {
+  if (members.value.length <= 1) return;
+  members.value.splice(index, 1);
+  clearMemberErrors();
+  if (visibleServerError.value) serverErrorDismissed.value = true;
 }
 
 function resetForm(): void {
   form.attributionPackageId = props.target?.attributionPackageId ?? null;
   if (!props.target && props.runtimeEnabled) form.attributionPackageId = "default-attribute-badcases";
-  form.objectType = props.target?.objectType ?? "skill";
-  form.objectName = props.target?.objectName ?? "";
   form.repoUrl = props.target?.repoUrl ?? "";
-  form.subDir = props.target?.subDir ?? "";
   form.defaultRef = props.target?.defaultRef ?? "";
   form.validationProjectId = props.target?.validationProjectId ?? "";
   form.testProjectId = props.target?.testProjectId ?? "";
   form.primaryMetricKey = props.target?.primaryMetricKey ?? "";
   form.enabled = props.target?.enabled ?? true;
+  const rows = targetMembers(props.target);
+  members.value = rows.length ? rows.map(memberDraft) : [emptyMember()];
   serverErrorDismissed.value = false;
   clearErrors();
+  clearMemberErrors();
 }
 
 function clearErrors(): void {
-  for (const key of Object.keys(errors) as (keyof FormErrors)[]) {
+  for (const key of Object.keys(errors) as TargetTopField[]) {
     delete errors[key];
   }
+}
+
+function clearMemberErrors(): void {
+  for (const key of Object.keys(memberErrors)) {
+    delete memberErrors[Number(key)];
+  }
+  memberListError.value = "";
+}
+
+function setMemberError(
+  index: number,
+  field: TargetMemberFieldName,
+  message: string,
+): void {
+  const row = memberErrors[index] ?? {};
+  row[field] = message;
+  memberErrors[index] = row;
+}
+
+function memberErrorsPresent(): boolean {
+  return Object.values(memberErrors).some(
+    (row) => Object.keys(row).length > 0,
+  );
 }
 
 function close(): void {
@@ -193,16 +320,13 @@ function openVersionSuggestions(): void {
 function submit(): void {
   if (props.packagesLoading) return;
   clearErrors();
-  const objectName = form.objectName.trim();
+  clearMemberErrors();
   const repoUrl = form.repoUrl.trim();
-  const subDir = form.subDir.trim();
   const defaultRef = form.defaultRef.trim();
   const validationProjectId = form.validationProjectId.trim();
   const testProjectId = form.testProjectId.trim();
   const primaryMetricKey = form.primaryMetricKey.trim();
-  if (!objectName) errors.objectName = "请填写对象名称";
   if (!repoUrl) errors.repoUrl = "请填写仓库地址";
-  if (!subDir) errors.subDir = "请填写子目录";
   if (!defaultRef) errors.defaultRef = "请填写基线分支或标签";
   if (!validationProjectId) {
     errors.validationProjectId = "请填写验证集测试工程 ID";
@@ -219,18 +343,48 @@ function submit(): void {
   } else if (PROJECT_ID_INVALID(primaryMetricKey)) {
     errors.primaryMetricKey = "主指标 key 不能包含空格或控制字符";
   }
-  if (Object.keys(errors).length > 0) return;
+  if (!members.value.length) {
+    memberListError.value = "请至少添加一个成员";
+  }
+  const seen = new Set<string>();
+  members.value.forEach((member, index) => {
+    const objectName = member.objectName.trim();
+    const subDir = member.subDir.trim();
+    if (!objectName) {
+      setMemberError(index, "objectName", "请填写成员名称");
+    }
+    if (!subDir) {
+      setMemberError(index, "subDir", "请填写成员子目录");
+    }
+    if (objectName) {
+      const key = `${member.objectType}:${objectName}`;
+      if (seen.has(key)) {
+        setMemberError(index, "objectName", "同一配置中成员重复");
+      } else {
+        seen.add(key);
+      }
+    }
+  });
+  if (
+    Object.keys(errors).length > 0
+    || memberErrorsPresent()
+    || memberListError.value
+  ) {
+    return;
+  }
   emit("submit", {
-    objectType: form.objectType,
-    objectName,
     repoUrl,
-    subDir,
     defaultRef,
     validationProjectId,
     testProjectId,
     primaryMetricKey,
     enabled: form.enabled,
     attributionPackageId: form.attributionPackageId,
+    members: members.value.map(({ objectType, objectName, subDir }) => ({
+      objectType,
+      objectName: objectName.trim(),
+      subDir: subDir.trim(),
+    })),
   });
 }
 
@@ -284,40 +438,6 @@ watch(
       @submit.prevent="submit"
     >
       <ElForm label-position="top">
-        <ElFormItem label="对象类型">
-          <ElRadioGroup v-model="form.objectType">
-            <ElRadioButton value="skill">
-              Skill
-            </ElRadioButton>
-            <ElRadioButton value="agent">
-              Agent
-            </ElRadioButton>
-          </ElRadioGroup>
-        </ElFormItem>
-
-        <ElFormItem label="对象名称">
-          <ElInput
-            v-model="form.objectName"
-            :aria-describedby="fieldDescribedBy('objectName')"
-            :aria-invalid="fieldAriaInvalid('objectName')"
-            maxlength="128"
-            name="objectName"
-            placeholder="如 deep-research"
-            @input="onFieldInput('objectName', $event)"
-          />
-          <p
-            v-if="hasFieldError('objectName')"
-            id="target-objectName-error"
-            class="field-error"
-          >
-            {{ fieldMessage("objectName") }}
-            <span
-              v-if="fieldSuggestion('objectName')"
-              class="field-suggestion"
-            >{{ fieldSuggestion("objectName") }}</span>
-          </p>
-        </ElFormItem>
-
         <ElFormItem label="归因 Skill">
           <select
             v-model="form.attributionPackageId"
@@ -383,81 +503,53 @@ watch(
           </p>
         </ElFormItem>
 
-        <div class="form-grid">
-          <ElFormItem label="子目录">
-            <ElInput
-              v-model="form.subDir"
-              :aria-describedby="fieldDescribedBy('subDir')"
-              :aria-invalid="fieldAriaInvalid('subDir')"
-              maxlength="512"
-              name="subDir"
-              placeholder="skills/deep-research"
-              @input="onFieldInput('subDir', $event)"
-            />
-            <p class="field-help">
-              相对仓库根的路径。<span v-if="form.attributionPackageId && form.objectType !== 'knowledge'">保存绑定时从指定版本读取此目录的对象定义，并保存原文快照。</span>
-            </p>
-            <p
-              v-if="hasFieldError('subDir')"
-              id="target-subDir-error"
-              class="field-error"
-            >
-              {{ fieldMessage("subDir") }}
-              <span
-                v-if="fieldSuggestion('subDir')"
-                class="field-suggestion"
-              >{{ fieldSuggestion("subDir") }}</span>
-            </p>
-          </ElFormItem>
-
-          <ElFormItem label="基线分支或标签">
-            <ElAutocomplete
-              ref="versionAutocomplete"
-              :aria-describedby="fieldDescribedBy('defaultRef')"
-              :aria-invalid="fieldAriaInvalid('defaultRef')"
-              autocomplete="off"
-              class="target-version-select"
-              data-testid="target-version-select"
-              :debounce="0"
-              :fetch-suggestions="fetchVersionSuggestions"
-              :model-value="form.defaultRef"
-              name="defaultRef"
-              placeholder="main / v2.0.0"
-              show-arrow
-              trigger-on-focus
-              @update:model-value="updateDefaultRef"
-            >
-              <template #suffix>
-                <button
-                  aria-label="展开标签建议"
-                  class="version-suggestion-toggle"
-                  type="button"
-                  @click.stop="openVersionSuggestions"
-                  @mousedown.prevent
-                >
-                  <span
-                    aria-hidden="true"
-                    class="version-suggestion-toggle-chevron"
-                  />
-                </button>
-              </template>
-            </ElAutocomplete>
-            <p class="field-help">
-              {{ versionHelp }}
-            </p>
-            <p
-              v-if="hasFieldError('defaultRef')"
-              id="target-defaultRef-error"
-              class="field-error"
-            >
-              {{ fieldMessage("defaultRef") }}
-              <span
-                v-if="fieldSuggestion('defaultRef')"
-                class="field-suggestion"
-              >{{ fieldSuggestion("defaultRef") }}</span>
-            </p>
-          </ElFormItem>
-        </div>
+        <ElFormItem label="基线分支或标签">
+          <ElAutocomplete
+            ref="versionAutocomplete"
+            :aria-describedby="fieldDescribedBy('defaultRef')"
+            :aria-invalid="fieldAriaInvalid('defaultRef')"
+            autocomplete="off"
+            class="target-version-select"
+            data-testid="target-version-select"
+            :debounce="0"
+            :fetch-suggestions="fetchVersionSuggestions"
+            :model-value="form.defaultRef"
+            name="defaultRef"
+            placeholder="main / v2.0.0"
+            show-arrow
+            trigger-on-focus
+            @update:model-value="updateDefaultRef"
+          >
+            <template #suffix>
+              <button
+                aria-label="展开标签建议"
+                class="version-suggestion-toggle"
+                type="button"
+                @click.stop="openVersionSuggestions"
+                @mousedown.prevent
+              >
+                <span
+                  aria-hidden="true"
+                  class="version-suggestion-toggle-chevron"
+                />
+              </button>
+            </template>
+          </ElAutocomplete>
+          <p class="field-help">
+            {{ versionHelp }}
+          </p>
+          <p
+            v-if="hasFieldError('defaultRef')"
+            id="target-defaultRef-error"
+            class="field-error"
+          >
+            {{ fieldMessage("defaultRef") }}
+            <span
+              v-if="fieldSuggestion('defaultRef')"
+              class="field-suggestion"
+            >{{ fieldSuggestion("defaultRef") }}</span>
+          </p>
+        </ElFormItem>
 
         <div class="form-grid">
           <ElFormItem
@@ -543,6 +635,119 @@ watch(
               v-if="fieldSuggestion('primaryMetricKey')"
               class="field-suggestion"
             >{{ fieldSuggestion("primaryMetricKey") }}</span>
+          </p>
+        </ElFormItem>
+
+        <ElFormItem
+          label="成员"
+          required
+        >
+          <div class="member-list">
+            <div
+              v-for="(member, index) in members"
+              :key="member.key"
+              class="member-item"
+              :data-testid="`target-member-${index}`"
+            >
+              <div class="member-row">
+                <select
+                  v-model="member.objectType"
+                  :aria-describedby="memberDescribedBy(index, 'objectType')"
+                  :aria-invalid="memberAriaInvalid(index, 'objectType')"
+                  :aria-label="`成员 ${index + 1} 类型`"
+                  class="member-type"
+                  :name="memberFieldPath(index, 'objectType')"
+                  @change="onMemberInput(index, 'objectType', String(member.objectType))"
+                >
+                  <option value="skill">
+                    skill
+                  </option>
+                  <option value="agent">
+                    agent
+                  </option>
+                </select>
+                <ElInput
+                  v-model="member.objectName"
+                  :aria-describedby="memberDescribedBy(index, 'objectName')"
+                  :aria-invalid="memberAriaInvalid(index, 'objectName')"
+                  :aria-label="`成员 ${index + 1} 名称`"
+                  maxlength="128"
+                  :name="memberFieldPath(index, 'objectName')"
+                  placeholder="如 deep-research"
+                  @input="onMemberInput(index, 'objectName', $event)"
+                />
+                <ElInput
+                  v-model="member.subDir"
+                  :aria-describedby="memberDescribedBy(index, 'subDir')"
+                  :aria-invalid="memberAriaInvalid(index, 'subDir')"
+                  :aria-label="`成员 ${index + 1} 子目录`"
+                  class="member-subdir-input"
+                  maxlength="512"
+                  :name="memberFieldPath(index, 'subDir')"
+                  placeholder="如 skills/deep-research"
+                  @input="onMemberInput(index, 'subDir', $event)"
+                />
+                <button
+                  class="member-remove"
+                  type="button"
+                  :aria-label="`移除成员 ${index + 1}`"
+                  :disabled="members.length === 1"
+                  :title="members.length === 1 ? '至少保留一个成员' : '移除这个成员'"
+                  @click="removeMember(index)"
+                >
+                  ✕
+                </button>
+              </div>
+              <p
+                v-if="hasMemberError(index, 'objectName')"
+                :id="memberErrorId(index, 'objectName')"
+                class="field-error"
+              >
+                {{ memberMessage(index, "objectName") }}
+                <span
+                  v-if="memberSuggestion(index, 'objectName')"
+                  class="field-suggestion"
+                >{{ memberSuggestion(index, "objectName") }}</span>
+              </p>
+              <p
+                v-if="hasMemberError(index, 'subDir')"
+                :id="memberErrorId(index, 'subDir')"
+                class="field-error"
+              >
+                {{ memberMessage(index, "subDir") }}
+                <span
+                  v-if="memberSuggestion(index, 'subDir')"
+                  class="field-suggestion"
+                >{{ memberSuggestion(index, "subDir") }}</span>
+              </p>
+              <p
+                v-if="hasMemberError(index, 'objectType')"
+                :id="memberErrorId(index, 'objectType')"
+                class="field-error"
+              >
+                {{ memberMessage(index, "objectType") }}
+                <span
+                  v-if="memberSuggestion(index, 'objectType')"
+                  class="field-suggestion"
+                >{{ memberSuggestion(index, "objectType") }}</span>
+              </p>
+            </div>
+          </div>
+          <p
+            v-if="memberListError"
+            class="field-error"
+          >
+            {{ memberListError }}
+          </p>
+          <button
+            class="member-add"
+            type="button"
+            @click="addMember"
+          >
+            再加一个成员
+          </button>
+          <p class="field-help">
+            同一仓库里的 skill / agent；成员共享上面的仓库、基线、测试工程与主指标，但各自冻结定义、分别关联 bad case。<span v-if="form.attributionPackageId">保存绑定时从指定版本读取每个成员的目录定义并保存原文快照。</span>
           </p>
         </ElFormItem>
       </ElForm>
@@ -641,6 +846,93 @@ watch(
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
   gap: 12px;
+}
+
+.member-list {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+}
+
+.member-item {
+  display: grid;
+  gap: 4px;
+}
+
+.member-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1.25fr) 28px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+}
+
+.member-row :deep(.el-input) {
+  min-width: 0;
+}
+
+.member-type {
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.member-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.member-remove:hover:not(:disabled) {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+}
+
+.member-remove:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.member-add {
+  justify-self: start;
+  margin-top: 8px;
+  padding: 5px 10px;
+  border: 1px dashed color-mix(in srgb, var(--blue) 45%, var(--border));
+  border-radius: 7px;
+  background: transparent;
+  color: var(--blue);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.member-add::before {
+  margin-right: 4px;
+  content: "＋";
+}
+
+.member-add:hover {
+  background: color-mix(in srgb, var(--blue) 7%, transparent);
 }
 
 .field-help,
@@ -761,6 +1053,14 @@ watch(
   .form-grid {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+
+  .member-row {
+    grid-template-columns: 1fr;
+  }
+
+  .member-remove {
+    justify-self: end;
   }
 }
 .definition-preview { white-space: pre-wrap; overflow-wrap: anywhere; }

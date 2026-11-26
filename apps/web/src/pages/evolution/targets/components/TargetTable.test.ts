@@ -17,6 +17,13 @@ const target = (overrides: Partial<EvolutionTarget> = {}): EvolutionTarget => ({
   testProjectId: "test-deep-research",
   primaryMetricKey: "resolved_rate",
   enabled: true,
+  members: [
+    {
+      objectType: "skill",
+      objectName: "deep-research",
+      subDir: "skills/deep-research",
+    },
+  ],
   ...overrides,
 });
 
@@ -28,16 +35,22 @@ describe("TargetTable", () => {
           id: "target-2",
           objectType: "agent",
           objectName: "Explore",
+          subDir: "agents/explore",
           enabled: false,
+          members: [
+            {
+              objectType: "agent",
+              objectName: "Explore",
+              subDir: "agents/explore",
+            },
+          ],
         })],
         canWrite: true,
       },
     });
 
-    expect(wrapper.text()).toContain("对象类型");
-    expect(wrapper.text()).toContain("对象名称");
+    expect(wrapper.text()).toContain("进化对象 / 成员");
     expect(wrapper.text()).toContain("仓库");
-    expect(wrapper.text()).toContain("子目录");
     expect(wrapper.text()).toContain("基线");
     expect(wrapper.text()).toContain("测试工程");
     expect(wrapper.text()).toContain("验证集");
@@ -46,11 +59,45 @@ describe("TargetTable", () => {
     expect(wrapper.text()).toContain("test-deep-research");
     expect(wrapper.text()).toContain("状态");
     expect(wrapper.text()).toContain("操作");
-    expect(wrapper.text()).toContain("skill");
-    expect(wrapper.text()).toContain("agent");
+    expect(wrapper.text()).toContain("skill:deep-research");
+    expect(wrapper.text()).toContain("agents/explore");
+    expect(wrapper.text()).toContain("agent:Explore");
     expect(wrapper.text()).toContain("已启用");
     expect(wrapper.text()).toContain("已停用");
     expect(wrapper.find(".target-table-scroll").exists()).toBe(true);
+  });
+
+  it("renders multiple member chips and a +N display name per configuration", () => {
+    const wrapper = mount(TargetTable, {
+      props: {
+        targets: [
+          target({
+            members: [
+              {
+                objectType: "skill",
+                objectName: "deep-research",
+                subDir: "skills/deep-research",
+              },
+              {
+                objectType: "agent",
+                objectName: "Explore",
+                subDir: "agents/explore",
+              },
+            ],
+          }),
+        ],
+        canWrite: false,
+      },
+    });
+
+    expect(wrapper.get(".target-name").text()).toBe("deep-research +1");
+    expect(wrapper.findAll(".target-member")).toHaveLength(2);
+    expect(wrapper.get(".target-member:nth-child(1)").text()).toContain(
+      "skill:deep-research",
+    );
+    expect(wrapper.get(".target-member:nth-child(2)").text()).toContain(
+      "agent:Explore",
+    );
   });
 
   it.each([[1, true, "等待自动重试"], [3, false, "已停止自动重试"]] as const)(

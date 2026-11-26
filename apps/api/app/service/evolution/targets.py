@@ -9,11 +9,13 @@ from typing import Literal, Protocol
 from urllib.parse import urlsplit
 
 from pydantic import Field, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from app.db.crud.evolution_targets import (
     EvolutionObjectType,
     EvolutionTargetConflict,
     EvolutionTargetInUse,
+    EvolutionTargetMemberConflict,
     EvolutionTargetRecord,
 )
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
@@ -43,24 +45,38 @@ _SCP_REMOTE = re.compile(
 )
 
 
-class EvolutionTargetWrite(IdentityModel):
-    """Mutable target configuration accepted by create and update."""
+class EvolutionTargetMemberWrite(IdentityModel):
+    """One skill or agent member of a target configuration."""
 
     object_type: EvolutionObjectType
     object_name: str
-    repo_url: str
     sub_dir: str
+
+
+class EvolutionTargetWrite(IdentityModel):
+    """Mutable target configuration accepted by create and update."""
+
+    repo_url: str
     default_ref: str
     validation_project_id: str = Field(max_length=128)
     test_project_id: str = Field(max_length=128)
     primary_metric_key: str = Field(max_length=128)
     attribution_package_id: str | None = Field(default=None, min_length=1, max_length=64)
     enabled: bool = True
+    members: list[EvolutionTargetMemberWrite] = Field(default_factory=list, min_length=1)
+    object_type: EvolutionObjectType | None = None
+    object_name: str | None = None
+    sub_dir: str | None = None
+    legacy_single: SkipJsonSchema[bool] = Field(default=False, exclude=True)
 
     @model_validator(mode="before")
     @classmethod
-    def _default_missing_project_ids(cls, data: object) -> object:
-        """Keep the schema required while mapping an omitted ID to the service error."""
+    def _accept_legacy_single_object(cls, data: object) -> object:
+        """Map the pre-member single-object body onto one member.
+
+        The field-level defaults below keep an omitted project ID mapping to the
+        service error instead of a Pydantic 422, as before the member model.
+        """
         if not isinstance(data, dict):
             return data
         values = dict(data)
@@ -70,6 +86,33 @@ class EvolutionTargetWrite(IdentityModel):
             values["testProjectId"] = ""
         if "primaryMetricKey" not in values and "primary_metric_key" not in values:
             values["primaryMetricKey"] = ""
+        if not values.get("members"):
+            object_type = values.get("objectType", values.get("object_type"))
+            object_name = values.get("objectName", values.get("object_name"))
+            sub_dir = values.get("subDir", values.get("sub_dir"))
+            if object_type is not None and object_name is not None and sub_dir is not None:
+                values["members"] = [
+                    {
+                        "objectType": object_type,
+                        "objectName": object_name,
+                        "subDir": sub_dir,
+                    },
+                ]
+                values["legacy_single"] = True
+        elif isinstance(values.get("members"), list) and len(values["members"]) == 1:
+            legacy = values["members"][0]
+            if isinstance(legacy, dict):
+                object_type = values.get("objectType", values.get("object_type"))
+                object_name = values.get("objectName", values.get("object_name"))
+                sub_dir = values.get("subDir", values.get("sub_dir"))
+                if object_type is not None and object_name is not None and sub_dir is not None:
+                    values["members"] = [
+                        {
+                            "objectType": object_type,
+                            "objectName": object_name,
+                            "subDir": sub_dir,
+                        },
+                    ]
         return values
 
 
@@ -89,12 +132,32 @@ class TargetDefinitionPreview(IdentityModel):
     preview: str
 
 
-class EvolutionTarget(EvolutionTargetWrite):
+class EvolutionTargetMember(IdentityModel):
+    """Persisted member with its frozen definition preview."""
+
+    object_type: EvolutionObjectType
+    object_name: str
+    sub_dir: str
+    definition: TargetDefinitionPreview | None = None
+
+
+class EvolutionTarget(IdentityModel):
     """Persisted target returned to clients."""
 
     id: str
+    repo_url: str
+    default_ref: str
+    validation_project_id: str
+    test_project_id: str
+    primary_metric_key: str
+    attribution_package_id: str | None = None
     attribution_skill_name: str | None = None
     attribution_failure: BindingFailure | None = None
+    enabled: bool
+    members: list[EvolutionTargetMember]
+    object_type: EvolutionObjectType | None = None
+    object_name: str | None = None
+    sub_dir: str | None = None
     definition: TargetDefinitionPreview | None = None
 
 
@@ -368,16 +431,80 @@ def _validate_repo_url(value: str) -> str:
     return normalized
 
 
+def _normalize_member(
+    member: EvolutionTargetMemberWrite,
+    *,
+    index: int,
+    legacy_single: bool,
+) -> EvolutionTargetMemberWrite:
+    """Validate one member and anchor errors to its request path.
+
+    The pre-member single-object body keeps its top-level field names so old
+    clients keep receiving the same diagnostics; member bodies always point at
+    ``members[i]``.
+    """
+    prefix = "" if legacy_single and index == 0 else f"members[{index}]."
+    if not member.object_name.strip():
+        raise AppError(
+            status_code=422,
+            code=ErrorCode.REPO_INVALID,
+            message="member object name is invalid",
+            details={"field": f"{prefix}objectName", "reason": "object_name_invalid"},
+        )
+    try:
+        return EvolutionTargetMemberWrite(
+            object_type=member.object_type,
+            object_name=_normalize_object_name(member.object_name),
+            sub_dir=_validate_sub_dir(member.sub_dir),
+        )
+    except AppError as error:
+        field = (error.details or {}).get("field", "objectName")
+        raise AppError(
+            status_code=error.status_code,
+            code=error.code,
+            message=error.message,
+            details={**error.details, "field": f"{prefix}{field}"},
+        ) from None
+
+
 def _normalize_write(body: EvolutionTargetWrite) -> EvolutionTargetWrite:
-    """Validate and normalize every editable target field."""
+    """Validate and normalize every editable target and member field."""
+    members = [
+        _normalize_member(
+            member,
+            index=index,
+            legacy_single=body.legacy_single,
+        )
+        for index, member in enumerate(body.members)
+    ]
+    if not members:
+        raise AppError(
+            status_code=422,
+            code=ErrorCode.REPO_INVALID,
+            message="at least one target member is required",
+            details={"field": "members", "reason": "object_name_invalid"},
+        )
+    seen: set[tuple[str, str]] = set()
+    for index, member in enumerate(members):
+        key = (member.object_type, member.object_name)
+        if key in seen:
+            prefix = "" if body.legacy_single and index == 0 else f"members[{index}]."
+            raise AppError(
+                status_code=422,
+                code=ErrorCode.REPO_INVALID,
+                message="member is duplicated inside the configuration",
+                details={
+                    "field": f"{prefix}objectName",
+                    "reason": "member_duplicated",
+                },
+            )
+        seen.add(key)
+    first = members[0]
     return EvolutionTargetWrite(
-        object_type=body.object_type,
-        object_name=_normalize_object_name(body.object_name),
         repo_url=_validate_repo_url(body.repo_url),
-        sub_dir=_validate_sub_dir(body.sub_dir),
         default_ref=_normalize_default_ref(
             body.default_ref,
-            revision=body.object_type == "knowledge",
+            revision=first.object_type == "knowledge",
         ),
         validation_project_id=_validate_project_id(
             body.validation_project_id,
@@ -390,22 +517,32 @@ def _normalize_write(body: EvolutionTargetWrite) -> EvolutionTargetWrite:
         primary_metric_key=_validate_primary_metric_key(body.primary_metric_key),
         enabled=body.enabled,
         attribution_package_id=body.attribution_package_id,
+        members=members,
+        object_type=first.object_type,
+        object_name=first.object_name,
+        sub_dir=first.sub_dir,
+    )
+
+
+def _preview(definition: Mapping[str, object] | None) -> TargetDefinitionPreview | None:
+    """Map one persisted frozen definition to its public preview."""
+    if not definition:
+        return None
+    return TargetDefinitionPreview(
+        commit=str(definition["commit"]),
+        path=str(definition["path"]),
+        preview=str(definition["preview"]),
     )
 
 
 def _public(record: EvolutionTargetRecord) -> EvolutionTarget:
     """Map one persistence row to the public model."""
+    members = record.member_objects
     return EvolutionTarget(
         id=record.id,
         attribution_package_id=record.attribution_package_id,
         attribution_skill_name=record.attribution_skill_name,
-        definition=TargetDefinitionPreview(
-            commit=record.definition["commit"],
-            path=record.definition["path"],
-            preview=record.definition["preview"],
-        )
-        if record.definition
-        else None,
+        definition=_preview(record.definition),
         attribution_failure=BindingFailure(
             attempts=record.attribution_failures,
             reason=record.attribution_error,
@@ -422,6 +559,15 @@ def _public(record: EvolutionTargetRecord) -> EvolutionTarget:
         test_project_id=record.test_project_id,
         primary_metric_key=record.primary_metric_key,
         enabled=record.enabled,
+        members=[
+            EvolutionTargetMember(
+                object_type=member.object_type,
+                object_name=member.object_name,
+                sub_dir=member.sub_dir,
+                definition=_preview(member.definition),
+            )
+            for member in members
+        ],
     )
 
 
@@ -463,16 +609,7 @@ class EvolutionTargetService:
     ) -> EvolutionTarget:
         """Validate and create one target inside the requested workspace."""
         values = _normalize_write(body)
-        if await self._repository.find(
-            values.object_type,
-            values.object_name,
-            workspace_ids=(workspace_id,),
-        ):
-            raise AppError(
-                status_code=409,
-                code=ErrorCode.TARGET_EXISTS,
-                message="target already exists",
-            )
+        await self._ensure_members_free(values, workspace_id, target_id=None)
         package = values.attribution_package_id or self._default_package_id
         values = values.model_copy(update={"attribution_package_id": package})
         write = await self._prepare_write(
@@ -486,6 +623,8 @@ class EvolutionTargetService:
                     "created_by": created_by,
                 },
             )
+        except EvolutionTargetMemberConflict:
+            raise self._member_conflict() from None
         except EvolutionTargetConflict:
             raise AppError(
                 status_code=409,
@@ -509,17 +648,7 @@ class EvolutionTargetService:
         if target is None:
             raise self._not_found()
         values = _normalize_write(body)
-        existing = await self._repository.find(
-            values.object_type,
-            values.object_name,
-            workspace_ids=(target.workspace_id,),
-        )
-        if existing is not None and existing.id != target_id:
-            raise AppError(
-                status_code=409,
-                code=ErrorCode.TARGET_EXISTS,
-                message="target already exists",
-            )
+        await self._ensure_members_free(values, target.workspace_id, target_id=target_id)
         write = await self._prepare_write(
             target.workspace_id,
             values,
@@ -531,6 +660,8 @@ class EvolutionTargetService:
                 write,
                 workspace_ids=workspace_ids,
             )
+        except EvolutionTargetMemberConflict:
+            raise self._member_conflict() from None
         except EvolutionTargetConflict:
             raise AppError(
                 status_code=409,
@@ -632,24 +763,117 @@ class EvolutionTargetService:
             return default
         return enabled[0]
 
+    async def enabled_config_by_id(
+        self,
+        target_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionTargetRecord:
+        """Return one enabled configuration by id for a member-list launch."""
+        if workspace_ids is None:
+            target = await self._repository.get(target_id)
+        else:
+            target = await self._repository.get(target_id, workspace_ids=workspace_ids)
+        if target is None:
+            raise AppError(
+                status_code=404,
+                code=ErrorCode.TARGET_NOT_FOUND,
+                message="target not found",
+            )
+        if not target.enabled:
+            raise AppError(
+                status_code=409,
+                code=ErrorCode.TARGET_NOT_CONFIGURED,
+                message="target is not configured or enabled",
+            )
+        return target
+
+    async def _ensure_members_free(
+        self,
+        values: EvolutionTargetWrite,
+        workspace_id: str,
+        *,
+        target_id: str | None,
+    ) -> None:
+        """Reject members already owned by another configuration in the workspace."""
+        for index, member in enumerate(values.members):
+            rows = await self._repository.find_all(
+                member.object_type,
+                member.object_name,
+                workspace_ids=(workspace_id,),
+            )
+            for row in rows:
+                if row.id != target_id:
+                    raise AppError(
+                        status_code=409,
+                        code=ErrorCode.MEMBER_ALREADY_CONFIGURED,
+                        message="member is already configured by another target",
+                        details={
+                            "field": f"members[{index}].objectName",
+                            "member": {
+                                "objectType": member.object_type,
+                                "objectName": member.object_name,
+                            },
+                            "targetId": row.id,
+                        },
+                    )
+
+    @staticmethod
+    def _member_conflict() -> AppError:
+        """Return the stable duplicate-member response for a raced write."""
+        return AppError(
+            status_code=409,
+            code=ErrorCode.MEMBER_ALREADY_CONFIGURED,
+            message="member is already configured by another target",
+            details={"field": "members", "reason": "member_already_configured"},
+        )
+
     async def _prepare_write(
         self, workspace: str, values: EvolutionTargetWrite, *, freeze_definition: bool
     ) -> dict[str, object]:
         await self._validate_remote(values)
-        write = values.model_dump()
-        if self._definitions and freeze_definition and values.object_type != "knowledge":
-            write["definition"] = await self._definitions.freeze(
-                workspace, values.object_type, values.repo_url, values.sub_dir, values.default_ref
+        members: list[dict[str, object]] = []
+        for member in values.members:
+            definition = None
+            if self._definitions and freeze_definition and member.object_type != "knowledge":
+                definition = await self._definitions.freeze(
+                    workspace,
+                    member.object_type,
+                    values.repo_url,
+                    member.sub_dir,
+                    values.default_ref,
+                )
+            members.append(
+                {
+                    "object_type": member.object_type,
+                    "object_name": member.object_name,
+                    "sub_dir": member.sub_dir,
+                    "definition": definition,
+                },
             )
-        return write
+        first = members[0]
+        return {
+            "repo_url": values.repo_url,
+            "default_ref": values.default_ref,
+            "validation_project_id": values.validation_project_id,
+            "test_project_id": values.test_project_id,
+            "primary_metric_key": values.primary_metric_key,
+            "enabled": values.enabled,
+            "attribution_package_id": values.attribution_package_id,
+            "object_type": first["object_type"],
+            "object_name": first["object_name"],
+            "sub_dir": first["sub_dir"],
+            "definition": first["definition"],
+            "members": members,
+        }
 
     async def _validate_remote(self, values: EvolutionTargetWrite) -> None:
         """Run network/ref validation with one sanitized failure type.
 
         Knowledge documents are not necessarily git objects, so the git
-        ``ls-remote`` check is skipped for that object type.
+        ``ls-remote`` check is skipped when every member is knowledge.
         """
-        if values.object_type == "knowledge":
+        if all(member.object_type == "knowledge" for member in values.members):
             return
         try:
             await self._git_remote.validate(values.repo_url, values.default_ref)

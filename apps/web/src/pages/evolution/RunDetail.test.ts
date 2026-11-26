@@ -5,7 +5,7 @@ import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { http, HttpResponse } from "msw";
 import { createPinia, setActivePinia } from "pinia";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 
 import { queryKeys } from "../../api/queryKeys";
@@ -72,6 +72,7 @@ function run(overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard {
       type: "skill",
       name: "deep-research",
       version: "v2.0.0",
+      subDir: "skills/deep-research",
       targetRevision:
         "digest:9080a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789ab",
     },
@@ -443,6 +444,13 @@ beforeAll(() => {
   vi.stubGlobal("EventSource", TestEventSource);
   server.listen({ onUnhandledRequest: "error" });
 });
+beforeEach(() => {
+  server.use(
+    http.get(`/api/workspaces/${workspaceId}/evolution/targets`, () =>
+      HttpResponse.json({ items: [] }),
+    ),
+  );
+});
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
   server.resetHandlers();
@@ -643,6 +651,109 @@ describe("evolution run detail page", () => {
     );
     expect(wrapper.get("[data-testid='steps-tab']").attributes("aria-selected")).toBe(
       "true",
+    );
+  });
+
+  it("shows configuration members, change scope, and the shared test project", async () => {
+    const targets = [
+      {
+        type: "skill" as const,
+        name: "deep-research",
+        version: "v2.4.0",
+        targetRevision: "digest:a",
+        subDir: "skills/deep-research",
+      },
+      {
+        type: "skill" as const,
+        name: "code-review",
+        version: "v2.4.0",
+        targetRevision: "digest:b",
+        subDir: "skills/code-review",
+      },
+    ];
+    const multiCard = run({
+      title: "deep-research 等 2 个对象 v2.4.0 自进化",
+      target: { ...targets[0]! },
+      targets,
+    });
+    const multiDetail = {
+      ...detail(multiCard),
+      workspace: {
+        ...detail(multiCard).workspace,
+        subDir: "skills/deep-research",
+        subDirs: ["skills/deep-research", "skills/code-review"],
+      },
+    };
+    const multiRange = {
+      ...rangeStep,
+      payload: {
+        ...rangeStep.payload,
+        condition: {
+          ...rangeStep.payload.condition,
+          targetName: "deep-research",
+          targetVersion: "v2.4.0",
+          targets: targets.map((member) => ({
+            objectType: member.type,
+            objectName: member.name,
+            targetVersion: member.version,
+            targetRevision: member.targetRevision,
+            subDir: member.subDir,
+          })),
+        },
+      },
+    };
+    server.use(
+      http.get(`/api/workspaces/${workspaceId}/evolution/targets`, () =>
+        HttpResponse.json({
+          items: [
+            {
+              id: "cfg-skills",
+              repoUrl: "https://example.invalid/skills.git",
+              defaultRef: "v2.4.0",
+              validationProjectId: "val-skills-2026q4",
+              testProjectId: "test-skills-2026q4",
+              primaryMetricKey: "resolved_rate",
+              enabled: true,
+              members: targets.map((member) => ({
+                objectType: member.type,
+                objectName: member.name,
+                subDir: member.subDir,
+              })),
+            },
+          ],
+        }),
+      ),
+      http.get(`${evolutionBase}/runs/:runId`, () =>
+        HttpResponse.json(multiDetail)),
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
+        HttpResponse.json(multiRange)),
+    );
+
+    const wrapper = await mountPage();
+
+    expect(wrapper.get("[data-testid='run-member-count']").text()).toBe("2 个对象");
+    const memberChips = wrapper.get("[data-testid='run-target-members']");
+    expect(memberChips.text()).toContain("skill:deep-research");
+    expect(memberChips.text()).toContain("skill:code-review");
+    expect(wrapper.get("[data-testid='run-test-project']").text()).toContain(
+      "val-skills-2026q4",
+    );
+    expect(wrapper.get("[data-testid='run-test-project']").text()).toContain(
+      "test-skills-2026q4",
+    );
+    expect(wrapper.get("[data-testid='run-change-scope']").text()).toContain(
+      "skills/deep-research/**",
+    );
+    expect(wrapper.get("[data-testid='run-change-scope']").text()).toContain(
+      "skills/code-review/**",
+    );
+    const rangeMembers = wrapper.get("[data-testid='step-range-members']");
+    expect(rangeMembers.text()).toContain("skills/code-review");
+    expect(wrapper.get("[data-testid='step-range-test-project']").text()).toContain(
+      "resolved_rate",
+    );
+    expect(wrapper.get("[data-testid='step-range-change-scope']").text()).toContain(
+      "skills/code-review/**",
     );
   });
 
