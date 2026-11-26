@@ -84,7 +84,8 @@ github:
 - `TargetOverviewService` 增加同一开关；开关开启且目标是 agent 时，不用 `_build_version_labels` 从事件 `object_revision` 累积摘要版本，而是构造单个规范版本：键为目标的 `defaultRef`，显示为配置 ref。
 - 该版本不传 `observed_revisions`，按名称关联窗口内所有含该 agent 的 Session；事件版本仍原样保留为证据，但不参与入选。
 - 历史报告仍要挂到这一行，但 `_newest_link_by_case` 按 `object_version` 是否落在 label aliases 里选报告；单 ref 版本没有历史 digest 别名。名称模式必须为该行构造别名集合（配置 ref、解析 revision、裸 hash，以及该对象历史报告的 `object_version`），或等价地按 case 取该对象最新报告，保证既有 attributed/nonTarget 计数不归零。不能只依赖 `list_attributions` 的对象过滤。
-- `byVersion` 只有一行，响应字段不增不减；历史 digest 版本作为别名参与报告匹配，不作为独立版本行显示。- 版本内容解析仍用于显示 ref/commit 与启动链路；解析失败不再让版本行变成「未解析 0 关联」，匹配仍按名称给出 Session。启动仍需要内容解析，失败继续返回现有 `TARGET_CONTENT_UNRESOLVED`。
+- `byVersion` 只有一行，响应字段不增不减；历史 digest 版本作为别名参与报告匹配，不作为独立版本行显示。
+- 版本内容解析仍用于显示 ref/commit 与启动链路；解析失败不再让版本行变成「未解析 0 关联」，匹配仍按名称给出 Session。启动仍需要内容解析，失败继续返回现有 `TARGET_CONTENT_UNRESOLVED`。
 - skill/knowledge 目标保持现有 `_build_version_labels` 路径，开关对它们为空操作。
 
 ### 文档与决策
