@@ -307,9 +307,9 @@ describe("TargetFormDialog", () => {
     expect(wrapper.get(".definition-preview").text()).toBe(definition.preview);
   });
 
-  it("prefills edits, exposes remote suggestions and submits disabled state", async () => {
+  it("prefills edits, exposes remote suggestions and preserves the enabled state", async () => {
     const wrapper = await mountDialog({
-      target,
+      target: { ...target, enabled: false },
       versions: ["main", "v1.9.0", "v2.0.0"],
     });
 
@@ -348,9 +348,9 @@ describe("TargetFormDialog", () => {
       "v1.9.0",
       "v2.0.0",
     ]);
-    expect(wrapper.get(".el-switch").classes()).toContain("is-checked");
+    expect(wrapper.find(".el-switch").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("进入启动向导候选");
 
-    await wrapper.get(".el-switch").trigger("click");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
@@ -358,6 +358,23 @@ describe("TargetFormDialog", () => {
       objectName: "deep-research",
       enabled: false,
     });
+  });
+
+  it("defaults new targets to enabled without showing the removed switch", async () => {
+    const wrapper = await mountDialog();
+    await fillRequired(wrapper);
+
+    expect(wrapper.find(".el-switch").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("进入启动向导候选");
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
+      objectName: "deep-research",
+      enabled: true,
+    });
+    wrapper.unmount();
   });
 
   it("keeps tag suggestions available when the saved baseline is a branch", async () => {

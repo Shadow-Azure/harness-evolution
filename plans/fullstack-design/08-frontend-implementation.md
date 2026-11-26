@@ -744,11 +744,11 @@ Index.vue
     ├── validationProjectId（验证集测试工程 ID，必填，不透明字符串）
     ├── testProjectId（测试集测试工程 ID，必填，不透明字符串）
     ├── primaryMetricKey（平台 results 主指标 metric_key，必填，如 resolved_rate）
-    ├── attributionSkill（空间 Skill 包选择器；默认取对象原绑定，缺省为空间默认包；历史内联提示词显示“历史内联提示词（只读）”，不主动换包）
-    └── enabled 开关
+    └── attributionSkill（空间 Skill 包选择器；默认取对象原绑定，缺省为空间默认包；历史内联提示词显示“历史内联提示词（只读）”，不主动换包）
 ```
 
 - 写操作可见性（V2）：空间管理员及以上可写本空间配置；成员/只读只读（后端按空间角色校验）。全局管理员可写任意空间。
+- 表单不暴露 `enabled` 开关：新增对象默认提交 `true`，编辑保留当前值；停用/启用由列表的「停用/启用」动作承担。
 - 保存前前端做必填校验；仓库/ref/subDir 合法性由后端返回 `422 REPO_INVALID`，两个工程 ID 与主指标 key 的空白/控制字符由本地校验，后端兜底返回 `422 PROJECT_ID_INVALID` / `422 PRIMARY_METRIC_KEY_INVALID`；表单展示错误。
 - `REPO_INVALID` 的 `details.field` 决定错误落点：`objectName` / `repoUrl` / `subDir` / `defaultRef` 各自对应字段下显示红字原因与修改建议，并设置 `aria-invalid` / `aria-describedby`；提交失败后聚焦第一个错误字段，修改该字段后清除服务端错误。未知 reason 或无 `details` 时回退到“仓库或 ref 无效”汇总与四项检查清单。
 - 远端失败时汇总显示“无法访问仓库”“访问仓库超时”等原因，字段下方提供可展开、可滚动的等宽 `git` 输出块，展示命令名、退出码与已脱敏输出；`ref_not_found` 落到 `defaultRef` 并显示“仓库可达，但找不到该 ref”，不与仓库不可达混用文案。
