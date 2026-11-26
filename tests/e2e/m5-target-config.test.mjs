@@ -879,6 +879,65 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
       false,
     );
 
+    await evaluate(
+      page,
+      `(() => {
+        const row = [...document.querySelectorAll(".target-table tbody tr")]
+          .find((item) => item.textContent.includes("m5-e2e-target"));
+        row.querySelector(".edit-target").click();
+      })()`,
+    );
+    await waitForDocument(
+      page.session,
+      `document.querySelector(".target-form-dialog")?.textContent.includes("编辑进化对象")`,
+      "edit disabled target dialog",
+    );
+    assert.equal(
+      await evaluate(
+        page,
+        `Boolean(document.querySelector(".target-form-dialog .el-switch"))`,
+      ),
+      false,
+    );
+    assert.doesNotMatch(
+      await evaluate(
+        page,
+        `document.querySelector(".target-form-dialog").textContent`,
+      ),
+      /进入启动向导候选/,
+    );
+    await setInput(
+      page,
+      "input[name='repoUrl']",
+      "https://git.example.com/agent-skills-disabled.git",
+    );
+    await evaluate(
+      page,
+      `document.querySelector(".target-form-dialog .el-button--primary").click()`,
+    );
+    await waitForDocument(
+      page.session,
+      `[...document.querySelectorAll(".repo-url")]
+        .some((item) => item.textContent.includes("agent-skills-disabled.git"))`,
+      "edited disabled target row",
+    );
+    const editedDisabled = await apiJson("/api/evolution/targets", admin.accessToken);
+    assert.equal(
+      editedDisabled.items.find((item) => item.id === created.id).enabled,
+      false,
+    );
+    assert.equal(
+      await evaluate(
+        page,
+        `(() => {
+          const row = [...document.querySelectorAll(".target-table tbody tr")]
+            .find((item) => item.textContent.includes("m5-e2e-target"));
+          return row?.textContent.includes("已停用") ?? false;
+        })()`,
+      ),
+      true,
+    );
+
     const runId = await runTool("create", created.id);
     await evaluate(
       page,
