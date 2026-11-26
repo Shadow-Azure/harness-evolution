@@ -162,10 +162,9 @@ SQLite 与 MySQL 都走 `op.add_column`；SQLite 对带 `server_default` 的 `AD
 仓库地址（整行）
 子目录            基线分支或标签
 验证集测试工程 ID   测试集测试工程 ID   ← 新增，两列
-启用
 ```
 
-- 两个新输入放在“子目录/基线”行之后、启用开关之前；与 `subDir`/`defaultRef` 共用 `.form-grid` 两列布局。
+- 两个新输入放在“子目录/基线”行之后、表单末尾；与 `subDir`/`defaultRef` 共用 `.form-grid` 两列布局。
 - 标签固定为“验证集测试工程 ID”“测试集测试工程 ID”；`ElFormItem` 设置 `required`，显示必填星号。
 - `name` 属性分别为 `validationProjectId`、`testProjectId`，供测试与浏览器自动填充识别。
 - `maxlength="128"`，placeholder 分别是 `如 val-2026-q3`、`如 test-2026-q3`。
@@ -187,7 +186,7 @@ SQLite 与 MySQL 都走 `op.add_column`；SQLite 对带 `server_default` 的 `AD
 - `resetForm` 从 `target.validationProjectId` / `target.testProjectId` 回填；新增态为空。
 - `submit` emit 的 `EvolutionTargetWrite` 包含 trim 后的两个字段。
 - `Index.vue` 的 `targetWrite`（启用/停用）复制两个字段，保证 toggle 不会把已保存值清空。
-- 版本建议、仓库变更提示、启用开关、服务端错误保留与现有行为不变。
+- 版本建议、仓库变更提示、服务端错误保留与现有行为不变。
 
 ### 5.4 配置列表表格
 
