@@ -4,7 +4,7 @@ English | [中文](bugfix-target-enabled-switch.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-65
+id: bugfix-66
 milestone: bugfix
 depends: []
 priority: P2
