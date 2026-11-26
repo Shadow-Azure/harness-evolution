@@ -5791,7 +5791,6 @@ function evRenderTargetDialog() {
           <div class="f-row"><div class="f-label">验证集测试工程 ID <span class="req">*</span></div><input class="inp" data-ev-target-field="validationProjectId" value="${evEsc(f.validationProjectId)}"></div>
           <div class="f-row"><div class="f-label">测试集测试工程 ID <span class="req">*</span></div><input class="inp" data-ev-target-field="testProjectId" value="${evEsc(f.testProjectId)}"></div>
           <div class="f-row span-2"><div class="f-label">主指标 key <span class="req">*</span></div><input class="inp" data-ev-target-field="primaryMetricKey" value="${evEsc(f.primaryMetricKey)}" placeholder="如 resolved_rate"><div class="field-note">平台 results 中用于逐轮比较与终评的主指标 metric_key。</div></div>
-          <div class="f-row span-2"><div class="f-label">启用</div><div class="switch-row"><label class="proto-switch"><input type="checkbox" data-ev-target-field="enabled" ${f.enabled ? 'checked' : ''}><span class="proto-switch-track"></span></label><span>${f.enabled ? '进入启动向导候选' : '保留配置但不进入向导'}</span></div></div>
         </div>
       </div>
       <div class="modal-foot"><button class="btn" data-action="ev-target-close">取消</button><button class="btn primary" data-action="ev-target-save">${d.mode === 'create' ? '新增配置' : '保存配置'}</button></div>
