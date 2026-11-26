@@ -926,6 +926,17 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
       editedDisabled.items.find((item) => item.id === created.id).enabled,
       false,
     );
+    assert.equal(
+      await evaluate(
+        page,
+        `(() => {
+          const row = [...document.querySelectorAll(".target-table tbody tr")]
+            .find((item) => item.textContent.includes("m5-e2e-target"));
+          return row?.textContent.includes("已停用") ?? false;
+        })()`,
+      ),
+      true,
+    );
 
     const runId = await runTool("create", created.id);
     await evaluate(
