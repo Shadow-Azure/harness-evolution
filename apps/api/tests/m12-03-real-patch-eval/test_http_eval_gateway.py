@@ -95,7 +95,8 @@ async def test_submit_sends_the_real_launch_contract() -> None:
     assert body["asset_override"] == {
         "ref": "evo/20261125-run-620/candidate/r1",
         "commit": _COMMIT,
-        "asset_paths": ["skills/deep-research"],
+        "asset_paths": [".claude/skills/deep-research"],
+        "asset_types": {".claude/skills/deep-research": "skill"},
     }
     assert body["lineage"] == {
         "evolutionRunId": "run-620",
@@ -145,7 +146,8 @@ async def test_submit_declares_an_agent_asset_as_subagent() -> None:
         _request(target_type="agent", sub_dir="agents/reviewer"),
     )
 
-    assert body["asset_override"]["asset_types"] == {"agents/reviewer": "subagent"}
+    assert body["asset_override"]["asset_paths"] == [".claude/agents/reviewer.md"]
+    assert body["asset_override"]["asset_types"] == {".claude/agents/reviewer.md": "subagent"}
 
 
 async def test_submit_rejects_a_drifting_resolved_commit() -> None:
