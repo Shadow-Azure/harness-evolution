@@ -90,9 +90,10 @@ class TableContract:
     columns: tuple[ColumnContract, ...]
 
 
-# Mirrors 06 §4 and the query model in ``app.db.models.domain``. Lengths are the
-# minimum that can carry every value the read path accepts; broader columns are
-# compatible, narrower ones can truncate and count as drift.
+# Mirrors 06 §4, the label projection in 17 §2.3, and the query model in
+# ``app.db.models.domain``. Lengths are the minimum that can carry every value
+# the read path accepts; broader columns are compatible, narrower ones can
+# truncate and count as drift.
 EXTERNAL_TABLES: tuple[TableContract, ...] = (
     TableContract(
         name="bad_cases",
@@ -110,6 +111,8 @@ EXTERNAL_TABLES: tuple[TableContract, ...] = (
             ColumnContract("title", "varchar", False, 255),
             ColumnContract("bad_case_description", "text", False),
             ColumnContract("meta_data", "json", True),
+            ColumnContract("catalog_label", "varchar", True, 128),
+            ColumnContract("catalog_synced", "boolean", False),
             ColumnContract("source", "varchar", True, 64),
             ColumnContract("session_source", "json", True),
             ColumnContract("created_at", "datetime", False),
@@ -252,7 +255,11 @@ def _type_drift(
 ) -> str | None:
     """Return a bounded observed type when the column cannot carry the contract."""
     family = _family(observed_type)
-    if family != expected.family:
+    if family != expected.family and not (
+        # MySQL stores BOOLEAN as TINYINT(1), which reflection reports as an
+        # integer family; a contract boolean stays satisfied by that storage.
+        expected.family == "boolean" and family == "integer"
+    ):
         return _observed_type(observed_type)
     length = getattr(observed_type, "length", None)
     if expected.min_length is not None and isinstance(length, int) and length < expected.min_length:

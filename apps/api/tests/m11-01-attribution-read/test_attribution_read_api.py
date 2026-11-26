@@ -22,6 +22,7 @@ from app.service.bad_cases.attribution import _trigger_order
 from app.utils.time import SHANGHAI
 from tests.workspaces.helpers import (
     access_token,
+    backfill_legacy_associations,
     bearer,
     create_user,
     insert_member,
@@ -427,6 +428,8 @@ async def attribution_api(tmp_path: Path) -> AsyncIterator[AttributionApiEnviron
                     },
                 ],
             )
+
+        await backfill_legacy_associations(database)
 
         yield AttributionApiEnvironment(
             client=client,

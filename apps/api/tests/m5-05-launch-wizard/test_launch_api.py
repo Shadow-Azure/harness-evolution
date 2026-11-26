@@ -18,7 +18,10 @@ from pydantic import SecretStr
 from sqlalchemy import insert, select
 
 from app.config import DatabaseDialect, Settings
-from app.db.crud.fixtures import ensure_fixture_external_tables
+from app.db.crud.fixtures import (
+    backfill_legacy_associations,
+    ensure_fixture_external_tables,
+)
 from app.db.models.domain import (
     agent_events,
     agents,
@@ -351,6 +354,7 @@ async def _seed_hits(app: Any, revision: str = "tag:v2.0.0") -> None:
                 },
             ],
         )
+    await backfill_legacy_associations(app.state.database)
 
 
 class _FakeWorkspacePreparer:
@@ -1202,6 +1206,7 @@ async def _seed_discovery_batch(app: Any, object_name: str, case_ids: list[str])
                     }
                 )
             )
+    await backfill_legacy_associations(app.state.database)
 
 
 async def test_startup_claims_existing_binding_with_shared_provider(

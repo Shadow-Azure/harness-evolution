@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from app.db.base import Database
 from app.db.crud.acquisition_replay import bad_cases_table_present
 from app.db.crud.integrity import is_unique_violation
-from app.db.models.domain import bad_cases, source_records
+from app.db.models.domain import bad_cases, source_records, workspace_bad_cases
 from app.db.models.users import users
 from app.db.models.workspace import (
     workspace_ingest_credentials,
@@ -271,11 +271,13 @@ class WorkspaceRepository:
             return {}
         statement = (
             select(
-                bad_cases.c.workspace_id.label("workspace_id"),
-                func.count().label("case_count"),
+                workspace_bad_cases.c.workspace_id,
+                func.count(func.distinct(workspace_bad_cases.c.bad_case_id)).label(
+                    "case_count",
+                ),
             )
-            .where(bad_cases.c.workspace_id.in_(workspace_ids))
-            .group_by(bad_cases.c.workspace_id)
+            .where(workspace_bad_cases.c.workspace_id.in_(workspace_ids))
+            .group_by(workspace_bad_cases.c.workspace_id)
         )
         async with self._database.session() as session:
             rows = (await session.execute(statement)).mappings().all()
@@ -287,9 +289,9 @@ class WorkspaceRepository:
             return int(
                 (
                     await session.execute(
-                        select(func.count())
-                        .select_from(bad_cases)
-                        .where(bad_cases.c.workspace_id == workspace_id),
+                        select(func.count(func.distinct(workspace_bad_cases.c.bad_case_id))).where(
+                            workspace_bad_cases.c.workspace_id == workspace_id,
+                        ),
                     )
                 ).scalar_one(),
             )
@@ -431,8 +433,13 @@ class WorkspaceRepository:
         """
         if not await bad_cases_table_present(self._database):
             return 0
-        root_ids = select(bad_cases.c.bad_case_session_id).where(
-            bad_cases.c.workspace_id == workspace_id,
+        root_ids = (
+            select(bad_cases.c.bad_case_session_id)
+            .join(
+                workspace_bad_cases,
+                workspace_bad_cases.c.bad_case_id == bad_cases.c.bad_case_id,
+            )
+            .where(workspace_bad_cases.c.workspace_id == workspace_id)
         )
         async with self._database.transaction() as session:
             result = await session.execute(

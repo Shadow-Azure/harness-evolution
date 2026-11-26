@@ -26,6 +26,7 @@ from app.utils.time import SHANGHAI, now_shanghai
 from tests.identity.helpers import identity_settings
 from tests.workspaces.helpers import (
     access_token,
+    backfill_legacy_associations,
     bearer,
     create_user,
     insert_member,
@@ -266,6 +267,7 @@ async def _seed_corpus(
     ]
     async with database.transaction() as session:
         await session.execute(insert(bad_cases), rows)
+    await backfill_legacy_associations(database)
 
 
 @pytest_asyncio.fixture
@@ -942,6 +944,7 @@ async def test_list_projects_trigger_line_without_faking_missing_rows(
                 ),
             ],
         )
+    await backfill_legacy_associations(environment.database)
 
     response = await _get(
         environment,
@@ -980,6 +983,7 @@ async def test_list_default_page_size_is_eight_and_pages_do_not_overlap(
                 for index in range(1, 5)
             ],
         )
+    await backfill_legacy_associations(environment.database)
 
     first = await _get(
         environment,
@@ -1067,6 +1071,7 @@ async def test_list_ties_break_by_bad_case_id_ascending(
                 ),
             ],
         )
+    await backfill_legacy_associations(environment.database)
 
     response = await _get(
         environment,
@@ -1591,6 +1596,7 @@ async def test_object_options_are_isolated_per_workspace(
                 ),
             ],
         )
+    await backfill_legacy_associations(environment.database)
 
     own = await _get(
         environment,
@@ -1684,6 +1690,7 @@ async def test_unknown_bad_case_type_rows_are_excluded_consistently(
                 ),
             ],
         )
+    await backfill_legacy_associations(environment.database)
 
     summary = await _get(
         environment,

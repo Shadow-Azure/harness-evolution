@@ -8,12 +8,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-from sqlalchemy import Select, and_, case, func, select
+from sqlalchemy import Select, and_, case, func, select, true
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
+from app.db.crud.read_scope import scoped_case_ids
 from app.db.external_contract import (
     classify_external_failure,
     classify_external_read_error,
@@ -302,11 +303,21 @@ class BadCaseRepository:
     async def analysis_progress(
         self, workspace_ids: tuple[str, ...] | None = None
     ) -> AnalysisProgress:
-        """Aggregate attribution states without materializing new columns."""
-        cases = select(bad_cases.c.bad_case_id, bad_cases.c.workspace_id)
+        """Aggregate attribution states without materializing new columns.
+
+        Cases are filtered by the workspace association boundary, and reports
+        are matched to the requested workspaces instead of the case's legacy
+        ``workspace_id``: a label-shared public case can be analyzed in any
+        workspace that can see it, while its stored owner column stays the
+        default space.
+        """
+        cases = select(bad_cases.c.bad_case_id)
         if workspace_ids is not None:
-            cases = cases.where(bad_cases.c.workspace_id.in_(workspace_ids))
+            cases = cases.where(bad_cases.c.bad_case_id.in_(scoped_case_ids(workspace_ids)))
         scope = cases.subquery()
+        report_scope = (
+            probe_reports.c.workspace_id.in_(workspace_ids) if workspace_ids is not None else true()
+        )
         v2 = probe_reports.c.report_schema_version == "probe-report/v2"
         legacy = bad_case_analysis.c.analysis_status
         verdict = case(
@@ -341,7 +352,7 @@ class BadCaseRepository:
                     probe_reports,
                     and_(
                         probe_reports.c.probe_id == bad_case_analysis.c.probe_id,
-                        probe_reports.c.workspace_id == scope.c.workspace_id,
+                        report_scope,
                     ),
                 )
             )

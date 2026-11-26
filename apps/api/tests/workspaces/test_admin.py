@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from sqlalchemy import select, update
 
 from app.db.base import Database
-from app.db.models.domain import bad_cases, source_records
+from app.db.models.domain import bad_cases, source_records, workspace_bad_cases
 from app.utils.time import now_shanghai
 from tests.workspaces.helpers import (
     access_token,
@@ -740,6 +740,15 @@ async def test_knowledge_root_change_marks_reported_roots_for_replay(
                 bad_case_description="Synthetic reported root.",
                 created_at=now,
                 updated_at=now,
+            ),
+        )
+        await session.execute(
+            workspace_bad_cases.insert().values(
+                workspace_id=workspace_id,
+                bad_case_id="bc-root-stale",
+                assignment_source="legacy_owner",
+                label=None,
+                assigned_at=now,
             ),
         )
         await session.execute(

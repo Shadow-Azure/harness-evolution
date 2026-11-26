@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 import pytest_asyncio
 from pydantic import SecretStr
-from sqlalchemy import select
+from sqlalchemy import insert, select
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
@@ -19,7 +19,13 @@ from app.db.crud.bad_case_catalog_sync import BadCaseCatalogSyncRepository
 from app.db.crud.bad_cases import BadCaseRepository
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
-from app.db.models.domain import bad_case_analysis, bad_cases
+from app.db.models.domain import (
+    bad_case_analysis,
+    bad_cases,
+    workspace_bad_case_labels,
+    workspace_bad_cases,
+)
+from app.db.models.workspace import workspaces
 from app.errors import AppError, ErrorCode
 from app.service.acquisition.bad_case_catalog_sync import (
     BadCaseCatalogSyncService,
@@ -68,6 +74,7 @@ def _item(
     object_name: str | None = "deep-research",
     object_type: str | None = "skill",
     source: str | None = "test",
+    meta_data: object | None = None,
 ) -> BadCaseItem:
     return BadCaseItem(
         bad_case_id=case_id,
@@ -79,7 +86,7 @@ def _item(
         bad_case_agent_id=None,
         bad_case_title=title or f"case {case_id}",
         bad_case_description="description",
-        meta_data=None,
+        meta_data=meta_data,
         source=source,
         created_at=datetime.fromisoformat("2026-10-30T10:00:00+08:00"),
         updated_at=datetime.fromisoformat("2026-10-30T10:00:00+08:00"),
@@ -473,3 +480,91 @@ async def test_analysis_rows_survive_upsert(database: Database) -> None:
     progress = await BadCaseRepository(database).analysis_progress()
     assert progress.total == 1
     assert progress.analyzed == 1
+
+
+@pytest.mark.asyncio
+async def test_labels_fan_out_exactly_and_invalid_values_stay_unassigned(
+    database: Database,
+) -> None:
+    """Valid exact labels route to every matching workspace and invalid labels do not."""
+    now = now_shanghai()
+    async with database.transaction() as session:
+        await session.execute(
+            insert(workspaces),
+            [
+                {
+                    "id": "ws-label-a",
+                    "name": "Label A",
+                    "mark": "A",
+                    "quota": 10,
+                    "status": "active",
+                    "created_at": now,
+                    "updated_at": now,
+                },
+                {
+                    "id": "ws-label-b",
+                    "name": "Label B",
+                    "mark": "B",
+                    "quota": 10,
+                    "status": "active",
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            ],
+        )
+        await session.execute(
+            insert(workspace_bad_case_labels),
+            [
+                {
+                    "workspace_id": "ws-label-a",
+                    "label": "review",
+                    "created_at": now,
+                    "updated_at": now,
+                },
+                {
+                    "workspace_id": "ws-label-b",
+                    "label": "review",
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            ],
+        )
+
+    source = FakeSource(
+        [
+            _item(1, meta_data={"label": "review"}),
+            _item(2, meta_data={"label": "Review"}),
+            _item(3, meta_data={"label": " review"}),
+            _item(4, meta_data=["review"]),
+        ],
+    )
+    await _service(database, source).run(owner="label-routing")
+
+    async with database.session() as session:
+        cases = (
+            await session.execute(
+                select(bad_cases.c.bad_case_id, bad_cases.c.catalog_label).order_by(
+                    bad_cases.c.bad_case_id,
+                ),
+            )
+        ).all()
+        assignments = (
+            await session.execute(
+                select(
+                    workspace_bad_cases.c.workspace_id,
+                    workspace_bad_cases.c.bad_case_id,
+                    workspace_bad_cases.c.assignment_source,
+                ).order_by(workspace_bad_cases.c.workspace_id),
+            )
+        ).all()
+
+    state = await BadCaseCatalogSyncRepository(database).get_state()
+    assert cases == [("1", "review"), ("2", "Review"), ("3", None), ("4", None)]
+    assert assignments == [
+        ("ws-label-a", "1", "catalog_label"),
+        ("ws-label-b", "1", "catalog_label"),
+    ]
+    assert state is not None
+    assert state.assigned_count == 1
+    assert state.unassigned_count == 1
+    assert state.invalid_label_count == 2

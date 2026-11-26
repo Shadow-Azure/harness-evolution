@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sqlalchemy import inspect, select, true
 from sqlalchemy.sql.elements import ColumnElement
+from sqlalchemy.sql.selectable import Select
 
 from app.db.base import Database
-from app.db.models.domain import bad_cases, session_families
+from app.db.models.domain import bad_cases, session_families, workspace_bad_cases
 from app.db.models.workspace import workspace_members
 
 
@@ -43,14 +45,31 @@ class WorkspaceReadScope:
             return cls.all_workspaces()
         return cls(workspace_id=None, user_id=user_id)
 
-    def condition(self, column: ColumnElement[str]) -> ColumnElement[bool]:
-        """Return the SQL predicate selecting rows this scope may read."""
+    def case_condition(self) -> ColumnElement[bool]:
+        """Return the predicate selecting bad cases associated with this scope.
+
+        Visibility comes from the ``workspace_bad_cases`` association, so one
+        canonical case shared through a label is readable by every matching
+        workspace while an unrelated space reads nothing. All bad-case and
+        Session read paths must go through this boundary.
+        """
         if self.workspace_id is not None:
-            return column == self.workspace_id
+            return (
+                select(workspace_bad_cases.c.bad_case_id)
+                .where(
+                    workspace_bad_cases.c.workspace_id == self.workspace_id,
+                    workspace_bad_cases.c.bad_case_id == bad_cases.c.bad_case_id,
+                )
+                .exists()
+            )
         if self.user_id is not None:
-            return column.in_(
-                select(workspace_members.c.workspace_id).where(
-                    workspace_members.c.user_id == self.user_id,
+            return bad_cases.c.bad_case_id.in_(
+                select(workspace_bad_cases.c.bad_case_id).where(
+                    workspace_bad_cases.c.workspace_id.in_(
+                        select(workspace_members.c.workspace_id).where(
+                            workspace_members.c.user_id == self.user_id,
+                        ),
+                    ),
                 ),
             )
         return true()
@@ -58,10 +77,19 @@ class WorkspaceReadScope:
     def session_condition(self) -> ColumnElement[bool]:
         """Keep only sessions projected from bad cases inside this scope."""
         return session_families.c.id.in_(
-            select(bad_cases.c.bad_case_session_id).where(
-                self.condition(bad_cases.c.workspace_id),
-            ),
+            select(bad_cases.c.bad_case_session_id).where(self.case_condition()),
         )
+
+
+def scoped_case_ids(workspace_ids: Sequence[str]) -> Select[tuple[str]]:
+    """Return the case ids associated with any of the explicit workspaces.
+
+    Legacy unscoped compatibility routes resolve a workspace-id list first and
+    then reuse this subquery instead of filtering ``bad_cases.workspace_id``.
+    """
+    return select(workspace_bad_cases.c.bad_case_id).where(
+        workspace_bad_cases.c.workspace_id.in_(workspace_ids),
+    )
 
 
 async def bad_cases_table_present(database: Database) -> bool:

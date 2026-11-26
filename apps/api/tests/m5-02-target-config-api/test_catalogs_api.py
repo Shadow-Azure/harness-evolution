@@ -15,7 +15,10 @@ from sqlalchemy import insert
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.evolution_targets import EvolutionTargetRepository
-from app.db.crud.fixtures import ensure_fixture_external_tables
+from app.db.crud.fixtures import (
+    backfill_legacy_associations,
+    ensure_fixture_external_tables,
+)
 from app.db.models.domain import agents, bad_cases, session_families, source_records
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.main import create_app
@@ -360,6 +363,7 @@ async def test_model_catalog_uses_normalized_agents(
                 ),
             )
 
+    await backfill_legacy_associations(catalog_api.database)
     response = await catalog_api.member.get("/api/catalogs/models")
 
     assert response.status_code == 200

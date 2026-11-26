@@ -1,5 +1,7 @@
 import type {
   Workspace,
+  WorkspaceBadCaseLabelConfiguration,
+  WorkspaceBadCaseLabelRequest,
   WorkspaceCreateRequest,
   WorkspaceCredentialCreated,
   WorkspaceCredentialListResponse,
@@ -206,5 +208,34 @@ export function revokeWorkspaceCredential(
       `/credentials/${encodeURIComponent(credentialId)}`,
     ),
     { method: "DELETE" },
+  );
+}
+
+/**
+ * Read the public badcase labels accepted by one workspace.
+ * @param workspaceId Route workspace identifier.
+ * @returns Sorted label set with its distinct assigned case count.
+ */
+export function listWorkspaceBadCaseLabels(
+  workspaceId: string,
+): Promise<WorkspaceBadCaseLabelConfiguration> {
+  return request<WorkspaceBadCaseLabelConfiguration>(
+    workspacePath(workspaceId, "/bad-case-labels"),
+  );
+}
+
+/**
+ * Atomically replace one workspace's accepted labels and rebuild assignments.
+ * @param workspaceId Route workspace identifier.
+ * @param body Complete replacement label set.
+ * @returns Sorted label set with its recomputed distinct assignment count.
+ */
+export function replaceWorkspaceBadCaseLabels(
+  workspaceId: string,
+  body: WorkspaceBadCaseLabelRequest,
+): Promise<WorkspaceBadCaseLabelConfiguration> {
+  return request<WorkspaceBadCaseLabelConfiguration>(
+    workspacePath(workspaceId, "/bad-case-labels"),
+    { method: "PUT", body: JSON.stringify(body) },
   );
 }

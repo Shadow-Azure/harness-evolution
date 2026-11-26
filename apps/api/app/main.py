@@ -54,6 +54,7 @@ from app.db.crud.probe_query import ProbeQueryRepository
 from app.db.crud.problems import ProblemRepository
 from app.db.crud.run_events import SqlRunEventStore
 from app.db.crud.sessions import SessionRepository
+from app.db.crud.workspace_bad_case_labels import WorkspaceBadCaseLabelRepository
 from app.db.crud.workspaces import WorkspaceRepository
 from app.db.external_contract import ExternalContractMonitor
 from app.db.factory import create_database
@@ -137,6 +138,7 @@ from app.service.overview.service import OverviewService
 from app.service.overview.targets import TargetOverviewService
 from app.service.problems.service import ProblemService
 from app.service.sessions.service import SessionService
+from app.service.workspaces.bad_case_labels import WorkspaceBadCaseLabelService
 from app.service.workspaces.ingest import BadCaseIngestService
 from app.service.workspaces.service import WorkspaceService
 from app.third_party_api.ai_agent.base import AIAgentProvider
@@ -324,6 +326,9 @@ def create_app(
         bad_case_sync.source_available,
     )
     workspaces = WorkspaceService(WorkspaceRepository(resolved_database))
+    bad_case_labels = WorkspaceBadCaseLabelService(
+        WorkspaceBadCaseLabelRepository(resolved_database),
+    )
     bad_case_ingest = BadCaseIngestService(
         BadCaseIngestRepository(resolved_database),
         workspaces,
@@ -708,6 +713,7 @@ def create_app(
     app.state.overview = overview
     app.state.target_overview = target_overview
     app.state.workspaces = workspaces
+    app.state.bad_case_labels = bad_case_labels
     app.state.bad_case_ingest = bad_case_ingest
     app.state.problems = problems
     app.state.attribution_read = attribution_read

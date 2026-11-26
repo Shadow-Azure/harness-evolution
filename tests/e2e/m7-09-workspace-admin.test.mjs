@@ -155,7 +155,7 @@ async function openAdmin(page, workspaceId, tab = "spaces") {
       const page = document.querySelector("[data-testid='workspace-admin-page']");
       if (!page) return null;
       const tabs = document.querySelectorAll(".admin-nav button").length;
-      if (tabs !== 5) return null;
+      if (tabs !== 6) return null;
       return {
         path: location.pathname,
         tabs,

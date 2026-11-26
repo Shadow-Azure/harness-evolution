@@ -18,7 +18,7 @@ from app.db.crud.bad_case_sync import (
     BadCaseRootSyncRow,
     insert_pending_root,
 )
-from app.db.crud.fixtures import run_corpus_seed
+from app.db.crud.fixtures import backfill_legacy_associations, run_corpus_seed
 from app.db.models.domain import bad_case_root_sync, bad_cases
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.fixture_corpus import load_fixture_corpus
@@ -206,6 +206,7 @@ async def trace_status(tmp_path: Path) -> AsyncIterator[StatusEnvironment]:
     ):
         database = app.state.database
         await _seed_status_rows(database)
+        await backfill_legacy_associations(database)
         yield StatusEnvironment(
             client=client,
             database=database,

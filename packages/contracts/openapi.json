@@ -2002,6 +2002,14 @@
         "additionalProperties": false,
         "description": "Read-only catalog-sync counters for the top-nav popover.",
         "properties": {
+          "assigned": {
+            "title": "Assigned",
+            "type": "integer"
+          },
+          "invalidLabel": {
+            "title": "Invalidlabel",
+            "type": "integer"
+          },
           "lastBadCaseId": {
             "title": "Lastbadcaseid",
             "type": "integer"
@@ -2044,6 +2052,10 @@
             "title": "Synced",
             "type": "integer"
           },
+          "unassigned": {
+            "title": "Unassigned",
+            "type": "integer"
+          },
           "unsynced": {
             "title": "Unsynced",
             "type": "integer"
@@ -2052,6 +2064,9 @@
         "required": [
           "synced",
           "unsynced",
+          "assigned",
+          "unassigned",
+          "invalidLabel",
           "lastBadCaseId",
           "status",
           "lastRunAt",
@@ -10355,6 +10370,48 @@
         "title": "WorkspaceAdmin",
         "type": "object"
       },
+      "WorkspaceBadCaseLabelConfiguration": {
+        "additionalProperties": false,
+        "description": "One label rule set plus its current distinct assignment count.",
+        "properties": {
+          "assignedBadCaseCount": {
+            "minimum": 0.0,
+            "title": "Assignedbadcasecount",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "assignedBadCaseCount"
+        ],
+        "title": "WorkspaceBadCaseLabelConfiguration",
+        "type": "object"
+      },
+      "WorkspaceBadCaseLabelRequest": {
+        "additionalProperties": false,
+        "description": "Complete replacement set for one workspace's accepted public labels.",
+        "properties": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "WorkspaceBadCaseLabelRequest",
+        "type": "object"
+      },
       "WorkspaceCreateRequest": {
         "additionalProperties": false,
         "description": "Administrator-provisioned workspace with at least one initial space admin.",
@@ -15398,6 +15455,164 @@
         "summary": "Download Attribution Skill Package",
         "tags": [
           "attribution-skill-packages"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/bad-case-labels": {
+      "get": {
+        "description": "Return the public badcase labels accepted by this workspace.",
+        "operationId": "get_bad_case_labels_api_workspaces__wid__bad_case_labels_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceBadCaseLabelConfiguration"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Bad Case Labels",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "put": {
+        "description": "Replace label rules and historical catalog assignments atomically.",
+        "operationId": "replace_bad_case_labels_api_workspaces__wid__bad_case_labels_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceBadCaseLabelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceBadCaseLabelConfiguration"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Label set is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Replace Bad Case Labels",
+        "tags": [
+          "workspaces"
         ]
       }
     },

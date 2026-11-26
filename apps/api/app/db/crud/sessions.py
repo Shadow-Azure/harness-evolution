@@ -363,7 +363,7 @@ class SessionRepository:
             select(func.count(func.distinct(bad_cases.c.bad_case_session_id)))
             .select_from(bad_cases)
             .where(
-                scope.condition(bad_cases.c.workspace_id),
+                scope.case_condition(),
                 ~select(session_families.c.id)
                 .where(session_families.c.id == bad_cases.c.bad_case_session_id)
                 .exists(),
@@ -457,7 +457,7 @@ class SessionRepository:
                         select(bad_cases)
                         .where(
                             bad_cases.c.bad_case_session_id == session_id,
-                            scope.condition(bad_cases.c.workspace_id),
+                            scope.case_condition(),
                         )
                         .order_by(bad_cases.c.created_at, bad_cases.c.bad_case_id),
                     )
@@ -488,7 +488,7 @@ class SessionRepository:
             )
             .where(
                 bad_cases.c.bad_case_session_id.in_(session_ids),
-                scope.condition(bad_cases.c.workspace_id),
+                scope.case_condition(),
             )
             .group_by(bad_cases.c.bad_case_session_id)
         )
@@ -532,7 +532,7 @@ class SessionRepository:
             select(bad_cases)
             .where(
                 bad_cases.c.bad_case_session_id == session_id,
-                scope.condition(bad_cases.c.workspace_id),
+                scope.case_condition(),
             )
             .order_by(bad_cases.c.created_at, bad_cases.c.bad_case_id)
         )

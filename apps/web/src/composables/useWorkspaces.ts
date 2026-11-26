@@ -1,6 +1,8 @@
 import type {
   PublicUser,
   Workspace,
+  WorkspaceBadCaseLabelConfiguration,
+  WorkspaceBadCaseLabelRequest,
   WorkspaceCreateRequest,
   WorkspaceCredentialCreated,
   WorkspaceMember,
@@ -24,10 +26,12 @@ import {
   createWorkspace,
   createWorkspaceCredential,
   listMemberCandidates,
+  listWorkspaceBadCaseLabels,
   listWorkspaceCredentials,
   listWorkspaceMembers,
   listWorkspaces,
   removeWorkspaceMember,
+  replaceWorkspaceBadCaseLabels,
   revokeWorkspaceCredential,
   updateWorkspace,
   updateWorkspaceMember,
@@ -323,6 +327,66 @@ export function useWorkspaceCredentialMutations(
       createMutation.mutateAsync(),
     revokeCredential: (credentialId: string): Promise<void> =>
       revokeMutation.mutateAsync(credentialId),
+  };
+}
+
+/**
+ * Read the public badcase labels accepted by one workspace.
+ *
+ * Every member can read the label set; it drives the workspace's visible
+ * badcase boundary, not a secret, so the query stays enabled for viewers too.
+ * @param workspaceId Workspace route identifier.
+ * @param enabled Whether the label query should run.
+ * @returns Label configuration query state.
+ */
+export function useWorkspaceBadCaseLabels(
+  workspaceId: MaybeRefOrGetter<string>,
+  enabled: MaybeRefOrGetter<boolean> = true,
+) {
+  return useQuery({
+    queryKey: computed(() =>
+      queryKeys.adminBadCaseLabels(toValue(workspaceId)),
+    ),
+    queryFn: () => listWorkspaceBadCaseLabels(toValue(workspaceId)),
+    enabled: computed(
+      () => toValue(enabled) && toValue(workspaceId).length > 0,
+    ),
+  });
+}
+
+/**
+ * Atomically replace a workspace's accepted labels and historical assignments.
+ * @param workspaceId Workspace route identifier.
+ * @returns Label replacement mutation.
+ */
+export function useReplaceWorkspaceBadCaseLabels(
+  workspaceId: MaybeRefOrGetter<string>,
+) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (body: WorkspaceBadCaseLabelRequest) =>
+      replaceWorkspaceBadCaseLabels(toValue(workspaceId), body),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.adminBadCaseLabels(toValue(workspaceId)),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.workspace(toValue(workspaceId)),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.workspaces(),
+        }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.authSession }),
+      ]);
+      await refreshAuthSession();
+    },
+  });
+  return {
+    isPending: mutation.isPending,
+    replaceLabels: (
+      body: WorkspaceBadCaseLabelRequest,
+    ): Promise<WorkspaceBadCaseLabelConfiguration> => mutation.mutateAsync(body),
   };
 }
 

@@ -1261,6 +1261,34 @@
   .auth-item .ai-main .ai-desc { margin-top: 2px; font-size: 10.5px; color: var(--text-faint); line-height: 1.6; }
   .auth-item .ai-main code { font-family: var(--mono); font-size: 10px; color: var(--text-dim); background: var(--bg-inset); border-radius: 3px; padding: 0 4px; }
   .auth-item .v2-badge { flex-shrink: 0; }
+
+  /* ── Badcase 类型：与 apps/web BadCaseLabelsTab.vue 同构 ── */
+  #view-admin .wrap { width: min(100%, calc(1080px / var(--ui-zoom, 1))); }
+  #view-admin .page-head-v2 { gap: 18px; margin-bottom: 16px; }
+  #view-admin .page-head-v2 h1 { font-size: 22px; }
+  #view-admin .page-head-v2 .ph-sub { margin-top: 6px; }
+  .admin-eyebrow { margin: 0 0 4px; color: var(--blue); font-size: 10px; font-weight: 700; letter-spacing: .14em; }
+  .v2-page .badcase-labels-tab .admin-head h2 { margin: 0; }
+  .v2-page .badcase-labels-tab .admin-head .sub { margin: 2px 0 0; font-size: 11px; color: var(--text-faint); line-height: 1.6; }
+  .v2-page .badcase-labels-tab .ingest-card { margin-bottom: 0; }
+  .v2-page .badcase-labels-tab .ingest-card h3 { margin: 0 0 8px; }
+  .v2-page .badcase-labels-tab .label-count-badge { padding: 0 7px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-faint); font-size: 9.5px; font-weight: 400; white-space: nowrap; }
+  .v2-page .badcase-labels-tab .empty-chips { padding: 14px; border: 1px dashed var(--border); border-radius: 8px; color: var(--text-faint); font-size: 11px; }
+  .v2-page .badcase-label-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .v2-page .badcase-label-chips .chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid color-mix(in srgb, var(--blue) 30%, var(--border)); border-radius: 999px; background: color-mix(in srgb, var(--blue) 7%, var(--bg-card)); color: var(--blue); font-size: 11px; }
+  .v2-page .badcase-label-chips .chip-remove { margin-left: 0; padding: 0 2px; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 13px; line-height: 1; }
+  .v2-page .badcase-labels-tab .add-row { display: flex; gap: 8px; margin-top: 10px; }
+  .v2-page .badcase-labels-tab .label-input { flex: 1; min-width: 0; padding: 5px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-card); color: var(--text); font: inherit; font-size: 12px; }
+  .v2-page .badcase-labels-tab .label-input:focus { outline: none; border-color: var(--blue); }
+  .v2-page .badcase-labels-tab .input-error { margin: 6px 0 0; color: var(--red); font-size: 10.5px; }
+  .v2-page .badcase-labels-tab .rule-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .v2-page .badcase-labels-tab .rule-title { margin: 0; color: var(--text-faint); font-size: 10px; font-weight: 650; }
+  .v2-page .badcase-labels-tab .rule-count { margin: 2px 0 0; color: var(--text); font-family: var(--mono); font-size: 13px; font-weight: 650; }
+  .v2-page .badcase-labels-tab .dirty-hint { margin: 0; color: var(--orange); font-size: 10.5px; }
+  .v2-page .badcase-labels-tab .field-help { margin: 10px 0 0; color: var(--text-faint); font-size: 10.5px; line-height: 1.6; }
+  .v2-page .badcase-labels-tab .btn { padding: 5px 11px; border-radius: 7px; font-size: 11.5px; }
+  .v2-page .badcase-labels-tab .btn:disabled { opacity: .5; }
+
   @media (max-width: 980px) { .ov-grid { grid-template-columns: 1fr; } .admin-grid { grid-template-columns: 1fr; } .admin-nav { display: flex; gap: 4px; overflow-x: auto; } .admin-nav button { width: auto; white-space: nowrap; } .admin-nav .an-hint, .admin-nav .an-sep { display: none; } .ingest-grid, .quota-editor { grid-template-columns: 1fr; } }
 
   /* ═══ 进化对象总览 ═══ */
@@ -1507,6 +1535,8 @@
   .v2-page .group-label { font-size: 12px; color: var(--text-faint); font-weight: 600; margin: 18px 0 10px; display: flex; align-items: center; gap: 8px; }
   .v2-page .page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .v2-page .chip { display: inline-block; font-size: 11px; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 1px 9px; background: var(--bg-card); white-space: nowrap; }
+  .v2-page .chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .v2-page .chip-remove { border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 13px; line-height: 1; padding: 0 2px; margin-left: 4px; }
   .v2-page .chip.model { font-family: var(--mono); font-size: 10.5px; color: var(--cyan); border-color: color-mix(in srgb, var(--cyan) 35%, transparent); background: color-mix(in srgb, var(--cyan) 9%, transparent); }
   .v2-page .chip.kind { font-family: var(--mono); font-size: 10.5px; color: var(--purple); border-color: color-mix(in srgb, var(--purple) 35%, transparent); background: color-mix(in srgb, var(--purple) 9%, transparent); }
   .v2-page .mono { font-family: var(--mono); }
@@ -6366,7 +6396,7 @@ const V2 = {
     listFrom: '', listTo: '', page: 1, targetPage: 1, multiOpen: false,
   },
   targetDetail: { targetId: '', versions: new Set(), from: '', to: '', limit: 5, menuOpen: false },
-  admin: { tab: 'spaces', skills: new Map() },
+  admin: { tab: 'spaces', skills: new Map(), labels: new Map() },
   loginChoice: 'admin',
 };
 window.V2 = V2;
@@ -6391,7 +6421,7 @@ function v2RoleLabel(wsId, user) { return V2_ROLE_LABEL[v2Role(wsId, user)] || '
 function v2IsAdmin(user) { return (user || V2.user)?.globalRole === 'admin'; }
 function v2CanManage(wsId) { const r = v2Role(wsId); return r === 'admin' || r === 'space_admin'; }
 function v2CanViewAdmin() {
-  return v2CanManage(V2.wsId) || (V2.admin.tab === 'attribution-skills' && !!v2Role(V2.wsId));
+  return v2CanManage(V2.wsId) || (['attribution-skills', 'bad-case-labels'].includes(V2.admin.tab) && !!v2Role(V2.wsId));
 }
 function v2VisibleWorkspaces() {
   if (!V2.user) return [];
@@ -6564,8 +6594,8 @@ function v2SetPage(page) {
     sp.set('page', page);
     sp.set('u', V2.user.id);
     sp.set('ws', V2.wsId);
-    if (page === 'admin' && V2.admin.tab === 'attribution-skills') sp.set('tab', V2.admin.tab);
-    else if (sp.get('tab') === 'attribution-skills') sp.delete('tab');
+    if (page === 'admin' && ['attribution-skills', 'bad-case-labels'].includes(V2.admin.tab)) sp.set('tab', V2.admin.tab);
+    else if (['attribution-skills', 'bad-case-labels'].includes(sp.get('tab'))) sp.delete('tab');
     if (page !== 'session') {
       sp.delete('view'); sp.delete('sid'); sp.delete('case'); sp.delete('dtab'); sp.delete('at');
     }
@@ -7258,10 +7288,10 @@ window.__v2OpenCase = v2OpenCase;
 
 /* ── 空间管理 ── */
 function v2AdminNav() {
-  const tabs = [['spaces', '空间与额度'], ['members', '成员与角色'], ['ingest', '上报接入'], ['attribution-skills', '归因 Skill'], ['auth', '鉴权接入']];
-  const visibleTabs = v2CanManage(V2.wsId) ? tabs : tabs.filter(([key]) => key === 'attribution-skills');
+  const tabs = [['spaces', '空间与额度'], ['members', '成员与角色'], ['ingest', '上报接入'], ['bad-case-labels', 'Badcase 类型'], ['attribution-skills', '归因 Skill'], ['auth', '鉴权接入']];
+  const visibleTabs = v2CanManage(V2.wsId) ? tabs : tabs.filter(([key]) => key === 'attribution-skills' || key === 'bad-case-labels');
   const hint = v2IsAdmin() ? '全局管理员可创建空间、任命空间管理员。'
-    : v2CanManage(V2.wsId) ? '空间管理员只管理当前空间，不能创建空间。' : '当前空间为只读访问。';
+    : v2CanManage(V2.wsId) ? '空间管理员只管理当前空间，不能创建空间。' : '只读成员可以查看当前空间与成员列表。';
   return `<aside class="admin-nav card">${visibleTabs.map(([key, label]) => `<button class="${V2.admin.tab === key ? 'active' : ''}" ${V2.admin.tab === key ? 'aria-current="page"' : ''} data-v2-admin-tab="${key}">${label}</button>`).join('')}<div class="an-sep"></div><div class="an-hint">${hint}</div></aside>`;
 }
 function v2RenderAdmin() {
@@ -7271,10 +7301,10 @@ function v2RenderAdmin() {
     host.innerHTML = `<div class="page-head-v2"><div><h1>空间管理</h1><div class="ph-sub">当前角色没有管理权限。</div></div></div><div class="card panel"><div class="admin-empty"><b>没有访问权限</b>请联系空间管理员把你加入空间，或切换到有权限的演示账号。</div></div>`;
     return;
   }
-  const summary = v2IsAdmin() ? '管理所有空间、成员、额度与上报凭据；唯一全局管理员账号为林澈。'
-    : v2CanManage(V2.wsId) ? '管理当前空间的成员、额度与上报接入。' : '查看和下载当前空间的归因 Skill。';
+  const summary = v2IsAdmin() ? '管理所有空间、成员、额度与上报凭据；唯一全局管理员账号由部署配置播种。'
+    : v2CanManage(V2.wsId) ? '管理当前空间的成员、额度与上报接入；空间数据与权限相互隔离。' : '当前角色为只读，写入口已隐藏；如需调整额度、成员或凭据，请联系空间管理员。';
   host.innerHTML = `<div class="page-head-v2">
-    <div><h1>${v2IsAdmin() ? '工作空间管理' : '空间管理'}</h1><div class="ph-sub">${summary}</div></div>
+    <div><p class="admin-eyebrow">工作空间</p><h1>${v2IsAdmin() ? '工作空间管理' : '空间管理'}</h1><p class="ph-sub">${summary}</p></div>
     <div class="ph-actions">${v2Badge(v2WsName(V2.wsId), '')}${v2Badge(v2RoleLabel(V2.wsId), V2_ROLE_BADGE[v2Role(V2.wsId)] || '')}</div>
   </div>
   <div class="admin-grid">${v2AdminNav()}<section class="admin-content card" id="v2AdminContent">${v2AdminContent()}</section></div>`;
@@ -7283,6 +7313,7 @@ function v2AdminContent() {
   if (V2.admin.tab === 'spaces') return v2AdminSpaces();
   if (V2.admin.tab === 'members') return v2AdminMembers();
   if (V2.admin.tab === 'ingest') return v2AdminIngest();
+  if (V2.admin.tab === 'bad-case-labels') return v2AdminBadCaseLabels();
   if (V2.admin.tab === 'attribution-skills') return v2AdminSkills();
   return v2AdminAuth();
 }
@@ -7530,6 +7561,52 @@ function v2AdminIngest() {
       <pre class="codebox">${v2Esc(`curl -X POST '${V2_ORIGIN}${endpoint}' \\\n  -H 'Authorization: Bearer ${token}' \\\n  -H 'Content-Type: application/json' \\\n  -d '${body.replace(/\n/g, ' ')}'`)}</pre>
     </div>`;
 }
+function v2LabelState() {
+  if (!V2.admin.labels.has(V2.wsId)) {
+    const seeded = V2.wsId === 'ws-harness';
+    V2.admin.labels.set(V2.wsId, {
+      items: seeded ? ['code-review', 'tool-use'] : [],
+      draft: seeded ? ['code-review', 'tool-use'] : [],
+      assigned: seeded ? 142 : 0,
+      input: '',
+      error: '',
+      saving: false,
+    });
+  }
+  return V2.admin.labels.get(V2.wsId);
+}
+function v2ValidateLabel(value, existing) {
+  const trimmed = value.trim();
+  if (!trimmed) return 'label 不能为空。';
+  if (trimmed !== value) return 'label 首尾不能有空白。';
+  if (trimmed.length > 128) return 'label 最多 128 个字符。';
+  if (existing.includes(trimmed)) return '该 label 已经添加。';
+  return '';
+}
+function v2AdminBadCaseLabels() {
+  const state = v2LabelState();
+  const canManage = v2CanManage(V2.wsId);
+  const dirty = state.draft.join('\u0000') !== state.items.join('\u0000');
+  const chips = state.draft.map(label => `<span class="chip">${v2Esc(label)}${canManage ? `<button class="chip-remove" type="button" aria-label="移除 ${v2Esc(label)}" data-v2-label-remove="${v2Esc(label)}">×</button>` : ''}</span>`).join('');
+  const empty = state.draft.length === 0 ? '<div class="empty-chips">还没有配置 label。未配置时，公共 badcase 不会进入当前空间。</div>' : `<div class="chip-list badcase-label-chips">${chips}</div>`;
+  return `<div class="badcase-labels-tab">
+  <div class="admin-head">
+    <div><h2>Badcase 类型</h2><p class="sub">选择当前空间从公共仓库接收的 badcase 大类型；未配置时公共 badcase 不会进入当前空间。</p></div>
+    ${canManage ? `<div class="actions"><button class="btn primary" type="button" data-v2-label-save ${!dirty || state.saving ? 'disabled' : ''}>${state.saving ? '保存中…' : '保存配置'}</button></div>` : ''}
+  </div>
+  <div class="ingest-card">
+    <h3>已配置 label <span class="label-count-badge">${state.items.length} 个</span></h3>
+    ${empty}
+    ${canManage ? `<div class="add-row"><input class="label-input" id="v2LabelInput" type="text" maxlength="129" placeholder="输入 label" value="${v2Esc(state.input)}" onkeydown="if(event.key==='Enter'){event.preventDefault();document.querySelector('[data-v2-label-add]').click();}"><button class="btn" type="button" data-v2-label-add>添加</button></div>` : ''}
+    ${state.error ? `<p class="input-error">${v2Esc(state.error)}</p>` : ''}
+    <div class="rule-row">
+      <div><p class="rule-title">当前划分</p><p class="rule-count">已关联 ${state.assigned} 条</p></div>
+      ${dirty ? '<p class="dirty-hint">有未保存更改</p>' : ''}
+    </div>
+    <p class="field-help">label 区分大小写、精确匹配；同一 label 可配置给多个空间，一条公共 badcase 会同时进入所有匹配空间。</p>
+  </div>
+</div>`;
+}
 function v2AdminAuth() {
   return `<div class="admin-head"><div><h2>鉴权接入（预留）</h2><div class="sub">原型使用内置演示账号；生产登录使用用户名与密码，账号由管理员创建，不提供注册入口。</div></div><div class="actions">${v2Badge('注册未开放', 'warn')}</div></div>
     <div class="auth-list">
@@ -7710,7 +7787,7 @@ function v2SetMemberRole(uid, role) {
 
 /* ── 事件 ── */
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member]');
+  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member],[data-v2-label-add],[data-v2-label-remove],[data-v2-label-save]');
   if (!el) return;
   const ds = el.dataset;
   if (ds.v2LoginUser) { V2.loginChoice = ds.v2LoginUser; v2RenderLogin(); return; }
@@ -7756,13 +7833,52 @@ document.addEventListener('click', e => {
   if (ds.v2OverviewEvo !== undefined) { if (window.__evOpenWizard) window.__evOpenWizard(null); return; }
   if (ds.v2CopyEndpoint) { v2Copy(`${V2_ORIGIN}/api/workspaces/${ds.v2CopyEndpoint}/bad-cases`, '上报地址已复制'); return; }
   if (ds.v2AdminTab) {
+    const leaving = V2.admin.tab;
     V2.admin.tab = ds.v2AdminTab;
+    if (V2.admin.tab === 'bad-case-labels' && leaving !== 'bad-case-labels') {
+      const state = v2LabelState();
+      state.draft = [...state.items];
+      state.input = '';
+      state.error = '';
+    }
     v2WriteUrl(sp => {
-      if (V2.admin.tab === 'attribution-skills') sp.set('tab', V2.admin.tab);
-      else if (sp.get('tab') === 'attribution-skills') sp.delete('tab');
+      if (['attribution-skills', 'bad-case-labels'].includes(V2.admin.tab)) sp.set('tab', V2.admin.tab);
+      else if (['attribution-skills', 'bad-case-labels'].includes(sp.get('tab'))) sp.delete('tab');
     });
     v2RenderAdmin();
     document.querySelector(`[data-v2-admin-tab="${ds.v2AdminTab}"]`)?.focus();
+    return;
+  }
+  if (ds.v2LabelAdd !== undefined) {
+    const state = v2LabelState();
+    state.error = v2ValidateLabel(state.input, state.draft);
+    if (!state.error) {
+      state.draft = [...state.draft, state.input.trim()].sort();
+      state.input = '';
+    }
+    v2RenderAdmin();
+    document.getElementById('v2LabelInput')?.focus();
+    return;
+  }
+  if (ds.v2LabelRemove) {
+    const state = v2LabelState();
+    state.draft = state.draft.filter(label => label !== ds.v2LabelRemove);
+    state.error = '';
+    v2RenderAdmin();
+    return;
+  }
+  if (ds.v2LabelSave !== undefined) {
+    const state = v2LabelState();
+    if (state.saving || state.draft.join('\u0000') === state.items.join('\u0000')) return;
+    state.saving = true;
+    state.error = '';
+    v2RenderAdmin();
+    setTimeout(() => {
+      state.items = [...state.draft];
+      state.saving = false;
+      v2RenderAdmin();
+      v2Toast('Badcase 类型已保存，历史数据已重新划分');
+    }, 180);
     return;
   }
   if (ds.v2OpenWs) { v2SwitchWorkspace(ds.v2OpenWs); V2.admin.tab = 'spaces'; v2SetPage('overview'); return; }
@@ -7826,6 +7942,9 @@ document.addEventListener('change', e => {
   if (e.target.id === 'v2RoleSwitch') { v2LoginAs(e.target.value, { keepPage: true }); return; }
   if (e.target.matches('[data-v2-role]')) { v2SetMemberRole(e.target.dataset.v2Role, e.target.value); return; }
 });
+document.addEventListener('input', e => {
+  if (e.target.id === 'v2LabelInput') v2LabelState().input = e.target.value;
+});
 document.addEventListener('click', e => {
   if (e.target.id === 'loginBtn') { v2LoginAs(V2.loginChoice); return; }
   const bg = e.target.closest('[data-v2-close-bg]');
@@ -7862,7 +7981,7 @@ function v2Boot() {
     const demoPage = (q.get('demo') === 'workspace' || q.get('demo') === 'member') ? 'admin' : 'evo';
     const page = q.get('page') || (q.get('demo') ? demoPage : 'overview');
     V2.page = ['overview', 'session', 'evo', 'admin'].includes(page) ? page : 'overview';
-    if (V2.page === 'admin' && q.get('tab') === 'attribution-skills') V2.admin.tab = 'attribution-skills';
+    if (V2.page === 'admin' && ['attribution-skills', 'bad-case-labels'].includes(q.get('tab'))) V2.admin.tab = q.get('tab');
     if (q.has('range')) V2.overview.range = Number(q.get('range'));
     if (q.has('grain')) V2.overview.grain = q.get('grain');
     else if (V2.overview.range === 7) V2.overview.grain = 'day';

@@ -39,6 +39,7 @@
 | [13 根会话 ID 的展示与检索](13-root-session-id.md) | 错误页两处展示、会话搜索匹配 `id`、契约与性能边界 | 做 m6-18 前 |
 | [15 V1/V2 差距与前端差异](15-v1-v2-gap-analysis.md) | 当前实现相对 V1、V2 相对 V1 的功能与界面差异，以及 V2 改动地图 | 做 V2 前 |
 | [16 bad case 同步源工厂化](16-bad-case-sync-source-factory.md) | global 源线的父类 / 子类 / 工厂、`HE_BAD_CASE_SYNC_PROVIDER` 开关矩阵、已上报 bad case 的写者归属、`_sync_root` 单循环收敛，以及目录 / root 两条数据流的逐步 JSON 对照 | 做同步源工厂化实现 issue 前（#548） |
+| [17 公共 badcase 按 label 划分工作空间](17-workspace-bad-case-label-routing.md) | 公共目录单份事实、空间 label 规则、多对多关联、历史重算、统一读边界与管理页签 | 做 #582 前 |
 
 ## 系统一句话说明
 
@@ -92,7 +93,7 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 | D18 | 用户管理（2026-10-24） | **首版只提供 admin 的 `GET/POST /api/users` 和顶栏用户区；不做管理页，也不提供停用/恢复用户 API** | 管理操作先走 API/脚本；`is_active` 继续作为登录闸门字段保留，未来恢复停用管理时再补写路径。见 [05 §4.1](05-api-design.md) · [08 §4.2](08-frontend-implementation.md) |
 | D19 | 上游轨迹查询契约（2026-10-24） | **[05 §10](05-api-design.md) 是本服务定义的客户端契约，用于 `HttpApiSource` 和 mock 契约联调；不表示真实上游已承诺该契约** | 上游就绪前继续用 `trajectory_payloads` 和 fixtures；真实上游接入时以其实现为准，主版本不兼容先评审适配，不静默放宽校验。 |
 | D20 | 测试工程 ID（2026-10-31） | **验证集/测试集测试工程 ID 挂在 `evolution_targets`，创建 run 时快照到 `evolution_runs`；必填在 API/表单层，不调用外部平台校验存在性** | 历史 target/run 为空串；本切片不改 run API、详情页与评测 gateway。见 [14](14-target-project-ids.md) |
-| D21 | 多工作空间（2026-11-11，V2） | **工作空间是 bad case 的归属与权限单元**：`workspaces` / `workspace_members` / `workspace_ingest_credentials` 三表；空间 Session 集合 = 空间 bad case 涉及的根会话投影，轨迹表不加空间列；bad_cases / evolution_targets / evolution_runs / evolution_run_events 加 `workspace_id` | 全局管理员唯一（禁建 admin、可自任空间管理员）；空间角色 `space_admin/member/viewer` 服务端收口。见 [06 §3.10–3.12](06-database-design.md) · [07 §5.15](07-backend-implementation.md) |
+| D21 | 多工作空间（2026-11-11，V2；2026-11-24 修订） | **工作空间是 bad case 的可见性与权限单元**：空间直接上报与公共目录 label 分配统一投影到 `workspace_bad_cases`；同一公共 badcase 可属于多个空间，空间 Session 集合 = 关联 badcase 涉及的根会话投影，轨迹表不加空间列；evolution_targets / evolution_runs / evolution_run_events 保留 `workspace_id` | 全局管理员唯一（禁建 admin、可自任空间管理员）；空间角色 `space_admin/member/viewer` 服务端收口。见 [17](17-workspace-bad-case-label-routing.md) |
 | D22 | 鉴权接入预留（2026-11-11，V2） | **身份栈不变（JWT + refresh cookie），鉴权接入收敛为 `AuthProvider` 协议 + 会话桥 + `GET /api/auth/callback` 占位**；新增 `GET /api/auth/session` 返回 user + workspaces；不开放注册，SSO 按 sub 匹配（email 不参与匹配）不自动建号 | 接入 Cookie/SSO 只改 provider/桥/callback 三处，业务与前端契约不变。见 [07 §8.2.1](07-backend-implementation.md) · [05 §4.16](05-api-design.md) |
 | D23 | 对象绑定归因（2026-11-11，V2；2026-11-23 修订） | **每个进化对象绑定一个空间归因 Skill；Session 关联按对象类型和名称的出现，`targetRevision` 只固定原文、报告和缓存范围**；后台按绑定批次逐 Badcase 产出 V2 报告；向导按对象·版本取最新完成报告，或单次换 Skill 重算，然后聚类 | `probe_id` 继续作为 `attributionId`；报告保留来源 Skill、执行清单与绑定批次。`versionUnresolved` 仅为历史兼容字段。见 [02 对象绑定归因](02-features.md#对象绑定归因) · [05 §4.11/§4.20](05-api-design.md) · [06 §4.2.2/§5.1/§7.5](06-database-design.md) · [07 §5.13–5.14](07-backend-implementation.md) |
 | D24 | 多 AI agent 轨迹（2026-11-16，V2；2026-11-20 修订） | **`runtime_key`（AI agent 类型）与 `source_type`（接入通道）分离，`runtime_key` 是身份/存储键；parser 由 `can_parse` 按轨迹选型并由 `TraceParserFactory.for_trace` 唯一实例化；parser 以会话为生命周期，构造时接收同 root 全部 payload；`parser_version` 按 runtime 解释**。新增 runtime 只新增子类并实现 `can_parse`/record/meta/会话链接；未知/歧义选型 fail fast，不回退 Claude | 公共 session 编排不因新增 runtime 修改；payload、source cursor、Session 和 API 都带 `runtime_key`。见 [07 §2.6](07-backend-implementation.md) · [06 §3.0.1](06-database-design.md) |

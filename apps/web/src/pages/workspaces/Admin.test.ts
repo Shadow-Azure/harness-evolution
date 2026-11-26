@@ -164,6 +164,9 @@ function installWorkspaceAdminHandlers(): void {
     http.get(`${base}/credentials`, () =>
       HttpResponse.json({ items: credentials }),
     ),
+    http.get(`${base}/bad-case-labels`, () =>
+      HttpResponse.json({ items: [], assignedBadCaseCount: 0 }),
+    ),
     http.get(`${base}/attribution-skill-packages`, () =>
       HttpResponse.json(skillPackages),
     ),
@@ -222,12 +225,12 @@ afterEach(() => {
 afterAll(() => server.close());
 
 describe("workspace admin page", () => {
-  it("renders all five tabs and the global workspace table for the global administrator", async () => {
+  it("renders all six tabs and the global workspace table for the global administrator", async () => {
     installWorkspaceAdminHandlers();
     const wrapper = await mountPage("global_admin");
 
     expect(wrapper.get("h1").text()).toBe("工作空间管理");
-    expect(wrapper.findAll(".admin-nav button")).toHaveLength(5);
+    expect(wrapper.findAll(".admin-nav button")).toHaveLength(6);
     expect(wrapper.get("[data-testid='admin-tab-spaces']").classes("active")).toBe(
       true,
     );
@@ -424,6 +427,19 @@ describe("workspace admin page", () => {
     expect(wrapper.find("[data-testid='download-skill-skill-custom']").exists()).toBe(
       true,
     );
+  });
+
+  it("places the Badcase 类型 tab between 上报接入 and 归因 Skill", async () => {
+    installWorkspaceAdminHandlers();
+    const wrapper = await mountPage("global_admin");
+
+    const labels = wrapper
+      .findAll(".admin-nav button")
+      .map((button) => button.text());
+    const index = labels.indexOf("Badcase 类型");
+    expect(index).toBeGreaterThan(0);
+    expect(labels[index - 1]).toBe("上报接入");
+    expect(labels[index + 1]).toBe("归因 Skill");
   });
 
   it("renders the read-only auth contract and switches tabs through the URL", async () => {

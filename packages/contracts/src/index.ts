@@ -464,6 +464,8 @@ export type {
   SessionWorkspace,
   Workspace,
   WorkspaceAdmin,
+  WorkspaceBadCaseLabelConfiguration,
+  WorkspaceBadCaseLabelRequest,
   WorkspaceCreateRequest,
   WorkspaceCredential,
   WorkspaceCredentialCreated,

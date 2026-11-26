@@ -10,6 +10,7 @@ from typing import Any, cast
 from sqlalchemy import select
 
 from app.db.base import Database
+from app.db.crud.read_scope import scoped_case_ids
 from app.db.models.domain import (
     agents,
     bad_case_analysis,
@@ -171,7 +172,9 @@ class ProbeQueryRepository:
             probe_reports.c.probe_type == query.target_type,
         ]
         if query.workspace_ids is not None:
-            conditions.append(bad_cases.c.workspace_id.in_(query.workspace_ids))
+            conditions.append(
+                bad_cases.c.bad_case_id.in_(scoped_case_ids(query.workspace_ids)),
+            )
         statement = (
             self._hit_selection()
             .where(*conditions)

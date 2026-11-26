@@ -20,6 +20,7 @@ from app.db.models.domain import (
     bad_cases,
     source_records,
     trajectory_payloads,
+    workspace_bad_cases,
 )
 from app.db.models.workspace import workspaces
 from app.main import create_app
@@ -184,6 +185,15 @@ async def seed_workspace(
                 bad_case_description="Synthetic knowledge trigger replay case.",
                 created_at=now,
                 updated_at=now,
+            ),
+        )
+        await session.execute(
+            workspace_bad_cases.insert().values(
+                workspace_id=workspace_id,
+                bad_case_id=bad_case_id,
+                assignment_source="legacy_owner",
+                label=None,
+                assigned_at=now,
             ),
         )
 

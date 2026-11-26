@@ -9,7 +9,7 @@ milestone: bugfix
 depends:
   - bugfix-32
 priority: P2
-status: ready
+status: done
 scope:
   - apps/api/app/config.py
   - apps/api/app/main.py

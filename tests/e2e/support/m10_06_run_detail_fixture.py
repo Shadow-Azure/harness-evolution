@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import delete, func, insert, select
 
 from app.config import Settings
+from app.db.crud.fixtures import backfill_legacy_associations
 from app.db.factory import create_database
 from app.db.models.domain import (
     agents,
@@ -1009,6 +1010,7 @@ async def main() -> None:
                 },
             ]
             await session.execute(insert(evolution_run_events), event_rows)
+        await backfill_legacy_associations(database)
     finally:
         await database.dispose()
 

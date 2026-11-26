@@ -169,6 +169,9 @@ async def test_status_reports_catalog_and_analysis_progress(
     assert catalog["lastBadCaseId"] == 2
     assert catalog["status"] == "idle"
     assert catalog["lastError"] is None
+    assert catalog["assigned"] == 0
+    assert catalog["unassigned"] == 0
+    assert catalog["invalidLabel"] == 2
     assert payload["badCaseAnalysis"] == {
         "total": 2,
         "analyzed": 0,
@@ -224,6 +227,9 @@ async def test_status_reports_unavailable_without_catalog_source(
         "status": "unavailable",
         "lastRunAt": None,
         "lastError": None,
+        "assigned": 0,
+        "unassigned": 0,
+        "invalidLabel": 0,
     }
     assert payload["badCaseAnalysis"] == {
         "total": 0,
@@ -266,4 +272,7 @@ async def test_empty_catalog_finishes_without_error(tmp_path: Path) -> None:
     assert catalog["unsynced"] == 0
     assert catalog["lastBadCaseId"] == 0
     assert catalog["lastError"] is None
+    assert catalog["assigned"] == 0
+    assert catalog["unassigned"] == 0
+    assert catalog["invalidLabel"] == 0
     assert payload["badCaseAnalysis"]["total"] == 0

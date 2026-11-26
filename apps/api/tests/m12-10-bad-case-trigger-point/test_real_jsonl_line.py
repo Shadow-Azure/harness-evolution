@@ -8,6 +8,7 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.config import DatabaseDialect, Settings
+from app.db.crud.fixtures import backfill_legacy_associations
 from app.db.crud.overview import OverviewRepository
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
@@ -90,6 +91,7 @@ async def test_overview_projects_a_real_jsonl_trigger_line(tmp_path: Path) -> No
                     updated_at=today,
                 ),
             )
+        await backfill_legacy_associations(database)
 
         rows = await OverviewRepository(database).page_cases(
             workspace_id=DEFAULT_WORKSPACE_ID,

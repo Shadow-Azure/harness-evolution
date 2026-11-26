@@ -1034,6 +1034,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{wid}/bad-case-labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Bad Case Labels
+         * @description Return the public badcase labels accepted by this workspace.
+         */
+        get: operations["get_bad_case_labels_api_workspaces__wid__bad_case_labels_get"];
+        /**
+         * Replace Bad Case Labels
+         * @description Replace label rules and historical catalog assignments atomically.
+         */
+        put: operations["replace_bad_case_labels_api_workspaces__wid__bad_case_labels_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{wid}/bad-cases": {
         parameters: {
             query?: never;
@@ -2914,6 +2938,10 @@ export interface components {
          * @description Read-only catalog-sync counters for the top-nav popover.
          */
         BadCaseCatalogSyncSummary: {
+            /** Assigned */
+            assigned: number;
+            /** Invalidlabel */
+            invalidLabel: number;
             /** Lastbadcaseid */
             lastBadCaseId: number;
             /** Lasterror */
@@ -2927,6 +2955,8 @@ export interface components {
             status: "unavailable" | "idle" | "queued" | "running" | "failed";
             /** Synced */
             synced: number;
+            /** Unassigned */
+            unassigned: number;
             /** Unsynced */
             unsynced: number;
         };
@@ -6306,6 +6336,24 @@ export interface components {
             displayName: string;
             /** Id */
             id: string;
+        };
+        /**
+         * WorkspaceBadCaseLabelConfiguration
+         * @description One label rule set plus its current distinct assignment count.
+         */
+        WorkspaceBadCaseLabelConfiguration: {
+            /** Assignedbadcasecount */
+            assignedBadCaseCount: number;
+            /** Items */
+            items: string[];
+        };
+        /**
+         * WorkspaceBadCaseLabelRequest
+         * @description Complete replacement set for one workspace's accepted public labels.
+         */
+        WorkspaceBadCaseLabelRequest: {
+            /** Items */
+            items: string[];
         };
         /**
          * WorkspaceCreateRequest
@@ -9790,6 +9838,117 @@ export interface operations {
                 };
             };
             /** @description ZIP or SKILL.md is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_bad_case_labels_api_workspaces__wid__bad_case_labels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceBadCaseLabelConfiguration"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_bad_case_labels_api_workspaces__wid__bad_case_labels_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceBadCaseLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceBadCaseLabelConfiguration"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Label set is invalid */
             422: {
                 headers: {
                     [name: string]: unknown;

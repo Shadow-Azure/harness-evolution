@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Column, Table, select, update
+from sqlalchemy import Column, Table, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import ServicePhase, Settings
@@ -148,6 +148,43 @@ async def _source_record_id(
         )
     ).scalar_one()
     return int(value)
+
+
+async def backfill_legacy_associations(database: Database) -> None:
+    """Mirror migration 0034 for rows seeded with a legacy single workspace.
+
+    The corpus (and other fixture seeds) write ``bad_cases.workspace_id``
+    directly, but workspace-scoped reads derive visibility from
+    ``workspace_bad_cases``. Reported rows become ``direct_ingest``; catalog
+    rows stay ``legacy_owner`` until a label rule rebuilds them. The
+    ``NOT EXISTS`` guard keeps repeated calls idempotent so a fixture may
+    backfill after its own seed as well.
+    """
+    async with database.transaction() as session:
+        await session.execute(
+            text(
+                """
+                INSERT INTO workspace_bad_cases (
+                    workspace_id, bad_case_id, assignment_source, label, assigned_at
+                )
+                SELECT bc.workspace_id,
+                       bc.bad_case_id,
+                       CASE WHEN bc.origin = 'report'
+                            THEN 'direct_ingest' ELSE 'legacy_owner' END,
+                       NULL,
+                       CURRENT_TIMESTAMP
+                FROM bad_cases bc
+                WHERE bc.workspace_id IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM workspace_bad_cases wbc
+                    WHERE wbc.workspace_id = bc.workspace_id
+                      AND wbc.bad_case_id = bc.bad_case_id
+                      AND wbc.assignment_source = CASE WHEN bc.origin = 'report'
+                            THEN 'direct_ingest' ELSE 'legacy_owner' END
+                  )
+                """,
+            ),
+        )
 
 
 async def _seed_corpus(database: Database, corpus: FixtureCorpus) -> CorpusSeedResult:
@@ -475,6 +512,7 @@ async def _seed_corpus(database: Database, corpus: FixtureCorpus) -> CorpusSeedR
             inserted += target_writes[0]
             changed += target_writes[1]
 
+    await backfill_legacy_associations(database)
     return CorpusSeedResult(
         inserted=inserted,
         changed=changed,

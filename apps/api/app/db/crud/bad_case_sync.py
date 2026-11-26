@@ -17,6 +17,7 @@ from sqlalchemy.sql.selectable import Subquery
 
 from app.db.base import Database
 from app.db.crud.integrity import is_unique_violation
+from app.db.crud.read_scope import scoped_case_ids
 from app.db.models.domain import bad_case_root_sync, bad_cases, session_families
 from app.utils.time import as_shanghai, now_shanghai
 
@@ -170,7 +171,7 @@ def _distinct_roots(workspace_ids: tuple[str, ...] | None = None) -> Subquery:
     """Return distinct bad-case root ids as a subquery."""
     query = select(bad_cases.c.bad_case_session_id.label("root_session_id"))
     if workspace_ids is not None:
-        query = query.where(bad_cases.c.workspace_id.in_(workspace_ids))
+        query = query.where(bad_cases.c.bad_case_id.in_(scoped_case_ids(workspace_ids)))
     return query.distinct().subquery()
 
 
@@ -406,7 +407,9 @@ class BadCaseRootSyncRepository:
             .limit(1)
         )
         if workspace_ids is not None:
-            statement = statement.where(bad_cases.c.workspace_id.in_(workspace_ids))
+            statement = statement.where(
+                bad_cases.c.bad_case_id.in_(scoped_case_ids(workspace_ids)),
+            )
         try:
             async with self._database.session() as session:
                 return (await session.execute(statement)).scalar_one_or_none() is not None

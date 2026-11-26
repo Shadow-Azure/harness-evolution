@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
 import pytest_asyncio
 from pydantic import SecretStr
-from sqlalchemy import select
+from sqlalchemy import insert, select, text
+from sqlalchemy.exc import IntegrityError
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
@@ -20,7 +21,13 @@ from app.db.crud.bad_case_catalog_sync import (
 from app.db.crud.bad_cases import BadCaseRepository
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
-from app.db.models.domain import bad_case_analysis, bad_cases
+from app.db.models.domain import (
+    bad_case_analysis,
+    bad_cases,
+    workspace_bad_case_labels,
+    workspace_bad_cases,
+)
+from app.db.models.workspace import workspaces
 from app.utils.time import now_shanghai
 
 
@@ -46,6 +53,7 @@ def _case(
     *,
     title: str = "case title",
     meta_data: Any = None,
+    catalog_label: str | None = None,
 ) -> CatalogCaseRow:
     now = now_shanghai()
     return CatalogCaseRow(
@@ -59,6 +67,7 @@ def _case(
         title=title,
         description="description",
         meta_data=meta_data,
+        catalog_label=catalog_label,
         source="test",
         created_at=now,
         updated_at=now,
@@ -243,3 +252,158 @@ async def test_analysis_progress_counts_statuses(database: Database) -> None:
     assert progress.pending == 2
     assert progress.issue == 1
     assert progress.non_issue == 1
+
+
+@pytest.mark.asyncio
+async def test_repeated_page_replaces_stale_catalog_assignment_without_duplicates(
+    database: Database,
+) -> None:
+    """A retried case converges from its previous label to one exact assignment."""
+    repository = BadCaseCatalogSyncRepository(database)
+    now = now_shanghai()
+    await repository.initialize(now)
+    async with database.transaction() as session:
+        await session.execute(
+            insert(workspaces).values(
+                id="ws-route",
+                name="Route",
+                mark="R",
+                quota=10,
+                status="active",
+                created_at=now,
+                updated_at=now,
+            ),
+        )
+        await session.execute(
+            insert(workspace_bad_case_labels),
+            [
+                {
+                    "workspace_id": "ws-route",
+                    "label": "old",
+                    "created_at": now,
+                    "updated_at": now,
+                },
+                {
+                    "workspace_id": "ws-route",
+                    "label": "new",
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            ],
+        )
+
+    await repository.commit_page(
+        [_case(1, catalog_label="old")],
+        last_bad_case_id=1,
+        pending_count=0,
+        now=now,
+    )
+    await repository.commit_page(
+        [_case(1, catalog_label="new")],
+        last_bad_case_id=1,
+        pending_count=0,
+        now=now,
+    )
+
+    async with database.session() as session:
+        assignments = (
+            await session.execute(
+                select(
+                    workspace_bad_cases.c.bad_case_id,
+                    workspace_bad_cases.c.label,
+                ),
+            )
+        ).all()
+    assert assignments == [("1", "new")]
+
+
+@pytest.mark.asyncio
+async def test_assignment_failure_rolls_back_fact_and_cursor(database: Database) -> None:
+    """Fact, assignment, counters, and cursor form one page transaction."""
+    repository = BadCaseCatalogSyncRepository(database)
+    now = now_shanghai()
+    await repository.initialize(now)
+    async with database.transaction() as session:
+        await session.execute(
+            insert(workspaces).values(
+                id="ws-reject",
+                name="Reject",
+                mark="R",
+                quota=10,
+                status="active",
+                created_at=now,
+                updated_at=now,
+            ),
+        )
+        await session.execute(
+            insert(workspace_bad_case_labels).values(
+                workspace_id="ws-reject",
+                label="review",
+                created_at=now,
+                updated_at=now,
+            ),
+        )
+        await session.execute(
+            text(
+                """
+                CREATE TRIGGER reject_sync_assignment
+                BEFORE INSERT ON workspace_bad_cases
+                WHEN NEW.assignment_source = 'catalog_label'
+                BEGIN
+                  SELECT RAISE(ABORT, 'assignment failed');
+                END
+                """,
+            ),
+        )
+
+    with pytest.raises(IntegrityError):
+        await repository.commit_page(
+            [_case(8, catalog_label="review")],
+            last_bad_case_id=8,
+            pending_count=0,
+            now=now,
+        )
+
+    state = await repository.get_state()
+    async with database.session() as session:
+        facts: Sequence[str] = (
+            (await session.execute(select(bad_cases.c.bad_case_id))).scalars().all()
+        )
+    assert state is not None
+    assert state.last_bad_case_id == 0
+    assert facts == []
+
+
+@pytest.mark.asyncio
+async def test_catalog_status_counts_exclude_direct_ingest_facts(database: Database) -> None:
+    """Label health counters describe public catalog facts, not direct uploads."""
+    repository = BadCaseCatalogSyncRepository(database)
+    now = now_shanghai()
+    await repository.initialize(now)
+    async with database.transaction() as session:
+        await session.execute(
+            insert(bad_cases).values(
+                bad_case_id="direct-only",
+                workspace_id="ws-default",
+                bad_case_session_id="session-direct",
+                bad_case_type="self",
+                object_name="direct",
+                object_type="skill",
+                title="Direct",
+                bad_case_description="Direct ingest must not affect catalog health.",
+                catalog_label=None,
+                created_at=now,
+                updated_at=now,
+            ),
+        )
+
+    await repository.commit_page(
+        [_case(9, catalog_label=None)],
+        last_bad_case_id=9,
+        pending_count=0,
+        now=now,
+    )
+
+    state = await repository.get_state()
+    assert state is not None
+    assert state.invalid_label_count == 1

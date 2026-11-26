@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from sqlalchemy import func, select
 
 from app.db.base import Database
-from app.db.models.domain import bad_cases
+from app.db.models.domain import bad_cases, workspace_bad_cases
 from app.utils.time import as_shanghai
 from tests.workspaces.helpers import (
     access_token,
@@ -116,9 +116,9 @@ async def count_cases(database: Database, workspace_id: str) -> int:
         return int(
             (
                 await session.execute(
-                    select(func.count())
-                    .select_from(bad_cases)
-                    .where(bad_cases.c.workspace_id == workspace_id),
+                    select(func.count(func.distinct(workspace_bad_cases.c.bad_case_id))).where(
+                        workspace_bad_cases.c.workspace_id == workspace_id,
+                    ),
                 )
             ).scalar_one(),
         )

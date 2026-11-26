@@ -14,6 +14,7 @@ from sqlalchemy import and_, func, or_, select
 
 from app.db.base import Database
 from app.db.crud.evolution_targets import EvolutionObjectType
+from app.db.crud.read_scope import WorkspaceReadScope
 from app.db.models.domain import (
     agent_events,
     agents,
@@ -132,7 +133,7 @@ class PotentialRepository:
                 bad_cases.c.created_at,
             )
             .where(
-                bad_cases.c.workspace_id == workspace_id,
+                WorkspaceReadScope.for_workspace(workspace_id).case_condition(),
                 bad_cases.c.created_at >= window_start,
                 bad_cases.c.created_at < window_end,
                 bad_cases.c.bad_case_type.in_(("self", "discovery")),

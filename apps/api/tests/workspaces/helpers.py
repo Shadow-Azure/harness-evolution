@@ -8,7 +8,10 @@ from sqlalchemy import insert
 
 from app.api.deps import require_workspace_role
 from app.db.base import Database
-from app.db.models.domain import bad_cases
+from app.db.crud.fixtures import (
+    backfill_legacy_associations as fixtures_backfill_legacy_associations,
+)
+from app.db.models.domain import bad_cases, workspace_bad_cases
 from app.db.models.users import users
 from app.db.models.workspace import workspace_members, workspaces
 from app.service.workspaces.service import WorkspaceAccess
@@ -113,6 +116,45 @@ async def insert_bad_case(
                 updated_at=now,
             ),
         )
+        await session.execute(
+            insert(workspace_bad_cases).values(
+                workspace_id=workspace_id,
+                bad_case_id=bad_case_id,
+                assignment_source="legacy_owner",
+                label=None,
+                assigned_at=now,
+            ),
+        )
+
+
+async def associate_case(
+    database: Database,
+    *,
+    workspace_id: str,
+    bad_case_id: str,
+    source: str = "legacy_owner",
+    label: str | None = None,
+) -> None:
+    """Insert one workspace→bad-case association for scoped read tests."""
+    async with database.transaction() as session:
+        await session.execute(
+            insert(workspace_bad_cases).values(
+                workspace_id=workspace_id,
+                bad_case_id=bad_case_id,
+                assignment_source=source,
+                label=label,
+                assigned_at=now_shanghai(),
+            ),
+        )
+
+
+async def backfill_legacy_associations(database: Database) -> None:
+    """Mirror migration 0034 for fixtures that seed ownership without associations.
+
+    Delegates to the shared corpus/fixture helper so the migration semantics
+    live in one place; the ``NOT EXISTS`` guard keeps repeated calls idempotent.
+    """
+    await fixtures_backfill_legacy_associations(database)
 
 
 def access_token(
