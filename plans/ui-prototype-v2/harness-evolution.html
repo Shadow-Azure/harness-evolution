@@ -1553,6 +1553,599 @@
   @media (max-width: 720px) { .evo-app .preview-stats { grid-template-columns: 1fr 1fr; } }
 </style>
 <link rel="stylesheet" href="https://unpkg.com/@xyflow/react@12.12.0/dist/style.css">
+<style id="candidate-rules-styles">
+.cr-card-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e8edf5;
+  color: #515d70;
+  font-size: 11px;
+}
+.cr-card-entry button { color: #215db5; white-space: nowrap; }
+.cr-history-count { display: block; margin-top: 3px; color: #70529b; }
+.cr-dialog {
+  --cr-ink: #1f2937;
+  --cr-dim: #566479;
+  --cr-border: #e1e7f0;
+  --cr-blue: #245fba;
+  --cr-blue-soft: #eff5ff;
+  width: min(1080px, calc(100% - 36px));
+  max-width: none;
+  height: min(788px, calc(100dvh - 36px));
+  max-height: none;
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--cr-border);
+  border-radius: 16px;
+  color: var(--cr-ink);
+  background: white;
+  box-shadow: 0 24px 84px #182a4d3d;
+}
+.cr-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.cr-dialog::backdrop { background: #1a294d61; }
+.cr-dialog h2, .cr-dialog h3, .cr-dialog p { margin: 0; }
+.cr-dialog h3 { font-size: 14px; }
+.cr-dialog b, .cr-dialog strong { font-weight: 650; }
+.cr-header, .cr-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 24px;
+  background: white;
+}
+.cr-header { border-bottom: 1px solid var(--cr-border); }
+.cr-header h2 { margin: 4px 0 6px; font-size: 23px; letter-spacing: -.025em; line-height: 1.2; }
+.cr-header p { color: var(--cr-dim); font-size: 12px; }
+.cr-header .cr-context { color: var(--cr-blue); font-size: 11px; letter-spacing: .015em; }
+.cr-context span { color: #74829a; padding: 0 4px; }
+.cr-header .cr-close { min-width: 32px; padding: 2px 8px; font-size: 19px; line-height: 23px; }
+.cr-body { display: grid; grid-template-columns: minmax(325px, 2fr) minmax(0, 3fr); min-height: 0; }
+.cr-editor, .cr-preview { min-width: 0; overflow: auto; padding: 18px 24px; scrollbar-width: thin; }
+.cr-preview { border-left: 1px solid var(--cr-border); background: #f7f9fd; }
+.cr-dialog fieldset { min-width: 0; }
+.cr-dialog input:is([type=radio], [type=checkbox]) { accent-color: var(--cr-blue); }
+.cr-modes { margin: 10px 0 17px; padding: 0; border: 0; display: grid; gap: 6px; }
+.cr-modes label { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid var(--cr-border); border-radius: 7px; cursor: pointer; }
+.cr-modes label:has(:checked) { background: var(--cr-blue-soft); border-color: #9cbcf4; }
+.cr-modes input { margin-top: 3px; }
+.cr-modes b { display: block; font-size: 12px; }
+.cr-modes small { display: block; color: var(--cr-dim); font-size: 11px; line-height: 1.5; margin-top: 1px; }
+.cr-section-head, .cr-preview-title, .cr-track-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cr-dialog .cr-help { margin-top: 4px; color: var(--cr-dim); font-size: 11.5px; line-height: 1.6; }
+.cr-rule { position: relative; margin: 9px 0; padding: 9px 10px 11px; border: 1px solid var(--cr-border); border-radius: 8px; }
+.cr-rule legend { padding: 0 5px; font-size: 11px; color: var(--cr-blue); font-weight: 650; }
+.cr-rule .cr-remove { position: absolute; top: -13px; right: 10px; padding: 1px 6px; background: white; }
+.cr-text { font: inherit; color: var(--cr-blue); border: 0; padding: 0; background: none; cursor: pointer; }
+.cr-text:hover { text-decoration: underline; }
+.cr-example { margin: 10px 0 3px; font-size: 12px; text-align: left; }
+.cr-fields { display: grid; gap: 8px; grid-template-columns: 88px minmax(0, 1fr); }
+.cr-rule label { display: block; font-size: 11.5px; color: var(--cr-dim); }
+.cr-rule select, .cr-rule input[data-cr-field=name] {
+  display: block; width: 100%; min-width: 0; height: 31px; margin-top: 3px; padding: 3px 8px;
+  border: 1px solid #d4deec; border-radius: 6px; background: white; color: var(--cr-ink); font: inherit;
+}
+.cr-types { display: flex; align-items: center; gap: 9px; margin: 9px 0; font-size: 11.5px; color: var(--cr-dim); }
+.cr-types label { display: inline-flex; align-items: center; gap: 3px; font-family: var(--mono, monospace); }
+.cr-dialog .cr-empty-editor { margin: 8px 0; padding: 12px; border: 1px dashed #d4deec; border-radius: 8px; color: var(--cr-dim); font-size: 12px; }
+.cr-stats { display: grid; grid-template-columns: repeat(3, 1fr); margin: 10px 0; background: white; border: 1px solid var(--cr-border); border-radius: 8px; }
+.cr-stats div { padding: 8px 12px; }
+.cr-stats div + div { border-left: 1px solid var(--cr-border); }
+.cr-stats b { display: block; font-size: 20px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.cr-stats span { color: var(--cr-dim); font-size: 11px; }
+.cr-stats .added { color: #0f7151; }
+.cr-stats .removed { color: #a3461e; }
+.cr-tabs { display: flex; margin-bottom: 6px; gap: 13px; border-bottom: 1px solid var(--cr-border); }
+.cr-tabs button { padding: 6px 2px; border: 0; border-bottom: 2px solid transparent; background: transparent; font: inherit; font-size: 12px; color: var(--cr-dim); cursor: pointer; }
+.cr-tabs button[aria-pressed=true] { border-bottom-color: var(--cr-blue); color: var(--cr-blue); font-weight: 650; }
+.cr-dialog .cr-batch-note { margin: 6px 0 9px; color: var(--cr-dim); font-size: 11px; }
+.cr-cases { display: grid; gap: 5px; }
+.cr-case { border: 1px solid var(--cr-border); border-radius: 7px; background: white; overflow: hidden; }
+.cr-case summary { display: grid; grid-template-columns: 9px auto minmax(0, 1fr) auto; align-items: center; gap: 7px; min-height: 34px; padding: 5px 9px; font-size: 11.5px; cursor: pointer; list-style: none; }
+.cr-case summary::-webkit-details-marker { display: none; }
+.cr-case[open] summary { background: #f0f5fc; }
+.cr-case-arrow { font-size: 17px; color: #536b8d; line-height: 1; }
+.cr-case[open] .cr-case-arrow { transform: rotate(90deg); }
+.cr-case-title { overflow-wrap: anywhere; }
+.cr-id { color: var(--cr-blue); font-family: var(--mono, monospace); font-size: 10.5px; }
+.cr-status { display: inline-block; padding: 2px 6px; border-radius: 5px; white-space: nowrap; background: #eef2f7; color: #4c5c71; font-size: 10px; }
+.cr-status.hit { background: #eaf2ff; color: #205baa; }
+.cr-status.added { background: #e4f5ec; color: #0f7151; }
+.cr-status.removed { background: #fbeee5; color: #a3461e; }
+.cr-status.history { background: #f2eafa; color: #6d4b95; }
+.cr-case-detail { padding: 7px 10px 8px; }
+.cr-track-head, .cr-case-detail p { color: var(--cr-dim); font-size: 11px; line-height: 1.5; }
+.cr-track { display: flex; align-items: center; gap: 5px; margin: 6px 0; }
+.cr-node { display: grid; place-items: center; min-width: 34px; padding: 4px 6px; text-align: center; background: #f4f6fa; border: 1px solid #e1e7f0; color: #4f6076; border-radius: 5px; }
+.cr-node b { font: 650 12px var(--mono, monospace); }
+.cr-node small { font-size: 9px; white-space: nowrap; }
+.cr-node.anchor { background: #fff1e6; border-color: #f0caad; color: #87441c; }
+.cr-node.witness { background: #eaf2ff; border-color: #a9c4ee; color: #2157a0; }
+.cr-node.inferred { border-style: dashed; }
+.cr-edge { font-size: 11px; color: #6881a4; }
+.cr-footer { align-items: center; border-top: 1px solid var(--cr-border); padding-block: 12px; }
+.cr-footer strong { display: block; font-size: 11px; }
+.cr-footer span { color: var(--cr-dim); font-size: 11px; }
+.cr-footer .cr-message { color: #a3461e; font-size: 11px; }
+.cr-footer-buttons { display: flex; flex-shrink: 0; gap: 7px; }
+@media (max-width: 720px) {
+  .cr-dialog { width: calc(100% - 16px); height: calc(100dvh - 16px); border-radius: 10px; }
+  .cr-header, .cr-footer, .cr-editor, .cr-preview { padding-inline: 13px; }
+  .cr-header h2 { font-size: 19px; }
+  .cr-body { display: block; overflow: auto; }
+  .cr-editor, .cr-preview { overflow: visible; }
+  .cr-preview { border-left: 0; border-top: 1px solid var(--cr-border); }
+}
+@media (max-width: 400px) {
+  .cr-footer { flex-wrap: wrap; gap: 5px; }
+  .cr-footer-buttons { margin-left: auto; }
+}
+
+.cr-steps {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+  padding: 0;
+  margin: 0 0 14px;
+  list-style: none;
+}
+.cr-steps li { display: inline-flex; align-items: center; gap: 5px; color: #53637a; font-size: 11px; }
+.cr-steps li + li::before { content: '→'; margin-right: 6px; color: #687b98; }
+.cr-steps li > span { display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: #edf1f7; }
+.cr-steps li[aria-current=step] { color: #245fba; font-weight: 650; }
+.cr-steps li[aria-current=step] > span { background: #e1ecff; color: #245fba; }
+.cr-header .cr-steps { margin: 11px 0 0; }
+</style>
+<script id="candidate-rules-script">
+/* Interactive fixture for the candidate-rule design review. */
+const v2CandidateRules = (() => {
+  const modes = {
+    default: ['默认规则', '纳入对象自身的 self，以及触发点在目标之后的 case。'],
+    combined: ['默认规则 + 自定义来源', '在默认候选基础上，加入命中来源规则的 case。'],
+    custom: ['仅自定义来源', '候选须命中至少一条来源规则。'],
+  };
+  const relations = {
+    any: '同一 Session 内执行过目标',
+    before: '目标在 case 锚点之前执行',
+    after: '目标在 case 锚点之后执行',
+  };
+  const traces = [
+    { id: 'session-repeat', title: '交错执行', date: '2026-11-09', events: ['A1', 'B1', 'A2', 'B2'] },
+    { id: 'session-handoff', title: 'A 上报后首次执行 C', date: '2026-11-08', events: ['A1', 'C1', 'R1'] },
+    { id: 'session-return', title: 'C 在 A 前后均执行', date: '2026-11-07', events: ['C1', 'A1', 'C2'] },
+    { id: 'session-post', title: '缺少真实上报锚点', date: '2026-11-06', events: ['A1', 'C1'] },
+  ];
+  const samples = [
+    { id: 'BC-1041', trace: 0, name: 'A', kind: 'skill', type: 'self', anchor: 'A1', title: 'A1 自身上报' },
+    { id: 'BC-1042', trace: 0, name: 'B', kind: 'skill', type: 'discovery', anchor: 'B1', title: 'B1 发现上游问题' },
+    { id: 'BC-1043', trace: 0, name: 'A', kind: 'skill', type: 'self', anchor: 'A2', title: 'A2 自身上报' },
+    { id: 'BC-1044', trace: 0, name: 'B', kind: 'skill', type: 'self', anchor: 'B2', title: 'B2 自身上报', history: 'A' },
+    { id: 'BC-1051', trace: 1, name: 'A', kind: 'skill', type: 'self', anchor: 'A1', title: 'A 上报后交给 C' },
+    { id: 'BC-1052', trace: 1, name: 'ReviewBot', kind: 'agent', type: 'discovery', anchor: 'R1', title: 'ReviewBot 发现上游问题' },
+    { id: 'BC-1061', trace: 2, name: 'A', kind: 'skill', type: 'discovery', anchor: 'A1', title: 'A 发现问题，随后再次执行 C' },
+    { id: 'BC-1071', trace: 3, name: 'A', kind: 'skill', type: 'discovery', anchor: null, title: 'A 的后处理上报' },
+  ];
+  const defaultPolicy = { mode: 'default', rules: [] };
+  const demoWorkspaces = new Set();
+  let review;
+  let dialog;
+  const esc = value => String(value).replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[char]);
+  const getPolicy = target => target.candidatePolicy || defaultPolicy;
+  const label = policy => policy.mode === 'default'
+    ? modes.default[0]
+    : modes[policy.mode][0] + ' · ' + policy.rules.length + ' 条';
+
+  function seed(workspace) {
+    demoWorkspaces.add(workspace);
+    EV_TARGETS[workspace] = ['A', 'C'].map(name => ({
+      id: 'candidate-demo-' + name, kind: 'skill', objectName: name, defaultRef: 'v1.0.0',
+      enabled: true, candidateDemo: true, attributionSkill: 'attribute-badcases',
+    }));
+  }
+
+  function executions(target, trace) {
+    return trace.events
+      .map((event, index) => ({ event, index }))
+      .filter(item => target.kind === 'skill' && item.event.slice(0, -1) === target.objectName);
+  }
+
+  function assess(targetName, policy, sample, entries, anchor, postProcess = false) {
+    const hits = [];
+    let unknown = false;
+    if (!entries.length) return { hits, unknown, present: false };
+    if (policy.mode !== 'custom') {
+      if (sample.type === 'self' && sample.name === targetName) {
+        hits.push({ label: '默认 · 同名 self', event: null });
+      }
+      if (postProcess || (anchor !== -1 && entries[0].index < anchor)) {
+        hits.push({ label: postProcess ? '默认 · 后处理' : '默认 · 目标先执行', event: entries[0].event });
+      }
+    }
+    if (policy.mode !== 'default') {
+      policy.rules.forEach((rule, index) => {
+        if (rule.kind !== sample.kind || rule.name.trim() !== sample.name || !rule.types.includes(sample.type)) return;
+        if (anchor === -1 && rule.relation !== 'any') {
+          unknown = true;
+          return;
+        }
+        const match = entries.find(entry =>
+          rule.relation === 'any' || (rule.relation === 'before' ? entry.index < anchor : entry.index > anchor));
+        if (match) hits.push({ label: '来源 ' + (index + 1) + ' · ' + relations[rule.relation], event: match.event });
+      });
+    }
+    return { hits, unknown, present: true };
+  }
+
+  function caseKind(item) {
+    return item.objectType || (item.target?.startsWith('subagent ·') ? 'agent' : 'skill');
+  }
+
+  function assessPrototypeCase(run, item, line) {
+    const anchor = item.triggerLine > 0 ? item.triggerLine : -1;
+    const sample = { name: item.objectName, kind: caseKind(item), type: item.type };
+    return assess(run.target.name, run.candidatePolicy, sample, [{ event: 'L' + line, index: line }], anchor);
+  }
+
+  function rowsFor(target, policy, from, to) {
+    if (!target.candidateDemo) {
+      const run = { id: 'OV-' + target.id, target: { name: target.objectName, kind: target.kind }, candidatePolicy: policy };
+      return casesForWorkspace(V2.wsId).flatMap(c => {
+        if (!evDateIn(c.createdAt, from, to)) return [];
+        const session = SESSIONS.find(s => s.id === c.sessionId);
+        if (!evSessionHasTarget(session, run.target)) return [];
+        const line = evObjectLine(run, session);
+        const anchor = c.triggerLine > 0 ? 'L' + c.triggerLine : null;
+        const sample = { ...c, anchor, name: c.objectName, kind: caseKind(c) };
+        const levels = new Set([line, ...(anchor ? [c.triggerLine] : [])]);
+        const trace = { title: session.short, events: [...levels].sort((a, b) => a - b).map(n => 'L' + n) };
+        const report = (window.attributionsFor?.(c) || []).find(item => item.objectName === target.objectName);
+        return [{ sample, trace, report: report?.id, ...assessPrototypeCase(run, c, line) }];
+      });
+    }
+    return samples.flatMap(sample => {
+      const trace = traces[sample.trace];
+      if ((from && trace.date < from) || (to && trace.date > to)) return [];
+      const anchor = trace.events.indexOf(sample.anchor);
+      const result = assess(target.objectName, policy, sample, executions(target, trace), anchor, anchor === -1);
+      const report = sample.history === target.objectName ? 'AR-1044-A' : null;
+      return [{ sample, trace, report, ...result }];
+    });
+  }
+
+  function model(run, target) {
+    const sessions = new Map();
+    const potentialRows = [];
+    const cases = [];
+    for (const row of rowsFor(target, run.candidatePolicy || getPolicy(target), ...run.window)) {
+      const { sample, trace } = row;
+      const anchor = trace.events.indexOf(sample.anchor);
+      const triggerLine = (anchor === -1 ? trace.events.length + 1 : anchor + 1) * 10;
+      const c = {
+        id: sample.id, sessionId: trace.id, objectName: sample.name, objectType: sample.kind,
+        type: sample.type, title: sample.title, detail: sample.title, triggerLine,
+        clock: trace.date + ' 10:00', createdAt: trace.date + 'T10:00:00+08:00', candidateDemo: true,
+      };
+      cases.push(c);
+      if (!sessions.has(trace.id)) {
+        const entry = executions(target, trace)[0];
+        const sess = { id: trace.id, title: trace.title, short: trace.title };
+        sessions.set(trace.id, {
+          sess, sid: trace.id, line: entry ? (entry.index + 1) * 10 : 0, appeared: row.present,
+          cases: [], potential: [],
+        });
+      }
+      const a = sessions.get(trace.id);
+      a.cases.push(c);
+      if (!row.hits.length) continue;
+      a.potential.push(c);
+      potentialRows.push({
+        c, a, hasReport: sample.history === target.objectName,
+        reportSkill: 'attribute-badcases', hitReasons: row.hits.map(hit => hit.label),
+      });
+    }
+    const reused = run.cache === false ? 0 : potentialRows.filter(row => row.hasReport).length;
+    for (const row of potentialRows) {
+      row.attributionId = row.hasReport ? 'AR-1044-A' : null;
+      row.cached = run.cache !== false && row.hasReport;
+      row.skipped = run.cache !== false && !row.hasReport;
+      row.conclusion = row.hasReport ? 'attributed' : null;
+      row.category = row.hasReport ? '错误' : null;
+      row.confidence = row.hasReport ? 0.83 : 0;
+    }
+    return {
+      cases, sessions: [...sessions.values()], potentialRows,
+      attributed: potentialRows.filter(row => row.hasReport), notObject: [], reused,
+      fresh: run.cache === false ? potentialRows.length : 0,
+      missing: run.cache === false ? 0 : potentialRows.length - reused,
+    };
+  }
+
+  function overview(target, from, to) {
+    const version = v2TargetVersion(target);
+    const current = model({ window: [from, to], cache: true }, target);
+    const rows = current.potentialRows.map(row => ({
+      ...row, target, targetId: target.id, version, source: row.c.objectName,
+      status: row.hasReport ? 'isTarget' : 'unanalyzed', reportId: row.attributionId,
+    }));
+    const historical = samples.filter(sample => sample.history === target.objectName &&
+      current.cases.some(c => c.id === sample.id) && !rows.some(row => row.c.id === sample.id));
+    return {
+      target, version, rows, potential: rows.length, historical: historical.length,
+      assoc: current.sessions.filter(session => session.appeared).length, counts: v2TargetStatusCounts(rows),
+    };
+  }
+
+  function card(target, historical) {
+    const policy = getPolicy(target);
+    const count = historical ? '<span class="cr-history-count">' + historical + ' 条仅历史归因</span>' : '';
+    return `<div class="cr-card-entry"><span>${esc(label(policy))}${count}</span><button class="btn sm" data-candidate-open="${esc(target.id)}">候选规则</button></div>`;
+  }
+
+  function steps(current) {
+    return `<ol class="cr-steps" aria-label="新增进化对象步骤">
+      <li ${current === 1 ? 'aria-current="step"' : ''}><span>1</span> 对象信息</li>
+      <li ${current === 2 ? 'aria-current="step"' : ''}><span>2</span> 候选规则</li>
+    </ol>`;
+  }
+
+  function savePolicy(target, policy) {
+    if (!target.candidatePolicy || JSON.stringify(policy) !== JSON.stringify(getPolicy(target))) {
+      if (target.candidatePolicy || JSON.stringify(policy) !== JSON.stringify(defaultPolicy)) {
+        target.candidatePolicyVersion = (target.candidatePolicyVersion || 1) + 1;
+      }
+      target.candidatePolicy = policy;
+    }
+  }
+
+  function create(target, trigger, flow) {
+    const overlay = trigger.closest('.evov');
+    overlay.style.display = 'none';
+    open(target, trigger, {
+      ...flow,
+      back: draft => {
+        overlay.style.display = '';
+        flow.back(draft);
+        trigger.focus();
+      },
+    });
+  }
+
+  function open(target, trigger, flow) {
+    const saved = structuredClone(getPolicy(target));
+    const dates = v2Range();
+    review = { target, saved, draft: structuredClone(flow?.draft || saved), dates, trigger, flow, view: 'all',
+      editable: v2CanManage(V2.wsId), expanded: target.objectName === 'A' ? 'BC-1041' : 'BC-1051' };
+    dialog = document.createElement('dialog');
+    dialog.className = 'cr-dialog';
+    dialog.setAttribute('aria-labelledby', 'cr-title');
+    dialog.innerHTML = `
+      <header class="cr-header">
+        <div><p class="cr-context">进化对象总览 <span aria-hidden="true">/</span> ${esc(target.kind)} · <b>${esc(target.objectName)}</b></p>
+        <h2 id="cr-title">潜在 bad case 候选规则</h2>
+        <p>配置哪些上报会交给 <b>${esc(target.objectName)}</b> 的归因 Skill 分析。</p>${flow ? steps(2) : ''}</div>
+        <button class="btn cr-close" type="button" data-cr-close aria-label="关闭">×</button>
+      </header>
+      <div class="cr-body"><section class="cr-editor" aria-label="规则配置"></section><section class="cr-preview" aria-label="命中预览"></section></div>
+      <footer class="cr-footer">
+        <div><strong>应用范围</strong><span>自动归因 · 进化对象总览 · 自进化向导</span><div class="cr-message" role="status"></div></div>
+        <div class="cr-footer-buttons">
+          ${flow ? '<button class="btn" data-cr-back>← 上一步</button>' : `<button class="btn" data-cr-close>${review.editable ? '取消' : '关闭'}</button>`}
+          ${review.editable ? `<button class="btn primary" data-cr-save>${flow ? '保存进化对象' : '保存候选规则'}</button>` : ''}
+        </div>
+      </footer>`;
+    document.body.append(dialog);
+    dialog.addEventListener('close', () => {
+      const { trigger: opener, target: openedTarget, flow: currentFlow, draft } = review;
+      const result = dialog.returnValue;
+      dialog.remove();
+      review = null;
+      dialog = null;
+      if (currentFlow) {
+        if (result === 'back') currentFlow.back(draft);
+        else if (result === 'save') currentFlow.commit(openedTarget);
+        else currentFlow.cancel();
+        return;
+      }
+      (opener?.isConnected ? opener : [...document.querySelectorAll('[data-candidate-open]')]
+        .find(button => button.dataset.candidateOpen === openedTarget.id))?.focus();
+    }, { once: true });
+    dialog.addEventListener('click', click);
+    dialog.addEventListener('change', change);
+    dialog.addEventListener('input', input);
+    renderEditor();
+    renderPreview();
+    dialog.showModal();
+  }
+
+  function renderEditor() {
+    const { target, draft, editable } = review;
+    const sources = target.candidateDemo ? samples : casesForWorkspace(V2.wsId).map(item => ({ kind: caseKind(item), name: item.objectName }));
+    const sourceOptions = kind => [...new Set(sources.filter(sample => sample.kind === kind).map(sample => sample.name))];
+    const rules = draft.rules.map((rule, index) => `
+      <fieldset class="cr-rule" data-cr-rule="${index}" ${editable ? '' : 'disabled'}>
+        <legend>来源 ${index + 1}</legend>
+        ${editable ? `<button type="button" class="cr-text cr-remove" data-cr-remove="${index}" aria-label="移除来源 ${index + 1}">移除</button>` : ''}
+        <div class="cr-fields">
+          <label>来源类型<select data-cr-field="kind"><option value="skill" ${rule.kind === 'skill' ? 'selected' : ''}>Skill</option><option value="agent" ${rule.kind === 'agent' ? 'selected' : ''}>Agent</option></select></label>
+          <label>来源名称<input data-cr-field="name" maxlength="128" list="cr-names-${index}" value="${esc(rule.name)}" placeholder="选择或输入名称"><datalist id="cr-names-${index}">${sourceOptions(rule.kind).map(name => '<option value="' + esc(name) + '"></option>').join('')}</datalist></label>
+        </div>
+        <div class="cr-types"><span>上报类型</span><label><input type="checkbox" value="self" data-cr-field="types" ${rule.types.includes('self') ? 'checked' : ''}> self</label><label><input type="checkbox" value="discovery" data-cr-field="types" ${rule.types.includes('discovery') ? 'checked' : ''}> discovery</label></div>
+        <label>轨迹顺序<select data-cr-field="relation">${Object.entries(relations).map(([value, text]) => `<option value="${value}" ${rule.relation === value ? 'selected' : ''}>${text}</option>`).join('')}</select></label>
+        ${rule.relation === 'any' ? '' : '<p class="cr-help">需要真实 case 锚点及至少一次可比较的目标执行。</p>'}
+      </fieldset>`).join('');
+    dialog.querySelector('.cr-editor').innerHTML = `
+      <h3>策略模式</h3>
+      <fieldset class="cr-modes" aria-label="策略模式" ${editable ? '' : 'disabled'}>
+        ${Object.entries(modes).map(([id, [title, description]]) => `<label><input type="radio" name="cr-mode" value="${id}" ${draft.mode === id ? 'checked' : ''}><span><b>${title}</b><small>${description}</small></span></label>`).join('')}
+      </fieldset>
+      <div class="cr-section-head"><h3>来源规则</h3>${editable ? '<button class="btn sm" data-cr-add>＋ 添加来源</button>' : ''}</div>
+      <p class="cr-help">按类型和名称精确匹配。可手填任何 Skill / Agent 名称，也可选择 ${esc(target.objectName)} 自己作为来源。</p>
+      ${draft.mode === 'default' ? '<p class="cr-empty-editor">选择包含自定义来源的模式即可配置。</p>' : rules || '<p class="cr-empty-editor">添加第一条来源规则。</p>'}
+      ${editable && target.candidateDemo && ['A', 'C'].includes(target.objectName) ? `<button class="cr-text cr-example" data-cr-example>载入示例 · ${target.objectName === 'A' ? 'A 自己的 self' : 'A 上报后执行 C'}</button>` : ''}`;
+  }
+
+  function renderPreview() {
+    const { target, draft, saved, dates, view, expanded } = review;
+    const previous = rowsFor(target, saved, dates.from, dates.to);
+    const oldHits = new Set(previous.filter(row => row.hits.length).map(row => row.sample.id));
+    const next = rowsFor(target, draft, dates.from, dates.to).map(row => {
+      const was = oldHits.has(row.sample.id);
+      const included = Boolean(row.hits.length);
+      const delta = included && !was ? 'added' : !included && was ? 'removed' : '';
+      return { ...row, included, delta, historical: Boolean(row.report) };
+    });
+    const counts = {
+      included: next.filter(row => row.included).length,
+      added: next.filter(row => row.delta === 'added').length,
+      removed: next.filter(row => row.delta === 'removed').length,
+    };
+    const visible = next.filter(row => {
+      if (view === 'delta') return row.delta;
+      if (view === 'history') return row.historical;
+      if (view === 'batch') return row.included;
+      return row.present || row.historical;
+    });
+    const renderRow = row => {
+      const { sample, trace } = row;
+      const candidateStatus = row.delta === 'added' ? '新增' : row.delta === 'removed' ? '移出' : row.included ? '命中' : row.unknown ? '顺序未知' : '未命中';
+      const status = view === 'batch' ? (row.historical ? '已有报告' : '待归因') : candidateStatus;
+      const badge = view === 'batch' ? (row.historical ? 'history' : 'hit') : row.delta || (row.included ? 'hit' : '');
+      const witnesses = new Set(row.hits.filter(hit => hit.event).map(hit => hit.event));
+      const detail = [
+        ...row.hits.map(hit => hit.label + (hit.event ? ' · ' + hit.event : '')),
+        ...(row.unknown ? ['本例无真实锚点，无法判断来源规则的先后。'] : []),
+        ...(row.historical ? ['已有归因 ' + row.report + (row.report === 'AR-1044-A' ? ' · 规则 v1 · 是 A 的问题' : '')] : []),
+      ];
+      return `<details class="cr-case" data-cr-case="${sample.id}" ${sample.id === expanded ? 'open' : ''}>
+        <summary><span class="cr-case-arrow" aria-hidden="true">›</span><span class="cr-id">${sample.id}</span><span class="cr-case-title">${esc(sample.title)}</span>
+        <span class="cr-status ${badge}">${status}</span></summary>
+        <div class="cr-case-detail"><div class="cr-track-head"><span>${esc(trace.title)} · ${esc(sample.name)} / ${sample.type}</span>${row.historical ? '<span class="cr-status history">历史已归因</span>' : ''}</div>
+          <div class="cr-track" aria-label="Session 执行顺序">${trace.events.map(event => `<span class="cr-node ${witnesses.has(event) ? 'witness' : ''} ${event === sample.anchor ? 'anchor' : ''}"><b>${esc(event)}</b>${event === sample.anchor ? '<small>case 锚点</small>' : witnesses.has(event) ? '<small>目标执行</small>' : ''}</span>`).join('<span class="cr-edge" aria-hidden="true">→</span>')}${sample.anchor ? '' : '<span class="cr-edge" aria-hidden="true">→</span><span class="cr-node inferred"><b>后处理</b><small>推定锚点</small></span>'}</div>
+          <p>${detail.length ? detail.map(esc).join('<br>') : '当前策略未选中这条 case。'}</p>
+        </div>
+      </details>`;
+    };
+    dialog.querySelector('.cr-preview').innerHTML = `
+      <div class="cr-preview-title"><div><h3>候选预览</h3><p class="cr-help">${esc(dates.from)} 至 ${esc(dates.to)} · 相对已保存规则 v${target.candidatePolicyVersion || 1}</p></div><span class="cr-status">演示数据</span></div>
+      <div class="cr-stats" aria-live="polite"><div><b>${counts.included}</b><span>拟纳入</span></div><div><b class="added">+${counts.added}</b><span>新增</span></div><div><b class="removed">−${counts.removed}</b><span>移出</span></div></div>
+      <div class="cr-tabs" role="group" aria-label="预览筛选">${[['all', '关联样本'], ['delta', '变更'], ['batch', '自动归因'], ['history', '历史归因']].map(([id, text]) => `<button type="button" data-cr-view="${id}" aria-pressed="${id === view}">${text}</button>`).join('')}</div>
+      ${view === 'batch' ? '<p class="cr-batch-note">按草稿筛出自动归因的候选。已有报告与待归因样本在此预览。</p>' : ''}
+      <div class="cr-cases">${visible.map(renderRow).join('') || '<p class="cr-empty-editor">当前范围没有符合此筛选的演示样本。</p>'}</div>`;
+    dialog.querySelectorAll('[data-cr-case]').forEach(item => {
+      item.addEventListener('toggle', () => {
+        if (!item.isConnected || !review) return;
+        if (item.open) review.expanded = item.dataset.crCase;
+        else if (review.expanded === item.dataset.crCase) review.expanded = '';
+      });
+    });
+  }
+
+  function click(event) {
+    const button = event.target.closest('button');
+    if (!button) return;
+    const data = button.dataset;
+    const { target, draft } = review;
+    if (data.crClose !== undefined) { dialog.close(); return; }
+    if (data.crBack !== undefined) { dialog.close('back'); return; }
+    if (data.crView) {
+      review.view = data.crView;
+      renderPreview();
+      dialog.querySelector('[aria-pressed="true"]')?.focus();
+      return;
+    }
+    if (!review.editable) return;
+    if (data.crSave !== undefined) {
+      const message = dialog.querySelector('.cr-message');
+      if (draft.mode !== 'default' && !draft.rules.length) {
+        message.textContent = '请至少添加一条来源规则。';
+        return;
+      }
+      const invalid = draft.mode === 'default' ? -1 : draft.rules.findIndex(rule => !rule.name.trim() || !rule.types.length);
+      if (invalid !== -1) {
+        message.textContent = '请填写来源名称，并至少选择一种上报类型。';
+        dialog.querySelector(`[data-cr-rule="${invalid}"] input`).focus();
+        return;
+      }
+      const policy = {
+        mode: draft.mode,
+        rules: draft.mode === 'default' ? [] : draft.rules.map(rule => ({ ...rule, name: rule.name.trim() })),
+      };
+      savePolicy(target, policy);
+      if (review.flow) {
+        dialog.close('save');
+      } else {
+        dialog.close();
+        v2RenderOverview();
+        v2Toast('候选规则已保存 · 原型会话');
+      }
+      return;
+    }
+    if (data.crExample !== undefined) {
+      const own = target.objectName === 'A';
+      draft.mode = own ? 'custom' : 'combined';
+      draft.rules = [{ kind: 'skill', name: 'A', types: own ? ['self'] : ['self', 'discovery'], relation: own ? 'any' : 'after' }];
+      review.expanded = own ? 'BC-1041' : 'BC-1051';
+    } else if (data.crAdd !== undefined) {
+      if (draft.mode === 'default') draft.mode = 'combined';
+      draft.rules.push({ kind: 'skill', name: '', types: ['self', 'discovery'], relation: 'any' });
+    } else if (data.crRemove !== undefined) {
+      draft.rules.splice(Number(data.crRemove), 1);
+    } else {
+      return;
+    }
+    renderEditor();
+    renderPreview();
+    if (data.crAdd !== undefined) dialog.querySelector(`[data-cr-rule="${draft.rules.length - 1}"] [data-cr-field="name"]`).focus();
+    else dialog.querySelector(data.crExample !== undefined ? '[data-cr-example]' : '[data-cr-add]')?.focus();
+  }
+
+  function change(event) {
+    const control = event.target;
+    const draft = review.draft;
+    if (control.name === 'cr-mode') {
+      draft.mode = control.value;
+      renderEditor();
+      dialog.querySelector('[name="cr-mode"]:checked').focus();
+    } else {
+      const field = control.dataset.crField;
+      const rule = draft.rules[Number(control.closest('[data-cr-rule]')?.dataset.crRule)];
+      if (!rule || field === 'name') return;
+      if (field === 'types') {
+        rule.types = [...control.closest('fieldset').querySelectorAll('[data-cr-field="types"]:checked')].map(item => item.value);
+      } else {
+        rule[field] = control.value;
+        renderEditor();
+        dialog.querySelector(`[data-cr-rule="${draft.rules.indexOf(rule)}"] [data-cr-field="${field}"]`).focus();
+      }
+    }
+    renderPreview();
+  }
+
+  function input(event) {
+    const control = event.target;
+    if (control.dataset.crField !== 'name') return;
+    review.draft.rules[Number(control.closest('[data-cr-rule]').dataset.crRule)].name = control.value;
+    renderPreview();
+  }
+
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-candidate-open]');
+    if (!button) return;
+    const target = v2Targets().find(item => item.id === button.dataset.candidateOpen);
+    if (target) open(target, button);
+  });
+
+  return { assessPrototypeCase, card, create, getPolicy, isDemoWorkspace: workspace => demoWorkspaces.has(workspace), label, model, overview, seed, steps };
+})();
+</script>
 </head>
 <body>
 
@@ -4928,6 +5521,7 @@ function evSessionHasTarget(sess, target) {
 }
 function evObjectLine(run, sess) { return 24 + (v2Hash(run.id + sess.id + run.target.name) % 58); }
 function evPolicyInclude(c, line, run) {
+  if (run.candidatePolicy) return v2CandidateRules.assessPrototypeCase(run, c, line).hits.length > 0;
   const p = run.policy;
   if (p === 'default') return (c.type === 'self' && c.objectName === run.target.name) || c.triggerLine > line;
   const rules = run.policyRules || { includeSelf: true, includeAfter: true, sameObject: false };
@@ -4936,13 +5530,18 @@ function evPolicyInclude(c, line, run) {
     (rules.includeAfter && c.triggerLine > line);
 }
 function evRunModel(run) {
+  if (v2CandidateRules.isDemoWorkspace(run.workspace)) {
+    const target = (EV_TARGETS[run.workspace] || []).find(t =>
+      t.candidateDemo && t.kind === run.target.kind && t.objectName === run.target.name);
+    if (target) return v2CandidateRules.model(run, target);
+  }
   const cases = casesForWorkspace(run.workspace)
     .filter(c => evDateIn(c.createdAt, run.window[0], run.window[1]))
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
   const sessionIds = [...new Set(cases.map(c => c.sessionId))];
   const sessions = sessionIds.map(sid => SESSIONS.find(s => s.id === sid)).filter(Boolean);
   const assoc = sessions.map(sess => {
-    const line = evObjectLine(run, sess);
+    const line = evObjectLine(run.candidatePolicy && run.candidateTargetId ? { ...run, id: 'OV-' + run.candidateTargetId } : run, sess);
     const appeared = evSessionHasTarget(sess, run.target);
     const sessCases = cases.filter(c => c.sessionId === sess.id);
     const potential = appeared ? sessCases.filter(c => evPolicyInclude(c, line, run)) : [];
@@ -5040,7 +5639,7 @@ function evMakeRun(cfg) {
   const run = {
     id: cfg.id, workspace: cfg.workspace, title: cfg.title,
     target: cfg.target, window: cfg.window, createdAt: cfg.createdAt || '2026-11-10 09:10',
-    policy: cfg.policy || 'default', policyRules: cfg.policyRules || null,
+    policy: cfg.policy || 'default', policyRules: cfg.policyRules || null, candidatePolicy: cfg.candidatePolicy, candidateTargetId: cfg.candidateTargetId,
     cache: cfg.cache !== false, progress: cfg.progress ?? 0,
     final: { ...EV_FINAL_TEMPLATE, bestVersion: cfg.target.version + '-best' },
     models: ['glm-5.3', 'glm-5.3-flash'],
@@ -5189,6 +5788,7 @@ function evTypeChip(t) {
 }
 function evCaseType(c) { return c.type === 'self' ? '<span class="v2-badge self">self</span>' : '<span class="v2-badge discovery">discovery</span>'; }
 function evCaseLink(c, tab) {
+  if (c.candidateDemo) return `<span class="mono">${evEsc(c.id)}</span>`;
   return `<a class="idlink" href="${caseDeepLink(c.id, tab || 'desc')}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${c.id}</a>`;
 }
 function evSevHTML(sev) {
@@ -5392,9 +5992,9 @@ function evStepPotential(run) {
   run.potentialPage = page;
   const slice = m.potentialRows.slice((page - 1) * pageSize, page * pageSize);
   const rows = slice.map(r => {
-    const includedBy = r.c.type === 'self' && r.c.objectName === run.target.name
+    const includedBy = r.hitReasons?.join(' / ') || (r.c.type === 'self' && r.c.objectName === run.target.name
       ? 'self 上报'
-      : (r.c.triggerLine > r.a.line ? `触发点 L${r.c.triggerLine} > 对象 L${r.a.line}` : '自定义策略');
+      : (r.c.triggerLine > r.a.line ? `触发点 L${r.c.triggerLine} > 对象 L${r.a.line}` : '自定义策略'));
     return `<tr>
       <td class="session-cell" title="${evEsc(r.a.sess.short)}"><b>${evEsc(r.a.sess.short)}</b><span class="cell-sub mono">${r.a.sid}</span></td>
       <td>${evCaseLink(r.c)}<span class="cell-sub">${evEsc(r.c.title)}</span></td>
@@ -5402,12 +6002,12 @@ function evStepPotential(run) {
       <td>${evCaseType(r.c)}</td>
       <td class="mono">L${r.c.triggerLine}</td>
       <td class="mono">L${r.a.line}</td>
-      <td>${includedBy}</td>
+      <td>${evEsc(includedBy)}</td>
     </tr>`;
   }).join('');
   return `<div class="card panel">
-    <div class="sec-title">第 3 步 · 潜在 bad case <span class="sub">默认策略：对象自身 self 上报 或 触发点在对象触发点之后</span></div>
-    <div class="f-inline" style="margin-bottom:8px"><span class="v2-badge ${run.policy === 'default' ? 'ok' : ''}">${run.policy === 'default' ? '默认策略' : '自定义策略'}</span><span class="v2-note">时间段内共 ${m.cases.length} 个 bad case，筛选出 ${m.potentialRows.length} 个潜在 bad case</span></div>
+    <div class="sec-title">第 3 步 · 潜在 bad case <span class="sub">${run.candidatePolicy ? '使用启动时保存的对象候选规则' : '默认策略：对象自身 self 上报 或 触发点在对象触发点之后'}</span></div>
+    <div class="f-inline" style="margin-bottom:8px"><span class="v2-badge ${run.policy === 'default' ? 'ok' : ''}">${run.candidatePolicy ? evEsc(v2CandidateRules.label(run.candidatePolicy)) : run.policy === 'default' ? '默认策略' : '自定义策略'}</span><span class="v2-note">时间段内共 ${m.cases.length} 个 bad case，筛选出 ${m.potentialRows.length} 个潜在 bad case</span></div>
     <table class="rep"><thead><tr><th>Session</th><th>bad case</th><th>object_name</th><th>类型</th><th>bad case 触发点</th><th>对象触发点</th><th>命中原因</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="waiting">没有命中潜在策略的 bad case</td></tr>'}</tbody></table>
     <div class="pager"><button class="btn" data-action="ev-run-page" data-target="potential" data-id="${run.id}" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button><span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${m.potentialRows.length}</b> 个潜在 bad case</span><button class="btn" data-action="ev-run-page" data-target="potential" data-id="${run.id}" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button></div>
   </div>`;
@@ -5748,6 +6348,7 @@ function evRenderTargetDialog() {
   evModal.innerHTML = `<div class="evov" data-action="ev-target-close-bg">
     <div class="modal"><div class="modal-head"><h2>${d.mode === 'create' ? '新增进化对象' : '编辑进化对象'}</h2><button class="x" data-action="ev-target-close">✕</button></div>
       <div class="modal-body">
+        ${d.mode === 'create' ? v2CandidateRules.steps(1) : ''}
         ${d.error ? `<div class="form-error">${evEsc(d.error)}</div>` : ''}
         <div class="target-form-grid">
           <div class="f-row"><div class="f-label">对象类型</div><div class="kind-options">
@@ -5764,19 +6365,40 @@ function evRenderTargetDialog() {
           <div class="f-row span-2"><div class="f-label">启用</div><div class="switch-row"><label class="proto-switch"><input type="checkbox" data-ev-target-field="enabled" ${f.enabled ? 'checked' : ''}><span class="proto-switch-track"></span></label><span>${f.enabled ? '进入启动向导候选' : '保留配置但不进入向导'}</span></div></div>
         </div>
       </div>
-      <div class="modal-foot"><button class="btn" data-action="ev-target-close">取消</button><button class="btn primary" data-action="ev-target-save">${d.mode === 'create' ? '新增配置' : '保存配置'}</button></div>
+      <div class="modal-foot"><button class="btn" data-action="ev-target-close">取消</button><button class="btn primary" data-action="ev-target-save">${d.mode === 'create' ? '下一步' : '保存配置'}</button></div>
     </div></div>`;
 }
-function evSaveTarget() {
+function evSaveTarget(trigger) {
   evSyncTargetForm();
   const d = EV_STATE.targetDialog, f = d.form;
   for (const [k, label] of [['objectName', '对象名称'], ['repoUrl', '仓库地址'], ['subDir', '子目录'], ['defaultRef', '基线'], ['validationProjectId', '验证集测试工程 ID'], ['testProjectId', '测试集测试工程 ID'], ['primaryMetricKey', '主指标 key']]) {
     if (!String(f[k] || '').trim()) { d.error = `请填写${label}。`; return evRenderTargetDialog(); }
   }
-  const list = EV_TARGETS[evCurrentWs()];
+  const workspace = evCurrentWs();
+  const list = EV_TARGETS[workspace] || (EV_TARGETS[workspace] = []);
   const saved = { id: d.id, kind: f.kind, objectName: f.objectName.trim(), repoUrl: f.repoUrl.trim(), subDir: f.subDir.trim(), defaultRef: f.defaultRef.trim(), validationProjectId: f.validationProjectId.trim(), testProjectId: f.testProjectId.trim(), primaryMetricKey: f.primaryMetricKey.trim(), enabled: f.enabled, tags: f.tags || [] };
-  const idx = list.findIndex(t => t.id === saved.id);
-  if (idx >= 0) list[idx] = saved; else list.push(saved);
+  if (list.some(t => t.id !== saved.id && t.kind === saved.kind && t.objectName === saved.objectName)) {
+    d.error = '同类型下已存在同名对象。';
+    evRenderTargetDialog();
+    return;
+  }
+  if (d.mode === 'create') {
+    if (v2CandidateRules.isDemoWorkspace(workspace)) saved.candidateDemo = true;
+    v2CandidateRules.create(saved, trigger, {
+      draft: d.candidateDraft,
+      back: draft => { d.candidateDraft = draft; },
+      cancel: () => { EV_STATE.targetDialog = null; evRenderTargetDialog(); },
+      commit: target => {
+        list.push(target);
+        EV_STATE.targetDialog = null;
+        evRenderTargets();
+        v2Toast('已新增进化对象');
+      },
+    });
+    return;
+  }
+  const original = list.find(t => t.id === saved.id);
+  if (original) Object.assign(original, saved);
   EV_STATE.targetDialog = null;
   evRenderTargets();
 }
@@ -5871,6 +6493,7 @@ function evWzRun() {
     id: 'EV-' + Date.now().toString(36), workspace: evCurrentWs(),
     target: { kind: t.kind, name: t.objectName, version: EV_STATE.wz.version },
     window: [EV_STATE.wz.from, EV_STATE.wz.to], policy: EV_STATE.wz.policy,
+    candidatePolicy: (t.candidateDemo || t.candidatePolicy) ? structuredClone(v2CandidateRules.getPolicy(t)) : undefined, candidateTargetId: t.id,
     policyRules: { includeSelf: EV_STATE.wz.includeSelf, includeAfter: EV_STATE.wz.includeAfter, sameObject: EV_STATE.wz.sameObject },
     cache: EV_STATE.wz.cache,
     attributionSkill: EV_STATE.wz.attributionSkill || t.attributionSkill || (t.attributionInline ? '历史内联提示词' : 'attribute-badcases'),
@@ -6007,7 +6630,7 @@ function evRenderWizard() {
     <span class="v2-badge">${evEsc((WORKSPACES.find(w => w.id === evCurrentWs()) || {}).name || '')}</span>
     <span class="chip kind">${wz.kind}:${evEsc(wz.name)}@${evEsc(wz.version)}</span>
     <span class="chip mono">${wz.from} ~ ${wz.to}</span>
-    <span class="v2-badge ${wz.policy === 'default' ? 'ok' : ''}">${wz.policy === 'default' ? '默认潜在策略' : '自定义潜在策略'}</span>
+    <span class="v2-badge ${wz.policy === 'default' ? 'ok' : ''}">${run.candidatePolicy ? evEsc(v2CandidateRules.label(run.candidatePolicy)) : wz.policy === 'default' ? '默认潜在策略' : '自定义潜在策略'}</span>
     ${wz.cache ? '<span class="v2-badge">复用缓存</span>' : '<span class="v2-badge warn">不复用缓存</span>'}
     <button class="btn sm" data-action="ev-wz-edit" style="margin-left:auto">← 修改条件</button>
   </div>`;
@@ -6055,6 +6678,7 @@ function evRenderWizard() {
         </div>
         <div class="wz-note">按 bad case 的 created_at 过滤；快捷项只填入日期，仍可手动微调。</div>
       </div>
+      ${run.candidatePolicy ? `<div class="f-row"><div class="f-label">潜在 bad case 策略</div><div class="policy selected"><b>${evEsc(v2CandidateRules.label(v2CandidateRules.getPolicy(t)))}</b><p>使用进化对象总览中已保存的候选规则。</p></div></div>` : `
       <div class="f-row"><div class="f-label">潜在 bad case 策略</div>
         <div class="policy ${wz.policy === 'default' ? 'selected' : ''}">
           <label><input type="radio" name="ev-policy" ${wz.policy === 'default' ? 'checked' : ''} data-action="ev-wz-policy" data-v="default"> 默认策略</label>
@@ -6069,6 +6693,7 @@ function evRenderWizard() {
           </div>` : '<p>勾选规则组合成策略；与默认策略不同时会在运行详情中记录策略快照。</p>'}
         </div>
       </div>
+      `}
       ${wz.focusCase ? `<div class="wz-demo"><b>从 bad case 启动</b> · ${evEsc(wz.focusCase)} 已锁定为关注对象；启动后可在归因列表中找到它。</div>` : ''}`;
   } else if (wz.step === 2) {
     const assoc = m.sessions.filter(a => a.appeared);
@@ -6101,7 +6726,7 @@ function evRenderWizard() {
     const slice = m.potentialRows.slice((page - 1) * pageSize, page * pageSize);
     const rows = slice.map(r => `<tr><td>${evCaseLink(r.c)}<span class="cell-sub">${evEsc(r.c.title)}</span></td><td><span class="v2-badge">${evEsc(r.c.objectName)}</span></td><td>${evCaseType(r.c)}</td><td class="mono">L${r.c.triggerLine}</td><td><b>${evEsc(r.a.sess.short)}</b><span class="cell-sub mono">${r.a.sid}</span></td></tr>`).join('');
     body = `${cond}
-      <div class="wz-section-title">第 3 步 · 潜在 bad case <span>默认策略：对象自身 self 上报 或 触发点在对象触发点之后</span></div>
+      <div class="wz-section-title">第 3 步 · 潜在 bad case <span>${run.candidatePolicy ? evEsc(v2CandidateRules.label(run.candidatePolicy)) : '默认策略：对象自身 self 上报 或 触发点在对象触发点之后'}</span></div>
       <div class="wz-stats">
         <span class="st"><b>${m.sessions.filter(a => a.appeared).length}</b><span>关联 Session</span></span>
         <span class="st"><b>${m.cases.length}</b><span>时间段内 bad case</span></span>
@@ -6114,7 +6739,7 @@ function evRenderWizard() {
         <span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${m.potentialRows.length}</b> 个潜在 bad case</span>
         <button class="btn" data-action="ev-wz-page" data-target="case" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button>
       </div>
-      <div class="wz-note">默认策略 = 对象自身 self 上报 或 触发点在对象之后；自定义策略可回第 1 步调整。归因在下一步生成。</div>`;
+      <div class="wz-note">${run.candidatePolicy ? '按对象总览中已保存的候选规则筛选。' : '默认策略 = 对象自身 self 上报 或 触发点在对象之后；自定义策略可回第 1 步调整。归因在下一步生成。'}</div>`;
   } else {
     const reports = m.potentialRows.filter(r => r.hasReport);
     const bySkill = {};
@@ -6268,6 +6893,7 @@ document.addEventListener('click', e => {
       title: `${t.objectName} ${EV_STATE.wz.version} 自进化`,
       target: { kind: t.kind, name: t.objectName, version: EV_STATE.wz.version },
       window: [EV_STATE.wz.from, EV_STATE.wz.to], policy: EV_STATE.wz.policy,
+      candidatePolicy: (t.candidateDemo || t.candidatePolicy) ? structuredClone(v2CandidateRules.getPolicy(t)) : undefined, candidateTargetId: t.id,
       policyRules: { includeSelf: EV_STATE.wz.includeSelf, includeAfter: EV_STATE.wz.includeAfter, sameObject: EV_STATE.wz.sameObject },
       cache: EV_STATE.wz.cache, attributionSkill: EV_STATE.wz.attributionSkill || t.attributionSkill || (t.attributionInline ? '历史内联提示词' : 'attribute-badcases'),
       createdAt: '2026-11-10 09:10', progress: 5,
@@ -6283,7 +6909,7 @@ document.addEventListener('click', e => {
   else if (a === 'ev-target-close') { EV_STATE.targetDialog = null; evRenderTargetDialog(); }
   else if (a === 'ev-target-close-bg') { if (e.target === el) { EV_STATE.targetDialog = null; evRenderTargetDialog(); } }
   else if (a === 'ev-target-kind') { evSyncTargetForm(); EV_STATE.targetDialog.form.kind = el.dataset.kind; evRenderTargetDialog(); }
-  else if (a === 'ev-target-save') evSaveTarget();
+  else if (a === 'ev-target-save') evSaveTarget(el);
 });
 document.addEventListener('change', e => {
   if (!EV_STATE.wz) return;
@@ -6717,11 +7343,12 @@ function v2TargetStatusCounts(rows) {
   return rows.reduce((a, r) => { a[r.status] = (a[r.status] || 0) + 1; return a; }, { isTarget: 0, notTarget: 0, unanalyzed: 0 });
 }
 function v2TargetSet(t, from, to) {
+  if (t.candidateDemo) return v2CandidateRules.overview(t, from, to);
   const version = v2TargetVersion(t);
   const fake = {
     id: 'OV-' + t.id, workspace: V2.wsId,
     target: { kind: t.kind, name: t.objectName, version },
-    window: [from, to], policy: 'default', cache: true,
+    window: [from, to], policy: 'default', cache: true, candidatePolicy: t.candidatePolicy, candidateTargetId: t.id,
   };
   let m;
   try { m = evRunModel(fake); } catch (e) { m = { sessions: [], potentialRows: [] }; }
@@ -7112,6 +7739,7 @@ function v2RenderTargetsOverview() {
       <div class="tg-side-meta"><span><b>${d.assoc}</b> 关联 Session</span><span><b>${d.potential}</b> 潜在 bad case</span></div>
       <div class="tg-side-meta">归因 Skill · ${v2Esc(t.attributionSkill || (t.attributionInline ? "历史内联提示词" : "attribute-badcases"))}</div>
       <div class="tg-side-evolvable">可进化潜在 bad case 数量 <b>${evolvableOf(d)}</b><span>（是问题 ${c.isTarget}；未分析 ${c.unanalyzed}）</span></div>
+      ${v2CandidateRules.card(t, d.historical)}
     </div>`;
   }).join('');
   const maxTargetPotential = Math.max(1, ...activeSets.map(d => d.potential));
@@ -7151,7 +7779,7 @@ function v2RenderTargetsOverview() {
     <td>${v2TargetStatusBadge(r.status)}</td>
     <td class="mono">${r.c.clock}</td>
     <td class="mono" title="${r.a.sid}">${r.a.sid.slice(0, 13)}…</td>
-    <td>${r.reportId ? `<a class="idlink" href="${caseDeepLink(r.c.id, 'attr', null, r.target.objectName)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${r.reportId}</a>` : '<span class="v2-note">—</span>'}</td>
+    <td>${r.c.candidateDemo && r.reportId ? `<span class="mono">${r.reportId}</span>` : r.reportId ? `<a class="idlink" href="${caseDeepLink(r.c.id, 'attr', null, r.target.objectName)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${r.reportId}</a>` : '<span class="v2-note">—</span>'}</td>
     <td class="tg-desc">${r.reportId ? `<span title="${v2Esc(r.c.detail || r.c.title)}">${v2Esc(r.c.detail || r.c.title)}</span>` : '<span class="v2-note">—</span>'}</td>
   </tr>`).join('');
   const targetOpts = all.map(d => `<option value="${d.target.id}" ${tf.listTarget === d.target.id ? 'selected' : ''}>${v2Esc(d.target.objectName)}</option>`).join('');
@@ -7605,24 +8233,29 @@ function v2MemberModal() {
   </div></div>`);
 }
 function v2TargetModal(id) {
+  if (!v2CanManage(V2.wsId)) { v2Toast('当前角色不能管理进化对象'); return; }
   const list = EV_TARGETS[V2.wsId] || [];
   const t = id ? list.find(x => x.id === id) : null;
   if (id && !t) return;
   v2Modal(`<div class="evov" data-v2-close-bg><div class="modal" style="width:560px">
     <div class="modal-head"><h2>${t ? '编辑进化对象' : '新增进化对象'}</h2><button class="x" data-v2-close>✕</button></div>
     <div class="modal-body">
+      ${t ? '' : v2CandidateRules.steps(1)}
       <div class="f-row"><div class="f-label">对象名称 <span class="req">*</span></div><input class="inp" id="v2TgName" value="${t ? v2Esc(t.objectName) : ''}" placeholder="例如：code-review" style="width:100%"></div>
       <div class="f-row"><div class="f-label">类型</div><select class="inp" id="v2TgKind" style="width:100%"><option value="skill" ${t && t.kind === 'skill' ? 'selected' : ''}>skill</option><option value="agent" ${t && t.kind === 'agent' ? 'selected' : ''}>agent</option></select></div>
       <div class="f-row"><div class="f-label">默认版本 <span class="req">*</span></div><input class="inp" id="v2TgVersion" value="${t ? v2Esc(t.defaultRef || '') : ''}" placeholder="例如：v1.8.0" style="width:180px"></div>
       <div class="f-row"><div class="f-label">仓库地址</div><input class="inp" id="v2TgRepo" value="${t ? v2Esc(t.repoUrl || '') : ''}" placeholder="https://github.com/acme/agent-skills.git" style="width:100%"></div>
       <div class="f-row"><div class="f-label">子目录</div><input class="inp" id="v2TgSubdir" value="${t ? v2Esc(t.subDir || '') : ''}" placeholder="skills/code-review" style="width:100%"></div>
       <label class="f-row">归因 Skill <select class="inp" id="v2TgSkill">${t?.attributionInline && !t.attributionSkill ? '<option value="__legacy__" selected>历史内联提示词（只读）</option>' : ''}${v2SkillOptions(t?.attributionInline && !t.attributionSkill ? '__legacy__' : (t?.attributionSkill || 'attribute-badcases'))}</select></label>
-      <div class="notice">保存绑定后，后台会逐条分析当前与该对象关联的 Badcase。</div>
+      <div class="notice">${t ? '保存绑定后，后台会按对象的候选规则筛选待归因的 bad case。' : '下一步选择哪些 bad case 会进入这个对象的自动归因。'}</div>
     </div>
-    <div class="modal-foot"><button class="btn" data-v2-close>取消</button><button class="btn primary" data-v2-tg-save="${t ? t.id : ''}">${t ? '保存' : '新增对象'}</button></div>
+    <div class="modal-foot"><button class="btn" data-v2-close>取消</button><button class="btn primary" data-v2-tg-save="${t ? t.id : ''}">${t ? '保存' : '下一步'}</button></div>
   </div></div>`);
+  const button = document.querySelector('#v2Modal [data-v2-tg-save]');
+  const creation = { draft: null, id: 't-' + Date.now().toString(36) };
+  button.addEventListener('click', () => v2SaveTarget(t, button, creation));
 }
-function v2SaveTarget(id) {
+function v2SaveTarget(original, trigger, creation) {
   const name = (document.getElementById('v2TgName')?.value || '').trim();
   const skillValue = document.getElementById('v2TgSkill').value;
   const keepLegacyInline = skillValue === '__legacy__';
@@ -7632,22 +8265,34 @@ function v2SaveTarget(id) {
   const repoUrl = (document.getElementById('v2TgRepo')?.value || '').trim();
   const subDir = (document.getElementById('v2TgSubdir')?.value || '').trim();
   if (!name) { v2Toast('请填写对象名称'); return; }
-  const list = EV_TARGETS[V2.wsId] || (EV_TARGETS[V2.wsId] = []);
-  if (list.some(x => x.id !== id && x.kind === kind && x.objectName === name)) { v2Toast('同类型下已存在同名对象'); return; }
-  if (id) {
-    const t = list.find(x => x.id === id);
-    if (!t) return;
-    Object.assign(t, { kind, objectName: name, defaultRef: version, tags: [version], repoUrl, subDir });
-    if (keepLegacyInline) { delete t.attributionSkill; t.attributionInline = true; }
-    else { t.attributionSkill = attributionSkill; delete t.attributionInline; }
-  } else {
-    const tid = 't-' + Date.now().toString(36);
-    list.push({ id: tid, kind, attributionSkill, objectName: name, defaultRef: version, tags: [version], repoUrl, subDir, enabled: true, validationProjectId: 'val-' + tid, testProjectId: 'test-' + tid });
+  const workspace = V2.wsId;
+  const list = EV_TARGETS[workspace] || (EV_TARGETS[workspace] = []);
+  if (list.some(x => x.id !== original?.id && x.kind === kind && x.objectName === name)) { v2Toast('同类型下已存在同名对象'); return; }
+  const fields = { kind, objectName: name, defaultRef: version, tags: [version], repoUrl, subDir };
+  const finish = message => {
+    v2CloseModal();
+    V2.targetOv.page = 1;
+    v2RenderOverview();
+    v2Toast(message);
+  };
+  if (original) {
+    Object.assign(original, fields);
+    if (keepLegacyInline) { delete original.attributionSkill; original.attributionInline = true; }
+    else { original.attributionSkill = attributionSkill; delete original.attributionInline; }
+    finish('进化对象已更新');
+    return;
   }
-  v2CloseModal();
-  V2.targetOv.page = 1;
-  v2RenderOverview();
-  v2Toast(id ? '进化对象已更新' : '已新增进化对象');
+  const { id } = creation;
+  const draftTarget = {
+    ...fields, id, attributionSkill, enabled: true, validationProjectId: 'val-' + id,
+    testProjectId: 'test-' + id, candidateDemo: v2CandidateRules.isDemoWorkspace(workspace),
+  };
+  v2CandidateRules.create(draftTarget, trigger, {
+    draft: creation.draft,
+    back: draft => { creation.draft = draft; },
+    cancel: v2CloseModal,
+    commit: target => { list.push(target); finish('已新增进化对象'); },
+  });
 }
 function v2RemoveTarget(id) {
   const list = EV_TARGETS[V2.wsId] || [];
@@ -7710,7 +8355,7 @@ function v2SetMemberRole(uid, role) {
 
 /* ── 事件 ── */
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member]');
+  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member]');
   if (!el) return;
   const ds = el.dataset;
   if (ds.v2LoginUser) { V2.loginChoice = ds.v2LoginUser; v2RenderLogin(); return; }
@@ -7747,7 +8392,6 @@ document.addEventListener('click', e => {
   if (ds.v2TdConfig !== undefined) { V2.setPage('evo'); location.hash = '#/targets'; return; }
   if (ds.v2TgSidePage) { V2.targetOv.targetPage = Math.max(1, +ds.v2TgSidePage); v2RenderOverview(); return; }
   if (ds.v2TgReset !== undefined) { V2.targetOv.listFrom = ''; V2.targetOv.listTo = ''; V2.targetOv.listTarget = ''; V2.targetOv.listSource = ''; V2.targetOv.listStatus = 'all'; V2.targetOv.page = 1; v2RenderOverview(); return; }
-  if (ds.v2TgSave !== undefined) { v2SaveTarget(ds.v2TgSave || null); return; }
   if (ds.v2OvClear !== undefined) { V2.overview.objects.clear(); v2RenderOverview(); return; }
   if (ds.v2OvRemove) { V2.overview.objects.delete(ds.v2OvRemove); v2RenderOverview(); return; }
   if (ds.v2OvPage) { V2.overview.page = Math.max(1, +ds.v2OvPage); v2RenderOverview(); return; }
@@ -7859,6 +8503,7 @@ function v2Boot() {
   const userParam = q.get('u') || q.get('user');
   if (userParam && v2User(userParam)) {
     V2.wsId = q.get('ws') || V2.wsId;
+    if (q.get('demo') === 'candidate-rules') v2CandidateRules.seed(V2.wsId);
     const demoPage = (q.get('demo') === 'workspace' || q.get('demo') === 'member') ? 'admin' : 'evo';
     const page = q.get('page') || (q.get('demo') ? demoPage : 'overview');
     V2.page = ['overview', 'session', 'evo', 'admin'].includes(page) ? page : 'overview';
