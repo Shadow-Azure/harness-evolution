@@ -8,7 +8,7 @@ id: bugfix-66
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/web/**
   - plans/**
