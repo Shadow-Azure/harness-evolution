@@ -1069,6 +1069,7 @@
   .v2-badge.viewer { color: var(--text-faint); }
   .v2-badge.warn { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 40%, transparent); background: color-mix(in srgb, var(--orange) 8%, transparent); }
   .v2-badge.ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 38%, transparent); background: color-mix(in srgb, var(--green) 8%, transparent); }
+  .v2-badge.off { color: var(--text-faint); border-color: var(--border); background: var(--bg-panel); }
   .v2-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .v2-toolbar .spacer { flex: 1; }
 
@@ -1331,6 +1332,14 @@
 .v2-page .tg-side-head .btn { padding: 3px 8px; font-size: 10.5px; }
 .v2-page .tg-side-item { padding: 7px 0; border-top: 1px solid #f0f2f5; }
 .v2-page .tg-side-item:first-child { border-top: 0; }
+.v2-page .tg-side-item.is-disabled { margin-top: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); }
+.v2-page .tg-side-item.is-disabled .tg-target-title b { color: var(--text-faint); }
+.v2-page .tg-side-item.is-disabled .tg-target-title .chip.kind { opacity: .55; }
+.v2-page .tg-side-item.is-disabled .tg-side-meta,
+.v2-page .tg-side-item.is-disabled .tg-side-note { color: var(--text-faint); }
+.v2-page .tg-side-item.is-disabled .tg-side-note { margin-top: 4px; font-size: 9.5px; }
+.v2-page .tg-side-item.is-disabled .tg-target-actions .btn.enable { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--border)); }
+.v2-page .tg-side-group { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 9.5px; color: var(--text-faint); }
 .v2-page .tg-side-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 7px; }
 .v2-page .tg-side-top .tg-target-title b { font-size: 12.5px; }
 .v2-page .tg-side-top .tg-target-actions .btn { padding: 1px 5px; font-size: 9.5px; }
@@ -5025,6 +5034,7 @@ const EV_TARGETS = {
     { id: 't-dr', kind: 'skill', objectName: 'deep-research', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/deep-research', defaultRef: 'v2.4.0', tags: ['v2.4.0', 'v2.3.1', 'v2.2.0'], versions: [{ ref: 'v2.4.0', commit: 'a3f9c21', date: '2026-11-08' }, { ref: 'v2.3.1', commit: '7b2e084', date: '2026-10-30' }, { ref: 'v2.3.0', commit: 'e62b1c8', date: '2026-10-21' }, { ref: 'v2.2.0', commit: '5c41d7a', date: '2026-10-09' }, { ref: 'v2.1.3', commit: '2f9ab60', date: '2026-09-27' }, { ref: 'v2.1.2', commit: '9d03ee1', date: '2026-09-18' }, { ref: 'v2.1.1', commit: '4b6c2f5', date: '2026-09-11' }, { ref: 'v2.1.0', commit: 'c8d1a72', date: '2026-09-03' }, { ref: 'v2.0.9', commit: '1a7e3b9', date: '2026-08-26' }, { ref: 'v2.0.8', commit: '6e5f0c4', date: '2026-08-19' }, { ref: 'v2.0.7', commit: '0b9d27e', date: '2026-08-11' }, { ref: 'v2.0.6', commit: 'f4a8c13', date: '2026-08-04' }, { ref: 'v2.0.5', commit: '3d2f9b7', date: '2026-07-28' }, { ref: 'v2.0.4', commit: '9a6c1e8', date: '2026-07-20' }, { ref: 'v2.0.3', commit: '5f7b2d1', date: '2026-07-13' }, { ref: 'v2.0.2', commit: 'c3e8f6a', date: '2026-07-05' }, { ref: 'v2.0.1', commit: '8b4d5c2', date: '2026-06-27' }, { ref: 'v2.0.0', commit: 'a71f3e5', date: '2026-06-19' }], validationProjectId: 'val-dr-2026q4', testProjectId: 'test-dr-2026q4', primaryMetricKey: 'resolved_rate', enabled: true },
     { id: 't-cr', kind: 'skill', objectName: 'code-review', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/code-review', defaultRef: 'v1.8.0', tags: ['v1.8.0', 'v1.7.2'], versions: [{ ref: 'v1.8.0', commit: 'f2c9a41', date: '2026-11-06' }, { ref: 'v1.7.2', commit: 'b7d3e58', date: '2026-10-24' }, { ref: 'v1.7.1', commit: '4e1a9c2', date: '2026-10-15' }, { ref: 'v1.7.0', commit: '9c5f2b8', date: '2026-10-03' }, { ref: 'v1.6.2', commit: '3a7e1d9', date: '2026-09-22' }, { ref: 'v1.6.1', commit: '8f2b4c7', date: '2026-09-12' }, { ref: 'v1.6.0', commit: 'd5e9a13', date: '2026-09-01' }, { ref: 'v1.5.3', commit: '6b1c8f4', date: '2026-08-22' }, { ref: 'v1.5.2', commit: 'e4a7d29', date: '2026-08-12' }, { ref: 'v1.5.1', commit: '1c6f9b3', date: '2026-08-02' }, { ref: 'v1.5.0', commit: 'a9d2e75', date: '2026-07-22' }, { ref: 'v1.4.0', commit: '7e3b5c1', date: '2026-07-10' }], validationProjectId: 'val-cr-2026q4', testProjectId: 'test-cr-2026q4', primaryMetricKey: 'resolved_rate', enabled: true },
     { id: 't-ex', kind: 'agent', objectName: 'Explore', repoUrl: 'git@github.com:acme/agents.git', subDir: 'agents/Explore', defaultRef: 'v1.5.0', tags: ['v1.5.0', 'v1.4.3'], versions: [{ ref: 'v1.5.0', commit: 'c4a8b13', date: '2026-11-04' }, { ref: 'v1.4.3', commit: '6d2f9e1', date: '2026-10-20' }, { ref: 'v1.4.2', commit: 'b1e7c34', date: '2026-10-08' }, { ref: 'v1.4.1', commit: '9a3d5f7', date: '2026-09-25' }, { ref: 'v1.4.0', commit: 'f8c2e61', date: '2026-09-14' }, { ref: 'v1.3.2', commit: '2b6a9d4', date: '2026-09-02' }, { ref: 'v1.3.1', commit: 'd7e4b18', date: '2026-08-20' }, { ref: 'v1.3.0', commit: '5c1f7a2', date: '2026-08-08' }, { ref: 'v1.2.0', commit: '8e9b3c6', date: '2026-07-26' }], validationProjectId: 'val-ex-2026q4', testProjectId: 'test-ex-2026q4', primaryMetricKey: 'resolved_rate', enabled: true },
+    { id: 't-rn', kind: 'agent', objectName: 'release-notes', repoUrl: 'git@github.com:acme/agents.git', subDir: 'agents/release-notes', defaultRef: 'v1.2.3', tags: ['v1.2.3', 'v1.2.0'], versions: [{ ref: 'v1.2.3', commit: 'a4d9e72', date: '2026-10-02' }, { ref: 'v1.2.0', commit: '7c1b8e4', date: '2026-09-19' }], validationProjectId: 'val-rn-2026q4', testProjectId: 'test-rn-2026q4', primaryMetricKey: 'resolved_rate', attributionSkill: 'harness-trace-review', enabled: false },
   ],
   'ws-agent': [
     { id: 't-ba', kind: 'skill', objectName: 'browser-agent', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/browser-agent', defaultRef: 'v0.9.4', tags: ['v0.9.4', 'v0.9.1'], validationProjectId: 'val-ba-2026q4', testProjectId: 'test-ba-2026q4', primaryMetricKey: 'resolved_rate', enabled: true },
@@ -6742,6 +6752,7 @@ function v2OverviewTabs() {
   </div>`;
 }
 function v2Targets() { return (EV_TARGETS[V2.wsId] || []).filter(t => t.enabled !== false); }
+function v2DisabledTargets() { return (EV_TARGETS[V2.wsId] || []).filter(t => t.enabled === false); }
 function v2TargetVersion(t) { return t.defaultRef || (t.tags || [])[0] || '—'; }
 function v2TargetStatusCounts(rows) {
   return rows.reduce((a, r) => { a[r.status] = (a[r.status] || 0) + 1; return a; }, { isTarget: 0, notTarget: 0, unanalyzed: 0 });
@@ -7131,11 +7142,32 @@ function v2RenderTargetsOverview() {
   }).join('');
   const evolvableOf = d => d.counts.isTarget + d.counts.unanalyzed;
   const sideSorted = [...all].sort((a, b) => evolvableOf(b) - evolvableOf(a) || b.potential - a.potential || a.target.objectName.localeCompare(b.target.objectName, 'zh'));
+  const disabledTargets = [...v2DisabledTargets()].sort((a, b) => a.objectName.localeCompare(b.objectName, 'zh'));
+  disabledTargets.forEach(t => {
+    selected.delete(t.id);
+    if (V2.targetOv.listTarget === t.id) V2.targetOv.listTarget = '';
+  });
+  const sideRows = [
+    ...sideSorted.map(d => ({ kind: 'enabled', data: d })),
+    ...disabledTargets.map(t => ({ kind: 'disabled', data: t })),
+  ];
   const tPageSize = 5;
-  const tPages = Math.max(1, Math.ceil(sideSorted.length / tPageSize));
+  const tPages = Math.max(1, Math.ceil(sideRows.length / tPageSize));
   const tPage = Math.min(Math.max(1, V2.targetOv.targetPage || 1), tPages);
   V2.targetOv.targetPage = tPage;
-  const targetSide = sideSorted.slice((tPage - 1) * tPageSize, tPage * tPageSize).map(d => {
+  const targetSide = sideRows.slice((tPage - 1) * tPageSize, tPage * tPageSize).map((row, index, visibleRows) => {
+    if (row.kind === 'disabled') {
+      const t = row.data;
+      const firstInGroup = index === 0 || visibleRows[index - 1].kind !== 'disabled';
+      const divider = firstInGroup ? '<div class="tg-side-group">已停用对象 · 仅展示，不参与统计</div>' : '';
+      const skillName = v2Esc(t.attributionSkill || (t.attributionInline ? '历史内联提示词' : 'attribute-badcases'));
+      return `${divider}<div class="tg-side-item is-disabled" title="${v2Esc(t.objectName)} · 已停用 · 不参与统计">
+        <div class="tg-side-top"><div class="tg-target-title"><span class="chip kind">${v2Esc(t.kind)}</span><b>${v2Esc(t.objectName)}</b><span class="mono">@${v2Esc(v2TargetVersion(t))}</span><span class="v2-badge off">已停用</span></div><div class="tg-target-actions"><button class="btn sm enable" data-v2-tg-enable="${t.id}">启用</button><button class="btn sm" data-v2-tg-edit="${t.id}">编辑</button><button class="btn sm danger" data-v2-tg-remove="${t.id}">移除</button></div></div>
+        <div class="tg-side-meta">归因 Skill · ${skillName}</div>
+        <div class="tg-side-note">保留配置；重新启用后才进入筛选、图表与其它统计。</div>
+      </div>`;
+    }
+    const d = row.data;
     const t = d.target, c = d.counts;
     return `<div class="tg-side-item ${selected.has(t.id) ? 'selected' : ''}" title="${v2Esc(t.objectName)} · 潜在 ${d.potential} · 是 ${c.isTarget} / 非 ${c.notTarget} / 未 ${c.unanalyzed}">
       <div class="tg-side-top"><div class="tg-target-title"><span class="chip kind">${v2Esc(t.kind)}</span><b>${v2Esc(t.objectName)}</b><span class="mono">@${v2Esc(d.version)}</span></div><div class="tg-target-actions"><button class="btn sm" data-v2-tg-edit="${t.id}">编辑</button><button class="btn sm danger" data-v2-tg-remove="${t.id}">移除</button></div></div>
@@ -7247,9 +7279,9 @@ function v2RenderTargetsOverview() {
       </div>
     </div>
     <div class="card ov-side tg-side">
-      <div class="tg-side-head"><div><h3>进化对象</h3><span class="v2-note">按可进化潜在 bad case 排序</span></div><button class="btn sm" data-v2-tg-add>+ 新增</button></div>
+      <div class="tg-side-head"><div><h3>进化对象</h3><span class="v2-note">按可进化潜在 bad case 排序 · 停用对象置灰仅展示</span></div><button class="btn sm" data-v2-tg-add>+ 新增</button></div>
       <div class="tg-side-list">${targetSide || '<div class="waiting">当前空间还没有进化对象，先新增一个。</div>'}</div>
-      <div class="v2-pager"><span class="info">共 ${all.length} 个 · 第 ${tPage} / ${tPages} 页</span><button data-v2-tg-side-page="${tPage - 1}" ${tPage <= 1 ? 'disabled' : ''}>← 上一页</button><button data-v2-tg-side-page="${tPage + 1}" ${tPage >= tPages ? 'disabled' : ''}>下一页 →</button></div>
+      <div class="v2-pager"><span class="info">共 ${sideRows.length} 个${disabledTargets.length ? ` · ${disabledTargets.length} 个已停用` : ''} · 第 ${tPage} / ${tPages} 页</span><button data-v2-tg-side-page="${tPage - 1}" ${tPage <= 1 ? 'disabled' : ''}>← 上一页</button><button data-v2-tg-side-page="${tPage + 1}" ${tPage >= tPages ? 'disabled' : ''}>下一页 →</button></div>
     </div>
   </div>
   ${v2TargetDetailCard()}
@@ -7726,6 +7758,15 @@ function v2SaveTarget(id) {
   v2RenderOverview();
   v2Toast(id ? '进化对象已更新' : '已新增进化对象');
 }
+function v2EnableTarget(id) {
+  const list = EV_TARGETS[V2.wsId] || [];
+  const t = list.find(x => x.id === id);
+  if (!t || t.enabled !== false) return;
+  t.enabled = true;
+  V2.targetOv.targetPage = 1;
+  v2RenderOverview();
+  v2Toast(`已启用 ${t.objectName}`);
+}
 function v2RemoveTarget(id) {
   const list = EV_TARGETS[V2.wsId] || [];
   const t = list.find(x => x.id === id);
@@ -7787,7 +7828,7 @@ function v2SetMemberRole(uid, role) {
 
 /* ── 事件 ── */
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member],[data-v2-label-add],[data-v2-label-remove],[data-v2-label-save]');
+  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-enable],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member],[data-v2-label-add],[data-v2-label-remove],[data-v2-label-save]');
   if (!el) return;
   const ds = el.dataset;
   if (ds.v2LoginUser) { V2.loginChoice = ds.v2LoginUser; v2RenderLogin(); return; }
@@ -7815,6 +7856,7 @@ document.addEventListener('click', e => {
   }
   if (ds.v2OvGrain) { V2.overview.grain = ds.v2OvGrain; V2.targetOv.page = 1; v2RenderOverview(); return; }
   if (ds.v2TgAdd !== undefined) { v2TargetModal(null); return; }
+  if (ds.v2TgEnable) { v2EnableTarget(ds.v2TgEnable); return; }
   if (ds.v2TgEdit) { v2TargetModal(ds.v2TgEdit); return; }
   if (ds.v2TgRemove) { v2RemoveTarget(ds.v2TgRemove); return; }
   if (ds.v2TgMetric) { const k = ds.v2TgMetric; if (V2.targetOv.metrics.has(k)) V2.targetOv.metrics.delete(k); else V2.targetOv.metrics.add(k); v2RenderOverview(); return; }
