@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Any, cast
@@ -468,3 +469,82 @@ async def test_overview_times_out_slow_resolution_and_caches_the_failure() -> No
     assert first is None
     assert second is None
     assert resolver.calls == 1
+
+
+class _NameModeRepository:
+    """Return no versions, runs, or links for the service-level name-mode test."""
+
+    async def list_object_versions(self, session_ids: object, **_: object) -> tuple[()]:
+        """No observed event versions are needed."""
+        del session_ids
+        return ()
+
+    async def list_target_runs(self, **_: object) -> tuple[()]:
+        """No run evidence is needed."""
+        return ()
+
+    async def list_attributions(self, **_: object) -> tuple[()]:
+        """No historical reports are needed."""
+        return ()
+
+
+class _RecordingMatcher:
+    """Capture the revision filter the service passes to the shared matcher."""
+
+    def __init__(self) -> None:
+        """Start with no calls."""
+        self.observed_revisions: list[frozenset[str] | None] = []
+
+    async def associated_sessions(
+        self,
+        condition: object,
+        *,
+        observed_revisions: frozenset[str] | None = None,
+    ) -> object:
+        """Record the filter and return an empty association."""
+        del condition
+        self.observed_revisions.append(observed_revisions)
+        return SimpleNamespace(sessions=())
+
+    async def potential_cases(self, *_: object, **__: object) -> object:
+        """Return no included cases."""
+        return SimpleNamespace(included=())
+
+
+class _DigestResolver:
+    """Resolve every bare version to its digest identity."""
+
+    async def resolve(self, *, version: str, **_: object) -> ResolvedTargetVersion:
+        """Return a stable digest revision."""
+        return ResolvedTargetVersion(version, f"digest:{version}")
+
+
+async def test_name_mode_does_not_depend_on_the_matcher_flag() -> None:
+    """The folded agent row passes no observed revisions even with a plain matcher."""
+    matcher = _RecordingMatcher()
+    service = TargetOverviewService(
+        cast(Any, None),
+        cast(Any, _NameModeRepository()),
+        cast(Any, matcher),
+        _DigestResolver(),
+        agent_match_by_name=True,
+    )
+    target = replace(
+        TARGET,
+        id="target-agent-name-unit",
+        object_type="agent",
+        object_name="Explore",
+        default_ref="main",
+    )
+
+    analysis = await service._analyse_target(
+        target,
+        workspace_id="ws-unit",
+        session_ids=(),
+        facts_by_id={},
+        window_start=datetime(2026, 11, 1),
+        window_end=datetime(2026, 12, 1),
+    )
+
+    assert analysis.versions == ("main",)
+    assert matcher.observed_revisions == [None]
