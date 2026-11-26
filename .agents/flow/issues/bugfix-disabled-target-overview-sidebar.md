@@ -67,7 +67,7 @@ github:
 - API：`TargetOverviewService.list_targets` 维持现有启用对象分析与汇总；额外读取同空间 `enabled_only=False` 的记录，筛出停用对象按对象名排序写入 `disabled`。`trend`、`cases`、`detail` 继续只用启用对象，不新增端点。
 - Web 数据：`useOverviewTargets` 透出 `disabled`；`TargetsOverview` 将 `disabled` 传给 `TargetSideList`，不并入 `targetItems`，因此筛选、图表、分布、详情选择器和潜在 bad case 列表都看不到停用对象。
 - Web 展示：`TargetSideList` 在分页的启用对象之后追加「已停用对象」分组；每项显示对象/版本、归因 Skill 与「已停用」徽标，置灰但保留启用/编辑/移除；编辑仍打开既有对象表单。
-- 启用动作：停用项提供「启用」；点击调用既有 `useEvolutionTargets().updateTarget` 提交 `enabled=true`，成功后 invalidate 总览并把对象移回启用列表；失败显示服务端错误，不做本地乐观切换。
+- 启用动作：停用项提供「启用」；点击用该对象当前配置组装 `EvolutionTargetWrite`（`enabled=true`），调用既有 `useEvolutionTargets().updateTarget`，成功后 invalidate 总览并把对象移回启用列表；失败显示服务端错误，不做本地乐观切换。
 - 测试：API 覆盖 `disabled` 返回且 `summary`/`total` 不含停用对象；组件覆盖分组顺序、徽标、不可选中、启用与编辑/移除事件；E2E 覆盖右栏出现停用对象，以及点击启用后回到启用列表且统计恢复。
 - 文档：实现时同步 `08 §6` 与 `05 §4.18` 的说明；原型侧已更新 `design-v2.md §5.3`。
 
