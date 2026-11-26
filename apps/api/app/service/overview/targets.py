@@ -568,6 +568,55 @@ def _build_version_labels(
     return ordered, labels
 
 
+def _agent_name_aliases(
+    default_ref: str,
+    resolved: ResolvedTargetVersion | None,
+    links: Sequence[AttributionLinkRecord],
+) -> frozenset[str]:
+    """Accept every persisted identity that belongs to one agent's name row.
+
+    Name mode folds an agent's digests into a single configured-ref row. The
+    aliases keep historical report versions readable under that row so folding
+    never zeroes the attributed/nonTarget counts.
+    """
+    aliases: set[str] = set()
+
+    def add(value: str | None) -> None:
+        display = _display_version(value)
+        if display is None or display.lower() == "unknown":
+            return
+        aliases.add(display)
+        if value is not None and value.strip():
+            aliases.add(value.strip())
+        if display.startswith("digest:"):
+            aliases.add(display[7:])
+
+    add(default_ref)
+    if resolved is not None:
+        add(resolved.target_version)
+        add(resolved.target_revision)
+    for link in links:
+        add(link.object_version)
+    return frozenset(aliases)
+
+
+def _name_match_commit(
+    runs: Sequence[TargetRunVersionRecord],
+    default_ref: str,
+    revision: str | None,
+) -> str | None:
+    """Return the newest run commit tied to the configured ref or resolved revision."""
+    ref = _known_version(default_ref)
+    for run in runs:
+        if _known_version(run.target_version) == ref or (
+            revision is not None and _known_version(run.target_revision) == revision
+        ):
+            commit = _short_commit(run.base_commit)
+            if commit is not None:
+                return commit
+    return None
+
+
 def _newest_link_by_case(
     links: Sequence[AttributionLinkRecord],
     aliases: frozenset[str],
@@ -610,6 +659,7 @@ class TargetOverviewService:
         matcher: PotentialMatcher,
         resolver: TargetVersionResolver,
         *,
+        agent_match_by_name: bool = False,
         resolve_timeout_seconds: float = OVERVIEW_RESOLVE_TIMEOUT_SECONDS,
         failure_ttl_seconds: float = OVERVIEW_FAILURE_TTL_SECONDS,
     ) -> None:
@@ -618,6 +668,7 @@ class TargetOverviewService:
         self._repository = repository
         self._matcher = matcher
         self._resolver = resolver
+        self._agent_match_by_name = agent_match_by_name
         self._policy: ResolvedPolicy = resolve_policy(None)
         self._resolve_timeout = resolve_timeout_seconds
         self._failure_ttl = failure_ttl_seconds
@@ -936,18 +987,29 @@ class TargetOverviewService:
             for link in links
             if link.report_schema_version == REPORT_SCHEMA_VERSION and link.object_version
         }
-        observed = (*observed, *(ObjectVersionRecord(None, v) for v in sorted(analyzed_versions)))
-        versions, labels = _build_version_labels(
-            target.default_ref,
-            observed,
-            runs,
-            bound_revision=target.definition["revision"] if target.definition else None,
-        )
+        name_matched = self._agent_match_by_name and target.object_type == "agent"
+        if name_matched:
+            versions, labels, resolved = await self._name_matched_version(
+                target,
+                runs=runs,
+                links=links,
+            )
+        else:
+            observed = (
+                *observed,
+                *(ObjectVersionRecord(None, v) for v in sorted(analyzed_versions)),
+            )
+            versions, labels = _build_version_labels(
+                target.default_ref,
+                observed,
+                runs,
+                bound_revision=target.definition["revision"] if target.definition else None,
+            )
+            resolved = await asyncio.gather(
+                *(self._resolve_label(target, labels[version]) for version in versions),
+            )
         associated_sessions: set[str] = set()
         version_sessions: dict[str, frozenset[str]] = {}
-        resolved = await asyncio.gather(
-            *(self._resolve_label(target, labels[version]) for version in versions),
-        )
         entries: list[TargetCaseEntry] = []
         unresolved_versions: set[str] = set()
         for version, resolution in zip(versions, resolved, strict=True):
@@ -959,16 +1021,25 @@ class TargetOverviewService:
                 if link.report_schema_version == REPORT_SCHEMA_VERSION
             }
             sessions = {facts_by_id[case_id].session_id for case_id in case_ids}
-            if resolution is None:
+            if resolution is None and not name_matched:
                 unresolved_versions.add(version)
             else:
+                effective = resolution
+                if effective is None:
+                    # Name mode still associates by name when the content file
+                    # cannot be resolved; launch keeps its own explicit error.
+                    effective = ResolvedTargetVersion(
+                        target_version=target.default_ref,
+                        target_revision=target.default_ref,
+                    )
                 association, match = await self._evaluate_resolved(
                     target,
                     version,
-                    resolution,
+                    effective,
                     workspace_id=workspace_id,
                     window_start=window_start,
                     window_end=window_end,
+                    match_by_name=name_matched,
                 )
                 sessions.update(item.session_id for item in association.sessions)
                 case_ids.update(item.bad_case_id for item in match.included)
@@ -993,6 +1064,27 @@ class TargetOverviewService:
             unresolved_versions=frozenset(unresolved_versions),
             version_labels=labels,
         )
+
+    async def _name_matched_version(
+        self,
+        target: EvolutionTargetRecord,
+        *,
+        runs: Sequence[TargetRunVersionRecord],
+        links: Sequence[AttributionLinkRecord],
+    ) -> tuple[tuple[str, ...], dict[str, TargetVersionLabel], list[ResolvedTargetVersion | None]]:
+        """Build the single configured-ref row used for an agent under name mode."""
+        version = _known_version(target.default_ref) or target.default_ref
+        resolved = await self._resolve_version(target, version)
+        revision = resolved.target_revision if resolved is not None else None
+        digest = revision if revision is not None and revision.startswith("digest:") else None
+        label = TargetVersionLabel(
+            version=version,
+            digest=digest,
+            ref=version,
+            commit=_name_match_commit(runs, target.default_ref, revision),
+            aliases=_agent_name_aliases(target.default_ref, resolved, links),
+        )
+        return (version,), {version: label}, [resolved]
 
     async def _resolve_label(
         self,
@@ -1082,8 +1174,14 @@ class TargetOverviewService:
         workspace_id: str,
         window_start: datetime,
         window_end: datetime,
+        match_by_name: bool = False,
     ) -> tuple[SessionAssociation, PotentialMatch]:
-        """Run the shared matcher for one already-resolved target version."""
+        """Run the shared matcher for one already-resolved target version.
+
+        ``match_by_name`` makes the agent name row ignore revision filtering at
+        this call site as well as in the matcher, so a service wired with the
+        switch cannot silently fall back to hash-only association.
+        """
         condition = MatchCondition(
             workspace_id=workspace_id,
             target_type=target.object_type,
@@ -1094,7 +1192,8 @@ class TargetOverviewService:
             window_end=window_end,
         )
         association = await self._matcher.associated_sessions(
-            condition, observed_revisions=condition.revision_candidates
+            condition,
+            observed_revisions=None if match_by_name else condition.revision_candidates,
         )
         match = await self._matcher.potential_cases(condition, association, self._policy)
         return association, match

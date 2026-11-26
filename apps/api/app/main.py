@@ -376,7 +376,10 @@ def create_app(
     attribution_repository = AttributionRepository(resolved_database)
     potential_preview = PotentialPreviewService(
         evolution_targets,
-        PotentialMatcher(potential_repository),
+        PotentialMatcher(
+            potential_repository,
+            agent_match_by_name=resolved_settings.agent_match_by_name,
+        ),
         resolver,
         reports=attribution_repository,
         rule_skills=attribution_skills,
@@ -385,12 +388,16 @@ def create_app(
     probe_query_repository = ProbeQueryRepository(resolved_database)
     evolution_runs = EvolutionRunService(evolution_repository, run_event_store)
     run_candidate_repository = EvolutionRunCandidateRepository(resolved_database)
-    potential_matcher = PotentialMatcher(potential_repository)
+    potential_matcher = PotentialMatcher(
+        potential_repository,
+        agent_match_by_name=resolved_settings.agent_match_by_name,
+    )
     target_overview = TargetOverviewService(
         target_repository,
         TargetOverviewRepository(resolved_database),
         potential_matcher,
         resolver,
+        agent_match_by_name=resolved_settings.agent_match_by_name,
     )
     local_attribution = LocalAttribution(
         resolved_settings,

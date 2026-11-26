@@ -576,7 +576,7 @@ erDiagram
 | `created_by` | `VARCHAR(36)` | NULL | FK → `users.id` |
 | `created_at` / `updated_at` | `DATETIME` | NOT NULL | — |
 
-约束：`UNIQUE(workspace_id, object_type, object_name)`（V2 由全局唯一改含空间）；索引：`INDEX(enabled)`、`INDEX(workspace_id)`、`INDEX(workspace_id, attribution_package_id)`。
+约束：`UNIQUE(workspace_id, object_type, object_name)`（V2 由全局唯一改含空间）；索引：`INDEX(enabled)`、`INDEX(workspace_id)`、`INDEX(workspace_id, attribution_package_id)`。`HE_AGENT_MATCH_BY_NAME` 不是列：默认关闭，只改变总览对 agent 目标的版本行聚合与关联过滤，报告与缓存仍以 `targetRevision` 为范围。
 
 ### 5.1.1 `attribution_skill_packages` / `attribution_skill_package_bindings` —— 空间 Skill 包
 
@@ -946,7 +946,7 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 | 共享 root 的 `total` | 按空间投影计数：同一 root 被两个空间上报时，每个空间的 `total` 各算一次；V1 的可见空间并集用 `IN` 半连接按根去重，只算一次 |
 | 共享 root 的 `pendingSessions` | 同样按空间各算一次：每个空间都需要自己的轨迹补齐；V1 在可见空间并集内按 root `COUNT(DISTINCT)`，同一根只算一次 |
 | 时间桶 | 按 `bad_cases.created_at`（上报时间）分桶，`day` / `week`（ISO 周一）/ `month`，边界 Asia/Shanghai；空桶由服务端补零 |
-| 对象出现与进入点 | Session 内该对象最早的 `agent_events`：`object_type=skill → kind=skill`，`object_type=agent → kind=agent`，`object_type=knowledge → kind=knowledge`，且 `name == target_name`；不要求事件版本/revision 命中目标。缺少调用事件时，Agent 节点的类型（缺失时用名称）或 Skill 名也可作为出现证据。事件观测到的 `object_version/object_revision/definition_hash/document_revision` 原样保留为证据；绑定的 `targetRevision` 只用于读取原文、写报告和确定缓存范围。 |
+| 对象出现与进入点 | Session 内该对象最早的 `agent_events`：`object_type=skill → kind=skill`，`object_type=agent → kind=agent`，`object_type=knowledge → kind=knowledge`，且 `name == target_name`；不要求事件版本/revision 命中目标。缺少调用事件时，Agent 节点的类型（缺失时用名称）或 Skill 名也可作为出现证据。事件观测到的 `object_version/object_revision/definition_hash/document_revision` 原样保留为证据；绑定的 `targetRevision` 只用于读取原文、写报告和确定缓存范围。名称匹配开关开启时，agent 的关联与总览版本行以名称出现为准，事件版本仍保留为证据，报告与缓存范围不变。 |
 | Session 关联口径 | 上报根按窗口 `bad_cases` 去重：`reported = associated + versionUnresolved + skipped + pending`。`pending` 是没有 `session_families` 行的根；`versionUnresolved` 是历史兼容字段，新计算恒为 0；`skipped` 是已有轨迹但没有出现所选类型和名称的根；只有 `associated` 进列表。`objectTriggerAt` 取 `对象出现与进入点` 的时间，缺失时回退 Session `startedAt` |
 | bad case 触发点 | §7.4 锚点事件。`anchorKind=post_process` 时 `eventIndex=INT_MAX`、`triggeredAt=created_at`；`anchorKind=unknown`（上报 agent 本身无法解析）时触发点缺失，不猜测、不降级到主 agent。其他锚点保持事件坐标 |
 | 触发点比较 | 非 `post_process`：双方 `triggered_at` 非空 → 按时间严格大于，否则按 `(agents.tree_index, agent_events.event_index)` 字典序；`post_process` 直接判为「对象之后」，不比较 `created_at`（仅审计/显示），坐标兜底 INT_MAX；`unknown` 或坐标不全 → `order_state=unknown`（不满足「之后」） |
