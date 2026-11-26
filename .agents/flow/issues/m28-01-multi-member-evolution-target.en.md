@@ -43,7 +43,7 @@ One repository often holds several skills and agents at once, for example `skill
 
 ### Requirements
 
-- **Configure once**: repository URL, baseline branch or tag, validation/test project IDs, primary metric key, attribution Skill, and enabled state are filled once per evolution target.
+- **Configure once**: repository URL, baseline branch or tag, validation/test project IDs, primary metric key, and attribution Skill are filled once per evolution target; enabling or disabling is not a form switch and is controlled by the "disabled" group in the overview (consistent with #628 in this repository).
 - **List members**: each member has a type (skill / agent), a name, and a sub-directory; members share the configuration above but freeze their own definitions and associate their own bad cases.
 - **Evolve the group in one run**: one baseline commit, a patch scope covering every member directory, one evaluation submitting all member assets, and member identities visible in commit messages and the seven steps.
 - **Read the overview per configuration**: one row per configuration with the overall potential bad cases and associated sessions; members appear as chips and detail, and the case table marks the hit member.
@@ -61,7 +61,7 @@ The 2026-11-26 discussion first prototyped "one configuration per member plus a 
 
 Three boundaries follow:
 
-- **Shared**: repository, baseline, validation/test project IDs, primary metric, attribution Skill, enabled.
+- **Shared**: repository, baseline, validation/test project IDs, primary metric, and attribution Skill; the enabled state is controlled by the "disabled" group in the overview and is not part of the configuration form.
 - **Member**: type, name, sub-directory, definition snapshot (commit / digest / body).
 - **Two hard constraints**: members must share the repository (one run has one `base_commit`); a member belongs to exactly one configuration (otherwise bad cases and attribution reports become ambiguous). The wizard therefore goes back to a single selection and has no "primary object".
 

@@ -545,13 +545,6 @@ watch(
             >{{ fieldSuggestion("primaryMetricKey") }}</span>
           </p>
         </ElFormItem>
-
-        <ElFormItem label="启用">
-          <div class="switch-row">
-            <ElSwitch v-model="form.enabled" />
-            <span>{{ form.enabled ? "进入启动向导候选" : "保留配置但不进入向导" }}</span>
-          </div>
-        </ElFormItem>
       </ElForm>
 
       <div
@@ -729,14 +722,6 @@ watch(
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.switch-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-dim);
-  font-size: 11.5px;
 }
 
 .version-suggestion-toggle {

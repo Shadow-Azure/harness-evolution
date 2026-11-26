@@ -871,12 +871,6 @@
 .evo-app .kind-choice::before { content: ""; width: 14px; height: 14px; border: 1px solid var(--border); border-radius: 50%; background: var(--bg-card); }
 .evo-app .kind-choice.active { color: var(--text); }
 .evo-app .kind-choice.active::before { border-color: var(--blue); background: radial-gradient(circle, var(--blue) 0 3px, var(--bg-card) 3.5px); }
-.evo-app .proto-switch { position: relative; display: inline-flex; width: 40px; height: 20px; flex: none; }
-.evo-app .proto-switch input { position: absolute; opacity: 0; pointer-events: none; }
-.evo-app .proto-switch-track { width: 40px; height: 20px; border-radius: 999px; background: var(--border); transition: background .15s ease; }
-.evo-app .proto-switch-track::after { content: ""; display: block; width: 16px; height: 16px; margin: 2px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(30,40,60,.18); transition: transform .15s ease; }
-.evo-app .proto-switch input:checked + .proto-switch-track { background: var(--blue); }
-.evo-app .proto-switch input:checked + .proto-switch-track::after { transform: translateX(20px); }
 .evo-app .switch-row { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 11.5px; }
 .evo-app .form-error { margin: 0 0 12px; padding: 8px 10px; border-radius: 8px; color: var(--red); background: color-mix(in srgb, var(--red) 7%, var(--bg-card)); border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border)); font-size: 12px; }
 .evo-app .target-loading { display: inline-flex; align-items: center; gap: 6px; color: var(--blue); font-size: 11px; }
@@ -1104,6 +1098,7 @@
   .v2-badge.viewer { color: var(--text-faint); }
   .v2-badge.warn { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 40%, transparent); background: color-mix(in srgb, var(--orange) 8%, transparent); }
   .v2-badge.ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 38%, transparent); background: color-mix(in srgb, var(--green) 8%, transparent); }
+  .v2-badge.off { color: var(--text-faint); border-color: var(--border); background: var(--bg-panel); }
   .v2-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .v2-toolbar .spacer { flex: 1; }
 
@@ -1366,6 +1361,14 @@
 .v2-page .tg-side-head .btn { padding: 3px 8px; font-size: 10.5px; }
 .v2-page .tg-side-item { padding: 7px 0; border-top: 1px solid #f0f2f5; }
 .v2-page .tg-side-item:first-child { border-top: 0; }
+.v2-page .tg-side-item.is-disabled { margin-top: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); }
+.v2-page .tg-side-item.is-disabled .tg-target-title b { color: var(--text-faint); }
+.v2-page .tg-side-item.is-disabled .tg-target-title .chip.kind { opacity: .55; }
+.v2-page .tg-side-item.is-disabled .tg-side-meta,
+.v2-page .tg-side-item.is-disabled .tg-side-note { color: var(--text-faint); }
+.v2-page .tg-side-item.is-disabled .tg-side-note { margin-top: 4px; font-size: 9.5px; }
+.v2-page .tg-side-item.is-disabled .tg-target-actions .btn.enable { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--border)); }
+.v2-page .tg-side-group { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 9.5px; color: var(--text-faint); }
 .v2-page .tg-side-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 7px; }
 .v2-page .tg-side-top .tg-target-title b { font-size: 12.5px; }
 .v2-page .tg-side-top .tg-target-actions .btn { padding: 1px 5px; font-size: 9.5px; }
@@ -5090,6 +5093,13 @@ const EV_TARGETS = {
       validationProjectId: 'val-agents-2026q4', testProjectId: 'test-agents-2026q4',
       primaryMetricKey: 'resolved_rate', attributionSkill: 'attribute-badcases', enabled: true,
       members: [{ kind: 'agent', objectName: 'Explore', subDir: 'agents/Explore' }] },
+    { id: 'g-release-notes', name: 'release-notes', kind: 'group', objectName: 'release-notes',
+      repoUrl: 'git@github.com:acme/agents.git', defaultRef: 'v1.2.3',
+      tags: ['v1.2.3', 'v1.2.0'],
+      versions: [{ ref: 'v1.2.3', commit: 'a4d9e72', date: '2026-10-02' }, { ref: 'v1.2.0', commit: '7c1b8e4', date: '2026-09-19' }],
+      validationProjectId: 'val-rn-2026q4', testProjectId: 'test-rn-2026q4',
+      primaryMetricKey: 'resolved_rate', attributionSkill: 'harness-trace-review', enabled: false,
+      members: [{ kind: 'agent', objectName: 'release-notes', subDir: 'agents/release-notes' }] },
   ],
   'ws-agent': [
     { id: 'g-agent-skills', name: 'agent-skills', kind: 'group', objectName: 'agent-skills',
@@ -6866,6 +6876,7 @@ function v2OverviewTabs() {
   </div>`;
 }
 function v2Targets() { return (EV_TARGETS[V2.wsId] || []).filter(t => t.enabled !== false); }
+function v2DisabledTargets() { return (EV_TARGETS[V2.wsId] || []).filter(t => t.enabled === false); }
 function v2TargetVersion(t) { return t.defaultRef || (t.tags || [])[0] || '—'; }
 function v2TargetMemberChips(t) { return evGroupMembers(t).map(m => `<span class="chip kind">${m.kind}:${v2Esc(m.objectName)}</span>`).join(' '); }
 function v2TargetStatusCounts(rows) {
@@ -7258,11 +7269,33 @@ function v2RenderTargetsOverview() {
   }).join('');
   const evolvableOf = d => d.counts.isTarget + d.counts.unanalyzed;
   const sideSorted = [...all].sort((a, b) => evolvableOf(b) - evolvableOf(a) || b.potential - a.potential || evGroupName(a.target).localeCompare(evGroupName(b.target), 'zh'));
+  const disabledTargets = [...v2DisabledTargets()].sort((a, b) => evGroupName(a).localeCompare(evGroupName(b), 'zh'));
+  disabledTargets.forEach(t => {
+    selected.delete(t.id);
+    if (V2.targetOv.listTarget === t.id) V2.targetOv.listTarget = '';
+  });
+  const sideRows = [
+    ...sideSorted.map(d => ({ kind: 'enabled', data: d })),
+    ...disabledTargets.map(t => ({ kind: 'disabled', data: t })),
+  ];
   const tPageSize = 5;
-  const tPages = Math.max(1, Math.ceil(sideSorted.length / tPageSize));
+  const tPages = Math.max(1, Math.ceil(sideRows.length / tPageSize));
   const tPage = Math.min(Math.max(1, V2.targetOv.targetPage || 1), tPages);
   V2.targetOv.targetPage = tPage;
-  const targetSide = sideSorted.slice((tPage - 1) * tPageSize, tPage * tPageSize).map(d => {
+  const targetSide = sideRows.slice((tPage - 1) * tPageSize, tPage * tPageSize).map((row, index, visibleRows) => {
+    if (row.kind === 'disabled') {
+      const t = row.data;
+      const firstInGroup = index === 0 || visibleRows[index - 1].kind !== 'disabled';
+      const divider = firstInGroup ? '<div class="tg-side-group">已停用对象 · 仅展示，不参与统计</div>' : '';
+      const skillName = v2Esc(t.attributionSkill || (t.attributionInline ? '历史内联提示词' : 'attribute-badcases'));
+      return `${divider}<div class="tg-side-item is-disabled" title="${v2Esc(evGroupName(t))} · 已停用 · 不参与统计">
+        <div class="tg-side-top"><div class="tg-target-title"><b>${v2Esc(evGroupName(t))}</b><span class="mono">@${v2Esc(v2TargetVersion(t))}</span><span class="v2-badge">${evGroupMembers(t).length} 个对象</span><span class="v2-badge off">已停用</span></div><div class="tg-target-actions"><button class="btn sm enable" data-v2-tg-enable="${t.id}">启用</button><button class="btn sm" data-v2-tg-edit="${t.id}">编辑</button><button class="btn sm danger" data-v2-tg-remove="${t.id}">移除</button></div></div>
+        <div class="tg-side-members">${v2TargetMemberChips(t)}</div>
+        <div class="tg-side-meta">归因 Skill · ${skillName}</div>
+        <div class="tg-side-note">保留配置；重新启用后才进入筛选、图表与其它统计。</div>
+      </div>`;
+    }
+    const d = row.data;
     const t = d.target, c = d.counts;
     return `<div class="tg-side-item ${selected.has(t.id) ? 'selected' : ''}" title="${v2Esc(evGroupName(t))} · 潜在 ${d.potential} · 是 ${c.isTarget} / 非 ${c.notTarget} / 未 ${c.unanalyzed}">
       <div class="tg-side-top"><div class="tg-target-title"><b>${v2Esc(evGroupName(t))}</b><span class="mono">@${v2Esc(d.version)}</span><span class="v2-badge">${evGroupMembers(t).length} 个对象</span></div><div class="tg-target-actions"><button class="btn sm" data-v2-tg-edit="${t.id}">编辑</button><button class="btn sm danger" data-v2-tg-remove="${t.id}">移除</button></div></div>
@@ -7375,9 +7408,9 @@ function v2RenderTargetsOverview() {
       </div>
     </div>
     <div class="card ov-side tg-side">
-      <div class="tg-side-head"><div><h3>进化对象</h3><span class="v2-note">按可进化潜在 bad case 排序</span></div><button class="btn sm" data-v2-tg-add>+ 新增</button></div>
+      <div class="tg-side-head"><div><h3>进化对象</h3><span class="v2-note">按可进化潜在 bad case 排序 · 停用对象置灰仅展示</span></div><button class="btn sm" data-v2-tg-add>+ 新增</button></div>
       <div class="tg-side-list">${targetSide || '<div class="waiting">当前空间还没有进化对象，先新增一个。</div>'}</div>
-      <div class="v2-pager"><span class="info">共 ${all.length} 个 · 第 ${tPage} / ${tPages} 页</span><button data-v2-tg-side-page="${tPage - 1}" ${tPage <= 1 ? 'disabled' : ''}>← 上一页</button><button data-v2-tg-side-page="${tPage + 1}" ${tPage >= tPages ? 'disabled' : ''}>下一页 →</button></div>
+      <div class="v2-pager"><span class="info">共 ${sideRows.length} 个${disabledTargets.length ? ` · ${disabledTargets.length} 个已停用` : ''} · 第 ${tPage} / ${tPages} 页</span><button data-v2-tg-side-page="${tPage - 1}" ${tPage <= 1 ? 'disabled' : ''}>← 上一页</button><button data-v2-tg-side-page="${tPage + 1}" ${tPage >= tPages ? 'disabled' : ''}>下一页 →</button></div>
     </div>
   </div>
   ${v2TargetDetailCard()}
@@ -7841,7 +7874,6 @@ function v2TargetModal(id) {
         </div>
         <div class="tg-shared-row">
           <div class="f-row"><div class="f-label">主指标 key <span class="req">*</span></div><input class="inp" id="v2TgMetric" value="${t ? v2Esc(t.primaryMetricKey || '') : ''}" placeholder="如 resolved_rate"></div>
-          <div class="f-row"><div class="f-label">启用</div><div class="switch-row"><label class="proto-switch"><input type="checkbox" id="v2TgEnabled" ${t ? (t.enabled ? 'checked' : '') : 'checked'}><span class="proto-switch-track"></span></label><span>进入启动向导候选</span></div></div>
         </div>
       </div>
       <div class="f-row tg-members-row"><div class="f-label">成员 <span class="req">*</span><span class="f-hint">同一仓库里的 skill / agent；成员共享上面的仓库、基线、测试工程与主指标，但各自冻结定义、各自关联 bad case</span></div>
@@ -7862,7 +7894,9 @@ function v2SaveTarget(id) {
   const primaryMetricKey = value('v2TgMetric');
   const skillValue = document.getElementById('v2TgSkill')?.value;
   const keepLegacyInline = skillValue === '__legacy__';
-  const enabled = document.getElementById('v2TgEnabled')?.checked !== false;
+  // 启用 / 停用不在配置表单里切换（#628）：新建默认启用，编辑保留原状态；
+  // 停用配置在总览的"已停用"分组里用「启用」按钮恢复。
+  const enabled = id ? ((EV_TARGETS[V2.wsId] || []).find(x => x.id === id)?.enabled !== false) : true;
   const fail = (message) => { v2Toast(message); };
   if (!repoUrl) return fail('请填写仓库地址');
   if (!version) return fail('请填写基线分支或标签');
@@ -7911,6 +7945,15 @@ function v2SaveTarget(id) {
   v2CloseModal();
   V2.targetOv.page = 1;
   v2RenderOverview();
+}
+function v2EnableTarget(id) {
+  const list = EV_TARGETS[V2.wsId] || [];
+  const t = list.find(x => x.id === id);
+  if (!t || t.enabled !== false) return;
+  t.enabled = true;
+  V2.targetOv.targetPage = 1;
+  v2RenderOverview();
+  v2Toast(`已启用 ${evGroupName(t)}`);
 }
 function v2RemoveTarget(id) {
   const list = EV_TARGETS[V2.wsId] || [];
@@ -7973,7 +8016,7 @@ function v2SetMemberRole(uid, role) {
 
 /* ── 事件 ── */
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-tg-member-add],[data-v2-tg-member-remove],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member],[data-v2-label-add],[data-v2-label-remove],[data-v2-label-save]');
+  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-enable],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-tg-member-add],[data-v2-tg-member-remove],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member],[data-v2-label-add],[data-v2-label-remove],[data-v2-label-save]');
   if (!el) return;
   const ds = el.dataset;
   if (ds.v2LoginUser) { V2.loginChoice = ds.v2LoginUser; v2RenderLogin(); return; }
@@ -8001,6 +8044,7 @@ document.addEventListener('click', e => {
   }
   if (ds.v2OvGrain) { V2.overview.grain = ds.v2OvGrain; V2.targetOv.page = 1; v2RenderOverview(); return; }
   if (ds.v2TgAdd !== undefined) { v2TargetModal(null); return; }
+  if (ds.v2TgEnable) { v2EnableTarget(ds.v2TgEnable); return; }
   if (ds.v2TgEdit) { v2TargetModal(ds.v2TgEdit); return; }
   if (ds.v2TgRemove) { v2RemoveTarget(ds.v2TgRemove); return; }
   if (ds.v2TgMetric) { const k = ds.v2TgMetric; if (V2.targetOv.metrics.has(k)) V2.targetOv.metrics.delete(k); else V2.targetOv.metrics.add(k); v2RenderOverview(); return; }

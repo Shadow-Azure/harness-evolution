@@ -524,7 +524,7 @@ Index.vue
 | 页头动作 | 仅 `canManageWorkspace(currentRole)` 渲染写入口，并随 tab 切换：bad case 总览为「上报接入」「启动自进化」，前者复用当前空间的 `admin?tab=ingest`；进化对象总览为「+ 新增进化对象」「启动自进化」。两个 tab 的启动入口共用同一个 `openLaunchWizard` 和既有 `LaunchWizard`，无权限时只显示「只读访问」提示 |
 | 运营上下文 | 复用 summary 的 `used/quota/sources` 与会话里的 `memberCount/spaceAdminCount/role`；上报地址由 `location.origin` + 当前空间 ID 推导为完整 URL（`POST <origin>/api/workspaces/:wid/bad-cases`），只复制地址，不复制凭据；summary 未就绪时额度显示「—」而不是 0 |
 | 来源多选 | 空 = 全部；多选 = 并集；chip 逐项移除；写 `?objects=`（逗号分隔、URL 可读）；只作用于图表与统计 |
-| 对象卡版本 | 版本多选和版本行显示 `ref` + 浅色 7 位 commit；无 ref 证据时显示 digest；复选框仍以规范版本键写入 `dversions`，旧链接里的 ref 由服务端按别名映射 |
+| 对象卡版本 | 版本多选和版本行显示 `ref` + 浅色 7 位 commit；无 ref 证据时显示 digest；复选框仍以规范版本键写入 `dversions`，旧链接里的 ref 由服务端按别名映射；`HE_AGENT_MATCH_BY_NAME=true` 时 agent 对象只显示 `defaultRef` 一行，同名 Session 与历史报告都挂在该行，本开关不新增表单字段 |
 | 列表筛选 | 列表头独立提供开始/结束日期、上报来源、问题类型，写 `?lfrom=&lto=&lobject=&type=`；日期为空时列表请求带 `allTime=true`（真正不限时间），空来源/`all=类型` 不限制；任一变化重置 `page=1` 并把上一有效结果保留到新查询返回 |
 | 列表分页 | `page` 只改列表页码，保留全部列表筛选；全局时间/来源/粒度变化不重置它 |
 | 点击指标 | 「自身存在问题」/「发现前置步骤问题」→ 写列表类型筛选（`?type=`）并滚到列表；「来源数」→ 聚焦图表来源下拉 |
@@ -738,17 +738,17 @@ Index.vue
 └── TargetFormDialog.vue（新增/编辑）
     ├── objectType（skill/agent）
     ├── objectName
+    ├── attributionSkill（空间 Skill 包选择器；默认取对象原绑定，缺省为空间默认包；历史内联提示词显示“历史内联提示词（只读）”，不主动换包）
     ├── repoUrl（git 远端地址，https/ssh；不写 token）
     ├── subDir（相对仓库根，如 skills/deep-research）
     ├── defaultRef（可编辑组合框；直接输入分支或 tag，已保存对象的 tag 作为建议；启动向导的版本字段复用同一输入优先模式，并额外接受 commit SHA）
     ├── validationProjectId（验证集测试工程 ID，必填，不透明字符串）
     ├── testProjectId（测试集测试工程 ID，必填，不透明字符串）
-    ├── primaryMetricKey（平台 results 主指标 metric_key，必填，如 resolved_rate）
-    ├── attributionSkill（空间 Skill 包选择器；默认取对象原绑定，缺省为空间默认包；历史内联提示词显示“历史内联提示词（只读）”，不主动换包）
-    └── enabled 开关
+    └── primaryMetricKey（平台 results 主指标 metric_key，必填，如 resolved_rate）
 ```
 
 - 写操作可见性（V2）：空间管理员及以上可写本空间配置；成员/只读只读（后端按空间角色校验）。全局管理员可写任意空间。
+- 表单不暴露 `enabled` 开关：新增对象默认提交 `true`，编辑保留当前值；停用/启用由列表的「停用/启用」动作承担。
 - 保存前前端做必填校验；仓库/ref/subDir 合法性由后端返回 `422 REPO_INVALID`，两个工程 ID 与主指标 key 的空白/控制字符由本地校验，后端兜底返回 `422 PROJECT_ID_INVALID` / `422 PRIMARY_METRIC_KEY_INVALID`；表单展示错误。
 - `REPO_INVALID` 的 `details.field` 决定错误落点：`objectName` / `repoUrl` / `subDir` / `defaultRef` 各自对应字段下显示红字原因与修改建议，并设置 `aria-invalid` / `aria-describedby`；提交失败后聚焦第一个错误字段，修改该字段后清除服务端错误。未知 reason 或无 `details` 时回退到“仓库或 ref 无效”汇总与四项检查清单。
 - 远端失败时汇总显示“无法访问仓库”“访问仓库超时”等原因，字段下方提供可展开、可滚动的等宽 `git` 输出块，展示命令名、退出码与已脱敏输出；`ref_not_found` 落到 `defaultRef` 并显示“仓库可达，但找不到该 ref”，不与仓库不可达混用文案。

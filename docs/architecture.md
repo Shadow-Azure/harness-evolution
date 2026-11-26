@@ -38,7 +38,7 @@ Session 页 360px 列表+概览，默认最新 10、回车查询；错误详情�
 - 保存对象绑定即启动归因；向导复用每例最新报告或选 Skill 重算。[归因工作目录](../attribute/README.md)
 - 归因：`bad_case_analysis` 以 `(bad_case_id, probe_id)` 关联多行；`probe_reports` 存结论、缓存键与复用计数；缓存键含空间、case、对象身份、版本、策略与引擎。
 - 外部问题表按 06 §4 巡检；schema/行漂移写结构化日志，读失败映射为稳定错误码，读路径只发 SELECT。
-- 证据：父子关系分 `authoritative/derived/synthetic/unresolved`；`execution_outcome` 独立于解析；skill/agent/知识库文件匹配用归一化 body hash 或 tag；未知不猜名称。
+- 证据：父子关系 `authoritative/derived/synthetic/unresolved`；`execution_outcome` 独立；文件匹配用归一化 body hash/tag；未知不猜名称；agent 名称匹配见 `HE_AGENT_MATCH_BY_NAME`（默认关闭）。
 - 知识触发：`kind=knowledge` 只认空间知识根或知识 Provider/Collection 返回的文档，存 `document_id`、revision、来源路径、检索方式与 tool_use，不存全文。
 - 常规任务串行，归因有界并发；`job_runs` 租约与心跳支持按阶段恢复。prepare 推送前保存 commit 和目标，恢复时对账远端 ref。同步任务同事务获取 `sync_lock`，先终结异常同步再解锁。payload 按 `(runtime_key, root_session_id, agent_id)` 唯一，按 root 原子重放。
 - bad case 同步源是 `BadCaseSyncSourceFactory` 按 `HE_BAD_CASE_SYNC_PROVIDER` 在装配期产出的子类；未设置则不启用 global 线。目录分页与会话获取都经 `BaseBadCaseSyncSource` 的模板方法进入子类，目录同步只更新 `origin="catalog"` 的行。

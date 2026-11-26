@@ -10,7 +10,7 @@ from pathlib import Path
 
 import httpx
 import pytest_asyncio
-from sqlalchemy import insert
+from sqlalchemy import insert, update
 
 from app.db.base import Database
 from app.db.crud.fixtures import ensure_fixture_external_tables
@@ -21,6 +21,10 @@ from app.db.models.domain import (
 )
 from app.db.models.evolution import evolution_runs
 from app.main import create_app
+from app.service.evolution.target_content import (
+    ResolvedTargetVersion,
+    target_content_unresolved,
+)
 from app.utils.time import SHANGHAI
 from tests.identity.helpers import identity_settings
 from tests.m10_02_potential_support import (
@@ -54,6 +58,7 @@ SESSION_D = "m11-03-session-d"
 SESSION_E = "m11-03-session-e"
 SESSION_F = "m11-03-session-f"
 SESSION_B_WS = "m11-03-session-b-ws"
+SESSION_G = "m11-03-session-g"
 NOW = datetime(2026, 11, 17, 9, 0, tzinfo=SHANGHAI)
 OBJECT_ENTRY = datetime(2026, 11, 17, 10, 0, tzinfo=SHANGHAI)
 OLD_ENTRY = datetime(2026, 11, 17, 8, 30, tzinfo=SHANGHAI)
@@ -446,19 +451,116 @@ async def seed_attributions(database: Database) -> None:
     )
 
 
-@pytest_asyncio.fixture
-async def target_overview_api(tmp_path: Path) -> AsyncIterator[TargetOverviewApi]:
+async def seed_agent_name_match(database: Database) -> None:
+    """Add a same-name agent Session with another version and a historical report."""
+    async with database.transaction() as session:
+        await session.execute(
+            update(agent_events)
+            .where(agent_events.c.kind == "agent", agent_events.c.name == "Explore")
+            .values(object_revision=f"digest:{hashlib.sha256(b'v1.0.0').hexdigest()}"),
+        )
+    main_g = await seed_session(database, session_id=SESSION_G, started_at=NOW, title="G")
+    await seed_event(
+        database,
+        agent_id=main_g,
+        event_index=0,
+        kind="agent",
+        name="Explore",
+        object_version="v1.5.0",
+        object_revision=f"digest:{hashlib.sha256(b'v1.5.0').hexdigest()}",
+        triggered_at=OBJECT_ENTRY,
+    )
+    await seed_event(
+        database,
+        agent_id=main_g,
+        event_index=1,
+        kind="skill",
+        name="workflow",
+        triggered_at=_at(10, 30),
+    )
+    await seed_case(
+        database,
+        case_id="m11-03-case-agent-name",
+        workspace_id=WORKSPACE_A,
+        session_id=SESSION_G,
+        case_type="discovery",
+        object_name="workflow",
+        object_type="skill",
+        created_at=_at(10, 35),
+    )
+    await seed_attribution(
+        database,
+        probe_id="probe-agent-history",
+        case_id="m11-03-case-agent",
+        session_id=SESSION_C,
+        probe_type="agent",
+        probe_object="Explore",
+        object_version=f"digest:{hashlib.sha256(b'v1.0.0').hexdigest()}",
+        conclusion="attributed",
+        category="prompt",
+        updated_at=_at(11, 0),
+    )
+    async with database.transaction() as session:
+        await session.execute(
+            insert(evolution_runs).values(
+                id="run-m11-03-agent-name",
+                workspace_id=WORKSPACE_A,
+                title="agent name row run",
+                mode="full",
+                engine_key="legacy-probe-import",
+                eval_config={},
+                target_type="agent",
+                target_name="Explore",
+                target_version="v1.0.0",
+                target_revision=f"digest:{hashlib.sha256(b'v1.0.0').hexdigest()}",
+                repo_url="https://example.invalid/Explore.git",
+                sub_dir="agents/Explore",
+                base_commit="580c97c1234567890abcdef1234567890abcdef",
+                created_at=_at(9, 0),
+            ),
+        )
+
+
+class _UnresolvedAgentResolver(FakeTargetVersionResolver):
+    """Fail content resolution for agents while keeping the skill fixture mapping."""
+
+    async def resolve(
+        self,
+        *,
+        object_type: str,
+        repo_url: str,
+        sub_dir: str,
+        version: str,
+    ) -> ResolvedTargetVersion:
+        """Return the documented unresolved error for every agent version."""
+        if object_type == "agent":
+            raise target_content_unresolved(object_type=object_type, reason="file_not_found")
+        return await super().resolve(
+            object_type=object_type,
+            repo_url=repo_url,
+            sub_dir=sub_dir,
+            version=version,
+        )
+
+
+async def _target_overview_api(
+    tmp_path: Path,
+    *,
+    agent_match_by_name: bool,
+    seed_agent_name_match_rows: bool = False,
+    resolver: FakeTargetVersionResolver | None = None,
+) -> AsyncIterator[TargetOverviewApi]:
     """Seed three spaces with targets, versions, cases, and attributions."""
-    settings = identity_settings(tmp_path)
+    settings = identity_settings(tmp_path, agent_match_by_name=agent_match_by_name)
     app = create_app(
         settings,
         git_remote=FakeGitRemote(),
-        target_version_resolver=FakeTargetVersionResolver(
+        target_version_resolver=resolver
+        or FakeTargetVersionResolver(
             revision="digest",
             revisions={
                 "v1.9.0": "tag:v1.9.0",
                 "v1.8.0": "tag:v1.8.0",
-                "v1.0.0": "tag:v1.0.0",
             },
         ),
     )
@@ -512,6 +614,8 @@ async def target_overview_api(tmp_path: Path) -> AsyncIterator[TargetOverviewApi
         await seed_skill_sessions(database)
         await seed_other_objects(database)
         await seed_attributions(database)
+        if seed_agent_name_match_rows:
+            await seed_agent_name_match(database)
 
         users: dict[str, str] = {}
         for key, workspace_id in (
@@ -544,6 +648,51 @@ async def target_overview_api(tmp_path: Path) -> AsyncIterator[TargetOverviewApi
                 reader_b=headers["b"],
                 reader_c=headers["c"],
             )
+
+
+@pytest_asyncio.fixture
+async def target_overview_api(tmp_path: Path) -> AsyncIterator[TargetOverviewApi]:
+    """Provide the hash-matching baseline fixture."""
+    async for api in _target_overview_api(tmp_path, agent_match_by_name=False):
+        yield api
+
+
+@pytest_asyncio.fixture
+async def target_overview_by_name_api(tmp_path: Path) -> AsyncIterator[TargetOverviewApi]:
+    """Provide the agent-name-matching fixture with a same-name second version."""
+    async for api in _target_overview_api(
+        tmp_path,
+        agent_match_by_name=True,
+        seed_agent_name_match_rows=True,
+    ):
+        yield api
+
+
+@pytest_asyncio.fixture
+async def target_overview_by_name_unresolved_api(
+    tmp_path: Path,
+) -> AsyncIterator[TargetOverviewApi]:
+    """Provide name mode while the agent's content file cannot be resolved."""
+    async for api in _target_overview_api(
+        tmp_path,
+        agent_match_by_name=True,
+        seed_agent_name_match_rows=True,
+        resolver=_UnresolvedAgentResolver(revision="digest"),
+    ):
+        yield api
+
+
+@pytest_asyncio.fixture
+async def target_overview_off_same_name_api(
+    tmp_path: Path,
+) -> AsyncIterator[TargetOverviewApi]:
+    """Provide the hash-mode baseline while the same-name rows are present."""
+    async for api in _target_overview_api(
+        tmp_path,
+        agent_match_by_name=False,
+        seed_agent_name_match_rows=True,
+    ):
+        yield api
 
 
 async def test_target_list_summary_states_and_versions(
@@ -1506,3 +1655,125 @@ async def test_workspace_counts_completed_reports_without_trace_revision(
         "/api/acquisition/status", params={"workspaceId": WORKSPACE_B}, headers=api.reader_a
     )
     assert forbidden.status_code == 404
+
+
+async def test_agent_name_match_collapses_versions_and_keeps_history(
+    target_overview_by_name_api: TargetOverviewApi,
+) -> None:
+    """Name mode shows one agent row, unions same-name Sessions, and keeps reports."""
+    api = target_overview_by_name_api
+    response = await api.client.get(
+        f"/api/workspaces/{api.workspace_a}/overview/targets",
+        headers=api.reader_a,
+        params=WINDOW,
+    )
+    assert response.status_code == 200
+    items = {item["targetId"]: item for item in response.json()["items"]}
+    agent = items[TARGET_AGENT]
+    assert agent["versions"] == ["v1.0.0"]
+    assert agent["versionOptions"] == [{"version": "v1.0.0", "ref": "v1.0.0", "commit": "580c97c"}]
+    assert agent["sessions"] == 2
+    assert agent["potential"] == 2
+    assert agent["attributed"] == 1
+    assert agent["nonTarget"] == 0
+    assert agent["unanalyzed"] == 1
+
+    skill = items[TARGET_SKILL]
+    assert skill["versions"] == ["v2.0.0", "v1.9.0", "v1.8.0"]
+    assert skill["sessions"] == 4
+    assert skill["potential"] == 5
+
+    knowledge = items[TARGET_KNOWLEDGE]
+    assert knowledge["versions"] == ["digest:aaa"]
+    assert knowledge["attributed"] == 1
+
+    detail = await api.client.get(
+        f"/api/workspaces/{api.workspace_a}/overview/targets/{TARGET_AGENT}/detail",
+        headers=api.reader_a,
+        params=WINDOW,
+    )
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["target"]["versions"] == ["v1.0.0"]
+    assert body["stats"] == {
+        "sessions": 2,
+        "potential": 2,
+        "distinctCases": 2,
+        "versions": 1,
+    }
+    assert body["byVersion"] == [
+        {
+            "version": "v1.0.0",
+            "ref": "v1.0.0",
+            "commit": "580c97c",
+            "potential": 2,
+            "attributed": 1,
+            "nonTarget": 0,
+            "unanalyzed": 1,
+        }
+    ]
+
+    cases = await api.client.get(
+        f"/api/workspaces/{api.workspace_a}/overview/targets/cases",
+        headers=api.reader_a,
+        params={**WINDOW, "targets": TARGET_AGENT},
+    )
+    assert cases.status_code == 200
+    rows = {row["badCaseId"]: row for row in cases.json()["items"]}
+    assert rows["m11-03-case-agent"]["state"] == "attributed"
+    assert rows["m11-03-case-agent"]["attributionId"] == "probe-agent-history"
+    assert rows["m11-03-case-agent"]["objectVersion"] == "v1.0.0"
+    assert rows["m11-03-case-agent-name"]["state"] == "unanalyzed"
+
+    bare_hash = hashlib.sha256(b"v1.0.0").hexdigest()
+    filtered = await api.client.get(
+        f"/api/workspaces/{api.workspace_a}/overview/targets/{TARGET_AGENT}/detail",
+        headers=api.reader_a,
+        params={**WINDOW, "versions": bare_hash},
+    )
+    assert filtered.status_code == 200
+    assert filtered.json()["stats"]["versions"] == 1
+    assert len(filtered.json()["byVersion"]) == 1
+
+
+async def test_agent_hash_mode_keeps_same_name_versions_split(
+    target_overview_off_same_name_api: TargetOverviewApi,
+) -> None:
+    """With the switch off, the same fixture keeps two hash-filtered version rows."""
+    api = target_overview_off_same_name_api
+    response = await api.client.get(
+        f"/api/workspaces/{api.workspace_a}/overview/targets/{TARGET_AGENT}/detail",
+        headers=api.reader_a,
+        params=WINDOW,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    refs = [option["ref"] for option in body["target"]["versionOptions"]]
+    assert refs == ["v1.5.0", "v1.0.0"]
+    assert body["stats"]["versions"] == 2
+    assert body["stats"]["sessions"] == 2
+    assert body["stats"]["potential"] == 2
+    assert [row["attributed"] for row in body["byVersion"]] == [0, 1]
+    assert [row["unanalyzed"] for row in body["byVersion"]] == [1, 0]
+    assert body["byVersion"][1]["commit"] == "580c97c"
+
+
+async def test_agent_name_match_associates_when_content_is_unresolved(
+    target_overview_by_name_unresolved_api: TargetOverviewApi,
+) -> None:
+    """Overview keeps the name row and Sessions even when AGENT.md cannot be read."""
+    api = target_overview_by_name_unresolved_api
+    response = await api.client.get(
+        f"/api/workspaces/{api.workspace_a}/overview/targets/{TARGET_AGENT}/detail",
+        headers=api.reader_a,
+        params=WINDOW,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["target"]["versions"] == ["v1.0.0"]
+    assert body["target"]["versionOptions"] == [
+        {"version": "v1.0.0", "ref": "v1.0.0", "commit": "580c97c"}
+    ]
+    assert body["stats"]["sessions"] == 2
+    assert body["stats"]["potential"] == 2
+    assert body["byVersion"][0]["attributed"] == 1
