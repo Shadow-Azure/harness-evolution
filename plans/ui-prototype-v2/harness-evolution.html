@@ -1567,12 +1567,14 @@
 }
 .cr-card-entry button { color: #215db5; white-space: nowrap; }
 .cr-history-count { display: block; margin-top: 3px; color: #70529b; }
-.cr-dialog {
+.cr-create, .cr-dialog {
   --cr-ink: #1f2937;
   --cr-dim: #566479;
   --cr-border: #e1e7f0;
   --cr-blue: #245fba;
   --cr-blue-soft: #eff5ff;
+}
+.cr-dialog {
   width: min(1080px, calc(100% - 36px));
   max-width: none;
   height: min(788px, calc(100dvh - 36px));
@@ -1616,7 +1618,7 @@
 .cr-modes input { margin-top: 3px; }
 .cr-modes b { display: block; font-size: 12px; }
 .cr-modes small { display: block; color: var(--cr-dim); font-size: 11px; line-height: 1.5; margin-top: 1px; }
-.cr-section-head, .cr-preview-title, .cr-track-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cr-section-head, .cr-preview-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cr-dialog .cr-help { margin-top: 4px; color: var(--cr-dim); font-size: 11.5px; line-height: 1.6; }
 .cr-rule { position: relative; margin: 9px 0; padding: 9px 10px 11px; border: 1px solid var(--cr-border); border-radius: 8px; }
 .cr-rule legend { padding: 0 5px; font-size: 11px; color: var(--cr-blue); font-weight: 650; }
@@ -1626,53 +1628,27 @@
 .cr-example { margin: 10px 0 3px; font-size: 12px; text-align: left; }
 .cr-fields { display: grid; gap: 8px; grid-template-columns: 88px minmax(0, 1fr); }
 .cr-rule label { display: block; font-size: 11.5px; color: var(--cr-dim); }
-.cr-rule select, .cr-rule input[data-cr-field=name] {
+.cr-rule select, .cr-rule .cr-name-trigger {
   display: block; width: 100%; min-width: 0; height: 31px; margin-top: 3px; padding: 3px 8px;
   border: 1px solid #d4deec; border-radius: 6px; background: white; color: var(--cr-ink); font: inherit;
 }
+.cr-name-trigger { text-align:left; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cr-name-trigger::after { content:'▾'; float:right; color:var(--cr-dim); }
+.cr-name-trigger:disabled { cursor:default; color:var(--cr-dim); }
+.cr-name-menu { position:fixed; inset:auto; margin:0; padding:4px; box-sizing:border-box; overflow:auto; border:1px solid var(--cr-border); border-radius:10px; background:white; color:var(--cr-ink); box-shadow:0 8px 26px #182a4d29; }
+.cr-name-row { display:grid; grid-template-columns:minmax(0,1fr) 48px 72px; gap:8px; align-items:center; width:100%; padding:0 12px; box-sizing:border-box; }
+.cr-name-head { position:sticky; top:-4px; background:#f6f8fb; color:var(--cr-dim); min-height:34px; font-size:11px; border-radius:6px; }
+.cr-name-head > :first-child { text-align:left; }
+.cr-name-head > span, .cr-name-row .cr-number { text-align:right; font-variant-numeric:tabular-nums; }
+button.cr-name-row { min-height:44px; background:white; border:0; border-radius:6px; color:var(--cr-ink); font:inherit; font-size:13px; cursor:pointer; }
+button.cr-name-row[aria-selected=true] { background:var(--cr-blue-soft); color:var(--cr-blue); }
+button.cr-name-row:is(:hover,:focus-visible) { background:#e8f1ff; outline:1px solid #a2bfea; outline-offset:-1px; }
+.cr-option-name { text-align:left; overflow-wrap:anywhere; }
 .cr-types { display: flex; align-items: center; gap: 9px; margin: 9px 0; font-size: 11.5px; color: var(--cr-dim); }
 .cr-types label { display: inline-flex; align-items: center; gap: 3px; font-family: var(--mono, monospace); }
 .cr-dialog .cr-empty-editor { margin: 8px 0; padding: 12px; border: 1px dashed #d4deec; border-radius: 8px; color: var(--cr-dim); font-size: 12px; }
-.cr-stats { display: grid; grid-template-columns: repeat(3, 1fr); margin: 10px 0; background: white; border: 1px solid var(--cr-border); border-radius: 8px; }
-.cr-stats div { padding: 8px 12px; }
-.cr-stats div + div { border-left: 1px solid var(--cr-border); }
-.cr-stats b { display: block; font-size: 20px; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.cr-stats span { color: var(--cr-dim); font-size: 11px; }
-.cr-stats .added { color: #0f7151; }
-.cr-stats .removed { color: #a3461e; }
-.cr-tabs { display: flex; margin-bottom: 6px; gap: 13px; border-bottom: 1px solid var(--cr-border); }
-.cr-tabs button { padding: 6px 2px; border: 0; border-bottom: 2px solid transparent; background: transparent; font: inherit; font-size: 12px; color: var(--cr-dim); cursor: pointer; }
-.cr-tabs button[aria-pressed=true] { border-bottom-color: var(--cr-blue); color: var(--cr-blue); font-weight: 650; }
-.cr-dialog .cr-batch-note { margin: 6px 0 9px; color: var(--cr-dim); font-size: 11px; }
-.cr-cases { display: grid; gap: 5px; }
-.cr-case { border: 1px solid var(--cr-border); border-radius: 7px; background: white; overflow: hidden; }
-.cr-case summary { display: grid; grid-template-columns: 9px auto minmax(0, 1fr) auto; align-items: center; gap: 7px; min-height: 34px; padding: 5px 9px; font-size: 11.5px; cursor: pointer; list-style: none; }
-.cr-case summary::-webkit-details-marker { display: none; }
-.cr-case[open] summary { background: #f0f5fc; }
-.cr-case-arrow { font-size: 17px; color: #536b8d; line-height: 1; }
-.cr-case[open] .cr-case-arrow { transform: rotate(90deg); }
-.cr-case-title { overflow-wrap: anywhere; }
 .cr-id { color: var(--cr-blue); font-family: var(--mono, monospace); font-size: 10.5px; }
 .cr-status { display: inline-block; padding: 2px 6px; border-radius: 5px; white-space: nowrap; background: #eef2f7; color: #4c5c71; font-size: 10px; }
-.cr-status.hit { background: #eaf2ff; color: #205baa; }
-.cr-status.added { background: #e4f5ec; color: #0f7151; }
-.cr-status.removed { background: #fbeee5; color: #a3461e; }
-.cr-status.history { background: #f2eafa; color: #6d4b95; }
-.cr-case-detail { padding: 7px 10px 8px; }
-.cr-track-head, .cr-case-detail p { color: var(--cr-dim); font-size: 11px; line-height: 1.5; }
-.cr-track { display: flex; align-items: center; gap: 5px; margin: 6px 0; }
-.cr-node { display: grid; place-items: center; min-width: 34px; padding: 4px 6px; text-align: center; background: #f4f6fa; border: 1px solid #e1e7f0; color: #4f6076; border-radius: 5px; }
-.cr-node b { font: 650 12px var(--mono, monospace); }
-.cr-node small { font-size: 9px; white-space: nowrap; }
-.cr-node.anchor { background: #fff1e6; border-color: #f0caad; color: #87441c; }
-.cr-node.witness { background: #eaf2ff; border-color: #a9c4ee; color: #2157a0; }
-.cr-node.inferred { border-style: dashed; }
-.cr-edge { font-size: 11px; color: #6881a4; }
-.cr-footer { align-items: center; border-top: 1px solid var(--cr-border); padding-block: 12px; }
-.cr-footer strong { display: block; font-size: 11px; }
-.cr-footer span { color: var(--cr-dim); font-size: 11px; }
-.cr-footer .cr-message { color: #a3461e; font-size: 11px; }
-.cr-footer-buttons { display: flex; flex-shrink: 0; gap: 7px; }
 @media (max-width: 720px) {
   .cr-dialog { width: calc(100% - 16px); height: calc(100dvh - 16px); border-radius: 10px; }
   .cr-header, .cr-footer, .cr-editor, .cr-preview { padding-inline: 13px; }
@@ -1700,7 +1676,30 @@
 .cr-steps li > span { display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: #edf1f7; }
 .cr-steps li[aria-current=step] { color: #245fba; font-weight: 650; }
 .cr-steps li[aria-current=step] > span { background: #e1ecff; color: #245fba; }
-.cr-header .cr-steps { margin: 11px 0 0; }
+.evo-app .modal.cr-create { width: min(660px, 100%); height: min(720px, calc(100dvh - 64px)); display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; }
+.evo-app .evov:has(.cr-create) { align-items:center; padding:16px; }
+.cr-create > .cr-steps { margin:0; padding:12px 18px; border-bottom:1px solid var(--cr-border); background:#f8faff; }
+.evo-app .cr-create > .modal-body { min-height:0; max-height:none; overflow:auto; }
+.cr-create .cr-message { align-self:center; margin-right:auto; font-size:12px; color:#943e21; }
+.cr-create .cr-editor h3 { font-size:14px; }
+.cr-create .cr-editor .cr-help { color:var(--cr-dim); margin:6px 0; font-size:12px; }
+.cr-create .cr-empty-editor, .cr-create legend { font-size:12px; color:var(--cr-dim); }
+.cr-filter-row { display:flex; flex-wrap:wrap; align-items:center; gap:5px; margin:10px 0; }
+.cr-filter-row strong { color:var(--cr-dim); font-size:11px; min-width:32px; }
+.cr-filter-row button { cursor:pointer; border:1px solid var(--cr-border); border-radius:14px; background:white; color:var(--cr-dim); padding:3px 9px; font-size:11px; }
+.cr-filter-row button[aria-pressed=true] { color:var(--cr-blue); border-color:#93b3e5; background:var(--cr-blue-soft); }
+.cr-record { padding:10px 12px; border:1px solid var(--cr-border); background:white; border-radius:7px; }
+.cr-record strong { font-size:13px; display:block; margin:4px 0; }
+.cr-record header,.cr-record footer { display:flex; align-items:center; flex-wrap:wrap; gap:6px; font-size:11px; color:var(--cr-dim); }
+.cr-record time { margin-left:auto; }
+.cr-record-list { display:grid; gap:6px; }
+.cr-record-count { margin:12px 0 6px!important; color:var(--cr-dim); font-size:11px; }
+.cr-types { flex-wrap:wrap; }
+.cr-types .cr-view { margin-left:auto; white-space:nowrap; }
+.cr-rule.cr-current { border-color:#99b8e5; }
+.cr-dialog.cr-source-popup { width:min(600px, calc(100% - 24px)); height:min(620px, calc(100dvh - 24px)); grid-template-rows:auto minmax(0,1fr); }
+.cr-source-popup .cr-preview { overflow:auto; border:0; }
+.cr-empty-editor { line-height:1.6; }
 </style>
 <script id="candidate-rules-script">
 /* Interactive fixture for the candidate-rule design review. */
@@ -1731,6 +1730,19 @@ const v2CandidateRules = (() => {
     { id: 'BC-1061', trace: 2, name: 'A', kind: 'skill', type: 'discovery', anchor: 'A1', title: 'A 发现问题，随后再次执行 C' },
     { id: 'BC-1071', trace: 3, name: 'A', kind: 'skill', type: 'discovery', anchor: null, title: 'A 的后处理上报' },
   ];
+  const reportExamples = [
+    ['BC-1041', '2026-11-09', ['回归', '质量']],
+    ['BC-1042', '2026-11-09', ['回归']],
+    ['BC-1043', '2026-11-09', ['质量']],
+    ['BC-1044', '2026-11-09', []],
+    ['BC-1051', '2026-11-08', ['交接']],
+    ['BC-1052', '2026-11-08', ['质量']],
+    ['BC-1061', '2026-11-07', ['交接', '回归']],
+    ['BC-1071', '2026-11-06', []],
+  ].map(([id, date, labels]) => {
+    const { kind, name, type, title } = samples.find(row => row.id === id);
+    return { id, date, labels, kind, name, type, title };
+  });
   const defaultPolicy = { mode: 'default', rules: [] };
   const demoWorkspaces = new Set();
   let review;
@@ -1748,6 +1760,7 @@ const v2CandidateRules = (() => {
     EV_TARGETS[workspace] = ['A', 'C'].map(name => ({
       id: 'candidate-demo-' + name, kind: 'skill', objectName: name, defaultRef: 'v1.0.0',
       enabled: true, candidateDemo: true, attributionSkill: 'attribute-badcases',
+      candidatePolicy: name === 'C' ? { mode:'combined', rules:[{kind:'skill', name:'A', types:['self','discovery'], relation:'after'}] } : defaultPolicy,
     }));
   }
 
@@ -1795,21 +1808,6 @@ const v2CandidateRules = (() => {
   }
 
   function rowsFor(target, policy, from, to) {
-    if (!target.candidateDemo) {
-      const run = { id: 'OV-' + target.id, target: { name: target.objectName, kind: target.kind }, candidatePolicy: policy };
-      return casesForWorkspace(V2.wsId).flatMap(c => {
-        if (!evDateIn(c.createdAt, from, to)) return [];
-        const session = SESSIONS.find(s => s.id === c.sessionId);
-        if (!evSessionHasTarget(session, run.target)) return [];
-        const line = evObjectLine(run, session);
-        const anchor = c.triggerLine > 0 ? 'L' + c.triggerLine : null;
-        const sample = { ...c, anchor, name: c.objectName, kind: caseKind(c) };
-        const levels = new Set([line, ...(anchor ? [c.triggerLine] : [])]);
-        const trace = { title: session.short, events: [...levels].sort((a, b) => a - b).map(n => 'L' + n) };
-        const report = (window.attributionsFor?.(c) || []).find(item => item.objectName === target.objectName);
-        return [{ sample, trace, report: report?.id, ...assessPrototypeCase(run, c, line) }];
-      });
-    }
     return samples.flatMap(sample => {
       const trace = traces[sample.trace];
       if ((from && trace.date < from) || (to && trace.date > to)) return [];
@@ -1905,147 +1903,245 @@ const v2CandidateRules = (() => {
     }
   }
 
-  function create(target, trigger, flow) {
-    const overlay = trigger.closest('.evov');
-    overlay.style.display = 'none';
-    open(target, trigger, {
-      ...flow,
-      back: draft => {
-        overlay.style.display = '';
-        flow.back(draft);
-        trigger.focus();
-      },
+  function reportState() {
+    const records = reportedCases();
+    const dates = v2Range();
+    const sources = { skill:new Map(), agent:new Map() };
+    for (const row of records) {
+      const options = sources[row.kind];
+      if (!options || !row.name) continue;
+      if (!options.has(row.name)) options.set(row.name, {self:0, discovery:0});
+      if (row.date >= dates.from && row.date <= dates.to && (row.type === 'self' || row.type === 'discovery')) {
+        options.get(row.name)[row.type]++;
+      }
+    }
+    return { records, dates, sources, filterType:'', filterLabels:new Set(), activeRule:null };
+  }
+
+  function reportedCases() {
+    return demoWorkspaces.has(V2.wsId) ? reportExamples : casesForWorkspace(V2.wsId).map(c => {
+      const labels = c.labels ?? c.meta_data?.labels ?? c.meta_data?.label ?? [];
+      return { id:c.id, title:c.title, date:c.createdAt.slice(0,10), name:c.objectName, kind:caseKind(c), type:c.type,
+        labels:(Array.isArray(labels) ? labels : [labels]).filter(value => typeof value === 'string' && value.trim()) };
     });
   }
 
-  function open(target, trigger, flow) {
-    const saved = structuredClone(getPolicy(target));
-    const dates = v2Range();
-    review = { target, saved, draft: structuredClone(flow?.draft || saved), dates, trigger, flow, view: 'all',
-      editable: v2CanManage(V2.wsId), expanded: target.objectName === 'A' ? 'BC-1041' : 'BC-1051' };
+  function sourceNames(kind) {
+    return [...review.sources[kind].keys()].sort();
+  }
+
+  function create(target, trigger, flow) {
+    dialog = trigger.closest('.cr-create');
+    const shell = dialog;
+    const nav = shell.querySelector('.cr-steps');
+    const body = shell.querySelector('.modal-body');
+    const footer = shell.querySelector('.modal-foot');
+    const fields = Array.from(body.childNodes);
+    const buttons = Array.from(footer.childNodes);
+    const listeners = new AbortController();
+    const setStep = index => Array.from(nav.children).forEach((li, i) => {
+      if (i === index) li.setAttribute('aria-current', 'step');
+      else li.removeAttribute('aria-current');
+    });
+    function finish(result) {
+      const { draft } = review;
+      listeners.abort();
+      review = dialog = null;
+      if (result === 'save') return flow.commit(target);
+      if (result !== 'back') return flow.cancel();
+      body.classList.remove('cr-editor');
+      body.replaceChildren(...fields);
+      footer.replaceChildren(...buttons);
+      setStep(0);
+      flow.back(draft);
+      trigger.focus();
+    }
+    review = { ...reportState(), target, draft: structuredClone(flow.draft || getPolicy(target)), flow, editable:true, finish };
+    setStep(1);
+    body.classList.add('cr-editor');
+    footer.innerHTML = `<div class="cr-message" role="status"></div><button class="btn" data-cr-back>← 上一步</button><button class="btn primary" data-cr-save>保存进化对象</button>`;
+    const options = { signal:listeners.signal };
+    shell.addEventListener('click', event => {
+      if (event.target.closest('.modal-head .x')) {
+        event.stopPropagation();
+        finish('cancel');
+      } else click(event);
+    }, options);
+    shell.addEventListener('change', change, options);
+    shell.parentElement.addEventListener('click', event => {
+      if (event.target === shell.parentElement) { event.stopPropagation(); finish('cancel'); }
+    }, options);
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !review.popup && !shell.querySelector(':popover-open')) { event.preventDefault(); finish('cancel'); }
+    }, options);
+    renderEditor();
+    body.scrollTop = 0;
+    body.querySelector('input:checked')?.focus({preventScroll:true});
+  }
+
+  function open(target, trigger) {
+    const draft = structuredClone(getPolicy(target));
+    review = { ...reportState(), target, draft, editable:v2CanManage(V2.wsId), activeRule:draft.rules[0] || null };
     dialog = document.createElement('dialog');
     dialog.className = 'cr-dialog';
     dialog.setAttribute('aria-labelledby', 'cr-title');
     dialog.innerHTML = `
-      <header class="cr-header">
-        <div><p class="cr-context">进化对象总览 <span aria-hidden="true">/</span> ${esc(target.kind)} · <b>${esc(target.objectName)}</b></p>
-        <h2 id="cr-title">潜在 bad case 候选规则</h2>
-        <p>配置哪些上报会交给 <b>${esc(target.objectName)}</b> 的归因 Skill 分析。</p>${flow ? steps(2) : ''}</div>
-        <button class="btn cr-close" type="button" data-cr-close aria-label="关闭">×</button>
-      </header>
-      <div class="cr-body"><section class="cr-editor" aria-label="规则配置"></section><section class="cr-preview" aria-label="命中预览"></section></div>
-      <footer class="cr-footer">
-        <div><strong>应用范围</strong><span>自动归因 · 进化对象总览 · 自进化向导</span><div class="cr-message" role="status"></div></div>
-        <div class="cr-footer-buttons">
-          ${flow ? '<button class="btn" data-cr-back>← 上一步</button>' : `<button class="btn" data-cr-close>${review.editable ? '取消' : '关闭'}</button>`}
-          ${review.editable ? `<button class="btn primary" data-cr-save>${flow ? '保存进化对象' : '保存候选规则'}</button>` : ''}
-        </div>
-      </footer>`;
+      <header class="cr-header"><div><p class="cr-context">进化对象总览 / ${esc(target.kind)} · ${esc(target.objectName)}</p>
+      <h2 id="cr-title">潜在 bad case 候选规则</h2><p>选择来源，并查看该来源已经上报的问题。</p></div>
+      <button class="btn cr-close" data-cr-close aria-label="关闭">×</button></header>
+      <div class="cr-body"><section class="cr-editor" aria-label="规则配置"></section><section class="cr-preview" aria-label="来源上报记录"></section></div>
+      <footer class="cr-footer"><div><strong>应用范围</strong><span>自动归因 · 进化对象总览 · 自进化向导</span><div class="cr-message" role="status"></div></div>
+      <div class="cr-footer-buttons"><button class="btn" data-cr-close>${review.editable ? '取消' : '关闭'}</button>
+      ${review.editable ? '<button class="btn primary" data-cr-save>保存候选规则</button>' : ''}</div></footer>`;
     document.body.append(dialog);
     dialog.addEventListener('close', () => {
-      const { trigger: opener, target: openedTarget, flow: currentFlow, draft } = review;
-      const result = dialog.returnValue;
       dialog.remove();
-      review = null;
-      dialog = null;
-      if (currentFlow) {
-        if (result === 'back') currentFlow.back(draft);
-        else if (result === 'save') currentFlow.commit(openedTarget);
-        else currentFlow.cancel();
-        return;
-      }
-      (opener?.isConnected ? opener : [...document.querySelectorAll('[data-candidate-open]')]
-        .find(button => button.dataset.candidateOpen === openedTarget.id))?.focus();
-    }, { once: true });
+      dialog = review = null;
+      (trigger?.isConnected ? trigger : [...document.querySelectorAll('[data-candidate-open]')].find(el => el.dataset.candidateOpen === target.id))?.focus();
+    }, {once:true});
     dialog.addEventListener('click', click);
     dialog.addEventListener('change', change);
-    dialog.addEventListener('input', input);
     renderEditor();
-    renderPreview();
+    renderReports();
     dialog.showModal();
   }
 
   function renderEditor() {
     const { target, draft, editable } = review;
-    const sources = target.candidateDemo ? samples : casesForWorkspace(V2.wsId).map(item => ({ kind: caseKind(item), name: item.objectName }));
-    const sourceOptions = kind => [...new Set(sources.filter(sample => sample.kind === kind).map(sample => sample.name))];
-    const rules = draft.rules.map((rule, index) => `
-      <fieldset class="cr-rule" data-cr-rule="${index}" ${editable ? '' : 'disabled'}>
+    const rules = draft.rules.map((rule, index) => {
+      const names = sourceNames(rule.kind);
+      const disabled = editable ? '' : 'disabled';
+      return `
+      <fieldset class="cr-rule ${!review.flow && review.activeRule === rule ? 'cr-current' : ''}" data-cr-rule="${index}">
         <legend>来源 ${index + 1}</legend>
         ${editable ? `<button type="button" class="cr-text cr-remove" data-cr-remove="${index}" aria-label="移除来源 ${index + 1}">移除</button>` : ''}
         <div class="cr-fields">
-          <label>来源类型<select data-cr-field="kind"><option value="skill" ${rule.kind === 'skill' ? 'selected' : ''}>Skill</option><option value="agent" ${rule.kind === 'agent' ? 'selected' : ''}>Agent</option></select></label>
-          <label>来源名称<input data-cr-field="name" maxlength="128" list="cr-names-${index}" value="${esc(rule.name)}" placeholder="选择或输入名称"><datalist id="cr-names-${index}">${sourceOptions(rule.kind).map(name => '<option value="' + esc(name) + '"></option>').join('')}</datalist></label>
+          <label>来源类型<select data-cr-field="kind" ${disabled}><option value="skill" ${rule.kind === 'skill' ? 'selected' : ''}>Skill</option><option value="agent" ${rule.kind === 'agent' ? 'selected' : ''}>Agent</option></select></label>
+          <div><label for="cr-name-${index}">来源名称</label><button type="button" id="cr-name-${index}" class="cr-name-trigger" data-cr-field="name" value="${esc(rule.name)}" popovertarget="cr-menu-${index}" aria-haspopup="listbox" aria-controls="cr-menu-${index}" ${disabled} ${names.length ? '' : 'disabled'}>${esc(rule.name || (names.length ? '请选择已上报的对象' : '暂无已上报的对象'))}</button>
+            <div id="cr-menu-${index}" class="cr-name-menu" popover="auto" role="listbox" aria-label="来源名称及当前时间范围内的上报数">
+              <div class="cr-name-row cr-name-head" aria-hidden="true"><span>来源名称 · 所选时段</span><span>self</span><span>discovery</span></div>
+              ${names.map(name => {
+                const counts = review.sources[rule.kind].get(name);
+                return `<button type="button" class="cr-name-row" role="option" tabindex="-1" data-cr-name="${esc(name)}" aria-selected="${rule.name === name}" aria-label="${esc(name)}，self ${counts.self}，discovery ${counts.discovery}"><span class="cr-option-name">${esc(name)}</span><span class="cr-number">${counts.self}</span><span class="cr-number">${counts.discovery}</span></button>`;
+              }).join('')}
+            </div>
+          </div>
         </div>
-        <div class="cr-types"><span>上报类型</span><label><input type="checkbox" value="self" data-cr-field="types" ${rule.types.includes('self') ? 'checked' : ''}> self</label><label><input type="checkbox" value="discovery" data-cr-field="types" ${rule.types.includes('discovery') ? 'checked' : ''}> discovery</label></div>
-        <label>轨迹顺序<select data-cr-field="relation">${Object.entries(relations).map(([value, text]) => `<option value="${value}" ${rule.relation === value ? 'selected' : ''}>${text}</option>`).join('')}</select></label>
+        <div class="cr-types"><span>上报类型</span><label><input type="checkbox" value="self" data-cr-field="types" ${disabled} ${rule.types.includes('self') ? 'checked' : ''}> self</label><label><input type="checkbox" value="discovery" data-cr-field="types" ${disabled} ${rule.types.includes('discovery') ? 'checked' : ''}> discovery</label><button type="button" class="btn sm cr-view" data-cr-view="${index}" ${names.includes(rule.name) && rule.types.length ? '' : 'disabled'}>查看 badcase</button></div>
+        <label>轨迹顺序<select data-cr-field="relation" ${disabled}>${Object.entries(relations).map(([value, text]) => `<option value="${value}" ${rule.relation === value ? 'selected' : ''}>${text}</option>`).join('')}</select></label>
         ${rule.relation === 'any' ? '' : '<p class="cr-help">需要真实 case 锚点及至少一次可比较的目标执行。</p>'}
-      </fieldset>`).join('');
+      </fieldset>`;
+    }).join('');
     dialog.querySelector('.cr-editor').innerHTML = `
       <h3>策略模式</h3>
       <fieldset class="cr-modes" aria-label="策略模式" ${editable ? '' : 'disabled'}>
         ${Object.entries(modes).map(([id, [title, description]]) => `<label><input type="radio" name="cr-mode" value="${id}" ${draft.mode === id ? 'checked' : ''}><span><b>${title}</b><small>${description}</small></span></label>`).join('')}
       </fieldset>
       <div class="cr-section-head"><h3>来源规则</h3>${editable ? '<button class="btn sm" data-cr-add>＋ 添加来源</button>' : ''}</div>
-      <p class="cr-help">按类型和名称精确匹配。可手填任何 Skill / Agent 名称，也可选择 ${esc(target.objectName)} 自己作为来源。</p>
+      <p class="cr-help">来源名称取自当前工作区已有上报的 Skill 或 Agent。</p>
       ${draft.mode === 'default' ? '<p class="cr-empty-editor">选择包含自定义来源的模式即可配置。</p>' : rules || '<p class="cr-empty-editor">添加第一条来源规则。</p>'}
-      ${editable && target.candidateDemo && ['A', 'C'].includes(target.objectName) ? `<button class="cr-text cr-example" data-cr-example>载入示例 · ${target.objectName === 'A' ? 'A 自己的 self' : 'A 上报后执行 C'}</button>` : ''}`;
+      ${!review.flow && editable && target.candidateDemo && ['A', 'C'].includes(target.objectName) ? `<button class="cr-text cr-example" data-cr-example>载入示例 · ${target.objectName === 'A' ? 'A 自己的 self' : 'A 上报后执行 C'}</button>` : ''}`;
+    for (const menu of dialog.querySelectorAll('.cr-name-menu')) bindSourceMenu(menu);
+
   }
 
-  function renderPreview() {
-    const { target, draft, saved, dates, view, expanded } = review;
-    const previous = rowsFor(target, saved, dates.from, dates.to);
-    const oldHits = new Set(previous.filter(row => row.hits.length).map(row => row.sample.id));
-    const next = rowsFor(target, draft, dates.from, dates.to).map(row => {
-      const was = oldHits.has(row.sample.id);
-      const included = Boolean(row.hits.length);
-      const delta = included && !was ? 'added' : !included && was ? 'removed' : '';
-      return { ...row, included, delta, historical: Boolean(row.report) };
+  function bindSourceMenu(menu) {
+    const trigger = menu.previousElementSibling;
+    const options = [...menu.querySelectorAll('[role="option"]')];
+    // Listen only while this particular menu is open.
+    let listeners;
+    function position() {
+      const rect = trigger.getBoundingClientRect();
+      const fields = trigger.closest('.cr-fields').getBoundingClientRect();
+      const width = Math.min(Math.max(288, rect.width), fields.width);
+      menu.style.width = width + 'px';
+      menu.style.left = (fields.right - width) + 'px';
+      const below = window.innerHeight - rect.bottom - 12;
+      const above = rect.top - 12;
+      const needed = Math.min(302, menu.scrollHeight + 2);
+      const openAbove = below < needed && above > below;
+      menu.style.maxHeight = Math.min(302, openAbove ? above : below) + 'px';
+      menu.style.top = (openAbove ? rect.top - menu.offsetHeight - 4 : rect.bottom + 4) + 'px';
+    }
+    menu.addEventListener('beforetoggle', event => {
+      if (event.newState === 'closed') listeners?.abort();
     });
-    const counts = {
-      included: next.filter(row => row.included).length,
-      added: next.filter(row => row.delta === 'added').length,
-      removed: next.filter(row => row.delta === 'removed').length,
-    };
-    const visible = next.filter(row => {
-      if (view === 'delta') return row.delta;
-      if (view === 'history') return row.historical;
-      if (view === 'batch') return row.included;
-      return row.present || row.historical;
+    menu.addEventListener('toggle', () => {
+      if (!menu.matches(':popover-open')) return;
+      position();
+      const selected = options.find(option => option.getAttribute('aria-selected') === 'true') || options[0];
+      selected?.focus({preventScroll:true});
+      if (selected) menu.scrollTop = Math.max(0, selected.offsetTop - menu.clientHeight / 2);
+      listeners = new AbortController();
+      window.addEventListener('resize', position, {signal:listeners.signal});
+      dialog.addEventListener('scroll', e => { if (e.target !== menu) position(); }, {capture:true, signal:listeners.signal});
     });
-    const renderRow = row => {
-      const { sample, trace } = row;
-      const candidateStatus = row.delta === 'added' ? '新增' : row.delta === 'removed' ? '移出' : row.included ? '命中' : row.unknown ? '顺序未知' : '未命中';
-      const status = view === 'batch' ? (row.historical ? '已有报告' : '待归因') : candidateStatus;
-      const badge = view === 'batch' ? (row.historical ? 'history' : 'hit') : row.delta || (row.included ? 'hit' : '');
-      const witnesses = new Set(row.hits.filter(hit => hit.event).map(hit => hit.event));
-      const detail = [
-        ...row.hits.map(hit => hit.label + (hit.event ? ' · ' + hit.event : '')),
-        ...(row.unknown ? ['本例无真实锚点，无法判断来源规则的先后。'] : []),
-        ...(row.historical ? ['已有归因 ' + row.report + (row.report === 'AR-1044-A' ? ' · 规则 v1 · 是 A 的问题' : '')] : []),
-      ];
-      return `<details class="cr-case" data-cr-case="${sample.id}" ${sample.id === expanded ? 'open' : ''}>
-        <summary><span class="cr-case-arrow" aria-hidden="true">›</span><span class="cr-id">${sample.id}</span><span class="cr-case-title">${esc(sample.title)}</span>
-        <span class="cr-status ${badge}">${status}</span></summary>
-        <div class="cr-case-detail"><div class="cr-track-head"><span>${esc(trace.title)} · ${esc(sample.name)} / ${sample.type}</span>${row.historical ? '<span class="cr-status history">历史已归因</span>' : ''}</div>
-          <div class="cr-track" aria-label="Session 执行顺序">${trace.events.map(event => `<span class="cr-node ${witnesses.has(event) ? 'witness' : ''} ${event === sample.anchor ? 'anchor' : ''}"><b>${esc(event)}</b>${event === sample.anchor ? '<small>case 锚点</small>' : witnesses.has(event) ? '<small>目标执行</small>' : ''}</span>`).join('<span class="cr-edge" aria-hidden="true">→</span>')}${sample.anchor ? '' : '<span class="cr-edge" aria-hidden="true">→</span><span class="cr-node inferred"><b>后处理</b><small>推定锚点</small></span>'}</div>
-          <p>${detail.length ? detail.map(esc).join('<br>') : '当前策略未选中这条 case。'}</p>
-        </div>
-      </details>`;
-    };
-    dialog.querySelector('.cr-preview').innerHTML = `
-      <div class="cr-preview-title"><div><h3>候选预览</h3><p class="cr-help">${esc(dates.from)} 至 ${esc(dates.to)} · 相对已保存规则 v${target.candidatePolicyVersion || 1}</p></div><span class="cr-status">演示数据</span></div>
-      <div class="cr-stats" aria-live="polite"><div><b>${counts.included}</b><span>拟纳入</span></div><div><b class="added">+${counts.added}</b><span>新增</span></div><div><b class="removed">−${counts.removed}</b><span>移出</span></div></div>
-      <div class="cr-tabs" role="group" aria-label="预览筛选">${[['all', '关联样本'], ['delta', '变更'], ['batch', '自动归因'], ['history', '历史归因']].map(([id, text]) => `<button type="button" data-cr-view="${id}" aria-pressed="${id === view}">${text}</button>`).join('')}</div>
-      ${view === 'batch' ? '<p class="cr-batch-note">按草稿筛出自动归因的候选。已有报告与待归因样本在此预览。</p>' : ''}
-      <div class="cr-cases">${visible.map(renderRow).join('') || '<p class="cr-empty-editor">当前范围没有符合此筛选的演示样本。</p>'}</div>`;
-    dialog.querySelectorAll('[data-cr-case]').forEach(item => {
-      item.addEventListener('toggle', () => {
-        if (!item.isConnected || !review) return;
-        if (item.open) review.expanded = item.dataset.crCase;
-        else if (review.expanded === item.dataset.crCase) review.expanded = '';
-      });
+    trigger.addEventListener('keydown', event => {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        menu.showPopover();
+      }
     });
+    menu.addEventListener('keydown', event => {
+      const current = options.indexOf(document.activeElement);
+      const keys = {ArrowDown:Math.min(current + 1, options.length - 1), ArrowUp:Math.max(0, current - 1), Home:0, End:options.length - 1};
+      if (Object.hasOwn(keys, event.key)) {
+        event.preventDefault();
+        options[keys[event.key]].focus();
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        options[current]?.click();
+      } else if (event.key === 'Escape' || event.key === 'Tab') {
+        menu.hidePopover();
+        trigger.focus();
+        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); }
+      }
+    });
+  }
+
+  function renderReports() {
+    const { target, draft, dates, records, filterType, filterLabels, activeRule } = review;
+    const panel = (review.popup || dialog).querySelector('.cr-preview');
+    if (!panel) return;
+    const source = draft.mode === 'default' ? {kind:target.kind, name:target.objectName, types:['self']} : activeRule;
+    if (!source || !source.name || !source.types.length) {
+      panel.innerHTML = '<h3>来源已上报的 bad case</h3><p class="cr-empty-editor">在来源卡片中选择名称和上报类型，再点击「查看 badcase」。</p>';
+      return;
+    }
+    const key = item => item.kind + ' · ' + item.name;
+    const rows = records.filter(row => row.date >= dates.from && row.date <= dates.to &&
+      row.name === source.name && row.kind === source.kind && source.types.includes(row.type))
+      .sort((a,b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
+    const labelKeys = [...new Set(rows.flatMap(row => row.labels))].sort();
+    const filtered = rows.filter(row => (!filterType || row.type === filterType) &&
+      (!filterLabels.size || row.labels.some(tag => filterLabels.has(tag)) || (!row.labels.length && filterLabels.has(''))));
+    function chips(title, field, options, active) {
+      const chip = (value,text,pressed,reset=false) => `<button data-cr-filter="${field}" data-value="${esc(value)}" ${reset ? 'data-reset' : ''} aria-pressed="${pressed}">${esc(text)}</button>`;
+      return `<div class="cr-filter-row" role="group" aria-label="${title}"><strong>${title}</strong>${chip('', '全部', !active.size,true)}${options.map(value => chip(value, value || '无标签',active.has(value))).join('')}</div>`;
+    }
+    panel.innerHTML = `
+      <div class="cr-preview-title"><h3 tabindex="-1">来源已上报的 bad case</h3><span class="cr-status">${esc(key(source))}</span></div>
+      <p class="cr-help">${dates.from} 至 ${dates.to} · 按上报来源与类型查询，执行先后在归因筛选时判断。</p>
+      ${chips('类型','type',source.types,new Set(filterType ? [filterType] : []))}
+      ${chips('标签','label',[...labelKeys,...(rows.some(row => !row.labels.length) ? [''] : [])],filterLabels)}
+      <p class="cr-record-count" role="status">显示 ${filtered.length} / ${rows.length} 条上报${draft.mode === 'default' ? ' · 对象自身的 self 上报' : ''}</p>
+      <div class="cr-record-list">${filtered.map(row => `<article class="cr-record"><header><span class="cr-id">${esc(row.id)}</span><time>${esc(row.date)}</time></header>
+        <strong>${esc(row.title)}</strong><footer>${esc(key(row))}<span class="cr-status">${esc(row.type)}</span>${row.labels.map(tag => `<span class="cr-status">${esc(tag)}</span>`).join('')}</footer></article>`).join('') || '<p class="cr-empty-editor">当前来源、时间和筛选条件下没有上报记录。</p>'}</div>`;
+  }
+
+  function valid(draft) {
+    const message = dialog.querySelector('.cr-message');
+    if (draft.mode !== 'default' && !draft.rules.length) {
+      message.textContent = '请至少添加一条来源规则。';
+      return false;
+    }
+    const invalid = draft.mode === 'default' ? -1 : draft.rules.findIndex(rule => !sourceNames(rule.kind).includes(rule.name) || !rule.types.length);
+    if (invalid !== -1) {
+      message.textContent = '请选择已有上报的来源名称，并至少选择一种上报类型。';
+      dialog.querySelector(`[data-cr-rule="${invalid}"] [data-cr-field="name"]`).focus();
+      return false;
+    }
+    return true;
   }
 
   function click(event) {
@@ -2054,33 +2150,63 @@ const v2CandidateRules = (() => {
     const data = button.dataset;
     const { target, draft } = review;
     if (data.crClose !== undefined) { dialog.close(); return; }
-    if (data.crBack !== undefined) { dialog.close('back'); return; }
-    if (data.crView) {
-      review.view = data.crView;
-      renderPreview();
-      dialog.querySelector('[aria-pressed="true"]')?.focus();
+    if (data.crBack !== undefined) { review.finish('back'); return; }
+    if (data.crView !== undefined) {
+      review.activeRule = draft.rules[Number(data.crView)];
+      resetFilters();
+      if (review.flow) {
+        const popup = document.createElement('dialog');
+        popup.className = 'cr-dialog cr-source-popup';
+        popup.setAttribute('aria-label', '查看来源上报');
+        popup.innerHTML = '<header class="cr-header"><h2>查看 badcase</h2><button class="btn" data-cr-return>返回配置</button></header><section class="cr-preview"></section>';
+        document.body.append(popup);
+        review.popup = popup;
+        popup.addEventListener('click', click);
+        popup.addEventListener('close', () => {
+          popup.remove();
+          review.popup = null;
+          button.focus();
+        }, {once:true});
+        renderReports();
+        popup.showModal();
+      } else {
+        for (const card of dialog.querySelectorAll('[data-cr-rule]')) card.classList.toggle('cr-current', card.dataset.crRule === data.crView);
+        renderReports();
+        const heading = dialog.querySelector('.cr-preview h3');
+        heading.focus({preventScroll:true});
+        if (matchMedia('(max-width:720px)').matches) heading.scrollIntoView({block:'start'});
+      }
+      return;
+    }
+    if (data.crReturn !== undefined) { review.popup.close(); return; }
+    if (data.crFilter) {
+      if (data.crFilter === 'label') {
+        if (data.reset !== undefined) review.filterLabels.clear();
+        else if (review.filterLabels.has(data.value)) review.filterLabels.delete(data.value);
+        else review.filterLabels.add(data.value);
+      } else review.filterType = data.value;
+      renderReports();
+      [...(review.popup || dialog).querySelectorAll('[data-cr-filter]')].find(el => el.dataset.crFilter === data.crFilter &&
+        el.dataset.value === data.value && el.hasAttribute('data-reset') === button.hasAttribute('data-reset'))?.focus();
       return;
     }
     if (!review.editable) return;
+    if (data.crName !== undefined) {
+      const trigger = button.closest('.cr-name-menu').previousElementSibling;
+      button.closest('.cr-name-menu').hidePopover();
+      trigger.value = data.crName;
+      trigger.dispatchEvent(new Event('change', {bubbles:true}));
+      return;
+    }
     if (data.crSave !== undefined) {
-      const message = dialog.querySelector('.cr-message');
-      if (draft.mode !== 'default' && !draft.rules.length) {
-        message.textContent = '请至少添加一条来源规则。';
-        return;
-      }
-      const invalid = draft.mode === 'default' ? -1 : draft.rules.findIndex(rule => !rule.name.trim() || !rule.types.length);
-      if (invalid !== -1) {
-        message.textContent = '请填写来源名称，并至少选择一种上报类型。';
-        dialog.querySelector(`[data-cr-rule="${invalid}"] input`).focus();
-        return;
-      }
+      if (!valid(draft)) return;
       const policy = {
         mode: draft.mode,
         rules: draft.mode === 'default' ? [] : draft.rules.map(rule => ({ ...rule, name: rule.name.trim() })),
       };
       savePolicy(target, policy);
       if (review.flow) {
-        dialog.close('save');
+        review.finish('save');
       } else {
         dialog.close();
         v2RenderOverview();
@@ -2092,7 +2218,6 @@ const v2CandidateRules = (() => {
       const own = target.objectName === 'A';
       draft.mode = own ? 'custom' : 'combined';
       draft.rules = [{ kind: 'skill', name: 'A', types: own ? ['self'] : ['self', 'discovery'], relation: own ? 'any' : 'after' }];
-      review.expanded = own ? 'BC-1041' : 'BC-1051';
     } else if (data.crAdd !== undefined) {
       if (draft.mode === 'default') draft.mode = 'combined';
       draft.rules.push({ kind: 'skill', name: '', types: ['self', 'discovery'], relation: 'any' });
@@ -2101,10 +2226,16 @@ const v2CandidateRules = (() => {
     } else {
       return;
     }
+    if (!draft.rules.includes(review.activeRule)) { review.activeRule = null; resetFilters(); }
     renderEditor();
-    renderPreview();
+    renderReports();
     if (data.crAdd !== undefined) dialog.querySelector(`[data-cr-rule="${draft.rules.length - 1}"] [data-cr-field="name"]`).focus();
     else dialog.querySelector(data.crExample !== undefined ? '[data-cr-example]' : '[data-cr-add]')?.focus();
+  }
+
+  function resetFilters() {
+    review.filterType = '';
+    review.filterLabels.clear();
   }
 
   function change(event) {
@@ -2112,28 +2243,31 @@ const v2CandidateRules = (() => {
     const draft = review.draft;
     if (control.name === 'cr-mode') {
       draft.mode = control.value;
+      review.activeRule = null;
+      resetFilters();
       renderEditor();
+      renderReports();
       dialog.querySelector('[name="cr-mode"]:checked').focus();
-    } else {
-      const field = control.dataset.crField;
-      const rule = draft.rules[Number(control.closest('[data-cr-rule]')?.dataset.crRule)];
-      if (!rule || field === 'name') return;
-      if (field === 'types') {
-        rule.types = [...control.closest('fieldset').querySelectorAll('[data-cr-field="types"]:checked')].map(item => item.value);
-      } else {
-        rule[field] = control.value;
-        renderEditor();
-        dialog.querySelector(`[data-cr-rule="${draft.rules.indexOf(rule)}"] [data-cr-field="${field}"]`).focus();
-      }
+      return;
     }
-    renderPreview();
-  }
-
-  function input(event) {
-    const control = event.target;
-    if (control.dataset.crField !== 'name') return;
-    review.draft.rules[Number(control.closest('[data-cr-rule]').dataset.crRule)].name = control.value;
-    renderPreview();
+    const field = control.dataset.crField;
+    const index = control.closest('[data-cr-rule]')?.dataset.crRule;
+    const rule = draft.rules[index];
+    if (!rule || !field) return;
+    if (field === 'types') {
+      rule.types = [...control.closest('fieldset').querySelectorAll('[data-cr-field="types"]:checked')].map(item => item.value);
+    } else {
+      rule[field] = control.value;
+      if (field === 'kind') rule.name = '';
+    }
+    if (review.activeRule === rule && field !== 'relation') {
+      review.activeRule = null;
+      resetFilters();
+    }
+    renderEditor();
+    renderReports();
+    const selector = field === 'types' ? `[value="${control.value}"]` : '';
+    dialog.querySelector(`[data-cr-rule="${index}"] [data-cr-field="${field}"]${selector}`).focus();
   }
 
   document.addEventListener('click', event => {
@@ -6346,9 +6480,9 @@ function evRenderTargetDialog() {
   if (!EV_STATE.targetDialog) { evModal.innerHTML = ''; return; }
   const d = EV_STATE.targetDialog, f = d.form;
   evModal.innerHTML = `<div class="evov" data-action="ev-target-close-bg">
-    <div class="modal"><div class="modal-head"><h2>${d.mode === 'create' ? '新增进化对象' : '编辑进化对象'}</h2><button class="x" data-action="ev-target-close">✕</button></div>
+    <div class="modal ${d.mode === 'create' ? 'cr-create' : ''}"><div class="modal-head"><h2>${d.mode === 'create' ? '新增进化对象' : '编辑进化对象'}</h2><button class="x" data-action="ev-target-close">✕</button></div>
+      ${d.mode === 'create' ? v2CandidateRules.steps(1) : ''}
       <div class="modal-body">
-        ${d.mode === 'create' ? v2CandidateRules.steps(1) : ''}
         ${d.error ? `<div class="form-error">${evEsc(d.error)}</div>` : ''}
         <div class="target-form-grid">
           <div class="f-row"><div class="f-label">对象类型</div><div class="kind-options">
@@ -8237,10 +8371,10 @@ function v2TargetModal(id) {
   const list = EV_TARGETS[V2.wsId] || [];
   const t = id ? list.find(x => x.id === id) : null;
   if (id && !t) return;
-  v2Modal(`<div class="evov" data-v2-close-bg><div class="modal" style="width:560px">
+  v2Modal(`<div class="evov" data-v2-close-bg><div class="modal ${t ? '' : 'cr-create'}" ${t ? 'style="width:560px"' : ''}>
     <div class="modal-head"><h2>${t ? '编辑进化对象' : '新增进化对象'}</h2><button class="x" data-v2-close>✕</button></div>
+    ${t ? '' : v2CandidateRules.steps(1)}
     <div class="modal-body">
-      ${t ? '' : v2CandidateRules.steps(1)}
       <div class="f-row"><div class="f-label">对象名称 <span class="req">*</span></div><input class="inp" id="v2TgName" value="${t ? v2Esc(t.objectName) : ''}" placeholder="例如：code-review" style="width:100%"></div>
       <div class="f-row"><div class="f-label">类型</div><select class="inp" id="v2TgKind" style="width:100%"><option value="skill" ${t && t.kind === 'skill' ? 'selected' : ''}>skill</option><option value="agent" ${t && t.kind === 'agent' ? 'selected' : ''}>agent</option></select></div>
       <div class="f-row"><div class="f-label">默认版本 <span class="req">*</span></div><input class="inp" id="v2TgVersion" value="${t ? v2Esc(t.defaultRef || '') : ''}" placeholder="例如：v1.8.0" style="width:180px"></div>
