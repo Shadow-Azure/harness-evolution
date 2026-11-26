@@ -4,7 +4,7 @@ English | [中文](bugfix-agent-name-match-toggle.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-66
+id: bugfix-67
 milestone: bugfix
 depends:
   - m13-01
