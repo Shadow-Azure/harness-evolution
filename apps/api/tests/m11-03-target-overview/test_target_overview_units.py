@@ -468,3 +468,72 @@ async def test_overview_times_out_slow_resolution_and_caches_the_failure() -> No
     assert first is None
     assert second is None
     assert resolver.calls == 1
+
+
+class _RecordingMatcher:
+    """Capture matcher calls and associate one Session by name."""
+
+    def __init__(self) -> None:
+        """Start with no recorded calls."""
+        self.calls: list[tuple[Any, frozenset[str] | None]] = []
+
+    async def associated_sessions(
+        self,
+        condition: Any,
+        *,
+        observed_revisions: frozenset[str] | None = None,
+    ) -> Any:
+        """Record the condition and return one name-matched Session."""
+        self.calls.append((condition, observed_revisions))
+        return SimpleNamespace(sessions=(SimpleNamespace(session_id="session-name"),))
+
+    async def potential_cases(
+        self,
+        condition: Any,
+        association: Any,
+        policy: Any,
+    ) -> Any:
+        """Return no included case rows; association alone drives the row."""
+        del condition, association, policy
+        return SimpleNamespace(included=())
+
+
+async def test_agent_name_mode_keeps_unresolved_content_as_a_ref_row() -> None:
+    """A failed content read still yields the ref row, name Sessions, and tag fallback."""
+    matcher = _RecordingMatcher()
+    service = TargetOverviewService(
+        cast(Any, None),
+        cast(Any, None),
+        cast(Any, matcher),
+        _UnresolvedResolver(),
+        agent_match_by_name=True,
+    )
+    target = cast(
+        Any,
+        SimpleNamespace(
+            object_type="agent",
+            object_name="Explore",
+            repo_url="https://example.invalid/agent.git",
+            sub_dir="agents/Explore",
+            default_ref="main",
+        ),
+    )
+
+    analysis = await service._analyse_agent_by_name(
+        target,
+        links=(),
+        runs=(),
+        workspace_id="ws-unit",
+        facts_by_id={},
+        window_start=datetime(2026, 11, 1),
+        window_end=datetime(2026, 12, 1),
+    )
+
+    assert analysis.versions == ("main",)
+    assert analysis.version_labels["main"].ref == "main"
+    assert analysis.unresolved_versions == frozenset()
+    assert analysis.session_ids == frozenset({"session-name"})
+    condition, observed = matcher.calls[0]
+    assert observed is None
+    assert condition.target_version == "main"
+    assert condition.target_revision == "tag:main"

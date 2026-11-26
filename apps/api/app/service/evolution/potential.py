@@ -589,9 +589,15 @@ def _window_invalid(reason: str, start: date, end: date) -> AppError:
 class PotentialMatcher:
     """Single implementation of session association, potential, and cache preview."""
 
-    def __init__(self, repository: PotentialRepository) -> None:
-        """Bind the matcher to its read-only repository."""
+    def __init__(
+        self,
+        repository: PotentialRepository,
+        *,
+        agent_match_by_name: bool = False,
+    ) -> None:
+        """Bind the matcher to its read-only repository and association policy."""
         self._repository = repository
+        self._agent_match_by_name = agent_match_by_name
 
     async def associated_sessions(
         self, condition: MatchCondition, *, observed_revisions: frozenset[str] | None = None
@@ -628,14 +634,19 @@ class PotentialMatcher:
             object_type=condition.target_type,
             object_name=condition.target_name,
         )
+        match_by_presence = self._agent_match_by_name and condition.target_type == "agent"
         events_by_session: dict[str, list[ObjectEventRecord]] = {}
         for event in events:
-            if observed_revisions is None or not observed_revisions.isdisjoint(
-                (
-                    event.object_version,
-                    event.object_revision,
-                    event.definition_hash,
-                    event.document_revision,
+            if (
+                match_by_presence
+                or observed_revisions is None
+                or not observed_revisions.isdisjoint(
+                    (
+                        event.object_version,
+                        event.object_revision,
+                        event.definition_hash,
+                        event.document_revision,
+                    )
                 )
             ):
                 events_by_session.setdefault(event.session_id, []).append(event)

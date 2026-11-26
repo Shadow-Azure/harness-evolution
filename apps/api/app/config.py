@@ -213,6 +213,8 @@ class Settings(BaseSettings):
     attribution_llm: str = "agent-native"
     attribution_bwrap_enabled: bool = True
     attribution_timeout_seconds: int = Field(default=600, ge=1, le=3600)
+    agent_match_by_name: bool = False
+    """Opt-in name matching for agent targets; off keeps body-hash identity."""
     db_dialect: DatabaseDialect = DatabaseDialect.MYSQL
     db_url: str | None = None
     db_pool_size: int = 10

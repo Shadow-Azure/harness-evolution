@@ -43,6 +43,7 @@ from app.service.evolution.potential import (
 from app.service.evolution.target_content import (
     ResolvedTargetVersion,
     TargetVersionResolver,
+    resolve_legacy_target_version,
 )
 from app.service.overview.schemas import OverviewWindow
 from app.service.overview.target_schemas import (
@@ -611,12 +612,14 @@ class TargetOverviewService:
         *,
         resolve_timeout_seconds: float = OVERVIEW_RESOLVE_TIMEOUT_SECONDS,
         failure_ttl_seconds: float = OVERVIEW_FAILURE_TTL_SECONDS,
+        agent_match_by_name: bool = False,
     ) -> None:
         """Bind target configuration, read facts, the matcher, and content resolution."""
         self._targets = targets
         self._repository = repository
         self._matcher = matcher
         self._resolver = resolver
+        self._agent_match_by_name = agent_match_by_name
         self._policy: ResolvedPolicy = resolve_policy(None)
         self._resolve_timeout = resolve_timeout_seconds
         self._failure_ttl = failure_ttl_seconds
@@ -883,10 +886,11 @@ class TargetOverviewService:
         window_end: datetime,
     ) -> TargetAnalysis:
         """Call the matcher per canonical version and project the included rows."""
-        observed = await self._repository.list_object_versions(
-            session_ids,
+        links = await self._repository.list_attributions(
+            workspace_id=workspace_id,
             object_type=target.object_type,
             object_name=target.object_name,
+            case_ids=tuple(facts_by_id),
         )
         runs = await self._repository.list_target_runs(
             workspace_id=workspace_id,
@@ -894,11 +898,20 @@ class TargetOverviewService:
             object_name=target.object_name,
             limit=RUN_VERSION_LOOKBACK,
         )
-        links = await self._repository.list_attributions(
-            workspace_id=workspace_id,
+        if self._agent_match_by_name and target.object_type == "agent":
+            return await self._analyse_agent_by_name(
+                target,
+                links=links,
+                runs=runs,
+                workspace_id=workspace_id,
+                facts_by_id=facts_by_id,
+                window_start=window_start,
+                window_end=window_end,
+            )
+        observed = await self._repository.list_object_versions(
+            session_ids,
             object_type=target.object_type,
             object_name=target.object_name,
-            case_ids=tuple(facts_by_id),
         )
         # A V2 report records the source that was actually analyzed, even when
         # the trace has no version or the selected Git ref has since moved.
@@ -963,6 +976,105 @@ class TargetOverviewService:
             version_sessions=version_sessions,
             unresolved_versions=frozenset(unresolved_versions),
             version_labels=labels,
+        )
+
+    async def _analyse_agent_by_name(
+        self,
+        target: EvolutionTargetRecord,
+        *,
+        links: Sequence[AttributionLinkRecord],
+        runs: Sequence[TargetRunVersionRecord],
+        workspace_id: str,
+        facts_by_id: dict[str, WindowCaseFact],
+        window_start: datetime,
+        window_end: datetime,
+    ) -> TargetAnalysis:
+        """Collapse one agent target to a single ref-keyed version matched by name.
+
+        The opt-in name mode keeps the configured ref as the only version row.
+        Historical digest reports stay attached by treating every report
+        ``object_version`` as an alias of that row, while Session association
+        ignores revision evidence and matches object type plus name.
+        """
+        ref = _known_version(target.default_ref) or target.default_ref
+        resolved = await self._resolve_version(target, ref)
+        resolved_revision = (
+            _known_version(resolved.target_revision) if resolved is not None else None
+        )
+        if resolved is None:
+            resolved = resolve_legacy_target_version(ref)
+        aliases: set[str] = {ref}
+        if ref.startswith("tag:"):
+            aliases.add(ref[4:])
+        if resolved_revision is not None:
+            aliases.add(resolved_revision)
+            if resolved_revision.startswith("digest:"):
+                aliases.add(resolved_revision[7:])
+        for link in links:
+            historical = _display_version(link.object_version)
+            if historical is None:
+                continue
+            aliases.add(historical)
+            if historical.startswith("digest:"):
+                aliases.add(historical[7:])
+        latest_run = next(
+            (run for run in runs if _known_version(run.target_version) == ref),
+            None,
+        )
+        commit = _short_commit(resolved.base_commit)
+        if commit is None:
+            commit = _short_commit(latest_run.base_commit if latest_run is not None else None)
+        label = TargetVersionLabel(
+            version=ref,
+            digest=(
+                resolved_revision
+                if resolved_revision is not None and resolved_revision.startswith("digest:")
+                else None
+            ),
+            ref=ref,
+            commit=commit,
+            aliases=frozenset(aliases),
+        )
+        condition = MatchCondition(
+            workspace_id=workspace_id,
+            target_type=target.object_type,
+            target_name=target.object_name,
+            target_version=resolved.target_version,
+            target_revision=resolved.target_revision,
+            window_start=window_start,
+            window_end=window_end,
+        )
+        association = await self._matcher.associated_sessions(condition)
+        match = await self._matcher.potential_cases(condition, association, self._policy)
+        newest = _newest_link_by_case(links, label.aliases)
+        case_ids = {
+            case_id
+            for case_id, link in newest.items()
+            if link.report_schema_version == REPORT_SCHEMA_VERSION
+        }
+        sessions = {
+            facts_by_id[case_id].session_id for case_id in case_ids if case_id in facts_by_id
+        }
+        sessions.update(item.session_id for item in association.sessions)
+        case_ids.update(item.bad_case_id for item in match.included)
+        entries = tuple(
+            _entry(
+                target=target,
+                version=ref,
+                display_version=label.display,
+                fact=facts_by_id[case_id],
+                link=newest.get(case_id),
+            )
+            for case_id in sorted(case_ids)
+            if case_id in facts_by_id
+        )
+        return TargetAnalysis(
+            target=target,
+            versions=(ref,),
+            session_ids=frozenset(sessions),
+            entries=entries,
+            version_sessions={ref: frozenset(sessions)},
+            version_labels={ref: label},
         )
 
     async def _resolve_label(

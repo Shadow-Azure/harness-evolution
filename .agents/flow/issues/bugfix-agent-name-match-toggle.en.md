@@ -11,7 +11,7 @@ depends:
   - m11-03
   - m11-04
 priority: P2
-status: ready
+status: in-progress
 scope:
   - .agents/**
   - .env.example
@@ -27,7 +27,9 @@ scope:
   - plans/fullstack-design/06-database-design.md
   - plans/fullstack-design/07-backend-implementation.md
   - plans/fullstack-design/08-frontend-implementation.md
-adr: []
+  - scripts/doc-budgets.manifest.json
+adr:
+  - ../../notes/implemented/architecture/2026-11-26-agent-name-matching-mode.md
 github:
   number: 632
   url: https://github.com/Shadow-Azure/harness-evolution/issues/632
