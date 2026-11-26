@@ -69,17 +69,14 @@ The external contract is verified: in `ai-eval-platform@main d5231fe`, `asset_ov
 
 ### Prototype screenshots
 
-After (target state):
+Screenshots are kept locally only and are not distributed with the repository (`.gitignore` ignores every image format). The four target-state pages:
 
-| Configuration: shared block plus member rows | Launch wizard: single configuration plus read-only members |
-|---|---|
-| ![Configuration](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/main/plans/ui-prototype-v2/evidence/multi-object-target/after-target-form.png) | ![Wizard](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/main/plans/ui-prototype-v2/evidence/multi-object-target/after-wizard-step1.png) |
+- **Configuration**: a shared block (repository / baseline / validation and test project IDs / primary metric / attribution Skill) plus editable member rows.
+- **Launch wizard**: one configuration is selected, members are read-only, and the version plus test projects are shared.
+- **Run detail**: the configuration name, member chips, shared test projects, and the change scope.
+- **Workspace**: the change scope lists one glob per member directory.
 
-| Run detail: configuration name, members, shared test projects | Workspace: change scope |
-|---|---|
-| ![Run detail](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/main/plans/ui-prototype-v2/evidence/multi-object-target/after-run-scope.png) | ![Workspace](https://raw.githubusercontent.com/Shadow-Azure/harness-evolution/main/plans/ui-prototype-v2/evidence/multi-object-target/after-run-workspace.png) |
-
-The before state and the explanation are in [18 §6.5](../../../plans/fullstack-design/18-multi-member-evolution-target.md#65-原型截图); the capture script is `plans/ui-prototype-v2/evidence/multi-object-target/capture.mjs`.
+Reproduce locally by opening `plans/ui-prototype-v2/harness-evolution.html` (`?u=admin&page=overview&tab=targets`, `?demo=wizard1`, `?demo=run`) or by running `capture.mjs before|after`; the before state and the explanation are in [18 §6.5](../../../plans/fullstack-design/18-multi-member-evolution-target.md#65-原型截图).
 
 ## Goals
 

@@ -1,6 +1,6 @@
 # 18 同仓多成员进化对象
 
-> 状态：设计已确认，待 m28-01 实现。本文是「一条配置 = 一个进化对象（含多个成员）」的前后端设计权威；原型见 [ui-prototype-v2/harness-evolution.html](../ui-prototype-v2/harness-evolution.html)，截图见 [evidence/multi-object-target](../ui-prototype-v2/evidence/multi-object-target/)。
+> 状态：设计已确认，待 m28-01 实现。本文是「一条配置 = 一个进化对象（含多个成员）」的前后端设计权威；原型见 [ui-prototype-v2/harness-evolution.html](../ui-prototype-v2/harness-evolution.html)，前后截图在本地 `plans/ui-prototype-v2/evidence/multi-object-target/`（不入库）。
 >
 > 关联：[06 数据库表结构设计](06-database-design.md)、[05 后端接口设计](05-api-design.md)、[07 后端实现设计](07-backend-implementation.md)、[08 前端实现设计](08-frontend-implementation.md)、[roadmap](../../.agents/flow/roadmap.md) 的 m28。
 
@@ -253,14 +253,14 @@ evolution_run_targets
 
 ### 6.5 原型截图
 
-| 场景 | 修改前 | 修改后 |
-|---|---|---|
-| 配置弹窗 | `before-target-form.png` | `after-target-form.png` |
-| 向导第 1 步 | `before-wizard-step1.png` | `after-wizard-step1.png` |
-| run 详情 | `before-run-scope.png` | `after-run-scope.png` |
-| 工作区 | `before-run-workspace.png` | `after-run-workspace.png` |
+截图只在本地保留，不随仓库分发（`.gitignore` 已忽略全部图片格式）。四个目标态页面：
 
-截图位于 [evidence/multi-object-target](../ui-prototype-v2/evidence/multi-object-target/)，由 `capture.mjs` 生成（before 态取 `git show HEAD` 的原始原型）。
+- **配置弹窗**：共享块（仓库 / 基线 / 验证集与测试集工程 ID / 主指标 / 归因 Skill）+ 可增删的成员行。
+- **向导第 1 步**：单选一条配置，成员只读列出，版本与测试工程共用。
+- **run 详情**：配置名 + 成员 chip + 共享测试工程 + 改动范围。
+- **工作区**：改动范围列出每个成员目录的 glob。
+
+复现：本地打开原型（`?u=admin&page=overview&tab=targets`、`?demo=wizard1`、`?demo=run`），或运行 `plans/ui-prototype-v2/evidence/multi-object-target/capture.mjs before|after` 重新生成前后截图（before 态取 `git show HEAD` 的原始原型）。
 
 ## 7. 兼容与迁移
 
@@ -286,4 +286,4 @@ evolution_run_targets
 
 - 原型：`plans/ui-prototype-v2/harness-evolution.html`（`?u=admin&page=overview&tab=targets`、`?demo=wizard1`、`?demo=run`）。
 - 取证脚本：`plans/ui-prototype-v2/evidence/multi-object-target/capture.mjs`；内联脚本 `embed.py`。
-- 本文截图与原型的行为一致性由 `capture.mjs` 复现，评审以原型截图为准。
+- 截图只在本地保留（不进仓库）；评审以本地原型与重新生成的截图为准。
