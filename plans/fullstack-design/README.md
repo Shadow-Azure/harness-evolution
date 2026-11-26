@@ -40,6 +40,7 @@
 | [15 V1/V2 差距与前端差异](15-v1-v2-gap-analysis.md) | 当前实现相对 V1、V2 相对 V1 的功能与界面差异，以及 V2 改动地图 | 做 V2 前 |
 | [16 bad case 同步源工厂化](16-bad-case-sync-source-factory.md) | global 源线的父类 / 子类 / 工厂、`HE_BAD_CASE_SYNC_PROVIDER` 开关矩阵、已上报 bad case 的写者归属、`_sync_root` 单循环收敛，以及目录 / root 两条数据流的逐步 JSON 对照 | 做同步源工厂化实现 issue 前（#548） |
 | [17 公共 badcase 按 label 划分工作空间](17-workspace-bad-case-label-routing.md) | 公共目录单份事实、空间 label 规则、多对多关联、历史重算、统一读边界与管理页签 | 做 #582 前 |
+| [18 同仓多成员进化对象](18-multi-member-evolution-target.md) | 一条配置 + 成员表的领域模型、共享与成员边界、迁移回填、API / 后端流程 / 前端交互与兼容策略 | 做 m28-01 前 |
 
 ## 系统一句话说明
 

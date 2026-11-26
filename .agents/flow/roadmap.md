@@ -31,6 +31,7 @@ milestones:
   - m24
   - m25
   - m27
+  - m28
   - bugfix
 ```
 
@@ -65,6 +66,7 @@ Harness Evolution 用可回链的 Claude Code 轨迹、外部问题与归因数�
 - **m24 自进化 Run 工作区单 ref 克隆与迭代推送**：run 工作区只拉取目标 ref，缓存按 target + ref 命中刷新，补齐推送地址与 git 可观测性。
 - **m25 会话级 parser 与轨迹选型**：can_parse 选型、子类会话链接。
 - **m27 项目介绍与 README 展示**：以能力地图、关键截图和快速开始重写 README，中英成对并保持演示数据边界。
+- **m28 同仓多成员进化对象**：一条配置含同一仓库的多个 skill / agent，共享仓库、基线、测试工程与主指标；成员各自冻结定义、各自关联 bad case，一次 run 整组进化。
 
 ## 实施规则
 
