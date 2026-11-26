@@ -87,7 +87,7 @@ The left image shows only 3 enabled targets and a pager reading «3 total»; the
 ## Verification
 
 ```sh
-pnpm test:api -- tests/overview
+pnpm test:api -- tests/m11-03-target-overview
 pnpm --filter @harness/web exec vitest run src/pages/overview
 pnpm typecheck
 pnpm contract:check

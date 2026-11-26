@@ -87,7 +87,7 @@ github:
 ## 独立验证
 
 ```sh
-pnpm test:api -- tests/overview
+pnpm test:api -- tests/m11-03-target-overview
 pnpm --filter @harness/web exec vitest run src/pages/overview
 pnpm typecheck
 pnpm contract:check
