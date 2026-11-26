@@ -30,5 +30,5 @@ The production "Overview → Evolution targets" page reads only `enabled=true` c
 - The overview side list gains a "disabled targets" group; the six header counters, trend, both distributions, the per-target analysis card, filter dropdowns and the potential bad-case list keep their values and options.
 - The side-list pager total includes disabled targets, which the issue permits; enabled targets still sort by `evolvable` descending, five per page.
 - `GET /overview/targets` performs one extra same-workspace query for disabled targets per request; it is independent of the enabled-target analysis and never triggers version resolution or matching.
-- Enabling still runs the full target write validation: an unreachable repository or missing ref leaves the target disabled and shows the server error; the target-configuration page's enable switch and form fields are unchanged.
+- Enabling still runs the full target write validation: an unreachable repository or missing ref leaves the target disabled and shows the server error; the target-configuration page's form fields and enable entry point belong to #628 and are untouched by this PR.
 - Disabled targets only offer enable/edit/remove, with no historical statistics or detail drill-down; the existing `enabled=false` semantics for the launch wizard, bound batches, attribution and runs are unchanged.
