@@ -318,23 +318,26 @@ def sweep_cache_root(cache_root: Path) -> CacheSweepResult:
     removed = 0
     cleaned = 0
     for cache_path in sorted(_cache_directories(cache_root)):
-        state = read_state(cache_path)
-        if state is not None and not state.is_complete:
-            if _remove_cache_directory(cache_root, cache_path):
-                remove_state(cache_path)
-                removed += 1
-            continue
-        if state is None and has_git_locks(cache_path):
-            # Legacy caches use the same rule as read time: a lock proves the
-            # previous clone/fetch did not finish cleanly.
-            if _remove_cache_directory(cache_root, cache_path):
-                removed += 1
-            continue
         try:
-            with _try_flock(cache_root, cache_path):
-                cleaned += clean_git_locks(cache_path)
+            handle = _try_flock(cache_root, cache_path)
         except CacheBusyError:
+            # Another process is actively using this cache; the startup sweep
+            # must not delete it from under that operation.
             continue
+        with handle:
+            state = read_state(cache_path)
+            if state is not None and not state.is_complete:
+                if _remove_cache_directory(cache_root, cache_path):
+                    remove_state(cache_path)
+                    removed += 1
+                continue
+            if state is None and has_git_locks(cache_path):
+                # Legacy caches use the same rule as read time: a lock proves
+                # the previous clone/fetch did not finish cleanly.
+                if _remove_cache_directory(cache_root, cache_path):
+                    removed += 1
+                continue
+            cleaned += clean_git_locks(cache_path)
     for state_file in sorted(cache_root.glob(f"*/*{STATE_SUFFIX}")):
         cache_path = state_file.with_name(state_file.name[: -len(STATE_SUFFIX)])
         if not cache_path.exists():

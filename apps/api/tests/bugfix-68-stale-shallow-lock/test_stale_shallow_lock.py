@@ -428,6 +428,21 @@ def test_startup_sweep_removes_incomplete_and_locked_legacy_caches(tmp_path: Pat
     assert legacy_healthy.is_dir()
 
 
+async def test_startup_sweep_skips_a_cache_held_by_an_active_process(tmp_path: Path) -> None:
+    """The sweep must not delete an incomplete cache while another process uses it."""
+    root = tmp_path / "cache"
+    cache_path = root / "repo" / "ref"
+    cache_path.mkdir(parents=True)
+    mark_incomplete(cache_path, repo_url="https://example.invalid/x.git", ref="main")
+    async with cache_flock(root, cache_path):
+        held = await asyncio.to_thread(sweep_cache_roots, root)
+        assert held.caches_removed == 0
+        assert cache_path.is_dir()
+    released = sweep_cache_roots(root)
+    assert released.caches_removed == 1
+    assert not cache_path.exists()
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX flock crash semantics")
 async def test_flock_is_released_when_holder_is_killed(tmp_path: Path) -> None:
     """SIGKILL releases the cross-process cache lock so recovery never blocks."""
