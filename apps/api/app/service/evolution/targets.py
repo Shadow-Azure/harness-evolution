@@ -51,6 +51,7 @@ class EvolutionTargetMemberWrite(IdentityModel):
     object_type: EvolutionObjectType
     object_name: str
     sub_dir: str
+    match_by_name: bool = False
 
 
 class EvolutionTargetWrite(IdentityModel):
@@ -111,6 +112,9 @@ class EvolutionTargetWrite(IdentityModel):
                             "objectType": object_type,
                             "objectName": object_name,
                             "subDir": sub_dir,
+                            "matchByName": legacy.get(
+                                "matchByName", legacy.get("match_by_name", False)
+                            ),
                         },
                     ]
         return values
@@ -138,6 +142,7 @@ class EvolutionTargetMember(IdentityModel):
     object_type: EvolutionObjectType
     object_name: str
     sub_dir: str
+    match_by_name: bool = False
     definition: TargetDefinitionPreview | None = None
 
 
@@ -456,6 +461,8 @@ def _normalize_member(
             object_type=member.object_type,
             object_name=_normalize_object_name(member.object_name),
             sub_dir=_validate_sub_dir(member.sub_dir),
+            # Knowledge matches document revisions only; no member switch applies.
+            match_by_name=member.match_by_name and member.object_type != "knowledge",
         )
     except AppError as error:
         field = (error.details or {}).get("field", "objectName")
@@ -564,6 +571,7 @@ def _public(record: EvolutionTargetRecord) -> EvolutionTarget:
                 object_type=member.object_type,
                 object_name=member.object_name,
                 sub_dir=member.sub_dir,
+                match_by_name=member.match_by_name,
                 definition=_preview(member.definition),
             )
             for member in members
@@ -848,6 +856,7 @@ class EvolutionTargetService:
                     "object_type": member.object_type,
                     "object_name": member.object_name,
                     "sub_dir": member.sub_dir,
+                    "match_by_name": member.match_by_name,
                     "definition": definition,
                 },
             )
@@ -863,6 +872,7 @@ class EvolutionTargetService:
             "object_type": first["object_type"],
             "object_name": first["object_name"],
             "sub_dir": first["sub_dir"],
+            "match_by_name": first["match_by_name"],
             "definition": first["definition"],
             "members": members,
         }

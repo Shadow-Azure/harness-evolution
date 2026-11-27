@@ -232,6 +232,7 @@ function emptyMember(): MemberDraft {
     objectType: "skill",
     objectName: "",
     subDir: "",
+    matchByName: false,
   });
 }
 
@@ -380,10 +381,11 @@ function submit(): void {
     primaryMetricKey,
     enabled: form.enabled,
     attributionPackageId: form.attributionPackageId,
-    members: members.value.map(({ objectType, objectName, subDir }) => ({
+    members: members.value.map(({ objectType, objectName, subDir, matchByName }) => ({
       objectType,
       objectName: objectName.trim(),
       subDir: subDir.trim(),
+      matchByName: objectType === "knowledge" ? false : matchByName,
     })),
   });
 }
@@ -693,6 +695,18 @@ watch(
                   placeholder="如 skills/deep-research"
                   @input="onMemberInput(index, 'subDir', $event)"
                 />
+                <span
+                  v-if="member.objectType !== 'knowledge'"
+                  class="member-match"
+                  title="关闭：按定义正文摘要匹配；开启：按名称关联，忽略同名不同正文的版本差异"
+                >
+                  <span>名称匹配</span>
+                  <ElSwitch
+                    v-model="member.matchByName"
+                    aria-label="名称匹配"
+                    size="small"
+                  />
+                </span>
                 <button
                   class="member-remove"
                   type="button"
@@ -900,7 +914,7 @@ watch(
 
 .member-row {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1.25fr) 28px;
+  grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1.25fr) 108px 28px;
   gap: 8px;
   align-items: center;
   padding: 8px 10px;
@@ -911,6 +925,29 @@ watch(
 
 .member-row :deep(.el-input) {
   min-width: 0;
+}
+
+.member-match {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.member-match :deep(.el-switch) {
+  --el-switch-on-color: var(--blue);
+  --el-switch-off-color: var(--border);
+  --el-switch-button-size: 14px;
+  height: 18px;
+}
+
+.member-match :deep(.el-switch__core) {
+  min-width: 34px;
+  height: 18px;
 }
 
 .member-type {

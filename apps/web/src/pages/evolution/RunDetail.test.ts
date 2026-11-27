@@ -73,6 +73,7 @@ function run(overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard {
       name: "deep-research",
       version: "v2.0.0",
       subDir: "skills/deep-research",
+      matchByName: false,
       targetRevision:
         "digest:9080a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789ab",
     },
@@ -662,6 +663,7 @@ describe("evolution run detail page", () => {
         version: "v2.4.0",
         targetRevision: "digest:a",
         subDir: "skills/deep-research",
+        matchByName: true,
       },
       {
         type: "skill" as const,
@@ -669,6 +671,7 @@ describe("evolution run detail page", () => {
         version: "v2.4.0",
         targetRevision: "digest:b",
         subDir: "skills/code-review",
+        matchByName: false,
       },
     ];
     const multiCard = run({

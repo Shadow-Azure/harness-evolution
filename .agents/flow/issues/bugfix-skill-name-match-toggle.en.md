@@ -11,7 +11,7 @@ depends:
   - m11-03
   - m11-04
 priority: P2
-status: ready
+status: in-progress
 scope:
   - .agents/**
   - .env.example
@@ -34,7 +34,8 @@ scope:
   - plans/fullstack-design/08-frontend-implementation.md
   - plans/ui-prototype-v2/**
   - tests/e2e/**
-adr: []
+adr:
+  - ../../notes/implemented/architecture/2026-11-27-member-name-match-switch.md
 github:
   number: 648
   url: https://github.com/Shadow-Azure/harness-evolution/issues/648
@@ -42,7 +43,7 @@ github:
 
 ## Background
 
-On 2026-11-27 the requester added a requirement: make both agent and skill matching a switch inside the "sub-evolution-object editor", configured per evolution-object member rather than per `.env` deployment. The previous two-environment-variable plan (`HE_AGENT_MATCH_BY_NAME` and a proposed `HE_SKILL_MATCH_BY_NAME`) is retired. This issue now uses a member-level `matchByName` field. This iteration changes the prototype first, puts before/after prototype screenshots into the issue, and does not implement the product behavior in this PR.
+On 2026-11-27 the requester added a requirement: make both agent and skill matching a switch inside the "sub-evolution-object editor", configured per evolution-object member rather than per `.env` deployment. The previous two-environment-variable plan (`HE_AGENT_MATCH_BY_NAME` and a proposed `HE_SKILL_MATCH_BY_NAME`) is retired. This issue now uses a member-level `matchByName` field. The prototype and issue update landed in #651; this implementation PR delivers the database, API, matcher, run snapshots, and frontend switch.
 
 Key facts about the current matching path:
 
@@ -63,7 +64,7 @@ Name matching folds same-name, different-body objects into one identity and sacr
 - Remove `HE_AGENT_MATCH_BY_NAME` and any `skill_match_by_name` configuration entry; add no new environment variable. Matching mode is persisted with member config and does not require a `harness-api` restart.
 - Report content identity, `targetRevision`, frozen source, run snapshots, cache keys and step-4 statistics still use the body hash; the switch only changes the association and version-row layer.
 - Update the V2 prototype and design note, and put same-scenario, same-viewport, same-theme before/after screenshots into this issue.
-- This PR contains only prototype, design-note and issue changes; database, API, frontend and matcher implementation land in a later PR.
+- The prototype, design-note and issue changes landed in #651; this implementation PR delivers the database, API, frontend and matcher.
 
 ## Design authority
 
@@ -81,7 +82,7 @@ Name matching folds same-name, different-body objects into one identity and sacr
 
 Same V2 prototype, same page state (`?u=admin&ws=ws-harness&page=overview&tab=targets`), 1500×1200 CSS viewport, 2× DPR, light theme; data is the synthetic `ws-harness` fixture. The scenario is the new-target dialog with one skill member and one agent member: the baseline has only type/name/subdirectory; the change adds a "name matching" switch to each member row, with skill off and agent on to show that the switch is per member.
 
-| Before (`main` prototype, no switch) | After (this PR prototype, member-row switch) |
+| Before (`main` prototype, no switch) | After (#651 prototype, member-row switch) |
 | --- | --- |
 | [![Before: member rows only show type, name and subdirectory](https://github.com/Shadow-Azure/harness-evolution/releases/download/skill-name-match-prototype-evidence-20261127/skill-name-match-before.png)](https://github.com/Shadow-Azure/harness-evolution/releases/download/skill-name-match-prototype-evidence-20261127/skill-name-match-before.png) | [![After: skill off, agent on](https://github.com/Shadow-Azure/harness-evolution/releases/download/skill-name-match-prototype-evidence-20261127/skill-name-match-after.png)](https://github.com/Shadow-Azure/harness-evolution/releases/download/skill-name-match-prototype-evidence-20261127/skill-name-match-after.png) |
 
@@ -89,12 +90,12 @@ Both images share page, data, dialog structure, shared block and member type/nam
 
 ## Implementation
 
-### Prototype and design (this PR)
+### Prototype and design (merged in #651)
 
 - Add a `matchByName` argument and a fourth column switch to `v2TargetMemberRow` in `plans/ui-prototype-v2/harness-evolution.html`; the member grid becomes `type / name / subdirectory / name matching / remove`, reusing the existing `.switch` visual language at member-row size.
 - `v2TargetModal` renders the existing member `matchByName`; `v2SaveTarget` writes `matchByName` back to the member object; the member hint mentions that each member decides its matching mode.
 - Record the member-level switch default, semantics and location in `plans/ui-prototype-v2/design-v2.md §5.3`.
-- Put before/after screenshots into this issue; this PR ships no product code, database migration or contract field.
+- Put before/after screenshots into this issue; the prototype PR ships no product code, database migration or contract field.
 
 ### Data model and contracts
 
@@ -128,7 +129,7 @@ Both images share page, data, dialog structure, shared block and member type/nam
 
 ## Implementation steps
 
-1. Prototype and design (this PR): add the member-row switch, save/echo behavior, update `design-v2.md §5.3`, and put before/after screenshots into the issue; ship no product implementation.
+1. Prototype and design (merged in #651): add the member-row switch, save/echo behavior, update `design-v2.md §5.3`, and put before/after screenshots into the issue; ship no product implementation.
 2. Data and contracts: add the member/run-snapshot `match_by_name` migration, update `EvolutionTargetMemberWrite/Read`, `EvolutionRunTarget` and generated contracts; add migration and contract tests.
 3. Persistence: carry the field through the members repository, target create/update and run-target snapshots; add repository/service tests.
 4. Matching layer: add `MatchTarget.match_by_name`, `MatchCondition.targets` and per-member filtering in the matcher; remove the global switch and `main.py` wiring; add matcher tests for skill/agent/mixed members/knowledge.
@@ -140,15 +141,15 @@ Both images share page, data, dialog structure, shared block and member type/nam
 ## Dependencies and boundary
 
 - Dependencies: m13-01 (body-hash identity), m11-03 (overview API), m11-04 (overview UI); all are done. The same-repo multi-member model is already provided by the member model; this issue adds one member field and does not change that model.
-- This PR's boundary: V2 prototype, `design-v2.md`, and this issue's body and screenshots. It does not deliver the migration, API, frontend form, matcher or env cleanup.
+- Prototype PR (#651) boundary: V2 prototype, `design-v2.md`, and this issue body and screenshots. It does not deliver the migration, API, frontend form, matcher or env cleanup.
 - Later implementation boundary: one boolean on the member table and one on the run snapshot, contract fields, the member-form switch, and per-member matching branches. Do not change report identity, `targetRevision`, cache keys, step-4 statistics, event ingestion or parser algorithms.
 - Name matching only applies when the switch is on; off keeps the existing body-hash rule. The current presence-based default of wizard/launch is not changed by this issue.
 - Do not backfill historical data to true; users explicitly enable name matching per member in the new form.
-- Backfill the new Agent Note into this issue's `adr` in the implementation PR; the prototype PR adds no decision record.
+- Backfill the new Agent Note into this issue's `adr` in the implementation PR; the prototype PR adds no decision record; #651 kept `adr` empty.
 
 ## Verification
 
-This PR (prototype and issue):
+Prototype PR (#651, merged):
 
 ```sh
 pnpm verify:flow
@@ -162,7 +163,7 @@ pnpm verify:docs
 - Issue: the body is rewritten from env variables to member-level `matchByName`, with data/contract/matching/frontend/cleanup/acceptance sections and no leftover "add `HE_SKILL_MATCH_BY_NAME`" instruction.
 - Flow and docs: `pnpm verify:flow`, `pnpm verify:flow -- --diff origin/main`, `pnpm lint:docs` and `pnpm verify:docs` pass.
 
-Later implementation (run in the implementation PR):
+This implementation PR:
 
 ```sh
 pnpm test:api -- tests/bugfix-skill-name-match tests/m10-02-potential-matcher tests/m11-03-target-overview
@@ -186,7 +187,7 @@ pnpm verify:docs
 
 1. The prototype member rows show a "name matching" switch for skill and agent independently, off by default; knowledge has none; this issue carries same-scenario, same-viewport, same-theme before/after screenshots.
 2. The issue is rewritten as member-level `matchByName`, explicitly removes `HE_AGENT_MATCH_BY_NAME`, does not introduce `HE_SKILL_MATCH_BY_NAME`, and documents the env migration and default-false impact.
-3. This PR contains no product implementation; CI (docs-flow, flow-online and the other lanes) passes.
+3. The prototype PR contained no product implementation (#651 satisfied); the implementation PR passes every gate.
 4. After implementation: the member table and run snapshots persist `matchByName`; API contracts/generated types are updated; existing data defaults to false and synthesized members are false.
 5. After implementation: a member with the switch off keeps body-hash matching; a member with it on matches by name in overview and association, shows a single version row, keeps historical report aliases and does not zero counts; other members in the same configuration are unaffected.
 6. After implementation: the run snapshot keeps the switch from creation; later config edits only affect future matching and never rewrite historical reports or `targetRevision`.
@@ -196,15 +197,15 @@ pnpm verify:docs
 
 ## Gates and CI
 
-- This PR: `pnpm verify:flow`, `pnpm verify:flow -- --diff origin/main`, `pnpm lint:docs`, `pnpm verify:docs`; CI docs-flow, flow-online and the other lanes pass; no product API/Web tests because there is no product code.
+- Prototype PR (#651): `pnpm verify:flow`, `pnpm verify:flow -- --diff origin/main`, `pnpm lint:docs`, `pnpm verify:docs`; CI docs-flow, flow-online and the other lanes pass; no product API/Web tests because there is no product code.
 - Implementation PR: API `pnpm lint:api`, `pnpm typecheck:api`, focused `pnpm test:api -- tests/bugfix-skill-name-match tests/m10-02-potential-matcher tests/m11-03-target-overview`; Web `pnpm lint:web`, `pnpm typecheck:web`, `pnpm test:web`; contracts `pnpm contract:generate` / `pnpm contract:check`; migration and DB tests; E2E target-configuration cases.
-- Flow: commit and PR titles contain `(#N)`; this issue is ready and the implementation PR first moves it to in-progress; `pnpm verify:flow` and `pnpm verify:flow -- --diff origin/main` pass.
-- UI-visible change: the implementation PR must carry same-fixture, same-viewport, same-theme before/after screenshots of the member switch off/on; this PR's prototype screenshots are design evidence only.
+- Flow: commit and PR titles contain `(#N)`; this issue is in-progress; `pnpm verify:flow` and `pnpm verify:flow -- --diff origin/main` pass.
+- UI-visible change: the implementation PR must carry same-fixture, same-viewport, same-theme before/after screenshots of the member switch off/on; the #651 prototype screenshots are design evidence only.
 - Agent Note: the implementation PR adds the member-switch decision record and backfills `adr`; do not commit run logs, production Sessions or credentials.
 
 ## Non-goals
 
-- Do not implement the migration, API, frontend or matcher in this PR; it only changes the prototype, design note and issue.
+- The prototype PR does not implement the migration, API, frontend or matcher; this implementation PR delivers the product behavior.
 - Do not keep or add any `.env` matching switch; no deployment-level default, env fallback or automatic backfill.
 - Do not move report content identity, `targetRevision`, cache keys, frozen source or step-4 statistics from the body hash to the name.
 - Do not change the current presence-based default of wizard/launch; if the three paths should be unified later, open a separate issue.

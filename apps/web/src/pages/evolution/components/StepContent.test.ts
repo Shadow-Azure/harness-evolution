@@ -249,7 +249,7 @@ const run = {
   controlState: "running" as const, canPause: false, canResume: false,
   title: "run",
   mode: "full" as const,
-  target: { type: "skill" as const, name: "deep-research", version: "v2.0.0", subDir: "skills/deep-research" },
+  target: { type: "skill" as const, name: "deep-research", version: "v2.0.0", subDir: "skills/deep-research", matchByName: false },
   window: { from: "2026-08-20", to: "2026-09-10" },
   models: ["glm-5.3"],
   policy: { preset: "default" as const },
