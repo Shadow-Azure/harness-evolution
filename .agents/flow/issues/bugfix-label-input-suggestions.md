@@ -4,7 +4,7 @@
 
 ```yaml flow
 kind: issue
-id: bugfix-68
+id: bugfix-71
 milestone: bugfix
 depends:
   - bugfix-60

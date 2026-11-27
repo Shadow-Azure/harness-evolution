@@ -4,7 +4,7 @@ English | [中文](bugfix-label-input-suggestions.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-68
+id: bugfix-71
 milestone: bugfix
 depends:
   - bugfix-60
