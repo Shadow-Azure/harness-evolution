@@ -4,6 +4,8 @@ Status: implemented
 
 English | [中文](2026-11-26-agent-name-match-switch.md)
 
+> The deployment-level switch in this decision was superseded by [member-level name matching](2026-11-27-member-name-match-switch.en.md); this record keeps the original trade-offs.
+
 ## Problem
 
 Agent evolution targets use `digest:<sha256(normalize_definition_body(body))>` as their version identity, and overview version rows filter on the event's `object_revision`/`definition_hash`. When the body changes between versions, trace snapshots, or runtime injection, the same agent name splits into several rows: the row for the configured ref filters to zero Sessions even though traces with that name clearly exist. The wizard and launch path already associate by "object type + name", while the overview uses hashes, so the two surfaces disagree. Switching everything to name matching would sacrifice version precision for same-name/different-body agents and conflict with the existing "never guess a name from an unknown revision" decision.

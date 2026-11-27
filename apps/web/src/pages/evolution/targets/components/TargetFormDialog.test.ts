@@ -4,6 +4,7 @@ import type { EvolutionTarget } from "@harness/contracts";
 import { flushPromises, mount } from "@vue/test-utils";
 import { ElAutocomplete } from "element-plus/es/components/autocomplete/index";
 import ElDialog from "element-plus/es/components/dialog/index";
+import ElSwitch from "element-plus/es/components/switch/index";
 import { describe, expect, it } from "vitest";
 
 import { elementPlusComponents } from "../../../../test/setup";
@@ -25,6 +26,7 @@ const target: EvolutionTarget = {
       objectType: "skill",
       objectName: "deep-research",
       subDir: "skills/deep-research",
+      matchByName: false,
     },
   ],
 };
@@ -163,6 +165,7 @@ describe("TargetFormDialog", () => {
             objectType: "skill",
             objectName: "deep-research",
             subDir: "skills/deep-research",
+            matchByName: false,
           },
         ],
       },
@@ -369,7 +372,7 @@ describe("TargetFormDialog", () => {
       "v1.9.0",
       "v2.0.0",
     ]);
-    expect(wrapper.find(".el-switch").exists()).toBe(false);
+    expect(wrapper.find(".target-shared-block .el-switch").exists()).toBe(false);
     expect(wrapper.text()).not.toContain("进入启动向导候选");
     expect(wrapper.text()).not.toContain("保留配置但不进入向导");
 
@@ -392,7 +395,7 @@ describe("TargetFormDialog", () => {
     const wrapper = await mountDialog();
     await fillRequired(wrapper);
 
-    expect(wrapper.find(".el-switch").exists()).toBe(false);
+    expect(wrapper.find(".target-shared-block .el-switch").exists()).toBe(false);
     expect(wrapper.text()).not.toContain("进入启动向导候选");
     expect(wrapper.text()).not.toContain("保留配置但不进入向导");
 
@@ -422,6 +425,7 @@ describe("TargetFormDialog", () => {
             objectType: "agent",
             objectName: "Explore",
             subDir: "agents/explore",
+            matchByName: false,
           },
         ],
       },
@@ -446,6 +450,52 @@ describe("TargetFormDialog", () => {
           .element as HTMLInputElement
       ).value,
     ).toBe("agents/explore");
+  });
+
+  it("renders the per-member name-match switch and submits its value", async () => {
+    const wrapper = await mountDialog({ target });
+    const switches = wrapper.findAllComponents(ElSwitch);
+    expect(switches).toHaveLength(1);
+    const nameMatch = switches[0]!;
+    expect(wrapper.get(".member-match").text()).toContain("名称匹配");
+    expect(nameMatch.props("modelValue")).toBe(false);
+
+    nameMatch.vm.$emit("update:modelValue", true);
+    await flushPromises();
+    expect(nameMatch.props("modelValue")).toBe(true);
+    await wrapper.get(".member-match").trigger("click");
+    await flushPromises();
+    expect(nameMatch.props("modelValue")).toBe(false);
+    await wrapper.get(".member-match").trigger("click");
+    await flushPromises();
+    expect(nameMatch.props("modelValue")).toBe(true);
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
+      members: [{ objectName: "deep-research", matchByName: true }],
+    });
+    wrapper.unmount();
+  });
+
+  it("hides the name-match switch for knowledge members", async () => {
+    const wrapper = await mountDialog({
+      target: {
+        ...target,
+        objectType: "knowledge",
+        members: [
+          {
+            objectType: "knowledge",
+            objectName: "handbook",
+            subDir: "knowledge/handbook",
+            matchByName: true,
+          },
+        ],
+      },
+    });
+
+    expect(wrapper.find(".member-match").exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it("adds and removes member rows and submits every member", async () => {

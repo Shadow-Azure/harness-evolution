@@ -2385,6 +2385,7 @@ def _run_target_rows(
                 "target_version": target["target_version"],
                 "target_revision": target.get("target_revision"),
                 "sub_dir": target["sub_dir"],
+                "match_by_name": bool(target.get("match_by_name", False)),
                 "base_commit": target.get("base_commit"),
             },
         )

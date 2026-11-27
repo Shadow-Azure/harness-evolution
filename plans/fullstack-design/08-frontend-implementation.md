@@ -524,7 +524,7 @@ Index.vue
 | 页头动作 | 仅 `canManageWorkspace(currentRole)` 渲染写入口，并随 tab 切换：bad case 总览为「上报接入」「启动自进化」，前者复用当前空间的 `admin?tab=ingest`；进化对象总览为「+ 新增进化对象」「启动自进化」。两个 tab 的启动入口共用同一个 `openLaunchWizard` 和既有 `LaunchWizard`，无权限时只显示「只读访问」提示 |
 | 运营上下文 | 复用 summary 的 `used/quota/sources` 与会话里的 `memberCount/spaceAdminCount/role`；上报地址由 `location.origin` + 当前空间 ID 推导为完整 URL（`POST <origin>/api/workspaces/:wid/bad-cases`），只复制地址，不复制凭据；summary 未就绪时额度显示「—」而不是 0 |
 | 来源多选 | 空 = 全部；多选 = 并集；chip 逐项移除；写 `?objects=`（逗号分隔、URL 可读）；只作用于图表与统计 |
-| 对象卡版本 | 版本多选和版本行显示 `ref` + 浅色 7 位 commit；无 ref 证据时显示 digest；复选框仍以规范版本键写入 `dversions`，旧链接里的 ref 由服务端按别名映射；`HE_AGENT_MATCH_BY_NAME=true` 时 agent 对象只显示 `defaultRef` 一行，同名 Session 与历史报告都挂在该行，本开关不新增表单字段 |
+| 对象卡版本 | 版本多选和版本行显示 `ref` + 浅色 7 位 commit；无 ref 证据时显示 digest；复选框仍以规范版本键写入 `dversions`，旧链接里的 ref 由服务端按别名映射；成员 `matchByName=true` 时该成员对象只显示 `defaultRef` 一行，同名 Session 与历史报告都挂在该行，开关位于对象配置的成员行 |
 | 列表筛选 | 列表头独立提供开始/结束日期、上报来源、问题类型，写 `?lfrom=&lto=&lobject=&type=`；日期为空时列表请求带 `allTime=true`（真正不限时间），空来源/`all=类型` 不限制；任一变化重置 `page=1` 并把上一有效结果保留到新查询返回 |
 | 列表分页 | `page` 只改列表页码，保留全部列表筛选；全局时间/来源/粒度变化不重置它 |
 | 点击指标 | 「自身存在问题」/「发现前置步骤问题」→ 写列表类型筛选（`?type=`）并滚到列表；「来源数」→ 聚焦图表来源下拉 |
@@ -737,15 +737,8 @@ Index.vue
 ├── 页头：标题 + "新增配置"
 ├── TargetTable.vue：objectType / objectName / repoUrl / subDir / defaultRef / validationProjectId + testProjectId + primaryMetricKey（合并“测试工程”列）/ attributionSkill / enabled / 操作
 └── TargetFormDialog.vue（新增/编辑）
-    ├── objectType（skill/agent）
-    ├── objectName
-    ├── attributionSkill（空间 Skill 包选择器；默认取对象原绑定，缺省为空间默认包；历史内联提示词显示“历史内联提示词（只读）”，不主动换包）
-    ├── repoUrl（git 远端地址，https/ssh；不写 token）
-    ├── subDir（相对仓库根，如 skills/deep-research）
-    ├── defaultRef（可编辑组合框；直接输入分支或 tag，已保存对象的 tag 作为建议；启动向导的版本字段复用同一输入优先模式，并额外接受 commit SHA）
-    ├── validationProjectId（验证集测试工程 ID，必填，不透明字符串）
-    ├── testProjectId（测试集测试工程 ID，必填，不透明字符串）
-    └── primaryMetricKey（平台 results 主指标 metric_key，必填，如 resolved_rate）
+    ├── 共享块：repoUrl（git 远端地址，https/ssh；不写 token）/ defaultRef（可编辑组合框；直接输入分支或 tag，已保存对象的 tag 作为建议；启动向导的版本字段复用同一输入优先模式，并额外接受 commit SHA）/ attributionSkill（空间 Skill 包选择器；默认取对象原绑定，缺省为空间默认包；历史内联提示词显示“历史内联提示词（只读）”，不主动换包）/ validationProjectId（验证集测试工程 ID，必填，不透明字符串）/ testProjectId（测试集测试工程 ID，必填，不透明字符串）/ primaryMetricKey（平台 results 主指标 metric_key，必填，如 resolved_rate）
+    └── members[]：objectType（skill/agent）/ objectName / subDir（相对仓库根，如 skills/deep-research）/ 名称匹配开关（仅 skill/agent）/ 移除
 ```
 
 - 写操作可见性（V2）：空间管理员及以上可写本空间配置；成员/只读只读（后端按空间角色校验）。全局管理员可写任意空间。
@@ -757,6 +750,7 @@ Index.vue
 - 子目录帮助文案固定说明“格式在保存时校验，目录是否存在在启动运行时校验”，不承诺保存时检查目录。
 - 唯一键按空间：同一 `(objectType, objectName)` 可在不同空间各配一份，本空间内重复 → `409 TARGET_EXISTS`。
 - `attributionSkill` 可空：未选时提交省略或 `null`，后端使用空间默认包；显式换包时提交包 ID。包不存在、跨空间或已删除 → `409 ATTRIBUTION_SKILL_PACKAGE_INVALID`，错误落到该字段。
+- 成员行末尾的「名称匹配」开关只对 skill/agent 显示，默认关闭；knowledge 成员不渲染。保存时提交 `matchByName`，编辑回显已保存值；开关不进入共享块、不新增独立页面。
 - 保存、换包或修改影响分析的字段后，对象列表显示“分析中/待分析”，后台批次失败时显示原因与重试状态；只改工程 ID 不触发批次。
 - 表格“测试工程”列合并展示两行，历史空值显示“未填写”。
 - `defaultRef` 的输入文本就是表单值；失焦或直接提交不得清空。已保存对象可通过输入框内的展开按钮查看仓库 tag 建议，键盘与指针选择 tag 都只是可选快捷路径。

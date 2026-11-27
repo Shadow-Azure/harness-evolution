@@ -3823,6 +3823,11 @@ export interface components {
          * @description Immutable evolution target snapshot shown on one run card.
          */
         EvolutionRunTarget: {
+            /**
+             * Matchbyname
+             * @default false
+             */
+            matchByName: boolean;
             /** Name */
             name: string;
             /**
@@ -4118,6 +4123,11 @@ export interface components {
          */
         EvolutionTargetMember: {
             definition?: components["schemas"]["TargetDefinitionPreview"] | null;
+            /**
+             * Matchbyname
+             * @default false
+             */
+            matchByName: boolean;
             /** Objectname */
             objectName: string;
             /**
@@ -4133,6 +4143,11 @@ export interface components {
          * @description One skill or agent member of a target configuration.
          */
         EvolutionTargetMemberWrite: {
+            /**
+             * Matchbyname
+             * @default false
+             */
+            matchByName: boolean;
             /** Objectname */
             objectName: string;
             /**

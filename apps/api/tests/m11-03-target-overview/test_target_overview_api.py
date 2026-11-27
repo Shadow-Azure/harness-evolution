@@ -547,12 +547,12 @@ class _UnresolvedAgentResolver(FakeTargetVersionResolver):
 async def _target_overview_api(
     tmp_path: Path,
     *,
-    agent_match_by_name: bool,
+    name_match_agent: bool,
     seed_agent_name_match_rows: bool = False,
     resolver: FakeTargetVersionResolver | None = None,
 ) -> AsyncIterator[TargetOverviewApi]:
     """Seed three spaces with targets, versions, cases, and attributions."""
-    settings = identity_settings(tmp_path, agent_match_by_name=agent_match_by_name)
+    settings = identity_settings(tmp_path)
     app = create_app(
         settings,
         git_remote=FakeGitRemote(),
@@ -586,6 +586,7 @@ async def _target_overview_api(
             object_type="agent",
             object_name="Explore",
             default_ref="v1.0.0",
+            match_by_name=True if name_match_agent else None,
         )
         await seed_target(
             database,
@@ -663,7 +664,7 @@ async def _target_overview_api(
 @pytest_asyncio.fixture
 async def target_overview_api(tmp_path: Path) -> AsyncIterator[TargetOverviewApi]:
     """Provide the hash-matching baseline fixture."""
-    async for api in _target_overview_api(tmp_path, agent_match_by_name=False):
+    async for api in _target_overview_api(tmp_path, name_match_agent=False):
         yield api
 
 
@@ -672,7 +673,7 @@ async def target_overview_by_name_api(tmp_path: Path) -> AsyncIterator[TargetOve
     """Provide the agent-name-matching fixture with a same-name second version."""
     async for api in _target_overview_api(
         tmp_path,
-        agent_match_by_name=True,
+        name_match_agent=True,
         seed_agent_name_match_rows=True,
     ):
         yield api
@@ -685,7 +686,7 @@ async def target_overview_by_name_unresolved_api(
     """Provide name mode while the agent's content file cannot be resolved."""
     async for api in _target_overview_api(
         tmp_path,
-        agent_match_by_name=True,
+        name_match_agent=True,
         seed_agent_name_match_rows=True,
         resolver=_UnresolvedAgentResolver(revision="digest"),
     ):
@@ -699,7 +700,7 @@ async def target_overview_off_same_name_api(
     """Provide the hash-mode baseline while the same-name rows are present."""
     async for api in _target_overview_api(
         tmp_path,
-        agent_match_by_name=False,
+        name_match_agent=False,
         seed_agent_name_match_rows=True,
     ):
         yield api

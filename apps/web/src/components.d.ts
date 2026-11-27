@@ -28,6 +28,7 @@ declare module 'vue' {
     ElInput: typeof import('element-plus/es/components/input/index')['ElInput']
     ElOption: typeof import('element-plus/es/components/select/index')['ElOption']
     ElSelect: typeof import('element-plus/es/components/select/index')['ElSelect']
+    ElSwitch: typeof import('element-plus/es/components/switch/index')['ElSwitch']
     EmptyState: typeof import('./components/ui/EmptyState.vue')['default']
     ErrorState: typeof import('./components/ui/ErrorState.vue')['default']
     LaneDag: typeof import('./components/agent-tree/lane/LaneDag.vue')['default']

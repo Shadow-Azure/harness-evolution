@@ -26,6 +26,7 @@ from app.db.models.domain import (
     agents,
     bad_case_analysis,
     bad_cases,
+    evolution_target_members,
     evolution_targets,
     probe_reports,
     session_families,
@@ -157,9 +158,11 @@ async def seed_target(
     object_name: str = TARGET_NAME,
     default_ref: str = TARGET_VERSION,
     enabled: bool = True,
+    match_by_name: bool | None = None,
 ) -> None:
-    """Insert one workspace target."""
+    """Insert one workspace target and, when asked, its single member row."""
     now = now_shanghai()
+    sub_dir = f"{object_type}s/{object_name}"
     async with database.transaction() as session:
         await session.execute(
             insert(evolution_targets).values(
@@ -168,7 +171,7 @@ async def seed_target(
                 object_type=object_type,
                 object_name=object_name,
                 repo_url=f"https://example.invalid/{object_name}.git",
-                sub_dir=f"{object_type}s/{object_name}",
+                sub_dir=sub_dir,
                 default_ref=default_ref,
                 validation_project_id="validation-project",
                 test_project_id="test-project",
@@ -177,6 +180,20 @@ async def seed_target(
                 updated_at=now,
             ),
         )
+        if match_by_name is not None:
+            await session.execute(
+                insert(evolution_target_members).values(
+                    id=f"member-{target_id}",
+                    workspace_id=workspace_id,
+                    target_id=target_id,
+                    seq=0,
+                    object_type=object_type,
+                    object_name=object_name,
+                    sub_dir=sub_dir,
+                    match_by_name=match_by_name,
+                    created_at=now,
+                ),
+            )
 
 
 async def seed_session(
