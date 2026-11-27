@@ -441,6 +441,7 @@ def _flock_descriptor(descriptor: int) -> None:
     """Try one exclusive non-blocking lock for the current platform."""
     if sys.platform == "win32":
         msvcrt = importlib.import_module("msvcrt")
+        os.lseek(descriptor, 0, os.SEEK_SET)
         try:
             msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
         except OSError:
@@ -458,6 +459,7 @@ def _release_flock(descriptor: int) -> None:
     try:
         if sys.platform == "win32":
             msvcrt = importlib.import_module("msvcrt")
+            os.lseek(descriptor, 0, os.SEEK_SET)
             msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
         else:
             fcntl = importlib.import_module("fcntl")
