@@ -256,8 +256,12 @@ class GitWorkspaceManager:
         frozen_ref = (
             run.base_commit if run.workspace_path or run.resumed_at or run.target_revision else None
         )
+        # The cache path is keyed by target_version even when a frozen commit
+        # is fetched into it; the lifecycle marker must follow the cache key,
+        # not the effective commit, or a resumed run would rebuild a cache a
+        # previous run already completed.
         base_commit, cache_hit = await self._ensure_ref_cache(
-            cache_path, run.repo_url, frozen_ref or ref
+            cache_path, run.repo_url, frozen_ref or ref, cache_ref=ref
         )
         clone_seconds = time.monotonic() - clone_started
 
@@ -1223,23 +1227,26 @@ class GitWorkspaceManager:
         cache_path: Path,
         repo_url: str,
         ref: str,
+        *,
+        cache_ref: str | None = None,
     ) -> tuple[str, bool]:
         """Fetch only ``ref`` into a bare cache and return its commit and hit flag."""
         # The flock serializes clone, fetch, reset, and rebuild for one
         # target/ref across processes; the kernel releases it on SIGKILL.
         async with self._cache_lock(cache_path), cache_flock(self.repos_root, cache_path):
-            return await self._ensure_ref_cache_locked(cache_path, repo_url, ref)
+            return await self._ensure_ref_cache_locked(cache_path, repo_url, ref, cache_ref or ref)
 
     async def _ensure_ref_cache_locked(
         self,
         cache_path: Path,
         repo_url: str,
         ref: str,
+        cache_ref: str,
     ) -> tuple[str, bool]:
         """Apply cache lifecycle rules while the cross-process lock is held."""
         state = read_state(cache_path)
         reusable = self._cache_usable(cache_path) and (
-            matches(state, repo_url=repo_url, ref=ref)
+            matches(state, repo_url=repo_url, ref=cache_ref)
             or (state is None and not has_git_locks(cache_path))
         )
         if reusable:
@@ -1255,7 +1262,7 @@ class GitWorkspaceManager:
             # covered by the held flock, so leftovers are provably stale.
             clean_git_locks(cache_path)
             previous = await self._current_ref_commit(cache_path, ref)
-            mark_incomplete(cache_path, repo_url=repo_url, ref=ref)
+            mark_incomplete(cache_path, repo_url=repo_url, ref=cache_ref)
             try:
                 commit = await self._fetch_ref(cache_path, repo_url, ref)
             except asyncio.CancelledError:
@@ -1274,21 +1281,21 @@ class GitWorkspaceManager:
                 mark_complete(
                     cache_path,
                     repo_url=repo_url,
-                    ref=ref,
+                    ref=cache_ref,
                     commit=previous,
                 )
                 raise
-            mark_complete(cache_path, repo_url=repo_url, ref=ref, commit=commit)
+            mark_complete(cache_path, repo_url=repo_url, ref=cache_ref, commit=commit)
             return commit, True
 
         self._remove_cache(cache_path)
         try:
-            await self._build_ref_cache(cache_path, repo_url, ref)
+            await self._build_ref_cache(cache_path, repo_url, cache_ref)
             commit = await self._fetch_ref(cache_path, repo_url, ref)
         except Exception:
             self._remove_cache(cache_path)
             raise
-        mark_complete(cache_path, repo_url=repo_url, ref=ref, commit=commit)
+        mark_complete(cache_path, repo_url=repo_url, ref=cache_ref, commit=commit)
         return commit, False
 
     async def _current_ref_commit(self, cache_path: Path, ref: str) -> str | None:
@@ -1303,14 +1310,14 @@ class GitWorkspaceManager:
         commit = result.stdout.strip()
         return commit if result.returncode == 0 and commit else None
 
-    async def _build_ref_cache(self, cache_path: Path, repo_url: str, ref: str) -> None:
+    async def _build_ref_cache(self, cache_path: Path, repo_url: str, cache_ref: str) -> None:
         """Initialize an empty bare cache; remove it entirely when setup fails."""
         try:
             if cache_path.exists():  # noqa: ASYNC240
                 self._remove_cache(cache_path)
             # Record the mutation before git creates anything so a SIGKILL
             # between init and fetch leaves a cache that is rebuilt, not reused.
-            mark_incomplete(cache_path, repo_url=repo_url, ref=ref)
+            mark_incomplete(cache_path, repo_url=repo_url, ref=cache_ref)
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             await self._git_checked(
                 None,

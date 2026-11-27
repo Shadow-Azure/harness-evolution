@@ -28,6 +28,7 @@ rebuild every ref.
 from __future__ import annotations
 
 import asyncio
+import errno
 import hashlib
 import importlib
 import json
@@ -235,7 +236,7 @@ def is_lock_conflict(stderr: str) -> bool:
     """Return whether git refused to start because a lock file exists."""
     diagnostic = stderr.lower()
     return "another git process seems to be running" in diagnostic or (
-        "unable to create" in diagnostic and ".lock" in diagnostic
+        "unable to create" in diagnostic and ".lock" in diagnostic and "file exists" in diagnostic
     )
 
 
@@ -340,8 +341,17 @@ def sweep_cache_root(cache_root: Path) -> CacheSweepResult:
             cleaned += clean_git_locks(cache_path)
     for state_file in sorted(cache_root.glob(f"*/*{STATE_SUFFIX}")):
         cache_path = state_file.with_name(state_file.name[: -len(STATE_SUFFIX)])
-        if not cache_path.exists():
-            state_file.unlink(missing_ok=True)
+        if cache_path.exists():
+            continue
+        try:
+            handle = _try_flock(cache_root, cache_path)
+        except CacheBusyError:
+            # A writer may have registered its marker before git created the
+            # directory; its flock still owns that state file.
+            continue
+        with handle:
+            if not cache_path.exists():
+                state_file.unlink(missing_ok=True)
     if removed or cleaned:
         logger.info(
             "git cache sweep",
@@ -444,8 +454,10 @@ def _flock_descriptor(descriptor: int) -> None:
         os.lseek(descriptor, 0, os.SEEK_SET)
         try:
             msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
-        except OSError:
-            raise BlockingIOError from None
+        except OSError as exc:
+            if exc.errno in {errno.EACCES, errno.EDEADLOCK, errno.EBUSY}:
+                raise BlockingIOError from None
+            raise
         return
     fcntl = importlib.import_module("fcntl")
     try:

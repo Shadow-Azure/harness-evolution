@@ -33,4 +33,5 @@ Target-content reads (`target-content`) and run preparation (`repos`) both treat
 - Reusability is now decided by the marker and git locks rather than directory structure alone; rebuilding a broken cache is limited to one ref.
 - Content reads gain the stable `cache_stale_lock` reason, and run logs gain `git.cache.stale_lock` and `git.cache.sweep` events.
 - Only same-machine multi-process safety is promised; distributed locking or cache consistency across hosts sharing `HE_DATA_DIR` is out of scope.
+- The flock covers service processes only. When the API is SIGKILLed, a git child started in its own session can briefly survive, leaving a narrow race between the next process cleaning the stale lock and that orphan writer. Graceful shutdown kills the process group; this window is accepted rather than adding a process-level cleanup protocol.
 - Tests cover leftover locks, half-built caches, legacy caches, concurrency, startup sweep, and SIGKILL releasing the flock; the existing m19 and m24 cache semantics keep passing.

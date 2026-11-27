@@ -33,4 +33,5 @@ Status: implemented
 - 缓存是否可复用由标记与 git 锁共同决定，不再只看目录结构；损坏缓存的重建成本限于单个 ref。
 - 内容读取新增稳定的 `cache_stale_lock` reason，运行日志新增 `git.cache.stale_lock` 与 `git.cache.sweep` 事件。
 - 仍只保证单机多进程；不承诺多主机共享 `HE_DATA_DIR` 的分布式锁或缓存一致性。
+- flock 只覆盖服务进程。API 被 SIGKILL 时，已启动且使用独立会话的 git 子进程可能短暂存活；新进程清理残留锁时可能与这个孤儿写者存在窄竞争窗口。优雅停机会终止进程组，本次接受该窗口，不引入进程级清理协议。
 - 测试覆盖残留锁、半成品缓存、旧缓存、并发、启动清扫与 SIGKILL 释放 flock；m19 与 m24 的既有缓存语义保持通过。

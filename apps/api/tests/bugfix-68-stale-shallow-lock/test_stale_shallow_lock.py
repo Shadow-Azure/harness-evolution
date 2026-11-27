@@ -6,6 +6,7 @@ import asyncio
 import shutil
 import subprocess
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -167,6 +168,10 @@ class FlakyLockContentRunner(RecordingContentRunner):
 class LockConflictContentRunner(RecordingContentRunner):
     """Fail every fetch as if a stale shallow lock still existed."""
 
+    def __init__(self, *, recreate_lock: bool = False) -> None:
+        super().__init__()
+        self.recreate_lock = recreate_lock
+
     async def __call__(
         self,
         argv: tuple[str, ...],
@@ -174,7 +179,29 @@ class LockConflictContentRunner(RecordingContentRunner):
     ) -> GitProcessResult:
         if len(argv) > 1 and argv[1] == "fetch":
             self.calls.append(argv)
+            if self.recreate_lock and cwd is not None:
+                git_dir = cwd / ".git" if (cwd / ".git").is_dir() else cwd
+                git_dir.mkdir(parents=True, exist_ok=True)
+                (git_dir / "shallow.lock").write_text("held", encoding="utf-8")
             return GitProcessResult(returncode=128, stdout="", stderr=LOCK_CONFLICT)
+        return await super().__call__(argv, cwd)
+
+
+class PermissionDeniedContentRunner(RecordingContentRunner):
+    """Fail every fetch with a read-only cache error, not a lock conflict."""
+
+    async def __call__(
+        self,
+        argv: tuple[str, ...],
+        cwd: Path | None,
+    ) -> GitProcessResult:
+        if len(argv) > 1 and argv[1] == "fetch":
+            self.calls.append(argv)
+            return GitProcessResult(
+                returncode=128,
+                stdout="",
+                stderr="fatal: Unable to create '/cache/shallow.lock': Permission denied.",
+            )
         return await super().__call__(argv, cwd)
 
 
@@ -223,10 +250,10 @@ async def test_stale_shallow_lock_is_cleaned_and_read_recovers(tmp_path: Path) -
     assert state is not None and state.is_complete
 
 
-async def test_persistent_lock_conflict_is_retried_then_classified(tmp_path: Path) -> None:
-    """A lock that survives one cleanup retry becomes a stable cache reason."""
+async def test_persistent_lock_conflict_is_retried_then_rebuilds(tmp_path: Path) -> None:
+    """A lock that survives one cleanup retry leads to a rebuild, not reuse."""
     repo = _seed_content_repo(tmp_path)
-    runner = LockConflictContentRunner()
+    runner = LockConflictContentRunner(recreate_lock=True)
     content = SubprocessGitContent(cache_root=tmp_path / "cache", runner=runner)
     await content.read_file(repo_url=str(repo), sub_dir="skills/x", ref="v1", file_name="SKILL.md")
     fetches_before = sum(1 for argv in runner.calls if "fetch" in argv)
@@ -239,8 +266,34 @@ async def test_persistent_lock_conflict_is_retried_then_classified(tmp_path: Pat
     assert raised.value.reason == "cache_stale_lock"
     fetches_after = sum(1 for argv in runner.calls if "fetch" in argv)
     assert fetches_after - fetches_before == 2
-    # The previous complete cache is kept for a later retry.
     state = read_state(content._cache_path(str(repo), "v1"))
+    assert state is not None and not state.is_complete
+
+    healthy = RecordingContentRunner()
+    recovered = SubprocessGitContent(cache_root=tmp_path / "cache", runner=healthy)
+    body = await recovered.read_file(
+        repo_url=str(repo), sub_dir="skills/x", ref="v1", file_name="SKILL.md"
+    )
+    assert body == SKILL_BODY
+    assert healthy.clone_count == 1
+
+
+async def test_permission_denied_is_not_a_stale_lock(tmp_path: Path) -> None:
+    """A read-only cache error stays repo_unreachable and is not retried twice."""
+    repo = _seed_content_repo(tmp_path)
+    content = SubprocessGitContent(cache_root=tmp_path / "cache")
+    await content.read_file(repo_url=str(repo), sub_dir="skills/x", ref="v1", file_name="SKILL.md")
+    runner = PermissionDeniedContentRunner()
+    blocked = SubprocessGitContent(cache_root=tmp_path / "cache", runner=runner)
+
+    with pytest.raises(GitContentUnavailable) as raised:
+        await blocked.read_file(
+            repo_url=str(repo), sub_dir="skills/x", ref="v1", file_name="SKILL.md"
+        )
+
+    assert raised.value.reason == "repo_unreachable"
+    assert sum(1 for argv in runner.calls if "fetch" in argv) == 1
+    state = read_state(blocked._cache_path(str(repo), "v1"))
     assert state is not None and state.is_complete
 
 
@@ -386,6 +439,27 @@ async def test_workspace_incomplete_cache_is_rebuilt(tmp_path: Path) -> None:
     assert rebuilt is not None and rebuilt.is_complete
 
 
+async def test_workspace_frozen_commit_reuses_target_cache(tmp_path: Path) -> None:
+    """A resumed run fetching a frozen commit reuses the target-version cache."""
+    bare = _seed_workspace_repo(tmp_path)
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+        push_enabled=False,
+    )
+    first = await manager.prepare(_run(str(bare), "feature", run_id="run-resume-1"))
+    resumed_run = replace(
+        _run(str(bare), "feature", run_id="run-resume-2"),
+        resumed_at=NOW,
+        base_commit=first.base_commit,
+    )
+
+    resumed = await manager.prepare(resumed_run)
+
+    assert resumed.cache_hit is True
+    assert resumed.base_commit == first.base_commit
+
+
 def test_startup_sweep_removes_incomplete_and_locked_legacy_caches(tmp_path: Path) -> None:
     """Startup deletes interrupted caches but keeps healthy marker-less caches."""
     root = tmp_path / "cache"
@@ -441,6 +515,23 @@ async def test_startup_sweep_skips_a_cache_held_by_an_active_process(tmp_path: P
     released = sweep_cache_roots(root)
     assert released.caches_removed == 1
     assert not cache_path.exists()
+
+
+async def test_startup_sweep_keeps_marker_of_an_active_writer(tmp_path: Path) -> None:
+    """An orphan marker is left alone while its writer still holds the flock."""
+    root = tmp_path / "cache"
+    cache_path = root / "repo" / "ref"
+    cache_path.parent.mkdir(parents=True)
+    mark_incomplete(cache_path, repo_url="https://example.invalid/x.git", ref="main")
+
+    async with cache_flock(root, cache_path):
+        held = await asyncio.to_thread(sweep_cache_roots, root)
+        assert held.caches_removed == 0
+        assert state_path(cache_path).exists()
+
+    swept = sweep_cache_roots(root)
+    assert swept.caches_removed == 0
+    assert not state_path(cache_path).exists()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX flock crash semantics")
