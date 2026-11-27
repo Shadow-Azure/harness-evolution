@@ -334,6 +334,7 @@ test("m11-02 multi-attribution error detail folds groups, pages by two and resto
         return {
           position: report.querySelector("[data-testid='attribution-position']")?.textContent,
           text: report.textContent,
+          category: report.querySelector(".conclusion .state-chip")?.textContent,
           active: document.querySelector(
             ${JSON.stringify(`[data-attribution-id='probe-m11-02-0001']`)},
           )?.classList.contains("active"),
@@ -344,9 +345,19 @@ test("m11-02 multi-attribution error detail folds groups, pages by two and resto
     assert.equal(selected.position, "3 / 4");
     assert.match(selected.text, /checklist-skill/);
     assert.match(selected.text, /可归因到本对象/);
-    assert.match(selected.text, /错误/);
+    assert.equal(selected.category, "流程");
     assert.match(selected.text, /归因来源/);
     assert.equal(selected.active, true);
+
+    await clientNavigate(
+      page,
+      `${ws}/sessions/${sessionId}/errors?case=${caseId}&tab=attr&at=probe-m11-02-0003`,
+    );
+    await waitForDocument(
+      page.session,
+      `document.querySelector("[data-testid='attribution-report'] .conclusion .state-chip")?.textContent === "上下文"`,
+      "context category from the knowledge attribution",
+    );
 
     await clientNavigate(
       page,

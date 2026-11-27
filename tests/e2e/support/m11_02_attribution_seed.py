@@ -88,7 +88,7 @@ async def _seed(data_dir: Path, case_id: str, session_id: str) -> int:
                     probe_type="skill",
                     probe_object="checklist-skill",
                     object_version="2026.11.1",
-                    attribute_type="error",
+                    attribute_type="flow",
                     conclusion="attributed",
                     confidence=0.86,
                     description=(
@@ -128,7 +128,7 @@ async def _seed(data_dir: Path, case_id: str, session_id: str) -> int:
                     probe_type="knowledge",
                     probe_object="project-knowledge",
                     object_version=None,
-                    attribute_type="prompt",
+                    attribute_type="context",
                     conclusion="attributed",
                     confidence=0.68,
                     description=(
@@ -137,7 +137,7 @@ async def _seed(data_dir: Path, case_id: str, session_id: str) -> int:
                     ),
                     analysis=(
                         "1. 检索命中的知识条目没有固定版本。\n"
-                        "2. 提示词缺少输出文件约束，导致目标文件遗漏。\n"
+                        "2. 检索结果缺少输出文件约束，导致目标文件遗漏。\n"
                         "3. 结论只作用于该对象版本。"
                     ),
                     updated_at=datetime(2026, 10, 20, 9, 7, tzinfo=SHANGHAI),

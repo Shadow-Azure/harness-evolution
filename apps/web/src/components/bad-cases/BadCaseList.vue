@@ -702,6 +702,10 @@ defineExpose({ scrollToProblem });
   color: var(--green);
 }
 
+.state-chip.blue {
+  color: var(--blue);
+}
+
 .state-chip.purple {
   color: var(--purple);
 }

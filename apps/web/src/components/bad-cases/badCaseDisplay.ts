@@ -1,9 +1,11 @@
 import type { BadCase } from "@harness/contracts";
 
-/** Human label and token class for one five-state attribution value. */
+import { attributionCategory } from "../../utils/attributionCategory";
+
+/** Human label and token class for a Session problem badge. */
 export type BadCaseStatePresentation = {
   label: string;
-  tone: "neutral" | "green" | "purple" | "orange" | "red";
+  tone: "neutral" | "green" | "purple" | "orange" | "red" | "blue";
 };
 
 /** Visible audit chip for a non-event bad-case anchor. */
@@ -25,12 +27,11 @@ const STATE_PRESENTATION: Record<
 > = {
   unanalyzed: { label: "未分析", tone: "neutral" },
   analyzed_nonissue: { label: "非问题", tone: "green" },
-  analyzed_issue_model: { label: "是问题-模型问题", tone: "purple" },
-  analyzed_issue_prompt: {
-    label: "是问题-prompt缺失某些提示词",
-    tone: "orange",
-  },
-  analyzed_issue_error: { label: "是问题-错误", tone: "red" },
+  analyzed_issue_model: { label: `是问题-${attributionCategory("model")}`, tone: "purple" },
+  analyzed_issue_prompt: { label: `是问题-${attributionCategory("prompt")}`, tone: "orange" },
+  analyzed_issue_error: { label: `是问题-${attributionCategory("error")}`, tone: "red" },
+  analyzed_issue_flow: { label: `是问题-${attributionCategory("flow")}`, tone: "blue" },
+  analyzed_issue_context: { label: `是问题-${attributionCategory("context")}`, tone: "green" },
 };
 
 /**

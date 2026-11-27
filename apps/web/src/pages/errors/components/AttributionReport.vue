@@ -13,10 +13,10 @@ import {
   badCaseDeepLink,
   shortBadCaseId,
 } from "../../../utils/badCaseId";
+import { attributionCategory } from "../../../utils/attributionCategory";
 import { renderMarkdown } from "../../../utils/markdown";
 import { formatStartedAt } from "../../../utils/sessionDisplay";
 import {
-  attributionCategory,
   attributionConclusion,
   attributionTriggerOrder,
 } from "./attributionDisplay";

@@ -8,7 +8,12 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, RootModel
 
-from app.service.bad_cases.schemas import AnalysisStatus, AttributeType, DisplayState
+from app.service.bad_cases.schemas import (
+    AnalysisStatus,
+    AttributeType,
+    DisplayState,
+    IssueDisplayState,
+)
 from app.service.identity.schemas import IdentityModel
 from app.service.sessions.schemas import BadCaseAgent, BadCaseAnchor
 
@@ -54,11 +59,7 @@ class IssueBadCaseAnalysis(_BadCaseAnalysisBase):
     """An analyzed issue result always carries its public summary."""
 
     status: Literal["analyzed_issue"]
-    display_state: Literal[
-        "analyzed_issue_model",
-        "analyzed_issue_prompt",
-        "analyzed_issue_error",
-    ]
+    display_state: IssueDisplayState
     result: IssueAnalysisResult
 
 
