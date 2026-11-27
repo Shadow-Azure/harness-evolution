@@ -79,6 +79,22 @@ class WorkspaceDouble:
 
     def __init__(self) -> None:
         self.published: list[tuple[str, bool]] = []
+        self.result_messages: list[str] = []
+        self.result_commits: list[str] = []
+
+    async def ensure_result_commit(
+        self,
+        prepared: PreparedWorkspace,
+        *,
+        run_id: str,
+        message: str,
+    ) -> str:
+        del prepared
+        assert run_id == RUN_ID
+        self.result_messages.append(message)
+        commit = "c" * 40
+        self.result_commits.append(commit)
+        return commit
 
     async def publish_run_branch(
         self,
@@ -161,10 +177,38 @@ async def test_ensure_run_evaluation_is_idempotent(
     assert first.eval_status == "pending"
 
 
-async def test_baselines_and_test_final_feed_the_terminal_row(
+async def test_startup_submits_only_the_validation_baseline(
     state: tuple[Any, EvolutionRepository],
 ) -> None:
-    """Both baselines and the held-out final persist before the final verdict."""
+    """The test set is never launched before the run reaches finalization."""
+    _database, repository = state
+    clock = NOW
+
+    def now() -> datetime:
+        return clock
+
+    submitter = EvolutionEvalSubmitter(
+        repository,
+        lambda _run: _gateway(),
+        events=None,
+        now=now,
+        poll_interval=timedelta(seconds=1),
+    )
+
+    run = await repository.get_run(RUN_ID)
+    assert run is not None
+    await submitter.submit_validation_baseline(run)
+
+    validation = await repository.get_run_evaluation(RUN_ID, "validation_baseline")
+    assert validation is not None and validation.eval_external_id
+    assert await repository.get_run_evaluation(RUN_ID, "test_baseline") is None
+    assert await repository.get_run_evaluation(RUN_ID, "test_final") is None
+
+
+async def test_finalize_submits_both_test_evaluations_for_the_terminal_row(
+    state: tuple[Any, EvolutionRepository],
+) -> None:
+    """The finalize stage launches baseline and final, waits for both, then writes."""
     _database, repository = state
     clock = NOW
 
@@ -188,32 +232,6 @@ async def test_baselines_and_test_final_feed_the_terminal_row(
         poll_interval=timedelta(seconds=1),
         timeout=timedelta(hours=2),
     )
-
-    run = await repository.get_run(RUN_ID)
-    assert run is not None
-    await submitter.submit_baselines(run)
-    validation = await repository.get_run_evaluation(RUN_ID, "validation_baseline")
-    test_baseline = await repository.get_run_evaluation(RUN_ID, "test_baseline")
-    assert validation is not None and validation.eval_external_id
-    assert test_baseline is not None and test_baseline.eval_external_id
-    assert validation.eval_external_id != test_baseline.eval_external_id
-
-    clock = NOW + timedelta(seconds=5)
-    assert await poller.run_once() >= 1
-    validation = await repository.get_run_evaluation(RUN_ID, "validation_baseline")
-    test_baseline = await repository.get_run_evaluation(RUN_ID, "test_baseline")
-    assert validation is not None and validation.eval_status == "completed"
-    assert validation.eval_score == 80.0
-    assert test_baseline is not None and test_baseline.eval_score == 80.0
-
-    submitted_final = await submitter.submit_test_final(run)
-    assert submitted_final.eval_status == "evaluating"
-    clock = NOW + timedelta(seconds=10)
-    assert await poller.run_once() >= 1
-    test_final = await repository.get_run_evaluation(RUN_ID, "test_final")
-    assert test_final is not None and test_final.eval_status == "completed"
-    assert test_final.eval_score == 85.0
-
     workspaces = WorkspaceDouble()
     finalize = EvolutionFinalizeService(
         repository,
@@ -222,8 +240,43 @@ async def test_baselines_and_test_final_feed_the_terminal_row(
         eval_submitter=submitter,
         now=now,
     )
-    finished = await finalize.handle(_job("evolution_finalize"))
 
+    run = await repository.get_run(RUN_ID)
+    assert run is not None
+    await submitter.submit_validation_baseline(run)
+    clock = NOW + timedelta(seconds=5)
+    assert await poller.run_once() >= 1
+    validation = await repository.get_run_evaluation(RUN_ID, "validation_baseline")
+    assert validation is not None and validation.eval_status == "completed"
+
+    pending = await finalize.handle(_job("evolution_finalize"))
+    assert pending["finalized"] is False
+    assert pending["reason"] == "test-set evaluations are pending"
+    test_baseline = await repository.get_run_evaluation(RUN_ID, "test_baseline")
+    test_final = await repository.get_run_evaluation(RUN_ID, "test_final")
+    assert test_baseline is not None and test_baseline.eval_external_id
+    assert test_final is not None and test_final.eval_external_id
+    assert test_baseline.eval_external_id != test_final.eval_external_id
+    persisted = await repository.get_run(RUN_ID)
+    assert persisted is not None and persisted.result_commit == "c" * 40
+    assert await repository.get_final(RUN_ID) is None
+    assert len(workspaces.result_commits) == 1
+    assert "Harness-Run-Id: run-evaluations" in workspaces.result_messages[0]
+    assert "Harness-Verdict: no-acceptance " in workspaces.result_messages[0]
+
+    # A retry before polling reuses the persisted result commit.
+    replay = await finalize.handle(_job("evolution_finalize"))
+    assert replay["finalized"] is False
+    assert len(workspaces.result_commits) == 1
+
+    clock = NOW + timedelta(seconds=10)
+    assert await poller.run_once() >= 2
+    test_baseline = await repository.get_run_evaluation(RUN_ID, "test_baseline")
+    test_final = await repository.get_run_evaluation(RUN_ID, "test_final")
+    assert test_baseline is not None and test_baseline.eval_score == 80.0
+    assert test_final is not None and test_final.eval_score == 85.0
+
+    finished = await finalize.handle(_job("evolution_finalize"))
     assert finished["finalized"] is True
     final = await repository.get_final(RUN_ID)
     assert final is not None
@@ -242,6 +295,113 @@ async def test_baselines_and_test_final_feed_the_terminal_row(
     ]
     run = await repository.get_run(RUN_ID)
     assert run is not None and run.status == "completed"
+    assert workspaces.published == [("evo/20261125-run-evaluations", True)]
+
+
+async def test_finalize_waits_for_both_test_evaluations(
+    state: tuple[Any, EvolutionRepository],
+) -> None:
+    """A completed baseline alone must not write the final row."""
+    _database, repository = state
+    clock = NOW
+
+    def now() -> datetime:
+        return clock
+
+    submitter = EvolutionEvalSubmitter(
+        repository,
+        lambda _run: _gateway(),
+        events=None,
+        now=now,
+        poll_interval=timedelta(seconds=1),
+    )
+    workspaces = WorkspaceDouble()
+    finalize = EvolutionFinalizeService(
+        repository,
+        workspaces,  # type: ignore[arg-type]
+        events=None,
+        eval_submitter=submitter,
+        now=now,
+    )
+
+    run = await repository.get_run(RUN_ID)
+    assert run is not None
+    await finalize.handle(_job("evolution_finalize"))
+    baseline = await repository.get_run_evaluation(RUN_ID, "test_baseline")
+    final = await repository.get_run_evaluation(RUN_ID, "test_final")
+    assert baseline is not None and final is not None
+    completed = await repository.save_run_eval_result(
+        baseline.id,
+        result={
+            "candidateScore": 80.0,
+            "primaryMetricKey": "resolved_rate",
+            "direction": "higher_is_better",
+            "metrics": [],
+        },
+        score=80.0,
+        finished_at=NOW,
+    )
+    assert completed is True
+
+    pending = await finalize.handle(_job("evolution_finalize"))
+    assert pending["finalized"] is False
+    assert await repository.get_final(RUN_ID) is None
+
+
+async def test_legacy_completed_test_final_is_reused_without_a_result_commit(
+    state: tuple[Any, EvolutionRepository],
+) -> None:
+    """An already completed legacy test final is never replaced by a result commit."""
+    _database, repository = state
+
+    async def finish(kind: str, score: float) -> None:
+        row = await repository.ensure_run_evaluation(RUN_ID, kind)
+        if row.eval_external_id is None:
+            await repository.mark_run_eval_submitted(
+                row.id,
+                external_id=f"legacy-{kind}",
+                started_at=NOW,
+                next_poll_at=NOW + timedelta(seconds=1),
+            )
+        assert await repository.save_run_eval_result(
+            row.id,
+            result={
+                "candidateScore": score,
+                "primaryMetricKey": "resolved_rate",
+                "direction": "higher_is_better",
+                "metrics": [],
+            },
+            score=score,
+            finished_at=NOW,
+        )
+
+    await finish("test_baseline", 80.0)
+    await finish("test_final", 85.0)
+    workspaces = WorkspaceDouble()
+    finalize = EvolutionFinalizeService(
+        repository,
+        workspaces,  # type: ignore[arg-type]
+        events=None,
+        eval_submitter=EvolutionEvalSubmitter(
+            repository,
+            lambda _run: _gateway(),
+            events=None,
+            now=lambda: NOW,
+            poll_interval=timedelta(seconds=1),
+        ),
+        now=lambda: NOW,
+    )
+
+    result = await finalize.handle(_job("evolution_finalize"))
+
+    assert result["finalized"] is True
+    assert workspaces.result_commits == []
+    run = await repository.get_run(RUN_ID)
+    assert run is not None and run.result_commit is None
+    final = await repository.get_final(RUN_ID)
+    assert final is not None
+    assert final.init_score == 80.0
+    assert final.best_score == 85.0
 
 
 async def test_failed_run_evaluation_can_be_reset_for_retry(
@@ -382,3 +542,54 @@ async def test_run_level_queue_timeout_uses_the_queue_cap(
     assert timed_out[0]["payload"]["queueSeconds"] == 25_200.0
     assert timed_out[0]["payload"]["progressPercent"] == 12.0
     assert timed_out[0]["payload"]["startedAt"] is None
+
+async def test_failed_test_evaluations_resubmit_to_their_original_targets(
+    state: tuple[Any, EvolutionRepository],
+) -> None:
+    """Retry re-targets the baseline and the result commit without re-running rounds."""
+    _database, repository = state
+    await repository.record_result_commit(RUN_ID, "c" * 40)
+    submitter = EvolutionEvalSubmitter(
+        repository,
+        lambda _run: _gateway(),
+        events=None,
+        now=lambda: NOW,
+        poll_interval=timedelta(seconds=1),
+    )
+
+    baseline = await repository.ensure_run_evaluation(RUN_ID, "test_baseline")
+    await repository.mark_run_eval_submitted(
+        baseline.id,
+        external_id="eval-baseline-failed",
+        started_at=NOW,
+        next_poll_at=NOW + timedelta(seconds=1),
+    )
+    await repository.mark_run_eval_failed(
+        baseline.id,
+        status="failed",
+        error="platform unavailable",
+        finished_at=NOW,
+    )
+    await repository.reset_run_eval_for_retry(baseline.id)
+
+    final = await repository.ensure_run_evaluation(RUN_ID, "test_final")
+    await repository.mark_run_eval_submitted(
+        final.id,
+        external_id="eval-final-failed",
+        started_at=NOW,
+        next_poll_at=NOW + timedelta(seconds=1),
+    )
+    await repository.mark_run_eval_failed(
+        final.id,
+        status="timeout",
+        error="platform timed out",
+        finished_at=NOW,
+    )
+    await repository.reset_run_eval_for_retry(final.id)
+
+    run = await repository.get_run(RUN_ID)
+    assert run is not None
+    resubmitted_baseline = await submitter.resubmit_run_evaluation(run, "test_baseline")
+    resubmitted_final = await submitter.resubmit_run_evaluation(run, "test_final")
+    assert resubmitted_baseline.eval_external_id == f"fake:{RUN_ID}:test_baseline:{'a' * 40}"
+    assert resubmitted_final.eval_external_id == f"fake:{RUN_ID}:test_final:{'c' * 40}"

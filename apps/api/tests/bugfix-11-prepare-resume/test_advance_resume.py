@@ -125,8 +125,8 @@ class FakeEval:
         self.submitted.append(round_.id)
         return SimpleNamespace(**{**vars(round_), "eval_external_id": "eval-1"})
 
-    async def submit_baselines(self, run: Any) -> None:
-        """No-op: baselines are outside this advance-resume contract."""
+    async def submit_validation_baseline(self, run: Any) -> None:
+        """No-op: the validation baseline is outside this advance-resume contract."""
         del run
 
 

@@ -146,6 +146,44 @@ async def test_prepare_creates_isolated_workspace_and_run_branch(
     assert _git(prepared.path, "branch", "--show-current") == prepared.branch
 
 
+async def test_result_commit_is_empty_pushed_and_reused(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+) -> None:
+    """A no-acceptance result commit changes no file and is reused on retry."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    prepared = await manager.prepare(_run(str(bare), base_commit))
+    message = (
+        "evolve(deep-research@v2.0.0): 记录无接纳轮次的终评结论\n\n"
+        "Harness-Run-Id: run-m5-09\n"
+        "Harness-Verdict: no-acceptance (verdict=false, 0.0 vs 0.0)"
+    )
+
+    commit = await manager.ensure_result_commit(
+        prepared,
+        run_id="run-m5-09",
+        message=message,
+    )
+
+    assert commit != base_commit
+    assert _git(prepared.path, "rev-parse", "HEAD") == commit
+    assert _git(prepared.path, "diff", "--name-only", base_commit, commit) == ""
+    assert _git(bare, "rev-parse", f"refs/heads/{prepared.branch}") == commit
+
+    replayed = await manager.ensure_result_commit(
+        prepared,
+        run_id="run-m5-09",
+        message="a different message must not create another commit",
+    )
+
+    assert replayed == commit
+    assert _git(prepared.path, "rev-parse", "HEAD") == commit
+
+
 async def test_prepare_rejects_missing_ref_and_subdirectory(
     tmp_path: Path,
     remote_repo: tuple[Path, Path, str],

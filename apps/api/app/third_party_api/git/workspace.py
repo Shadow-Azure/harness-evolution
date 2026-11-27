@@ -915,6 +915,98 @@ class GitWorkspaceManager:
             require_trailer=require_trailer,
         )
 
+    async def ensure_result_commit(
+        self,
+        prepared: PreparedWorkspace,
+        *,
+        run_id: str,
+        message: str,
+    ) -> str:
+        """Create or reuse the empty no-acceptance result commit and publish it.
+
+        The commit deliberately changes no tracked file: it records the run's
+        terminal metadata so the held-out test-set final can target a commit
+        that differs from ``base_commit`` without altering the evolved skill.
+        """
+        if not self._RUN_BRANCH.fullmatch(prepared.branch) or prepared.branch in {"main", "master"}:
+            raise GitOperationError("run branch name is unsafe", stage="workspace")
+        current_branch = (
+            await self._git_checked(
+                prepared.path,
+                ("git", "branch", "--show-current"),
+                stage="workspace",
+                failure="workspace branch could not be resolved",
+            )
+        ).stdout.strip()
+        if current_branch != prepared.branch:
+            await self._git_checked(
+                prepared.path,
+                ("git", "switch", prepared.branch),
+                stage="workspace",
+                failure="run branch could not be selected for the result commit",
+            )
+        await self._require_clean(prepared.path)
+        head = (
+            await self._git_checked(
+                prepared.path,
+                ("git", "rev-parse", "HEAD"),
+                stage="workspace",
+                failure="run branch commit could not be resolved",
+            )
+        ).stdout.strip()
+        head_message = await self._commit_message(prepared.path, head)
+        if self._is_result_commit(head_message, run_id):
+            commit = head
+        else:
+            await self._git_checked(
+                prepared.path,
+                (
+                    "git",
+                    "-c",
+                    "user.name=Harness Evolution",
+                    "-c",
+                    "user.email=harness-evolution@localhost",
+                    "commit",
+                    "--allow-empty",
+                    "-m",
+                    message,
+                ),
+                stage="commit",
+                failure="result commit could not be created",
+            )
+            commit = (
+                await self._git_checked(
+                    prepared.path,
+                    ("git", "rev-parse", "HEAD"),
+                    stage="workspace",
+                    failure="result commit could not be resolved",
+                )
+            ).stdout.strip()
+            created = await self._commit_message(prepared.path, commit)
+            if not self._is_result_commit(created, run_id):
+                raise GitOperationError(
+                    "result commit is missing the run or verdict trailer",
+                    stage="commit",
+                )
+        await self._push_run_branch(
+            prepared.path,
+            prepared.branch,
+            expected_run_id=run_id,
+            base_commit=prepared.base_commit,
+            require_trailer=True,
+            push_url=prepared.push_url,
+        )
+        return commit
+
+    @staticmethod
+    def _is_result_commit(message: str, run_id: str) -> bool:
+        """Return whether a commit is this run's no-acceptance result marker."""
+        if not _has_trailer(message, "Harness-Run-Id", run_id):
+            return False
+        return any(
+            line.startswith("Harness-Verdict: no-acceptance ") for line in message.splitlines()
+        )
+
     async def publish_run_branch(
         self,
         prepared: PreparedWorkspace,
