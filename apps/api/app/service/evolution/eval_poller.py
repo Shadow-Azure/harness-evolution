@@ -833,14 +833,13 @@ class EvolutionEvalPoller:
                 expected_paused_seconds=observed.eval_paused_seconds,
                 timing=timing,
             )
-        # A queued evaluation has not started executing, so only the queue cap
-        # above can expire it; the execution budget starts at status.started_at.
-        if status is not None and status.status == "queued":
+        # A queued or unobservable evaluation never proves execution started,
+        # so only the queue cap above can expire it; the execution budget
+        # starts at status.started_at once the platform reports running.
+        if status is None or status.status == "queued":
             return False
         execution_start = (
-            status.started_at
-            if status is not None and status.started_at is not None
-            else observed.eval_started_at
+            status.started_at if status.started_at is not None else observed.eval_started_at
         )
         elapsed_seconds = _elapsed_seconds(
             current,
@@ -890,6 +889,12 @@ class EvolutionEvalPoller:
                 "externalId": evaluation.eval_external_id,
                 "kind": evaluation.kind,
                 "transient": True,
+                **_timing_fields(
+                    None,
+                    eval_started_at=evaluation.eval_started_at,
+                    paused_seconds=evaluation.eval_paused_seconds,
+                    current=current,
+                ),
                 "nextPollAt": next_poll.isoformat(),
             },
             error=exc,
@@ -983,14 +988,13 @@ class EvolutionEvalPoller:
                 expected_paused_seconds=observed.eval_paused_seconds,
                 timing=timing,
             )
-        # A queued candidate has not started executing, so only the queue cap
-        # above can expire it; the execution budget starts at status.started_at.
-        if status is not None and status.status == "queued":
+        # A queued or unobservable candidate never proves execution started,
+        # so only the queue cap above can expire it; the execution budget
+        # starts at status.started_at once the platform reports running.
+        if status is None or status.status == "queued":
             return False
         execution_start = (
-            status.started_at
-            if status is not None and status.started_at is not None
-            else observed.eval_started_at
+            status.started_at if status.started_at is not None else observed.eval_started_at
         )
         elapsed_seconds = _elapsed_seconds(
             current,
@@ -1022,7 +1026,8 @@ class EvolutionEvalPoller:
         facts: the gateway layer flags transport transience (network timeouts,
         connection failures, 5xx/429) with ``retryable`` and this loop only
         consumes the boolean — push ``next_poll_at`` forward and keep waiting,
-        still capped by the existing 2h ``eval_timeout`` fallback. Non-retryable
+        capped by the queue safety net ``HE_EVAL_QUEUE_TIMEOUT_SECONDS`` because
+        an unobservable phase cannot prove execution started. Non-retryable
         errors fall through to the caller's existing blocked(stage=eval) path.
         """
         if not bool(getattr(exc, "retryable", False)):
@@ -1039,7 +1044,14 @@ class EvolutionEvalPoller:
             round_id=round_.id,
             payload={
                 "externalId": round_.eval_external_id,
+                "kind": "candidate",
                 "transient": True,
+                **_timing_fields(
+                    None,
+                    eval_started_at=round_.eval_started_at,
+                    paused_seconds=round_.eval_paused_seconds,
+                    current=current,
+                ),
                 "nextPollAt": next_poll.isoformat(),
             },
             error=exc,
@@ -1174,13 +1186,16 @@ def _timing_fields(
 
     ``queueSeconds`` measures the wait before platform execution: it stops at
     ``status.started_at`` once reported and keeps growing while the evaluation
-    is still queued. When the platform omits the start time while running,
-    queue time stays unknown instead of being guessed from submission.
+    is still queued or its platform state is unobservable. When the platform
+    omits the start time while running, queue time stays unknown instead of
+    being guessed from submission.
     """
     started_at = status.started_at if status is not None else None
     queue_seconds: float | None = None
-    if eval_started_at is not None and status is not None:
-        if status.status == "queued":
+    if eval_started_at is not None:
+        if status is None or status.status == "queued":
+            # Unknown phase (retryable status errors) and queued evaluations
+            # both measure submission time against the queue safety net.
             queue_seconds = _elapsed_seconds(current, eval_started_at, paused_seconds)
         elif started_at is not None:
             queue_seconds = _elapsed_seconds(started_at, eval_started_at, paused_seconds)

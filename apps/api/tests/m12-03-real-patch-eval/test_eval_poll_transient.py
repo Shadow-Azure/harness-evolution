@@ -231,10 +231,10 @@ async def test_non_retryable_poll_error_still_blocks_eval(
     assert round_.eval_next_poll_at is None
 
 
-async def test_retryable_poll_errors_never_outlive_the_eval_timeout(
+async def test_retryable_poll_errors_are_capped_by_the_queue_timeout(
     poll_state: tuple[Database, EvolutionRepository],
 ) -> None:
-    """The 2h timeout caps retryable deferrals and declares the round timed out."""
+    """An unobservable phase uses the queue cap, never submission execution time."""
     database, repository = poll_state
     async with database.transaction() as session:
         await session.execute(
@@ -243,16 +243,72 @@ async def test_retryable_poll_errors_never_outlive_the_eval_timeout(
             .values(eval_started_at=NOW - timedelta(hours=3)),
         )
     gateway = _RetryableGateway(retryable=True)
-    poller = _poller(repository, gateway)
+    events = _RecordingEvents()
+    poller = _poller(repository, gateway, events=events)
 
+    # 3h after submission the phase is unknown, so the 2h candidate execution
+    # budget must not expire an evaluation that may still be queued.
+    assert await poller.run_once() == 1
+
+    run = await repository.get_run("run-transient")
+    deferred = await repository.get_round("round-transient")
+    assert run is not None and deferred is not None
+    assert run.status == "running"
+    assert deferred.eval_status == "evaluating"
+    polled = [payload for event_type, payload in events.events if event_type == "eval_polled"]
+    assert len(polled) == 1
+    assert polled[0]["payload"]["kind"] == "candidate"
+    assert polled[0]["payload"]["queueSeconds"] == 10_800.0
+    assert polled[0]["payload"]["startedAt"] is None
+    assert polled[0]["payload"]["elapsedSeconds"] is None
+
+    # 6h1m after submission the queue safety net declares the queue timed out.
+    later = _poller(
+        repository,
+        gateway,
+        events=events,
+        now=lambda: NOW + timedelta(hours=3, seconds=60),
+    )
+    assert await later.run_once() == 1
+
+    run = await repository.get_run("run-transient")
+    expired = await repository.get_round("round-transient")
+    assert run is not None and expired is not None
+    assert run.status == "blocked"
+    assert run.blocked_stage == "eval"
+    assert expired.eval_status == "timeout"
+    assert expired.eval_error == "evaluation queue timed out"
+    timed_out = [payload for event_type, payload in events.events if event_type == "eval_timeout"]
+    assert len(timed_out) == 1
+    assert timed_out[0]["payload"]["queueSeconds"] == 21_660.0
+    assert timed_out[0]["payload"]["startedAt"] is None
+
+
+async def test_queue_timeout_still_applies_after_the_platform_starts(
+    poll_state: tuple[Database, EvolutionRepository],
+) -> None:
+    """A queue that crossed the cap is reported even if the next poll sees running."""
+    database, repository = poll_state
+    await _set_round_started_at(database, NOW - timedelta(hours=6, minutes=55))
+    gateway = _StatusGateway(
+        EvalStatus(status="running", started_at=NOW - timedelta(minutes=5)),
+    )
+    events = _RecordingEvents()
+
+    poller = _poller(repository, gateway, events=events, now=lambda: NOW)
     assert await poller.run_once() == 1
 
     run = await repository.get_run("run-transient")
     round_ = await repository.get_round("round-transient")
     assert run is not None and round_ is not None
-    assert run.status == "blocked"
-    assert run.blocked_stage == "eval"
+    assert run.status == "blocked" and run.blocked_stage == "eval"
     assert round_.eval_status == "timeout"
+    assert round_.eval_error == "evaluation queue timed out"
+
+    timed_out = [payload for event_type, payload in events.events if event_type == "eval_timeout"]
+    assert len(timed_out) == 1
+    assert timed_out[0]["payload"]["queueSeconds"] == 24_600.0
+    assert timed_out[0]["payload"]["elapsedSeconds"] == 300.0
 
 
 async def test_retryable_deferral_keeps_the_due_timer_durable(

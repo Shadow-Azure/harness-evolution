@@ -335,3 +335,50 @@ async def test_execution_budget_depends_on_the_evaluation_kind(
         assert len(polled) == 1
         assert polled[0]["payload"]["kind"] == kind
         assert polled[0]["payload"]["startedAt"] == started_at.isoformat()
+
+
+async def test_run_level_queue_timeout_uses_the_queue_cap(
+    state: tuple[Any, EvolutionRepository],
+) -> None:
+    """A run-level test evaluation queued past the cap blocks with its kind."""
+    _database, repository = state
+    evaluation = await repository.ensure_run_evaluation(RUN_ID, "test_baseline")
+    await repository.mark_run_eval_submitted(
+        evaluation.id,
+        external_id=f"fake:{RUN_ID}:test_baseline:{'d' * 40}",
+        started_at=NOW - timedelta(hours=7),
+        next_poll_at=NOW - timedelta(seconds=1),
+    )
+    gateway = FakeEvalGateway(
+        EvalGatewayConfig.from_mapping(
+            {"status": "queued", "progressPercent": 12.0},
+        ),
+    )
+    events = RecordingEvents()
+    poller = EvolutionEvalPoller(
+        repository,
+        lambda _run: gateway,
+        Jobs(),
+        events=events,  # type: ignore[arg-type]
+        now=lambda: NOW,
+        poll_interval=timedelta(seconds=1),
+        timeout=timedelta(hours=2),
+        test_timeout=timedelta(hours=6),
+        queue_timeout=timedelta(hours=6),
+    )
+
+    assert await poller.run_once() == 1
+
+    run = await repository.get_run(RUN_ID)
+    observed = await repository.get_run_evaluation(RUN_ID, "test_baseline")
+    assert run is not None and observed is not None
+    assert run.status == "blocked" and run.blocked_stage == "eval"
+    assert observed.eval_status == "timeout"
+    assert observed.eval_error == "evaluation queue timed out"
+
+    timed_out = [payload for event_type, payload in events.events if event_type == "eval_timeout"]
+    assert len(timed_out) == 1
+    assert timed_out[0]["payload"]["kind"] == "test_baseline"
+    assert timed_out[0]["payload"]["queueSeconds"] == 25_200.0
+    assert timed_out[0]["payload"]["progressPercent"] == 12.0
+    assert timed_out[0]["payload"]["startedAt"] is None

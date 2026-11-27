@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-`EvalStatus` 暴露平台的 `started_at` 与 `progress.percent`，两者都可缺失。poller 的过期判定拆成两条时钟：执行预算从平台 `running` 的 `started_at` 起算，平台未返回时回退到 HE 的 `eval_started_at`；排队预算从 `eval_started_at` 起算，只用于 `queued` 的兜底。`HE_EVAL_TIMEOUT_SECONDS`（默认 2h）继续覆盖验证集基线与逐轮候选，新增 `HE_EVAL_TEST_TIMEOUT_SECONDS`（默认 6h）覆盖测试集基线与测试集终评，新增 `HE_EVAL_QUEUE_TIMEOUT_SECONDS`（默认 6h）给任何评测的排队兜底。`eval_polled` 与 `eval_timeout` 事件补 `kind`、`startedAt`、`elapsedSeconds`、`queueSeconds`、`progressPercent`，让运维直接区分排队与执行。暂停时间仍从两条时钟中扣除。
+`EvalStatus` 暴露平台的 `started_at` 与 `progress.percent`，两者都可缺失。poller 的过期判定拆成两条时钟：执行预算从平台 `running` 的 `started_at` 起算，平台未返回时回退到 HE 的 `eval_started_at`；排队预算从 `eval_started_at` 起算，覆盖 `queued` 与状态不可观测（平台连续返回可重试错误）的阶段。`running` 后若回看排队时长已超上限，也按排队超时结束，避免平台从排队直接跳到执行时绕过限时。`HE_EVAL_TIMEOUT_SECONDS`（默认 2h）继续覆盖验证集基线与逐轮候选，新增 `HE_EVAL_TEST_TIMEOUT_SECONDS`（默认 6h）覆盖测试集基线与测试集终评，新增 `HE_EVAL_QUEUE_TIMEOUT_SECONDS`（默认 6h）给任何评测的排队兜底。`eval_polled` 与 `eval_timeout` 事件补 `kind`、`startedAt`、`elapsedSeconds`、`queueSeconds`、`progressPercent`，让运维直接区分排队与执行。轮次评测的暂停累计时间从两条时钟中扣除；运行级评测的暂停累计尚未接线，见 Consequences。
 
 评测门控与终评语义不变：候选仍须严格优于基线，测试集终评仍以测试集基线为 `init_score`；本决策只改时间计量与预算分档。相关门控与终评语义见 [SkillOpt 式基线门控与测试集终评](2026-11-25-baseline-gate-test-final.md)。
 
@@ -20,4 +20,4 @@ Status: implemented
 
 ## Consequences
 
-旧平台响应缺少 `started_at` 时回退到原来的提交时刻计时，行为与决策前一致，不阻塞发布。`eval_paused_seconds` 仍是粗粒度累计值；暂停若发生在执行开始前，也会从执行预算中扣除，因此只会少算、不会多算执行时间。Run 详情与 SSE 的事件 payload 变大，前端展示字段不变。测试集预算按 6 小时保守取值，后续可按平台实际吞吐调整。
+旧平台响应缺少 `started_at` 时回退到原来的提交时刻计时，行为与决策前一致，不阻塞发布。`eval_paused_seconds` 仍是粗粒度累计值，且同时从排队与执行两条时钟扣除，无法区分暂停发生在执行开始前还是之后：发生在之后会让 `queueSeconds` 少报（只放宽排队兜底，不会造成误杀），发生在之前会让执行预算多扣（同样只放宽）。运行级 `evolution_evaluations.eval_paused_seconds` 目前从未累计，暂停中的测试集评测仍按墙上时间计时，这是既有缺口，本决策不改其数据流。平台状态请求连续可重试失败时，poller 无法证明执行是否开始，因此只按排队上限兜底，不把提交时刻当执行起点。Run 详情与 SSE 的事件 payload 变大，前端展示字段不变。测试集预算按 6 小时保守取值，后续可按平台实际吞吐调整。
