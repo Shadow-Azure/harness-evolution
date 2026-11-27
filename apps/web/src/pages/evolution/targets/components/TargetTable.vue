@@ -5,6 +5,7 @@ import { computed } from "vue";
 import EmptyState from "../../../../components/ui/EmptyState.vue";
 import ErrorState from "../../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../../components/ui/LoadingSkeleton.vue";
+import { targetDisplayName, targetMembers } from "../targetMembers";
 import AttributionRuntimeNotice from "./AttributionRuntimeNotice.vue";
 
 const props = withDefaults(
@@ -95,11 +96,9 @@ function toggle(target: EvolutionTarget): void {
       <table class="target-table">
         <thead>
           <tr>
-            <th>对象类型</th>
-            <th>对象名称</th>
+            <th>进化对象 / 成员</th>
             <th>归因 Skill</th>
             <th>仓库</th>
-            <th>子目录</th>
             <th>基线</th>
             <th>测试工程</th>
             <th>状态</th>
@@ -113,11 +112,20 @@ function toggle(target: EvolutionTarget): void {
             v-for="target in targets"
             :key="target.id"
           >
-            <td>
-              <span class="kind-chip">{{ target.objectType }}</span>
-            </td>
-            <td class="object-name">
-              {{ target.objectName }}
+            <td class="target-object">
+              <div class="target-name">
+                {{ targetDisplayName(target) }}
+              </div>
+              <div class="target-members">
+                <div
+                  v-for="(member, index) in targetMembers(target)"
+                  :key="`${member.objectType}:${member.objectName}:${index}`"
+                  class="target-member"
+                >
+                  <span class="kind-chip">{{ member.objectType }}:{{ member.objectName }}</span>
+                  <span class="member-subdir">{{ member.subDir }}</span>
+                </div>
+              </div>
             </td>
             <td>
               {{ target.attributionSkillName || "未绑定" }}
@@ -139,9 +147,6 @@ function toggle(target: EvolutionTarget): void {
               :title="target.repoUrl"
             >
               {{ target.repoUrl }}
-            </td>
-            <td class="mono">
-              {{ target.subDir }}
             </td>
             <td class="mono">
               {{ target.defaultRef }}
@@ -338,9 +343,34 @@ function toggle(target: EvolutionTarget): void {
   color: var(--green);
 }
 
-.object-name {
+.target-object {
+  min-width: 220px;
+}
+
+.target-name {
   color: var(--text);
   font-weight: 600;
+}
+
+.target-members {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.target-member {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.member-subdir {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .repo-url {

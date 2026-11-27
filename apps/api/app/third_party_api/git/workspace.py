@@ -249,8 +249,10 @@ class GitWorkspaceManager:
         )
         clone_seconds = time.monotonic() - clone_started
 
-        sub_dir = _normalize_sub_dir(run.sub_dir)
-        if sub_dir != ".":
+        sub_dirs = _run_sub_dirs(run)
+        for sub_dir in sub_dirs:
+            if sub_dir == ".":
+                continue
             object_type = await self._git_checked(
                 cache_path,
                 ("git", "cat-file", "-t", f"{base_commit}:{sub_dir}"),
@@ -1903,6 +1905,14 @@ def _normalize_sub_dir(value: str) -> str:
     if normalized.startswith("/") or ".." in PurePosixPath(normalized).parts:
         raise GitOperationError("target subdirectory is unsafe", stage="subdirectory")
     return normalized or "."
+
+
+def _run_sub_dirs(run: EvolutionRunRecord) -> tuple[str, ...]:
+    """Return every member directory of a run, preserving snapshot order."""
+    values = tuple(
+        dict.fromkeys(_normalize_sub_dir(item.sub_dir) for item in run.targets),
+    )
+    return values or (_normalize_sub_dir(run.sub_dir),)
 
 
 def candidate_local_branch(candidate_ref: str) -> str:

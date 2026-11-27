@@ -410,7 +410,7 @@ class AgentEditPatchSource:
         del round_seq
         self._last_ai_call = None
         workspace = _agent_workspace(run)
-        allowed = _allowed_paths(run.sub_dir)
+        allowed = _run_allowed_paths(run)
         try:
             result = await self._provider.edit_workspace(
                 EditRequest(
@@ -457,6 +457,19 @@ def _allowed_paths(sub_dir: str) -> tuple[str, ...]:
     if not normalized or normalized == ".":
         return ("**",)
     return (f"{normalized}/**",)
+
+
+def _run_allowed_paths(run: EvolutionRunRecord) -> tuple[str, ...]:
+    """Return the union of every member directory as applier globs."""
+    sub_dirs = tuple(dict.fromkeys(item.sub_dir for item in run.targets))
+    if not sub_dirs:
+        sub_dirs = (run.sub_dir,)
+    paths: list[str] = []
+    for sub_dir in sub_dirs:
+        for path in _allowed_paths(sub_dir):
+            if path not in paths:
+                paths.append(path)
+    return tuple(paths)
 
 
 def _apply_on_scratch(
@@ -531,7 +544,15 @@ def _edit_prompt(
     lines = [
         "你在受控工作区里为自进化候选生成编辑计划：先只读探索，再把结构化 EditPlan 写入 "
         f"{EDIT_PLAN_FILENAME}，不要直接编辑任何其他文件。",
-        f"对象：{run.target_name}@{run.target_version}（{run.target_type}）",
+        (
+            f"对象：{run.target_name}@{run.target_version}（{run.target_type}）"
+            if not run.targets
+            else "对象："
+            + "、".join(
+                f"{item.object_name}@{item.target_version}（{item.object_type}）"
+                for item in run.targets
+            )
+        ),
         f"问题簇：{title}",
     ]
     if analysis:

@@ -431,7 +431,7 @@ test("m10-05 four-step wizard previews and exits into both run routes", async ()
       page,
       `document.querySelector(".wz-stats")?.textContent`,
     );
-    assert.match(step2, /对象出现 · 已关联/);
+    assert.match(step2, /成员出现 · 已关联/);
 
     const sessionLayout = await evaluate(
       page,

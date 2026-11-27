@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type {
   TargetCaseItem,
-  TargetOverviewItem,
   TargetState,
 } from "@harness/contracts";
 import { computed, ref, watch } from "vue";
@@ -9,6 +8,7 @@ import { computed, ref, watch } from "vue";
 import EmptyState from "../../../components/ui/EmptyState.vue";
 import ErrorState from "../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
+import type { TargetOverviewItemView } from "../../../api/overview";
 import { workspacePath } from "../../../router/workspace";
 import { formatStartedAt } from "../../../utils/sessionDisplay";
 
@@ -48,7 +48,7 @@ const props = defineProps({
     default: 8,
   },
   targetOptions: {
-    type: Array as () => TargetOverviewItem[],
+    type: Array as () => TargetOverviewItemView[],
     default: () => [],
   },
   sourceOptions: {
@@ -107,6 +107,11 @@ const filtered = computed(
     Boolean(props.filters.caseSource) ||
     props.filters.caseState !== "all" ||
     Boolean(props.filters.caseFrom && props.filters.caseTo),
+);
+
+/** The member column only appears once a target row carries more than one member. */
+const hasMemberColumn = computed(() =>
+  props.targetOptions.some((item) => (item.members?.length ?? 0) > 1),
 );
 
 const emptyTitle = computed(() =>
@@ -214,7 +219,7 @@ function reset(): void {
           :key="item.targetId"
           :value="item.targetId"
         >
-          {{ item.objectName }}
+          {{ item.objectName }}<span v-if="(item.members?.length ?? 0) > 1"> · {{ item.members?.length }} 个对象</span>
         </option>
       </select>
       <select
@@ -307,7 +312,7 @@ function reset(): void {
           <thead>
             <tr>
               <th>潜在 bad case</th>
-              <th>进化对象</th>
+              <th>{{ hasMemberColumn ? "成员" : "进化对象" }}</th>
               <th>bad case 上报来源</th>
               <th>状态</th>
               <th>上报时间</th>
@@ -340,7 +345,10 @@ function reset(): void {
                 >{{ item.badCaseId }}</a>
                 <span class="case-title">{{ item.title }}</span>
               </td>
-              <td class="target-cell">
+              <td
+                class="target-cell"
+                :data-member-column="hasMemberColumn ? 'true' : undefined"
+              >
                 <span class="chip kind">{{ item.objectType }}</span>
                 <span class="target-version">{{ item.objectName }}@{{ item.objectVersion }}</span>
               </td>

@@ -205,9 +205,9 @@ async function clickText(page, selector, text) {
 }
 
 async function fillTargetForm(page, values) {
-  await setInput(page, "input[name='objectName']", values.name);
+  await setInput(page, "input[name='members[0].objectName']", values.name);
   await setInput(page, "input[name='repoUrl']", values.repoUrl);
-  await setInput(page, "input[name='subDir']", values.subDir);
+  await setInput(page, "input[name='members[0].subDir']", values.subDir);
   await setInput(page, "input[name='defaultRef']", values.defaultRef);
   await setInput(
     page,
@@ -610,7 +610,7 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
         };
       })()`,
     );
-    assert.ok(Math.abs(dialogLayout.width - 720) <= 1, JSON.stringify(dialogLayout));
+    assert.ok(Math.abs(dialogLayout.width - 760) <= 1, JSON.stringify(dialogLayout));
     assert.equal(dialogLayout.radius, "14px", JSON.stringify(dialogLayout));
     assert.equal(dialogLayout.headPadding, "14px 18px", JSON.stringify(dialogLayout));
     assert.equal(dialogLayout.bodyPadding, "18px");
@@ -675,7 +675,7 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
     assert.equal(
       await evaluate(
         page,
-        `document.querySelector("input[name='objectName']").value`,
+        `document.querySelector("input[name='members[0].objectName']").value`,
       ),
       "m5-e2e-target",
     );
@@ -752,14 +752,25 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
       subDir: "skills/m5-e2e-target",
       defaultRef: "v2.0.0",
     });
+    await clickText(page, ".target-form-dialog button", "再加一个成员");
+    await setInput(
+      page,
+      "input[name='members[1].objectName']",
+      "m5-e2e-code-review",
+    );
+    await setInput(
+      page,
+      "input[name='members[1].subDir']",
+      "skills/m5-e2e-code-review",
+    );
     await evaluate(
       page,
       `document.querySelector(".target-form-dialog .el-button--primary").click()`,
     );
     await waitForDocument(
       page.session,
-      `[...document.querySelectorAll(".object-name")]
-        .some((item) => item.textContent.trim() === "m5-e2e-target")`,
+      `[...document.querySelectorAll(".target-name")]
+        .some((item) => item.textContent.trim().startsWith("m5-e2e-target"))`,
       "created target row",
     );
     const enabledChipStyles = await evaluate(
@@ -785,6 +796,10 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
     const createdRows = await apiJson("/api/evolution/targets", admin.accessToken);
     const created = createdRows.items.find((item) => item.objectName === "m5-e2e-target");
     assert.ok(created);
+    assert.deepEqual(
+      created.members.map((member) => member.objectName),
+      ["m5-e2e-target", "m5-e2e-code-review"],
+    );
     assert.equal(created.validationProjectId, "val-m5-e2e");
     assert.equal(created.testProjectId, "test-m5-e2e");
     assert.equal(created.primaryMetricKey, "resolved_rate");
@@ -986,7 +1001,7 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
     );
     await waitForDocument(
       page.session,
-      `![...document.querySelectorAll(".object-name")]
+      `![...document.querySelectorAll(".target-name")]
         .some((item) => item.textContent.trim() === "m5-e2e-target")`,
       "target deleted",
     );

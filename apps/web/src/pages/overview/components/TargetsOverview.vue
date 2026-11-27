@@ -17,6 +17,7 @@ import {
   type TargetCaseFilters,
   type TargetDetailFilters,
   type TargetOverviewFilters,
+  type TargetOverviewItemView,
 } from "../../../api/overview";
 import { ApiError } from "../../../api/http";
 import { queryKeys } from "../../../api/queryKeys";
@@ -93,7 +94,7 @@ const sharedFilters = computed<TargetOverviewFilters>(() => ({
   ...overviewSharedWindow(props.state),
 }));
 const targetsQuery = useOverviewTargets(workspaceId, sharedFilters);
-const targetItems = computed<TargetOverviewItem[]>(
+const targetItems = computed<TargetOverviewItemView[]>(
   () => targetsQuery.data.value?.items ?? [],
 );
 const disabledItems = computed<TargetOverviewDisabledItem[]>(

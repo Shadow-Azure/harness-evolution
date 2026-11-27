@@ -30,6 +30,13 @@ const target = {
   testProjectId: "test-deep-research",
   primaryMetricKey: "resolved_rate",
   enabled: true,
+  members: [
+    {
+      objectType: "skill" as const,
+      objectName: "deep-research",
+      subDir: "skills/deep-research",
+    },
+  ],
 };
 
 describe("evolution target API", () => {
@@ -80,21 +87,22 @@ describe("evolution target API", () => {
       ),
     );
     const body = {
-      objectType: "skill" as const,
-      objectName: target.objectName,
       repoUrl: target.repoUrl,
-      subDir: target.subDir,
       defaultRef: target.defaultRef,
       validationProjectId: target.validationProjectId,
       testProjectId: target.testProjectId,
       primaryMetricKey: target.primaryMetricKey,
       enabled: true,
+      members: target.members,
     };
 
     await expect(createEvolutionTarget(workspaceId, body)).resolves.toEqual(
       target,
     );
     expect(received).toEqual(body);
+    expect(received).not.toHaveProperty("objectType");
+    expect(received).not.toHaveProperty("objectName");
+    expect(received).not.toHaveProperty("subDir");
   });
 
   it("encodes workspace and target ids for update, delete, and versions", async () => {
@@ -129,15 +137,20 @@ describe("evolution target API", () => {
       }),
     );
     const body = {
-      objectType: "skill" as const,
-      objectName: target.objectName,
       repoUrl: target.repoUrl,
-      subDir: target.subDir,
       defaultRef: target.defaultRef,
       validationProjectId: target.validationProjectId,
       testProjectId: target.testProjectId,
       primaryMetricKey: target.primaryMetricKey,
       enabled: false,
+      members: [
+        ...target.members,
+        {
+          objectType: "agent" as const,
+          objectName: "Explore",
+          subDir: "agents/explore",
+        },
+      ],
     };
 
     await updateEvolutionTarget(workspaceId, "target/with space", body);

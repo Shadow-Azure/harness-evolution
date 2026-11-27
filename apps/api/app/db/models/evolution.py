@@ -143,6 +143,40 @@ Index(
     evolution_runs.c.created_at.desc(),
 )
 
+evolution_run_targets = Table(
+    "evolution_run_targets",
+    EVOLUTION_METADATA,
+    Column("id", String(36), primary_key=True),
+    Column(
+        "run_id",
+        String(36),
+        ForeignKey("evolution_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("seq", Integer, nullable=False),
+    Column(
+        "target_config_id",
+        String(36),
+        ForeignKey("evolution_targets.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("member_id", String(36), nullable=True),
+    Column("object_type", String(16), nullable=False),
+    Column("object_name", String(128), nullable=False),
+    Column("target_version", String(96), nullable=False),
+    Column("target_revision", String(96), nullable=True),
+    Column("sub_dir", String(512), nullable=False),
+    Column("base_commit", String(40), nullable=True),
+    UniqueConstraint("run_id", "seq", name="uq_evolution_run_targets_run_seq"),
+    UniqueConstraint(
+        "run_id",
+        "object_type",
+        "object_name",
+        name="uq_evolution_run_targets_run_object",
+    ),
+    Index("ix_evolution_run_targets_run", "run_id"),
+)
+
 evolution_run_candidates = Table(
     "evolution_run_candidates",
     EVOLUTION_METADATA,
@@ -164,6 +198,9 @@ evolution_run_candidates = Table(
     Column("object_trigger_agent_id", String(64), nullable=True),
     Column("object_trigger_event_index", Integer, nullable=True),
     Column("object_trigger_at", DateTime(timezone=True), nullable=True),
+    Column("object_type", String(16), nullable=True),
+    Column("object_name", String(128), nullable=True),
+    Column("object_revision", String(96), nullable=True),
     Column("case_trigger_agent_id", String(64), nullable=True),
     Column("case_trigger_event_index", Integer, nullable=True),
     Column("case_anchor_kind", String(16), nullable=True),
@@ -355,6 +392,23 @@ evolution_finals = Table(
 
 
 @dataclass(frozen=True, slots=True)
+class EvolutionRunTargetRecord:
+    """One member snapshot frozen when a run was admitted."""
+
+    id: str
+    run_id: str
+    seq: int
+    object_type: str
+    object_name: str
+    target_version: str
+    target_revision: str | None
+    sub_dir: str
+    target_config_id: str | None = None
+    member_id: str | None = None
+    base_commit: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class EvolutionRunRecord:
     """One durable run with configuration snapshots and current state."""
 
@@ -410,6 +464,7 @@ class EvolutionRunRecord:
     paused_at: datetime | None = None
     paused_by: str | None = None
     resumed_at: datetime | None = None
+    targets: tuple[EvolutionRunTargetRecord, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -459,6 +514,9 @@ class EvolutionRunCandidateRecord:
     probe_id: str | None
     is_cached: bool
     created_at: datetime
+    object_type: str | None = None
+    object_name: str | None = None
+    object_revision: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -764,6 +822,28 @@ def record_from_evolution_run_candidate(
         probe_id=_optional_text(row["probe_id"]),
         is_cached=bool(row["is_cached"]),
         created_at=_timestamp(row["created_at"]),
+        object_type=_optional_text(row.get("object_type")),
+        object_name=_optional_text(row.get("object_name")),
+        object_revision=_optional_text(row.get("object_revision")),
+    )
+
+
+def record_from_evolution_run_target(
+    row: Mapping[str, Any],
+) -> EvolutionRunTargetRecord:
+    """Translate one frozen run-member row into an immutable record."""
+    return EvolutionRunTargetRecord(
+        id=_required_text(row["id"]),
+        run_id=_required_text(row["run_id"]),
+        seq=int(row["seq"]),
+        object_type=_required_text(row["object_type"]),
+        object_name=_required_text(row["object_name"]),
+        target_version=_required_text(row["target_version"]),
+        target_revision=_optional_text(row["target_revision"]),
+        sub_dir=_required_text(row["sub_dir"]),
+        target_config_id=_optional_text(row.get("target_config_id")),
+        member_id=_optional_text(row.get("member_id")),
+        base_commit=_optional_text(row.get("base_commit")),
     )
 
 

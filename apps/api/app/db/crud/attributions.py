@@ -291,6 +291,9 @@ class CandidateWrite:
     case_trigger_at: datetime | None = None
     probe_id: str | None = None
     is_cached: bool = False
+    object_type: str | None = None
+    object_name: str | None = None
+    object_revision: str | None = None
 
     def __post_init__(self) -> None:
         """Reject closed-set values before a dialect statement is compiled."""
@@ -1181,6 +1184,9 @@ class EvolutionRunCandidateRepository:
             "object_trigger_agent_id": write.object_trigger_agent_id,
             "object_trigger_event_index": write.object_trigger_event_index,
             "object_trigger_at": write.object_trigger_at,
+            "object_type": write.object_type,
+            "object_name": write.object_name,
+            "object_revision": write.object_revision,
             "case_trigger_agent_id": write.case_trigger_agent_id,
             "case_trigger_event_index": write.case_trigger_event_index,
             "case_anchor_kind": write.case_anchor_kind,

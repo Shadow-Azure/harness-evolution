@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal, Protocol, cast
+from typing import Any, Literal, Protocol
 
 from app.db.crud.attributions import AttributionRepository
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.evolution_targets import EvolutionTargetRecord
-from app.db.crud.potential import ObjectType, window_day_boundaries
+from app.db.crud.potential import window_day_boundaries
 from app.errors import AppError, ErrorCode
 from app.service.evolution.attribution import DEFAULT_ATTRIBUTION_ENGINE
 from app.service.evolution.attribution_contracts import is_platform_rule
@@ -18,6 +18,7 @@ from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.events import EvolutionRunEventService
 from app.service.evolution.potential import (
     MatchCondition,
+    MatchTarget,
     PotentialMatcher,
     ResolvedPolicy,
     resolve_policy,
@@ -49,6 +50,15 @@ class LaunchTargetStore(Protocol):
         workspace_ids: Sequence[str] | None = None,
     ) -> EvolutionTargetRecord:
         """Return the one enabled pair inside the optional workspace scope."""
+        ...
+
+    async def enabled_config_by_id(
+        self,
+        target_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionTargetRecord:
+        """Return one enabled configuration by stable id."""
         ...
 
 
@@ -136,10 +146,12 @@ class EvolutionLaunchService:
                 message="evolution engine is not registered",
                 details={"engineKey": engine_key},
             )
-        config = await self._targets.enabled_config(
-            body.target_type,
-            body.target_name,
-            workspace_ids=workspace_ids,
+        config = await self._resolve_config(body, workspace_ids)
+        body = body.model_copy(
+            update={
+                "target_type": config.object_type,
+                "target_name": config.object_name,
+            },
         )
         latest_only = bool(self._reports and config.attribution_package_id and body.cache_enabled)
         effective_skill = None
@@ -158,17 +170,18 @@ class EvolutionLaunchService:
             default_version=config.default_ref,
             workspace_ids=(config.workspace_id,),
         )
-        resolved = await self._resolve_version(body, query.target_version, config)
+        resolved_members = await self._resolve_members(query.target_version, config)
+        resolved = resolved_members[0]
         policy = resolve_policy(body.policy)
-        condition = _match_condition(query, config.workspace_id, resolved)
+        condition = _match_condition(query, config, resolved_members)
         cases = await self._require_potential(condition, policy)
         if (
             self._reports
             and latest_only
             and not await self._reports.latest_reports(
                 config.workspace_id,
-                body.target_type,
-                body.target_name,
+                config.object_type,
+                config.object_name,
                 resolved.target_revision,
                 cases,
             )
@@ -185,6 +198,7 @@ class EvolutionLaunchService:
                 query,
                 config,
                 resolved=resolved,
+                resolved_members=resolved_members,
                 policy=policy,
                 created_by=created_by,
                 effective_skill=effective_skill,
@@ -269,6 +283,7 @@ class EvolutionLaunchService:
         config: EvolutionTargetRecord,
         *,
         resolved: ResolvedTargetVersion,
+        resolved_members: Sequence[ResolvedTargetVersion],
         policy: ResolvedPolicy,
         created_by: str | None,
         effective_skill: LaunchAttributionSkill | None,
@@ -280,7 +295,8 @@ class EvolutionLaunchService:
             body: Original wizard condition including engine selection.
             query: Normalized condition with the resolved version.
             config: Enabled target configuration backing the launch.
-            resolved: User-facing version plus the resolved body-hash revision.
+            resolved: Resolved identity of the first member.
+            resolved_members: Resolved identity of every configured member.
             policy: Validated potential policy resolved from the request.
             created_by: Authenticated principal that started the run.
 
@@ -293,7 +309,12 @@ class EvolutionLaunchService:
             or is_platform_rule(effective_skill.skill_key, effective_skill.executor_type)
         )
         return {
-            "title": f"{query.target_name} {resolved.target_version} 自进化",
+            "title": (
+                f"{query.target_name} {resolved.target_version} 自进化"
+                if len(config.member_objects) == 1
+                else f"{query.target_name} 等 {len(config.member_objects)} 个对象 "
+                f"{resolved.target_version} 自进化"
+            ),
             "workspace_id": config.workspace_id,
             "mode": body.mode,
             "engine_key": body.engine_key or body.mode,
@@ -331,6 +352,22 @@ class EvolutionLaunchService:
             "base_commit": resolved.base_commit,
             "repo_url": config.repo_url,
             "sub_dir": config.sub_dir,
+            "targets": [
+                {
+                    "member_id": member.id,
+                    "object_type": member.object_type,
+                    "object_name": member.object_name,
+                    "target_version": item.target_version,
+                    "target_revision": item.target_revision,
+                    "sub_dir": member.sub_dir,
+                    "base_commit": item.base_commit or resolved.base_commit,
+                }
+                for member, item in zip(
+                    config.member_objects,
+                    resolved_members,
+                    strict=True,
+                )
+            ],
             "validation_project_id": config.validation_project_id,
             "test_project_id": config.test_project_id,
             "base_ref": resolved.target_version,
@@ -341,19 +378,51 @@ class EvolutionLaunchService:
             "created_by": created_by,
         }
 
-    async def _resolve_version(
+    async def _resolve_config(
         self,
         body: ProbeQueryRequest,
+        workspace_ids: Sequence[str] | None,
+    ) -> EvolutionTargetRecord:
+        """Resolve one enabled configuration by id or legacy object pair."""
+        if body.target_id is not None:
+            return await self._targets.enabled_config_by_id(
+                body.target_id,
+                workspace_ids=workspace_ids,
+            )
+        if body.target_type is None or body.target_name is None:
+            raise AppError(
+                status_code=422,
+                code=ErrorCode.VALIDATION_INVALID,
+                message="target identity is required",
+            )
+        return await self._targets.enabled_config(
+            body.target_type,
+            body.target_name,
+            workspace_ids=workspace_ids,
+        )
+
+    async def _resolve_members(
+        self,
         version: str,
         config: EvolutionTargetRecord,
-    ) -> ResolvedTargetVersion:
-        """Resolve the launch version, refusing to guess when content is absent."""
-        return await self._resolver.resolve(
-            object_type=body.target_type,
-            repo_url=config.repo_url,
-            sub_dir=config.sub_dir,
-            version=version,
-        )
+    ) -> tuple[ResolvedTargetVersion, ...]:
+        """Resolve the shared version into one body-hash revision per member."""
+        resolved: list[ResolvedTargetVersion] = []
+        for member in config.member_objects:
+            item = await self._resolver.resolve(
+                object_type=member.object_type,
+                repo_url=config.repo_url,
+                sub_dir=member.sub_dir,
+                version=version,
+            )
+            if item.base_commit is None and resolved and resolved[0].base_commit is not None:
+                item = ResolvedTargetVersion(
+                    item.target_version,
+                    item.target_revision,
+                    resolved[0].base_commit,
+                )
+            resolved.append(item)
+        return tuple(resolved)
 
 
 def _snapshot_eval(
@@ -398,6 +467,7 @@ def _snapshot_eval(
         "testProjectId": config.test_project_id,
         "primaryMetricKey": config.primary_metric_key,
         "subDir": config.sub_dir,
+        "subDirs": [member.sub_dir for member in config.member_objects],
         **source,
     }
     sanitized = sanitize_job_payload(merged)
@@ -430,18 +500,29 @@ def _attribution_engine(effective_skill: LaunchAttributionSkill | None) -> str:
 
 def _match_condition(
     query: Any,
-    workspace_id: str,
-    resolved: ResolvedTargetVersion,
+    config: EvolutionTargetRecord,
+    resolved_members: Sequence[ResolvedTargetVersion],
 ) -> MatchCondition:
     """Build the shared matcher condition from the validated launch request."""
     start, end = resolve_window(query.window_from, query.window_to)
     window_start, window_end = window_day_boundaries(start, end)
+    members = config.member_objects
+    first = resolved_members[0]
     return MatchCondition(
-        workspace_id=workspace_id,
-        target_type=cast(ObjectType, query.target_type),
-        target_name=query.target_name,
-        target_version=resolved.target_version,
-        target_revision=resolved.target_revision,
+        workspace_id=config.workspace_id,
+        target_type=members[0].object_type,
+        target_name=members[0].object_name,
+        target_version=first.target_version,
+        target_revision=first.target_revision,
         window_start=window_start,
         window_end=window_end,
+        targets=tuple(
+            MatchTarget(
+                object_type=member.object_type,
+                object_name=member.object_name,
+                target_version=item.target_version,
+                target_revision=item.target_revision,
+            )
+            for member, item in zip(members, resolved_members, strict=True)
+        ),
     )

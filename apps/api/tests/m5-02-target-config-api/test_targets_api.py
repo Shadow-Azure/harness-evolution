@@ -710,7 +710,7 @@ async def test_target_routes_preserve_admin_and_error_envelopes(
     )
     assert created.status_code == 201
     assert duplicate.status_code == 409
-    assert duplicate.json()["error"]["code"] == "TARGET_EXISTS"
+    assert duplicate.json()["error"]["code"] == "MEMBER_ALREADY_CONFIGURED"
 
     repository = EvolutionTargetRepository(target_http.database)
     target = await repository.find("skill", "deep-research")
@@ -995,7 +995,7 @@ async def test_create_duplicate_and_update_are_mapped_stably() -> None:
 
     with pytest.raises(AppError) as duplicate:
         await service.create(_write(), created_by=None)
-    assert duplicate.value.code == ErrorCode.TARGET_EXISTS
+    assert duplicate.value.code == ErrorCode.MEMBER_ALREADY_CONFIGURED
 
     with pytest.raises(AppError) as rename:
         await service.update(
@@ -1007,7 +1007,7 @@ async def test_create_duplicate_and_update_are_mapped_stably() -> None:
                 sub_dir="agents/renamed",
             ),
         )
-    assert rename.value.code == ErrorCode.TARGET_EXISTS
+    assert rename.value.code == ErrorCode.MEMBER_ALREADY_CONFIGURED
 
     with pytest.raises(AppError) as missing:
         await service.update("missing", _write())
@@ -1359,3 +1359,65 @@ async def test_git_timeout_kills_and_reaps_the_child_process(
     assert calls[0][1]["start_new_session"] is True
     assert process.killed is True
     assert process.waited is True
+
+
+async def test_multi_member_payload_round_trips_and_reports_member_conflicts(
+    target_http: TargetHttpEnvironment,
+) -> None:
+    """The HTTP write model accepts N members and anchors duplicate conflicts."""
+    payload = _project_payload()
+    payload["members"] = [
+        {
+            "objectType": "skill",
+            "objectName": "deep-research",
+            "subDir": "skills/deep-research",
+        },
+        {
+            "objectType": "skill",
+            "objectName": "code-review",
+            "subDir": "skills/code-review",
+        },
+    ]
+    created = await target_http.admin.post("/api/evolution/targets", json=payload)
+    assert created.status_code == 201
+    body = created.json()
+    assert [member["objectName"] for member in body["members"]] == [
+        "deep-research",
+        "code-review",
+    ]
+    assert [member["subDir"] for member in body["members"]] == [
+        "skills/deep-research",
+        "skills/code-review",
+    ]
+
+    duplicate = _project_payload()
+    duplicate["members"] = [
+        {
+            "objectType": "skill",
+            "objectName": "code-review",
+            "subDir": "skills/code-review",
+        },
+    ]
+    conflict = await target_http.admin.post("/api/evolution/targets", json=duplicate)
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "MEMBER_ALREADY_CONFIGURED"
+    assert conflict.json()["error"]["details"]["field"] == "members[0].objectName"
+
+    one_member = _project_payload()
+    one_member.pop("objectType")
+    one_member.pop("objectName")
+    one_member.pop("subDir")
+    one_member["members"] = [
+        {
+            "objectType": "agent",
+            "objectName": "writer",
+            "subDir": "agents/writer",
+        },
+    ]
+    updated = await target_http.admin.put(
+        f"/api/evolution/targets/{body['id']}",
+        json=one_member,
+    )
+    assert updated.status_code == 200
+    assert [member["objectName"] for member in updated.json()["members"]] == ["writer"]
+    assert updated.json()["objectType"] == "agent"

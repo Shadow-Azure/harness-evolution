@@ -14,11 +14,13 @@ import re
 import time
 from collections import OrderedDict, defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from typing import Literal, cast
 
 from app.db.crud.evolution_targets import (
+    EvolutionObjectType,
+    EvolutionTargetMemberRecord,
     EvolutionTargetRecord,
     EvolutionTargetRepository,
 )
@@ -57,6 +59,7 @@ from app.service.overview.target_schemas import (
     TargetOverviewDisabledItem,
     TargetOverviewItem,
     TargetOverviewListResponse,
+    TargetOverviewMember,
     TargetOverviewSummary,
     TargetState,
     TargetTrendBucket,
@@ -145,6 +148,8 @@ class TargetCaseEntry:
     attributed_at: datetime | None
     display_version: str = ""
     """The ref shown to readers; falls back to the canonical key when unknown."""
+    object_type: EvolutionObjectType = "skill"
+    object_name: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,6 +193,7 @@ class TargetAnalysis:
     version_sessions: Mapping[str, frozenset[str]] = field(default_factory=dict)
     unresolved_versions: frozenset[str] = frozenset()
     version_labels: Mapping[str, TargetVersionLabel] = field(default_factory=dict)
+    members: tuple[EvolutionTargetMemberRecord, ...] = ()
 
     @property
     def sessions(self) -> int:
@@ -879,6 +885,7 @@ class TargetOverviewService:
                 default_ref=analysis.target.default_ref,
                 versions=list(analysis.versions),
                 version_options=_version_options(analysis),
+                members=_overview_members(analysis),
             ),
             stats=TargetDetailStats(
                 sessions=len(
@@ -932,6 +939,7 @@ class TargetOverviewService:
                         version: frozenset() for version in default_labels[target.id][0]
                     },
                     version_labels=default_labels[target.id][1],
+                    members=target.member_objects,
                 )
                 for target in targets
             )
@@ -939,7 +947,7 @@ class TargetOverviewService:
         session_ids = tuple(sorted({fact.session_id for fact in facts}))
         analyses = await asyncio.gather(
             *(
-                self._analyse_target(
+                self._analyse_config(
                     target,
                     workspace_id=workspace_id,
                     session_ids=session_ids,
@@ -951,6 +959,38 @@ class TargetOverviewService:
             ),
         )
         return tuple(analyses)
+
+    async def _analyse_config(
+        self,
+        target: EvolutionTargetRecord,
+        *,
+        workspace_id: str,
+        session_ids: tuple[str, ...],
+        facts_by_id: dict[str, WindowCaseFact],
+        window_start: datetime,
+        window_end: datetime,
+    ) -> TargetAnalysis:
+        """Evaluate every member of one configuration and merge their rows.
+
+        A configuration is one overview row: sessions, versions, and potential
+        case-version pairs are the union across members. A case that belongs to
+        two members is counted once per version.
+        """
+        members = target.member_objects
+        analyses = await asyncio.gather(
+            *(
+                self._analyse_target(
+                    _member_target(target, member),
+                    workspace_id=workspace_id,
+                    session_ids=session_ids,
+                    facts_by_id=facts_by_id,
+                    window_start=window_start,
+                    window_end=window_end,
+                )
+                for member in members
+            ),
+        )
+        return _merge_analyses(target, members, analyses)
 
     async def _analyse_target(
         self,
@@ -1226,6 +1266,63 @@ def _selected_versions(
     return analysis.versions[:version_limit]
 
 
+def _member_target(
+    target: EvolutionTargetRecord,
+    member: EvolutionTargetMemberRecord,
+) -> EvolutionTargetRecord:
+    """Return the configuration record narrowed to one member identity."""
+    snapshot = dict(target.attribution_snapshot or {})
+    if member.definition is not None:
+        snapshot["definition"] = member.definition
+    else:
+        snapshot.pop("definition", None)
+    return replace(
+        target,
+        object_type=member.object_type,
+        object_name=member.object_name,
+        sub_dir=member.sub_dir,
+        attribution_snapshot=snapshot or None,
+        members=(member,),
+    )
+
+
+def _merge_analyses(
+    target: EvolutionTargetRecord,
+    members: tuple[EvolutionTargetMemberRecord, ...],
+    analyses: Sequence[TargetAnalysis],
+) -> TargetAnalysis:
+    """Merge member analyses into one configuration-level overview row."""
+    versions: list[str] = []
+    labels: dict[str, TargetVersionLabel] = {}
+    entries: dict[tuple[str, str], TargetCaseEntry] = {}
+    sessions: set[str] = set()
+    unresolved: set[str] = set()
+    version_sessions: dict[str, set[str]] = {}
+    for analysis in analyses:
+        for version in analysis.versions:
+            if version not in labels:
+                versions.append(version)
+            label = analysis.version_labels.get(version)
+            if label is not None:
+                labels[version] = label
+        sessions.update(analysis.session_ids)
+        unresolved.update(analysis.unresolved_versions)
+        for version, ids in analysis.version_sessions.items():
+            version_sessions.setdefault(version, set()).update(ids)
+        for entry in analysis.entries:
+            entries.setdefault((entry.bad_case_id, entry.version), entry)
+    return TargetAnalysis(
+        target=target,
+        versions=tuple(versions),
+        session_ids=frozenset(sessions),
+        entries=tuple(entries.values()),
+        version_sessions={key: frozenset(value) for key, value in version_sessions.items()},
+        unresolved_versions=frozenset(unresolved),
+        version_labels=labels,
+        members=members,
+    )
+
+
 def _entry(
     *,
     target: EvolutionTargetRecord,
@@ -1240,6 +1337,8 @@ def _entry(
         bad_case_id=fact.bad_case_id,
         target=target,
         version=version,
+        object_type=target.object_type,
+        object_name=target.object_name,
         session_id=fact.session_id,
         source=fact.source,
         bad_case_type=fact.bad_case_type,
@@ -1282,16 +1381,29 @@ def _overview_item(analysis: TargetAnalysis) -> TargetOverviewItem:
         attributed=analysis.attributed,
         non_target=analysis.non_target,
         unanalyzed=analysis.unanalyzed,
+        members=_overview_members(analysis),
         evolvable=analysis.evolvable,
     )
+
+
+def _overview_members(analysis: TargetAnalysis) -> list[TargetOverviewMember]:
+    """Project every member of one configuration into chip data."""
+    return [
+        TargetOverviewMember(
+            object_type=member.object_type,
+            object_name=member.object_name,
+            sub_dir=member.sub_dir,
+        )
+        for member in analysis.members
+    ]
 
 
 def _case_item(entry: TargetCaseEntry) -> TargetCaseItem:
     """Map one projected potential row to the case-list contract."""
     return TargetCaseItem(
         bad_case_id=entry.bad_case_id,
-        object_type=entry.target.object_type,
-        object_name=entry.target.object_name,
+        object_type=entry.object_type,
+        object_name=entry.object_name,
         object_version=entry.display_version or entry.version,
         source=entry.source,
         state=entry.state,

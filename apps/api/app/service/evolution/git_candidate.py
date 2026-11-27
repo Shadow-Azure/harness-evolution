@@ -92,7 +92,7 @@ def build_candidate_message(
     """Build a hypothesis-shaped candidate commit with stable machine trailers."""
     title = _safe_single_line(trace.cluster_title)
     subject = _bounded_subject(
-        f"evolve({run.target_name}@{run.target_version}): 针对「{title}」的候选变更",
+        f"{_commit_scope(run)}: 针对「{title}」的候选变更",
     )
     sections = _message_sections(run, trace, web_base_url=web_base_url)
     sections.insert(
@@ -126,7 +126,7 @@ def build_accepted_message(
     """Build the assertion-shaped accepted message while preserving shared facts."""
     title = _safe_single_line(trace.cluster_title)
     subject = _bounded_subject(
-        f"evolve({run.target_name}@{run.target_version}): 修复{title}",
+        f"{_commit_scope(run)}: 修复{title}",
     )
     sections = _message_sections(run, trace, web_base_url=web_base_url)
     sections.insert(4, f"## 为什么接纳\n\n{_safe_single_line(reason)}")
@@ -1143,3 +1143,12 @@ def _audit_payload(
 async def _default_sleep(seconds: float) -> None:
     """Wait between immediate push attempts."""
     await asyncio.sleep(seconds)
+
+
+def _commit_scope(run: EvolutionRunRecord) -> str:
+    """Return the candidate commit scope naming every run member."""
+    members = run.targets
+    if not members:
+        return f"evolve({run.target_name}@{run.target_version})"
+    names = "、".join(item.object_name for item in members)
+    return f"evolve({names}@{run.target_version})"

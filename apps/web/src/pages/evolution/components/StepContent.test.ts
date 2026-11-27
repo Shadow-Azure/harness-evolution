@@ -249,7 +249,7 @@ const run = {
   controlState: "running" as const, canPause: false, canResume: false,
   title: "run",
   mode: "full" as const,
-  target: { type: "skill" as const, name: "deep-research", version: "v2.0.0" },
+  target: { type: "skill" as const, name: "deep-research", version: "v2.0.0", subDir: "skills/deep-research" },
   window: { from: "2026-08-20", to: "2026-09-10" },
   models: ["glm-5.3"],
   policy: { preset: "default" as const },
@@ -299,6 +299,61 @@ describe("evolution step content", () => {
     expect(wrapper.get("[data-testid='step-target-revision']").text()).toBe(
       "digest:9080a1b2",
     );
+  });
+
+  it("shows every configuration member, the shared test project, and the change scope", () => {
+    const multiStep = {
+      ...rangeStep,
+      payload: {
+        ...rangeStep.payload,
+        condition: {
+          ...rangeStep.payload.condition,
+          targetVersion: "v2.4.0",
+          targets: [
+            {
+              objectType: "skill",
+              objectName: "deep-research",
+              targetVersion: "v2.4.0",
+              targetRevision: "digest:member-a",
+              subDir: "skills/deep-research",
+            },
+            {
+              objectType: "skill",
+              objectName: "code-review",
+              targetVersion: "v2.4.0",
+              targetRevision: "digest:member-b",
+              subDir: "skills/code-review",
+            },
+          ],
+        },
+      },
+    } satisfies EvolutionStepRange;
+    const wrapper = mount(StepRange, {
+      props: {
+        step: multiStep,
+        targetRevision: "digest:member-a",
+        subDirs: ["skills/deep-research", "skills/code-review"],
+        sharedProject: {
+          validationProjectId: "val-skills-2026q4",
+          testProjectId: "test-skills-2026q4",
+          primaryMetricKey: "resolved_rate",
+        },
+      },
+    });
+
+    expect(wrapper.text()).toContain("skill:deep-research +1@v2.4.0");
+    const members = wrapper.get("[data-testid='step-range-members']");
+    expect(members.text()).toContain("skills/deep-research");
+    expect(members.text()).toContain("skills/code-review");
+    expect(members.text()).toContain("digest:member-a");
+    expect(members.text()).toContain("digest:member-b");
+    const project = wrapper.get("[data-testid='step-range-test-project']");
+    expect(project.text()).toContain("val-skills-2026q4");
+    expect(project.text()).toContain("test-skills-2026q4");
+    expect(project.text()).toContain("resolved_rate");
+    const scope = wrapper.get("[data-testid='step-range-change-scope']");
+    expect(scope.text()).toContain("skills/deep-research/**");
+    expect(scope.text()).toContain("skills/code-review/**");
   });
 
   it("keeps a missing target revision explicit instead of guessing a tag", () => {

@@ -234,6 +234,36 @@ async def test_target_catalog_returns_only_enabled_targets_with_tags(
                 "versions": ["v3.0.0"],
             }
         ],
+        "targets": [
+            {
+                "id": agent.id,
+                "name": "general-purpose",
+                "repoUrl": "https://git.example.com/general-purpose.git",
+                "defaultRef": "main",
+                "versions": ["v3.0.0"],
+                "members": [
+                    {
+                        "objectType": "agent",
+                        "objectName": "general-purpose",
+                        "subDir": "agents/general-purpose",
+                    }
+                ],
+            },
+            {
+                "id": skill.id,
+                "name": "deep-research",
+                "repoUrl": "https://git.example.com/deep-research.git",
+                "defaultRef": "main",
+                "versions": ["v1.9.0", "v2.0.0"],
+                "members": [
+                    {
+                        "objectType": "skill",
+                        "objectName": "deep-research",
+                        "subDir": "skills/deep-research",
+                    }
+                ],
+            },
+        ],
     }
     assert set(catalog_api.remote.listed) == {
         "https://git.example.com/general-purpose.git",
