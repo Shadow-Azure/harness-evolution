@@ -99,6 +99,19 @@ class Jobs:
         del kwargs
 
 
+class RecordingEvents:
+    """Capture poller events without the durable event store."""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[str, dict[str, Any]]] = []
+
+    async def record(self, run_id: str, event_type: str, **kwargs: Any) -> None:
+        self.events.append((event_type, {"run_id": run_id, **kwargs}))
+
+    async def record_blocked(self, *args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+
+
 def _job(kind: str) -> JobRunRecord:
     """Build one durable job for the finalize boundary."""
     return JobRunRecord(
@@ -290,11 +303,12 @@ async def test_execution_budget_depends_on_the_evaluation_kind(
             },
         ),
     )
+    events = RecordingEvents()
     poller = EvolutionEvalPoller(
         repository,
         lambda _run: gateway,
         Jobs(),
-        events=None,
+        events=events,  # type: ignore[arg-type]
         now=lambda: NOW,
         poll_interval=timedelta(seconds=1),
         timeout=timedelta(hours=2),
@@ -308,3 +322,16 @@ async def test_execution_budget_depends_on_the_evaluation_kind(
     assert observed.eval_status == expected_status, observed.eval_error
     if expected_status == "timeout":
         assert observed.eval_error == "evaluation timed out"
+        timed_out = [
+            payload for event_type, payload in events.events if event_type == "eval_timeout"
+        ]
+        assert len(timed_out) == 1
+        assert timed_out[0]["payload"]["kind"] == kind
+        assert timed_out[0]["payload"]["startedAt"] == started_at.isoformat()
+        assert timed_out[0]["payload"]["elapsedSeconds"] == 9_000.0
+        assert timed_out[0]["payload"]["queueSeconds"] == 0.0
+    else:
+        polled = [payload for event_type, payload in events.events if event_type == "eval_polled"]
+        assert len(polled) == 1
+        assert polled[0]["payload"]["kind"] == kind
+        assert polled[0]["payload"]["startedAt"] == started_at.isoformat()
