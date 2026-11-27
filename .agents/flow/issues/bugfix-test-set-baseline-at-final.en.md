@@ -4,7 +4,7 @@ English | [中文](bugfix-test-set-baseline-at-final.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-70
+id: bugfix-71
 milestone: bugfix
 depends: []
 priority: P2
