@@ -334,6 +334,62 @@ async def test_finalize_waits_for_both_test_evaluations(
     assert await repository.get_final(RUN_ID) is None
 
 
+async def test_legacy_completed_test_final_is_reused_without_a_result_commit(
+    state: tuple[Any, EvolutionRepository],
+) -> None:
+    """An already completed legacy test final is never replaced by a result commit."""
+    _database, repository = state
+
+    async def finish(kind: str, score: float) -> None:
+        row = await repository.ensure_run_evaluation(RUN_ID, kind)
+        if row.eval_external_id is None:
+            await repository.mark_run_eval_submitted(
+                row.id,
+                external_id=f"legacy-{kind}",
+                started_at=NOW,
+                next_poll_at=NOW + timedelta(seconds=1),
+            )
+        assert await repository.save_run_eval_result(
+            row.id,
+            result={
+                "candidateScore": score,
+                "primaryMetricKey": "resolved_rate",
+                "direction": "higher_is_better",
+                "metrics": [],
+            },
+            score=score,
+            finished_at=NOW,
+        )
+
+    await finish("test_baseline", 80.0)
+    await finish("test_final", 85.0)
+    workspaces = WorkspaceDouble()
+    finalize = EvolutionFinalizeService(
+        repository,
+        workspaces,  # type: ignore[arg-type]
+        events=None,
+        eval_submitter=EvolutionEvalSubmitter(
+            repository,
+            lambda _run: _gateway(),
+            events=None,
+            now=lambda: NOW,
+            poll_interval=timedelta(seconds=1),
+        ),
+        now=lambda: NOW,
+    )
+
+    result = await finalize.handle(_job("evolution_finalize"))
+
+    assert result["finalized"] is True
+    assert workspaces.result_commits == []
+    run = await repository.get_run(RUN_ID)
+    assert run is not None and run.result_commit is None
+    final = await repository.get_final(RUN_ID)
+    assert final is not None
+    assert final.init_score == 80.0
+    assert final.best_score == 85.0
+
+
 async def test_failed_run_evaluation_can_be_reset_for_retry(
     state: tuple[Any, EvolutionRepository],
 ) -> None:

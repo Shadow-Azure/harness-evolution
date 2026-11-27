@@ -210,6 +210,9 @@ class EvolutionEvalSubmitter:
         run: EvolutionRunRecord,
     ) -> EvolutionEvaluationRecord:
         """Submit the held-out test-set final at the final run commit."""
+        existing = await self._runs.get_run_evaluation(run.id, "test_final")
+        if existing is not None and existing.eval_external_id is not None:
+            return existing
         final_commit = await self._test_final_commit(run)
         return await self._submit_run_evaluation(
             run,
