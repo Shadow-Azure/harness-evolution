@@ -82,7 +82,7 @@ def _write(*members: tuple[str, str, bool]) -> EvolutionTargetWrite:
 
 @pytest.mark.asyncio
 async def test_migration_defaults_the_switch_to_false(tmp_path: Path) -> None:
-    """Revision 0036 adds the column without backfilling any row to true."""
+    """Revision 0037 adds the column without backfilling any row to true."""
     database = create_database(_settings(tmp_path))
     await database.start()
     try:
@@ -333,7 +333,7 @@ async def test_run_snapshot_keeps_the_member_switch(tmp_path: Path) -> None:
 
 
 def test_run_target_record_defaults_the_missing_switch_to_false() -> None:
-    """Pre-0036 snapshots read back as hash-matched, never guessed as name mode."""
+    """Pre-0037 snapshots read back as hash-matched, never guessed as name mode."""
     record = record_from_evolution_run_target(
         {
             "id": "target",

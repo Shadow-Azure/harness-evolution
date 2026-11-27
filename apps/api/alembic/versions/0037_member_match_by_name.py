@@ -7,8 +7,8 @@ from sqlalchemy import inspect
 
 from alembic import op
 
-revision = "0036"
-down_revision = "0035"
+revision = "0037"
+down_revision = "0036"
 
 
 def _existing_columns(bind: object, table: str) -> set[str]:

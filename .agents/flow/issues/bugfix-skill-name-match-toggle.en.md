@@ -100,7 +100,7 @@ Both images share page, data, dialog structure, shared block and member type/nam
 
 ### Data model and contracts
 
-- Add an Alembic migration (`0036_member_match_by_name.py`) adding `match_by_name` boolean, `NOT NULL DEFAULT false`, to both `evolution_target_members` and `evolution_run_targets`; no backfill to true. Do not add a deployment-level column to `evolution_targets`.
+- Add an Alembic migration (`0037_member_match_by_name.py`) adding `match_by_name` boolean, `NOT NULL DEFAULT false`, to both `evolution_target_members` and `evolution_run_targets`; no backfill to true. Do not add a deployment-level column to `evolution_targets`.
 - Legacy targets without member rows synthesize a member with `match_by_name=false`, preserving today's behavior.
 - Contracts: add `matchByName: bool = false` to `EvolutionTargetMemberWrite` and `EvolutionTargetMember`, and to the `EvolutionRunTarget` snapshot; run `pnpm contract:generate` to update OpenAPI and generated types.
 - Persistence: carry the field through `EvolutionTargetMemberRecord`, `EvolutionRunTargetRecord`, repository member load/write, `_member_rows`, and run-target writes/reads; keep each member's own value on create/update.

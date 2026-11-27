@@ -100,7 +100,7 @@ github:
 
 ### 数据模型与契约
 
-- 新增 Alembic 迁移（`0036_member_match_by_name.py`）：给 `evolution_target_members` 和 `evolution_run_targets` 各加 `match_by_name` 布尔列，`NOT NULL DEFAULT false`；不回填为 true。`evolution_targets` 不增加部署级列。
+- 新增 Alembic 迁移（`0037_member_match_by_name.py`）：给 `evolution_target_members` 和 `evolution_run_targets` 各加 `match_by_name` 布尔列，`NOT NULL DEFAULT false`；不回填为 true。`evolution_targets` 不增加部署级列。
 - 兼容没有成员行的历史目标：`member_objects` 合成成员时 `match_by_name=false`，行为与今天一致。
 - 契约：`EvolutionTargetMemberWrite` 与 `EvolutionTargetMember` 增加 `matchByName: bool = false`；`EvolutionRunTarget` 快照增加同一字段；运行 `pnpm contract:generate` 更新 OpenAPI 与生成类型。
 - 持久化：`EvolutionTargetMemberRecord`、`EvolutionRunTargetRecord`、repository 的 member load/write、`_member_rows`、run target 写入读取都带上该字段；创建/更新时保留每个成员自己的值。

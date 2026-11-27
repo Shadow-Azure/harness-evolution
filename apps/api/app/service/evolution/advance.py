@@ -53,8 +53,8 @@ class EvalSubmitter(Protocol):
     ) -> Any:
         """Persist the external evaluation id and first poll deadline."""
 
-    async def submit_baselines(self, run: Any) -> None:
-        """Submit the validation and test baselines before the first round."""
+    async def submit_validation_baseline(self, run: Any) -> None:
+        """Submit only the validation baseline before the first round."""
 
 
 class WorkspaceLifecycleManager(Protocol):
@@ -107,7 +107,7 @@ class EvolutionAdvanceService:
             }
         await checkpoint(self._runs, run.id)
         if self._eval_submitter is not None:
-            await self._eval_submitter.submit_baselines(run)
+            await self._eval_submitter.submit_validation_baseline(run)
         rounds = await self._runs.list_rounds(run.id)
         continuation = job.payload.get("continuation") is True
         target = None

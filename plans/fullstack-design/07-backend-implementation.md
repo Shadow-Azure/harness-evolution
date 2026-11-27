@@ -985,11 +985,15 @@ class BaseEvalGateway(ABC):
 - `AiEvalPlatformGateway` 封装 launch、status、results、错误信封与服务令牌；状态 11 态折 5 态，`partial` 受最低完成率护栏，`paused_budget` 直接失败。
 - 401/403/404/422 判不可重试并保留平台错误码；5xx、429 与网络错误标 `retryable`，poller 只推迟下一次轮询。
 - 裁决不依赖平台 verdict：`get_result` 只返回测量值，service 层 `eval_gate.py` 与基线比较；fake 与真实平台走同一套门控。
-- run 级评测（验证集基线、测试集基线、测试集终评）存 `evolution_evaluations`，与逐轮评测共用 poller；基线失败同样 `blocked(stage=eval)`，`/retry` 清理后重提。
+- run 级评测（验证集基线、测试集基线、测试集终评）存 `evolution_evaluations`，与逐轮评测共用 poller；基线失败同样 `blocked(stage=eval)`，`/retry` 清理后重提。验证集基线在发布第 1 轮前提交；测试集基线与测试集终评都留到全部轮次终态后的终评环节，二者并发在途。
 
 ### 5.8 应用评测结果、重试与终评（`FullEvolutionEngine.apply_round` / `finalize` / `retry`）
 
-裁决在 service 层 `eval_gate.py`：轮次 N 的基线取最近一个已接纳轮的候选分，没有则取 `validation_baseline`；候选必须按指标方向严格优于基线，平票拒绝。接纳后基线顺延到该轮候选分，拒绝时 run 分支与基线都不动。全部迭代终结后提交测试集终评，`evolution_finals.init_score` 取测试集基线分、`best_score` 取测试集终评分，`verdict` 要求有接纳轮且终评分严格更优。
+裁决在 service 层 `eval_gate.py`：轮次 N 的基线取最近一个已接纳轮的候选分，没有则取 `validation_baseline`；候选必须按指标方向严格优于基线，平票拒绝。接纳后基线顺延到该轮候选分，拒绝时 run 分支与基线都不动。测试集只在全部迭代终结后出现：`evolution_finalize` 同时提交测试集基线与测试集终评，两者都完成后才写 `evolution_finals`；`init_score` 取测试集基线分、`best_score` 取测试集终评分，`verdict` 要求有接纳轮且终评分严格更优。
+
+- 没有接纳轮时 `test_final` 不回退 `base_commit`。终评环节先在 run 分支创建一个不修改任何 skill 文件的空结果 commit，消息带 `Harness-Run-Id` 与 `Harness-Verdict: no-acceptance`，并记录验证集初始/最佳分、指标与各轮决策；推送后作为测试集终评对象。结果 commit 的哈希存 `evolution_runs.result_commit`，重试复用同一 commit。
+- 启动与迭代路径不再提交 `test_baseline`；旧 run 若已有 completed 的测试集基线直接复用，缺失时在终评补交。
+- poller 只在 `test_baseline` 与 `test_final` 都不在途时重新入队 `evolution_finalize`；任一失败仍走 `blocked(stage=eval)`，`/retry` 只清理并重提失败项。
 
 ```python
 # full.py —— apply 阶段：apply_eval 只解包 job，核心是 apply_round（retry 复用）
@@ -1087,6 +1091,7 @@ async def finalize(self, job):
 ```
 
 - 终评写入先落库；run 分支最终 push 成功后才把 run 置 `completed`。
+- 写 final 前先提交测试集基线与测试集终评；两者完成后才落 `evolution_finals`。无接纳轮时先创建并推送空结果 commit（不改 skill 文件），再把它作为 `test_final` 对象。
 - 最终 push 失败同样进入 `blocked(stage=push)`，保留 final 与 run 分支，`/retry` 继续，不重新跑迭代。
 
 **commit message 约定**：推送后不可变，按"**不了解本项目的人也能读懂**"写——人读的叙事在上，机器 trailer 在下。两个 builder：`build_candidate_message(run, round)` 与 `build_accepted_message(run, round, result, decision)`，结构固定为 **subject → 问题 → 分析 → 改动 →（接纳后）为什么接纳 → 追溯 → trailer**。

@@ -298,6 +298,31 @@ class EvolutionRepository:
                 ),
             )
 
+    async def record_result_commit(self, run_id: str, commit: str) -> EvolutionRunRecord:
+        """Persist the idempotent no-acceptance result commit for one run."""
+        if len(commit) != 40 or any(char not in "0123456789abcdef" for char in commit):
+            raise ValueError("result commit must be a full git object id")
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs)
+                .where(
+                    evolution_runs.c.id == run_id,
+                    evolution_runs.c.result_commit.is_(None),
+                )
+                .values(result_commit=commit),
+            )
+        current = await self.get_run(run_id)
+        if current is None:
+            raise LookupError("evolution run not found")
+        if current.result_commit != commit:
+            raise StageConflict(
+                status_code=409,
+                current=0,
+                target=1,
+                reason="run already records a different result commit",
+            )
+        return current
+
     async def mark_resumed(self, run_id: str) -> None:
         """Clear a prior blocked state when retry execution begins."""
         async with self._database.transaction() as session:
