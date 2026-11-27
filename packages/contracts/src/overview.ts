@@ -66,6 +66,10 @@ export type TargetVersionOption =
 /** One target's potential cases and their three-state split. */
 export type TargetOverviewItem = components["schemas"]["TargetOverviewItem"];
 
+/** Read-only identity of one disabled target kept out of the statistics. */
+export type TargetOverviewDisabledItem =
+  components["schemas"]["TargetOverviewDisabledItem"];
+
 /** One evolvable-sorted page of targets plus the workspace-wide summary. */
 export type TargetOverviewListResponse =
   components["schemas"]["TargetOverviewListResponse"];

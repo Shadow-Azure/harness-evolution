@@ -10066,6 +10066,56 @@
         "title": "TargetDetailVersion",
         "type": "object"
       },
+      "TargetOverviewDisabledItem": {
+        "additionalProperties": false,
+        "description": "Read-only identity of one disabled target kept out of every statistic.\n\nThe side list renders these rows greyed out and offers enable/edit/remove,\nbut ``items``, ``summary``, trend, distributions and the potential-case list\nstay on the enabled-only projection.",
+        "properties": {
+          "attributionSkillName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributionskillname"
+          },
+          "defaultRef": {
+            "maxLength": 128,
+            "title": "Defaultref",
+            "type": "string"
+          },
+          "objectName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "targetId": {
+            "maxLength": 36,
+            "title": "Targetid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetId",
+          "objectType",
+          "objectName",
+          "defaultRef"
+        ],
+        "title": "TargetOverviewDisabledItem",
+        "type": "object"
+      },
       "TargetOverviewItem": {
         "additionalProperties": false,
         "description": "One target's potential cases and their three-state attribution split.\n\n``potential`` counts one row per ``(badCaseId, targetVersion)`` pair, so the\nsame bad case may contribute once for each version it is potential under;\n``attributed + nonTarget + unanalyzed`` therefore always equals ``potential``.",
@@ -10175,6 +10225,14 @@
         "additionalProperties": false,
         "description": "One target page plus the workspace-wide summary.",
         "properties": {
+          "disabled": {
+            "description": "Every disabled target of the workspace, ordered by object name; never included in summary, items or total.",
+            "items": {
+              "$ref": "#/components/schemas/TargetOverviewDisabledItem"
+            },
+            "title": "Disabled",
+            "type": "array"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/TargetOverviewItem"

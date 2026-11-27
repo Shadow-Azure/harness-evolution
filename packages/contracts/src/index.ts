@@ -448,6 +448,7 @@ export type {
   TargetDetailTarget,
   TargetDetailVersion,
   TargetObjectType,
+  TargetOverviewDisabledItem,
   TargetOverviewItem,
   TargetOverviewListResponse,
   TargetOverviewSummary,
