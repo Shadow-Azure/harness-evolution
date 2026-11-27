@@ -586,11 +586,17 @@ class EvolutionEvalPoller:
         """Return whether finalize can progress without a test evaluation in flight.
 
         A missing row still admits finalize so it can submit both test-set
-        evaluations; only an existing non-completed row means waiting.
+        evaluations. A row that exists but has no external id is not in flight
+        either: it was created but never accepted by the platform, so finalize
+        must be able to resubmit it.
         """
         for kind in ("test_baseline", "test_final"):
             evaluation = await self._runs.get_run_evaluation(run_id, kind)
-            if evaluation is not None and evaluation.eval_status != "completed":
+            if (
+                evaluation is not None
+                and evaluation.eval_external_id is not None
+                and evaluation.eval_status != "completed"
+            ):
                 return False
         return True
 

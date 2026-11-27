@@ -287,9 +287,10 @@ class EvolutionFinalizeService:
                 "reason": "rounds are still active",
             }
         retry_attempts = _job_retry_attempts(job)
+        accepted_commits = [round_ for round_ in rounds if round_.accepted and round_.commit_hash]
         if self._eval_submitter is not None:
             await self._eval_submitter.submit_validation_baseline(run)
-            if not any(round_.accepted for round_ in rounds):
+            if not accepted_commits:
                 # A legacy no-acceptance run may already have a test final in
                 # flight or completed on base_commit; keep that target instead
                 # of adding an unused result commit to the run branch.
@@ -318,8 +319,7 @@ class EvolutionFinalizeService:
                 prepared,
                 run,
                 expected_run_id=run.id,
-                require_trailer=any(round_.accepted for round_ in rounds)
-                or run.result_commit is not None,
+                require_trailer=bool(accepted_commits) or run.result_commit is not None,
             )
         except GitOperationError as exc:
             await self._raise_push_failure(run, exc, retry_attempts)

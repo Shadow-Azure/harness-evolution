@@ -197,9 +197,12 @@ def build_no_acceptance_message(
     trailers = "\n".join(
         (
             f"Harness-Run-Id: {run.id}",
-            f"Harness-Verdict: no-acceptance (verdict=false, {init_score:.1f} vs {best_score:.1f})",
-            f"Harness-Init-Score: {init_score:.1f}",
-            f"Harness-Best-Score: {best_score:.1f}",
+            (
+                "Harness-Verdict: no-acceptance "
+                f"(verdict=false, validation {init_score:.1f} vs {best_score:.1f})"
+            ),
+            f"Harness-Validation-Init-Score: {init_score:.1f}",
+            f"Harness-Validation-Best-Score: {best_score:.1f}",
             f"Harness-Metric-Direction: {direction}",
             "Harness-Decision-Rule: no-accepted-rounds",
             f"Harness-Base-Commit: {baseline}",

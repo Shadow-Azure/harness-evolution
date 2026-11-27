@@ -650,6 +650,39 @@ async def test_poller_waits_for_both_test_evaluations_before_finalize(
     assert [item.kind for item in jobs.items] == ["evolution_finalize"]
 
 
+async def test_poller_resumes_a_pending_test_evaluation_without_external_id(
+    state: tuple[Database, EvolutionRepository],
+) -> None:
+    """A created-but-unsubmitted row admits finalize so it can be resubmitted."""
+    database, repository = state
+    async with database.transaction() as session:
+        await session.execute(
+            update(evolution_rounds)
+            .where(evolution_rounds.c.id == "round-apply")
+            .values(status="accepted", accepted=True, finished_at=NOW),
+        )
+        await session.execute(
+            update(evolution_runs)
+            .where(evolution_runs.c.id == "run-apply")
+            .values(progress_unit=6),
+        )
+    baseline = await repository.ensure_run_evaluation("run-apply", "test_baseline")
+    await _complete_test_evaluation(repository, baseline, score=80.0)
+    pending = await repository.ensure_run_evaluation("run-apply", "test_final")
+    assert pending.eval_external_id is None
+    jobs = JobCapture()
+    poller = EvolutionEvalPoller(
+        repository,
+        lambda _run: (_ for _ in ()).throw(AssertionError("gateway must not run")),
+        jobs,
+        events=None,
+        now=lambda: NOW,
+    )
+
+    assert await poller.run_once() == 1
+    assert [item.kind for item in jobs.items] == ["evolution_finalize"]
+
+
 async def _complete_test_evaluation(
     repository: EvolutionRepository,
     evaluation: Any,

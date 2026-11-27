@@ -544,6 +544,8 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
     # Only the validation baseline starts before round 1; the test set waits
     # until the finalize stage.
     await submitter.submit_validation_baseline(run)
+    assert await repository.get_run_evaluation(RUN_ID, "test_baseline") is None
+    assert await repository.get_run_evaluation(RUN_ID, "test_final") is None
 
     # Round 1: publish, evaluate, accept through real git.
     round_accept = await repository.get_round(ROUND_ACCEPT)
@@ -665,6 +667,7 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
     assert completed.status == "completed"
     assert completed.push_status == "succeeded"
     assert completed.blocked_stage is None
+    assert completed.result_commit is None
     assert final.verdict is True
     assert final.init_score == 80.0
     assert final.best_score == 90.0

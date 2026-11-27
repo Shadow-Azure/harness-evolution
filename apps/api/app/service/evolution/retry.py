@@ -351,6 +351,13 @@ class EvolutionRetryService:
         """Resume an interrupted retry job from its durable round/final facts."""
         pending_run_eval = await self._pending_run_eval(run.id)
         if pending_run_eval is not None and self._eval_submitter is not None:
+            if pending_run_eval.kind == "test_final" and await self._legacy_no_acceptance_final(
+                run,
+                (pending_run_eval,),
+            ):
+                # The interrupted retry had not created the no-acceptance
+                # result commit yet; finalize creates it before resubmitting.
+                return await self._finalize(run, job)
             resubmitted = await self._eval_submitter.resubmit_run_evaluation(
                 run,
                 pending_run_eval.kind,
