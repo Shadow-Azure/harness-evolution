@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/feature/2026-11-24-workspace-bad-case-label-routing.md
-2026-11-24-workspace-bad-case-label-routing.md: a80eda0ce07dce197b87900136c64a42b560a58f
-2026-11-24-workspace-bad-case-label-routing.en.md: 48ca54674fbecda470489b2b3e0a81b2e6fb18dc
+2026-11-24-workspace-bad-case-label-routing.md: 9f262d5fd137f6d7431910bca3e8a041e7d7107b
+2026-11-24-workspace-bad-case-label-routing.en.md: 9876487540f0b00cc8a3a16b7627821c23ed5239

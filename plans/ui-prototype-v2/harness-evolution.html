@@ -1318,6 +1318,16 @@
   .v2-page .badcase-labels-tab .field-help { margin: 10px 0 0; color: var(--text-faint); font-size: 10.5px; line-height: 1.6; }
   .v2-page .badcase-labels-tab .btn { padding: 5px 11px; border-radius: 7px; font-size: 11.5px; }
   .v2-page .badcase-labels-tab .btn:disabled { opacity: .5; }
+  .v2-page .badcase-labels-tab .label-input-wrap { position: relative; flex: 1; min-width: 0; }
+  .v2-page .badcase-labels-tab .label-input-wrap .label-input { width: 100%; box-sizing: border-box; }
+  .v2-page .badcase-labels-tab .label-suggestions { position: absolute; top: calc(100% + 4px); right: 0; left: 0; z-index: 12; display: flex; flex-direction: column; gap: 1px; max-height: 214px; padding: 4px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); box-shadow: 0 10px 24px color-mix(in srgb, var(--text) 12%, transparent); }
+  .v2-page .badcase-labels-tab .label-suggestions[hidden] { display: none; }
+  .v2-page .badcase-labels-tab .label-suggestion { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 8px; border-radius: 6px; color: var(--text-dim); font-size: 11.5px; cursor: pointer; }
+  .v2-page .badcase-labels-tab .label-suggestion:hover, .v2-page .badcase-labels-tab .label-suggestion.active { background: color-mix(in srgb, var(--blue) 9%, transparent); color: var(--blue); }
+  .v2-page .badcase-labels-tab .label-suggestion[hidden] { display: none; }
+  .v2-page .badcase-labels-tab .label-suggestion-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .v2-page .badcase-labels-tab .label-suggestion-count { flex-shrink: 0; color: var(--text-faint); font-family: var(--mono); font-size: 10px; }
+  .v2-page .badcase-labels-tab .label-suggestion.active .label-suggestion-count { color: color-mix(in srgb, var(--blue) 65%, var(--text-faint)); }
 
   @media (max-width: 980px) { .ov-grid { grid-template-columns: 1fr; } .admin-grid { grid-template-columns: 1fr; } .admin-nav { display: flex; gap: 4px; overflow-x: auto; } .admin-nav button { width: auto; white-space: nowrap; } .admin-nav .an-hint, .admin-nav .an-sep { display: none; } .ingest-grid, .quota-editor { grid-template-columns: 1fr; } }
 
@@ -7745,12 +7755,80 @@ function v2ValidateLabel(value, existing) {
   if (existing.includes(trimmed)) return '该 label 已经添加。';
   return '';
 }
+/* 候选词表演示：真实实现读 GET /api/workspaces/{wid}/bad-case-labels/suggestions。 */
+const V2_LABEL_CATALOG = [
+  { label: 'code-review', count: 96 },
+  { label: 'tool-use', count: 46 },
+  { label: 'review', count: 12 },
+  { label: 'performance', count: 7 },
+];
+function v2LabelCandidates(draft) {
+  return V2_LABEL_CATALOG.filter(item => !draft.includes(item.label));
+}
+function v2LabelSuggestActive() {
+  const box = document.getElementById('v2LabelSuggestions');
+  if (!box || box.hidden) return null;
+  return [...box.querySelectorAll('[data-v2-label-pick]')].filter(row => !row.hidden).find(row => row.classList.contains('active')) || null;
+}
+function v2LabelSuggestFilter(value) {
+  const box = document.getElementById('v2LabelSuggestions');
+  const input = document.getElementById('v2LabelInput');
+  if (!box || !input) return;
+  const prefix = (value || '').trim();
+  let visible = 0;
+  box.querySelectorAll('[data-v2-label-pick]').forEach(row => {
+    const match = !prefix || (row.dataset.label || '').startsWith(prefix);
+    row.hidden = !match;
+    row.classList.remove('active');
+    row.setAttribute('aria-selected', 'false');
+    if (match) visible += 1;
+  });
+  box.hidden = visible === 0;
+  input.setAttribute('aria-expanded', box.hidden ? 'false' : 'true');
+  input.removeAttribute('aria-activedescendant');
+}
+function v2LabelSuggestOpen() {
+  const input = document.getElementById('v2LabelInput');
+  if (!input) return;
+  v2LabelSuggestFilter(input.value);
+}
+function v2LabelSuggestClose() {
+  const box = document.getElementById('v2LabelSuggestions');
+  const input = document.getElementById('v2LabelInput');
+  if (box) box.hidden = true;
+  if (input) { input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); }
+}
+function v2LabelSuggestMove(delta) {
+  const box = document.getElementById('v2LabelSuggestions');
+  const input = document.getElementById('v2LabelInput');
+  if (!box || box.hidden) { v2LabelSuggestOpen(); return; }
+  const rows = [...box.querySelectorAll('[data-v2-label-pick]')].filter(row => !row.hidden);
+  if (!rows.length) return;
+  const current = rows.findIndex(row => row.classList.contains('active'));
+  const next = delta > 0 ? (current + 1) % rows.length : (current <= 0 ? rows.length - 1 : current - 1);
+  rows.forEach((row, index) => {
+    row.classList.toggle('active', index === next);
+    row.setAttribute('aria-selected', String(index === next));
+  });
+  if (input) input.setAttribute('aria-activedescendant', rows[next].id);
+}
+function v2LabelSuggestPick(label) {
+  const state = v2LabelState();
+  if (!label || state.draft.includes(label)) { v2RenderAdmin(); return; }
+  state.draft = [...state.draft, label].sort();
+  state.input = '';
+  state.error = '';
+  v2RenderAdmin();
+  document.getElementById('v2LabelInput')?.focus();
+  v2LabelSuggestClose();
+}
 function v2AdminBadCaseLabels() {
   const state = v2LabelState();
   const canManage = v2CanManage(V2.wsId);
   const dirty = state.draft.join('\u0000') !== state.items.join('\u0000');
   const chips = state.draft.map(label => `<span class="chip">${v2Esc(label)}${canManage ? `<button class="chip-remove" type="button" aria-label="移除 ${v2Esc(label)}" data-v2-label-remove="${v2Esc(label)}">×</button>` : ''}</span>`).join('');
   const empty = state.draft.length === 0 ? '<div class="empty-chips">还没有配置 label。未配置时，公共 badcase 不会进入当前空间。</div>' : `<div class="chip-list badcase-label-chips">${chips}</div>`;
+  const candidates = v2LabelCandidates(state.draft).map((item, index) => `<div class="label-suggestion" id="v2LabelSuggestion-${index}" role="option" aria-selected="false" data-v2-label-pick="${v2Esc(item.label)}" data-label="${v2Esc(item.label)}"><span class="label-suggestion-label">${v2Esc(item.label)}</span><span class="label-suggestion-count">${item.count} 条</span></div>`).join('');
   return `<div class="badcase-labels-tab">
   <div class="admin-head">
     <div><h2>Badcase 类型</h2><p class="sub">选择当前空间从公共仓库接收的 badcase 大类型；未配置时公共 badcase 不会进入当前空间。</p></div>
@@ -7759,7 +7837,7 @@ function v2AdminBadCaseLabels() {
   <div class="ingest-card">
     <h3>已配置 label <span class="label-count-badge">${state.items.length} 个</span></h3>
     ${empty}
-    ${canManage ? `<div class="add-row"><input class="label-input" id="v2LabelInput" type="text" maxlength="129" placeholder="输入 label" value="${v2Esc(state.input)}" onkeydown="if(event.key==='Enter'){event.preventDefault();document.querySelector('[data-v2-label-add]').click();}"><button class="btn" type="button" data-v2-label-add>添加</button></div>` : ''}
+    ${canManage ? `<div class="add-row"><div class="label-input-wrap"><input class="label-input" id="v2LabelInput" type="text" maxlength="129" placeholder="输入 label" value="${v2Esc(state.input)}" role="combobox" autocomplete="off" aria-expanded="false" aria-controls="v2LabelSuggestions" aria-autocomplete="list"><div class="label-suggestions" id="v2LabelSuggestions" role="listbox" aria-label="label 候选" hidden onmousedown="event.preventDefault()">${candidates}</div></div><button class="btn" type="button" data-v2-label-add>添加</button></div>` : ''}
     ${state.error ? `<p class="input-error">${v2Esc(state.error)}</p>` : ''}
     <div class="rule-row">
       <div><p class="rule-title">当前划分</p><p class="rule-count">已关联 ${state.assigned} 条</p></div>
@@ -8016,7 +8094,7 @@ function v2SetMemberRole(uid, role) {
 
 /* ── 事件 ── */
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-enable],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-tg-member-add],[data-v2-tg-member-remove],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member],[data-v2-label-add],[data-v2-label-remove],[data-v2-label-save]');
+  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-enable],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-tg-member-add],[data-v2-tg-member-remove],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member],[data-v2-label-add],[data-v2-label-pick],[data-v2-label-remove],[data-v2-label-save]');
   if (!el) return;
   const ds = el.dataset;
   if (ds.v2LoginUser) { V2.loginChoice = ds.v2LoginUser; v2RenderLogin(); return; }
@@ -8098,8 +8176,10 @@ document.addEventListener('click', e => {
     }
     v2RenderAdmin();
     document.getElementById('v2LabelInput')?.focus();
+    v2LabelSuggestClose();
     return;
   }
+  if (ds.v2LabelPick) { v2LabelSuggestPick(ds.v2LabelPick); return; }
   if (ds.v2LabelRemove) {
     const state = v2LabelState();
     state.draft = state.draft.filter(label => label !== ds.v2LabelRemove);
@@ -8183,7 +8263,10 @@ document.addEventListener('change', e => {
   if (e.target.matches('[data-v2-role]')) { v2SetMemberRole(e.target.dataset.v2Role, e.target.value); return; }
 });
 document.addEventListener('input', e => {
-  if (e.target.id === 'v2LabelInput') v2LabelState().input = e.target.value;
+  if (e.target.id === 'v2LabelInput') {
+    v2LabelState().input = e.target.value;
+    v2LabelSuggestFilter(e.target.value);
+  }
   // 成员行：对象名称变化时，子目录仍为自动值就跟着补 skills/<name> 或 agents/<Name>。
   if (e.target.classList.contains('tgm-name')) {
     const sub = e.target.closest('[data-v2-tg-member]')?.querySelector('.tgm-subdir');
@@ -8194,6 +8277,12 @@ document.addEventListener('input', e => {
     }
   }
   if (e.target.classList.contains('tgm-subdir')) e.target.dataset.auto = e.target.value.trim() ? '0' : '1';
+});
+document.addEventListener('focusin', e => {
+  if (e.target.id === 'v2LabelInput') v2LabelSuggestOpen();
+});
+document.addEventListener('focusout', e => {
+  if (e.target.id === 'v2LabelInput') v2LabelSuggestClose();
 });
 document.addEventListener('click', e => {
   if (e.target.id === 'loginBtn') { v2LoginAs(V2.loginChoice); return; }
@@ -8208,6 +8297,21 @@ document.addEventListener('toggle', e => {
   if (e.target.matches && e.target.matches('details.tn-ws, details.tn-user, details.tn-sync') && e.target.open) v2CloseMenus(e.target);
 }, true);
 document.addEventListener('keydown', e => {
+  if (e.target.id === 'v2LabelInput') {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      v2LabelSuggestMove(e.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    if (e.key === 'Escape') { v2LabelSuggestClose(); return; }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const active = v2LabelSuggestActive();
+      if (active) v2LabelSuggestPick(active.dataset.label || '');
+      else document.querySelector('[data-v2-label-add]')?.click();
+      return;
+    }
+  }
   if (e.key === 'Escape') v2CloseMenus();
 });
 

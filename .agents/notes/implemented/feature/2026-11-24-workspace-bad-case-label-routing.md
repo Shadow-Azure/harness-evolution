@@ -17,6 +17,7 @@ Status: implemented
 - 目录同步的单页事务按序执行：upsert 事实 → 删本页 ID 的 `legacy_owner` 与旧 `catalog_label` 关联 → 按规则 `INSERT…SELECT` 重建 → 更新游标与 assigned/unassigned/invalid 计数；任何一步失败整页回滚、游标不前进。
 - 保存 label 配置在一个事务里锁定空间、全量替换规则、只删该空间的 `catalog_label` 关联，再从 `bad_cases.catalog_label JOIN workspace_bad_case_labels` 重建历史关联；新增规则补齐历史、删除规则撤销实时可见性。
 - 所有空间读路径（Session 列表与树、问题列表、总览、额度、潜在 badcase 与自进化取数）统一经 `WorkspaceReadScope.case_condition()` 走关联；`bad_cases.workspace_id` 只保留直接上报归属（ID 冲突检测与 owner 展示）。归因进度聚合按请求空间匹配 `probe_reports.workspace_id`，不跟 `bad_cases.workspace_id`，label 共享 case 的报告只计入产出它的空间。
+- `GET /api/workspaces/{wid}/bad-case-labels/suggestions` 是只读词表：聚集 `bad_cases.catalog_label` 的非空值及其出现次数，`q` 为最长 128 的可选区分大小写前缀，`limit` 取 1–50 默认 20，空 `q` 返回 Top N，按计数降序、同数按字典序，`%`/`_` 按字面量转义；viewer 可读，不按当前空间规则收窄，也不读其他空间的规则集合。空间管理输入框用它做候选下拉：聚焦空输入展示 Top N，输入经 200ms 防抖按前缀过滤，点击或方向键高亮后 Enter 只把候选加入草稿，已配置 label 不进候选，接口失败静默降级为手输，保存仍是完整集合替换。
 
 ## Alternatives considered
 
