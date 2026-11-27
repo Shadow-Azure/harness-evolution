@@ -11,7 +11,7 @@ priority: P2
 status: in-progress
 scope:
   - .github/CODEOWNERS
-  - .agents/notes/**
+  - .agents/**
 adr: []
 github:
   number: 661

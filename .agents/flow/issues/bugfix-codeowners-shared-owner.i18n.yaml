@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-codeowners-shared-owner.md
-bugfix-codeowners-shared-owner.md: 71d70fa1530b2e7feb9c5aa345764e8cdbb868fc
-bugfix-codeowners-shared-owner.en.md: 54dd15919b199333fcba7ccb0c85d655a33efff3
+bugfix-codeowners-shared-owner.md: 7e20bdca76002ded4079898cee5695035089c4a0
+bugfix-codeowners-shared-owner.en.md: bcd26728ef57e910d93c22338b05611b6b8cda7c
