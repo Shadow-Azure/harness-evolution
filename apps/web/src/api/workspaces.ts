@@ -231,7 +231,7 @@ export function listWorkspaceBadCaseLabels(
  * The vocabulary is the shared catalog projection, so it is not narrowed by
  * this workspace's rules; an empty prefix asks for the most common labels.
  * @param workspaceId Route workspace identifier.
- * @param params Optional case-sensitive prefix (at most 128 characters) and page size (1–50, default 20).
+ * @param params Optional case-insensitive prefix (at most 128 characters) and page size (1–50, default 20).
  * @returns Candidate labels ordered by case count, then label.
  */
 export function listWorkspaceBadCaseLabelSuggestions(

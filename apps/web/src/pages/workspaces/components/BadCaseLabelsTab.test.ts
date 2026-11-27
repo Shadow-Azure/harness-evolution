@@ -45,6 +45,16 @@ function newClient(gcTime = 0): QueryClient {
 }
 
 /**
+ * Register the empty label configuration every test starts from.
+ * @returns No value.
+ */
+function registerDefaultLabels(): void {
+  server.use(
+    http.get(`${base}/bad-case-labels`, () => HttpResponse.json(config([]))),
+  );
+}
+
+/**
  * Register the empty candidate response every test starts from.
  * @returns No value.
  */
@@ -106,11 +116,13 @@ async function advanceSuggestions(): Promise<void> {
 
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
+  registerDefaultLabels();
   registerDefaultSuggestions();
 });
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
   server.resetHandlers();
+  registerDefaultLabels();
   registerDefaultSuggestions();
 });
 afterAll(() => server.close());
@@ -349,6 +361,32 @@ describe("Badcase 类型 label candidate dropdown", () => {
     }
   });
 
+  it("filters already-loaded candidates locally while the next lookup is pending", async () => {
+    server.use(
+      http.get(`${base}/bad-case-labels`, () => HttpResponse.json(config([]))),
+      http.get(suggestionsPath, () =>
+        HttpResponse.json({ items: topSuggestions }),
+      ),
+    );
+    const wrapper = await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await wrapper.get(inputSelector).trigger("focus");
+      await advanceSuggestions();
+      expect(suggestionLabels(wrapper)).toEqual([
+        "review",
+        "tool-use",
+        "performance",
+      ]);
+
+      await wrapper.get(inputSelector).setValue("t");
+
+      expect(suggestionLabels(wrapper)).toEqual(["tool-use"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("hides labels already configured in the draft", async () => {
     server.use(
       http.get(`${base}/bad-case-labels`, () =>
@@ -443,6 +481,42 @@ describe("Badcase 类型 label candidate dropdown", () => {
     }
   });
 
+  it("cycles the highlight through the candidates with ArrowUp and ArrowDown", async () => {
+    server.use(
+      http.get(`${base}/bad-case-labels`, () => HttpResponse.json(config([]))),
+      http.get(suggestionsPath, () =>
+        HttpResponse.json({ items: topSuggestions }),
+      ),
+    );
+    const wrapper = await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await wrapper.get(inputSelector).trigger("focus");
+      await advanceSuggestions();
+      const option = (label: string) =>
+        wrapper.get(`[data-testid='bad-case-label-suggestion-${label}']`);
+      const activeDescendant = () =>
+        wrapper.get(inputSelector).attributes("aria-activedescendant");
+
+      await wrapper.get(inputSelector).trigger("keydown.up");
+      expect(option("performance").attributes("aria-selected")).toBe("true");
+      expect(activeDescendant()).toBe("bad-case-label-suggestions-option-2");
+
+      await wrapper.get(inputSelector).trigger("keydown.up");
+      expect(option("tool-use").attributes("aria-selected")).toBe("true");
+      expect(activeDescendant()).toBe("bad-case-label-suggestions-option-1");
+
+      await wrapper.get(inputSelector).trigger("keydown.down");
+      expect(option("performance").attributes("aria-selected")).toBe("true");
+
+      await wrapper.get(inputSelector).trigger("keydown.down");
+      expect(option("review").attributes("aria-selected")).toBe("true");
+      expect(activeDescendant()).toBe("bad-case-label-suggestions-option-0");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("falls back to the typed label on Enter without a highlight", async () => {
     const wrapper = await mountTab();
 
@@ -465,6 +539,7 @@ describe("Badcase 类型 label candidate dropdown", () => {
     const wrapper = await mountTab();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
+      await wrapper.get(inputSelector).setValue("rev");
       await wrapper.get(inputSelector).trigger("focus");
       await advanceSuggestions();
       expect(
@@ -479,6 +554,44 @@ describe("Badcase 类型 label candidate dropdown", () => {
       expect(wrapper.get(inputSelector).attributes("aria-expanded")).toBe(
         "false",
       );
+      expect(wrapper.get(inputSelector).attributes("aria-controls")).toBeUndefined();
+      expect(
+        (wrapper.get(inputSelector).element as HTMLInputElement).value,
+      ).toBe("rev");
+      expect(chipLabels(wrapper)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("closes the dropdown on blur without clearing the typed text", async () => {
+    server.use(
+      http.get(`${base}/bad-case-labels`, () => HttpResponse.json(config([]))),
+      http.get(suggestionsPath, () =>
+        HttpResponse.json({ items: topSuggestions }),
+      ),
+    );
+    const wrapper = await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await wrapper.get(inputSelector).setValue("re");
+      await wrapper.get(inputSelector).trigger("focus");
+      await advanceSuggestions();
+      expect(
+        wrapper.find("[data-testid='bad-case-label-suggestions']").exists(),
+      ).toBe(true);
+
+      await wrapper.get(inputSelector).trigger("blur");
+
+      expect(
+        wrapper.find("[data-testid='bad-case-label-suggestions']").exists(),
+      ).toBe(false);
+      expect(wrapper.get(inputSelector).attributes("aria-expanded")).toBe(
+        "false",
+      );
+      expect(
+        (wrapper.get(inputSelector).element as HTMLInputElement).value,
+      ).toBe("re");
       expect(chipLabels(wrapper)).toEqual([]);
     } finally {
       vi.useRealTimers();
@@ -561,5 +674,40 @@ describe("Badcase 类型 label candidate dropdown", () => {
     expect(second.get("[data-testid='no-bad-case-labels']").text()).toContain(
       "还没有配置 label",
     );
+  });
+
+  it("resets the input and dropdown when the workspace prop changes", async () => {
+    const otherWorkspaceId = "ws-labels-other";
+    server.use(
+      http.get(`${base}/bad-case-labels`, () => HttpResponse.json(config([]))),
+      http.get(suggestionsPath, () =>
+        HttpResponse.json({ items: topSuggestions }),
+      ),
+      http.get(`/api/workspaces/${otherWorkspaceId}/bad-case-labels`, () =>
+        HttpResponse.json(config([])),
+      ),
+    );
+    const wrapper = await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await wrapper.get(inputSelector).setValue("rev");
+      await wrapper.get(inputSelector).trigger("focus");
+      await advanceSuggestions();
+      expect(
+        wrapper.find("[data-testid='bad-case-label-suggestions']").exists(),
+      ).toBe(true);
+
+      await wrapper.setProps({ workspaceId: otherWorkspaceId });
+      await settleRealTimers();
+
+      const input = wrapper.get(inputSelector);
+      expect((input.element as HTMLInputElement).value).toBe("");
+      expect(input.attributes("aria-expanded")).toBe("false");
+      expect(
+        wrapper.find("[data-testid='bad-case-label-suggestions']").exists(),
+      ).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -36,22 +36,31 @@ const operationError = ref("");
 const suggestionsOpen = ref(false);
 const activeSuggestionIndex = ref(-1);
 
-/** Candidates not already pending in the draft, so added labels disappear. */
-const visibleSuggestions = computed(() =>
-  suggestionsQuery.suggestions.value.filter(
-    (item) => !draft.value.includes(item.label),
-  ),
-);
+/** Candidates not already pending in the draft, narrowed by the live input. */
+const visibleSuggestions = computed(() => {
+  const prefix = inputValue.value.trim().toLowerCase();
+  return suggestionsQuery.suggestions.value.filter(
+    (item) =>
+      !draft.value.includes(item.label) &&
+      (!prefix || item.label.toLowerCase().startsWith(prefix)),
+  );
+});
 
 const suggestionsVisible = computed(
   () => suggestionsOpen.value && visibleSuggestions.value.length > 0,
 );
 
-const activeSuggestionId = computed(() =>
-  activeSuggestionIndex.value < 0
-    ? undefined
-    : suggestionOptionId(activeSuggestionIndex.value),
-);
+const activeSuggestionId = computed(() => {
+  const index = activeSuggestionIndex.value;
+  if (index < 0 || index >= visibleSuggestions.value.length) return undefined;
+  return suggestionOptionId(index);
+});
+
+// Any change to the candidate set invalidates the old highlight immediately,
+// including candidates filtered out locally before the debounced reply lands.
+watch(visibleSuggestions, () => {
+  activeSuggestionIndex.value = -1;
+});
 
 /**
  * Build the stable id of one rendered option for `aria-activedescendant`.
@@ -350,8 +359,9 @@ function labelErrorMessage(error: unknown): string {
             placeholder="输入 label"
             role="combobox"
             autocomplete="off"
+            aria-label="label 候选输入"
             :aria-expanded="suggestionsVisible ? 'true' : 'false'"
-            :aria-controls="SUGGESTIONS_LIST_ID"
+            :aria-controls="suggestionsVisible ? SUGGESTIONS_LIST_ID : undefined"
             aria-autocomplete="list"
             :aria-activedescendant="activeSuggestionId"
             data-testid="bad-case-label-input"
