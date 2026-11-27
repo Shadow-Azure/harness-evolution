@@ -388,7 +388,9 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 | `HE_EVAL_MODE` | `fake` | 注册表里的 provider：`fake` / `ai-eval-platform`；未知值启动失败 |
 | `HE_EVAL_BASE_URL` / `HE_EVAL_API_KEY` | 空 | 外部评测平台地址与服务令牌；真实 provider 必填，密钥只经 Secrets 注入 |
 | `HE_EVAL_POLL_SECONDS` | `300` | 评测状态轮询间隔（5 分钟） |
-| `HE_EVAL_TIMEOUT_SECONDS` | `7200` | 单轮评测超时；超时后 run 进入 blocked |
+| `HE_EVAL_TIMEOUT_SECONDS` | `7200` | 验证集基线与逐轮候选的执行超时；只计算平台进入 running 后的时间 |
+| `HE_EVAL_TEST_TIMEOUT_SECONDS` | `21600` | 测试集基线与测试集终评的执行超时；测试集规模与平台分片更重，单独放宽 |
+| `HE_EVAL_QUEUE_TIMEOUT_SECONDS` | `21600` | 评测从提交起的最长排队时间；超时后 run 进入 blocked，防止平台永久排队 |
 | `HE_SSE_HEARTBEAT_SECONDS` | `15` | SSE 心跳 |
 | `HE_LOG_LEVEL` | `info` | 日志级别 |
 | `HE_CORS_ORIGINS` | `http://localhost:5173` | 允许的前端域名 |

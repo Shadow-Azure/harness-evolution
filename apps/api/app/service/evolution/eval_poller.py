@@ -23,6 +23,7 @@ from app.service.evolution.engine.contracts import (
     EvalGateway,
     EvalPurpose,
     EvalRequest,
+    EvalStatus,
     EvalTarget,
     RunBlocked,
 )
@@ -31,6 +32,10 @@ from app.utils.redaction import sanitize_message, sanitize_value
 from app.utils.time import now_shanghai
 
 logger = logging.getLogger(__name__)
+
+# The held-out test set is larger than the validation mini-set and the
+# platform shards and retries it, so it gets its own execution budget.
+_TEST_SET_KINDS = frozenset({"test_baseline", "test_final"})
 
 
 class EvalJobSubmitter(Protocol):
@@ -389,6 +394,8 @@ class EvolutionEvalPoller:
         scan_interval: timedelta = timedelta(seconds=30),
         poll_interval: timedelta = timedelta(minutes=5),
         timeout: timedelta = timedelta(hours=2),
+        test_timeout: timedelta = timedelta(hours=6),
+        queue_timeout: timedelta = timedelta(hours=6),
         batch_size: int = 100,
     ) -> None:
         """Bind persistence, gateway resolution, scheduling, and timing."""
@@ -398,6 +405,10 @@ class EvolutionEvalPoller:
             raise ValueError("evaluation poll interval must be positive")
         if timeout.total_seconds() <= 0:
             raise ValueError("evaluation timeout must be positive")
+        if test_timeout.total_seconds() <= 0:
+            raise ValueError("test-set evaluation timeout must be positive")
+        if queue_timeout.total_seconds() <= 0:
+            raise ValueError("evaluation queue timeout must be positive")
         if batch_size < 1:
             raise ValueError("evaluation batch size must be positive")
         self._runs = runs
@@ -408,6 +419,8 @@ class EvolutionEvalPoller:
         self._scan_interval = scan_interval
         self._poll_interval = poll_interval
         self._timeout = timeout
+        self._test_timeout = test_timeout
+        self._queue_timeout = queue_timeout
         self._batch_size = batch_size
         self._stop = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -594,7 +607,7 @@ class EvolutionEvalPoller:
             )
             return True
         if status.status in {"queued", "running"}:
-            if await self._expire_if_due(run, round_, current):
+            if await self._expire_if_due(run, round_, status, current):
                 return True
             next_poll = current + self._poll_interval
             await self._runs.mark_eval_waiting(
@@ -609,7 +622,14 @@ class EvolutionEvalPoller:
                 round_id=round_.id,
                 payload={
                     "externalId": round_.eval_external_id,
+                    "kind": "candidate",
                     "status": status.status,
+                    **_timing_fields(
+                        status,
+                        eval_started_at=round_.eval_started_at,
+                        paused_seconds=round_.eval_paused_seconds,
+                        current=current,
+                    ),
                     "nextPollAt": next_poll.isoformat(),
                 },
             )
@@ -660,6 +680,12 @@ class EvolutionEvalPoller:
             status=status.status,
             message=status.message or f"evaluation {status.status}",
             current=current,
+            timing=_timing_fields(
+                status,
+                eval_started_at=round_.eval_started_at,
+                paused_seconds=round_.eval_paused_seconds,
+                current=current,
+            ),
         )
         return True
 
@@ -696,7 +722,7 @@ class EvolutionEvalPoller:
             )
             return True
         if status.status in {"queued", "running"}:
-            if await self._expire_run_if_due(run, evaluation, current):
+            if await self._expire_run_if_due(run, evaluation, status, current):
                 return True
             next_poll = current + self._poll_interval
             await self._runs.mark_run_eval_waiting(
@@ -713,6 +739,12 @@ class EvolutionEvalPoller:
                     "externalId": evaluation.eval_external_id,
                     "kind": evaluation.kind,
                     "status": status.status,
+                    **_timing_fields(
+                        status,
+                        eval_started_at=evaluation.eval_started_at,
+                        paused_seconds=evaluation.eval_paused_seconds,
+                        current=current,
+                    ),
                     "nextPollAt": next_poll.isoformat(),
                 },
             )
@@ -764,6 +796,12 @@ class EvolutionEvalPoller:
             status=status.status,
             message=status.message or f"evaluation {status.status}",
             current=current,
+            timing=_timing_fields(
+                status,
+                eval_started_at=evaluation.eval_started_at,
+                paused_seconds=evaluation.eval_paused_seconds,
+                current=current,
+            ),
         )
         return True
 
@@ -771,15 +809,45 @@ class EvolutionEvalPoller:
         self,
         run: EvolutionRunRecord,
         evaluation: EvolutionEvaluationRecord,
+        status: EvalStatus | None,
         current: datetime,
     ) -> bool:
-        """Charge only active observation time for one run-level evaluation."""
+        """Charge run-level execution time only after the platform starts."""
         observed = await self._runs.get_run_evaluation(run.id, evaluation.kind)
         if observed is None or observed.eval_started_at is None:
             return False
-        if current - observed.eval_started_at < self._timeout + timedelta(
-            seconds=observed.eval_paused_seconds
-        ):
+        timing = _timing_fields(
+            status,
+            eval_started_at=observed.eval_started_at,
+            paused_seconds=observed.eval_paused_seconds,
+            current=current,
+        )
+        queue_seconds = timing["queueSeconds"]
+        if queue_seconds is not None and queue_seconds >= self._queue_timeout.total_seconds():
+            return await self._fail_run_evaluation(
+                run,
+                observed,
+                status="timeout",
+                message="evaluation queue timed out",
+                current=current,
+                expected_paused_seconds=observed.eval_paused_seconds,
+                timing=timing,
+            )
+        # A queued evaluation has not started executing, so only the queue cap
+        # above can expire it; the execution budget starts at status.started_at.
+        if status is not None and status.status == "queued":
+            return False
+        execution_start = (
+            status.started_at
+            if status is not None and status.started_at is not None
+            else observed.eval_started_at
+        )
+        elapsed_seconds = _elapsed_seconds(
+            current,
+            execution_start,
+            observed.eval_paused_seconds,
+        )
+        if elapsed_seconds < self._execution_budget(observed.kind).total_seconds():
             return False
         return await self._fail_run_evaluation(
             run,
@@ -788,7 +856,12 @@ class EvolutionEvalPoller:
             message="evaluation timed out",
             current=current,
             expected_paused_seconds=observed.eval_paused_seconds,
+            timing=timing,
         )
+
+    def _execution_budget(self, kind: str) -> timedelta:
+        """Return the execution budget for one evaluation kind."""
+        return self._test_timeout if kind in _TEST_SET_KINDS else self._timeout
 
     async def _defer_run_retryable(
         self,
@@ -800,7 +873,7 @@ class EvolutionEvalPoller:
         """Absorb one retryable run-level polling failure by deferring."""
         if not bool(getattr(exc, "retryable", False)):
             return False
-        if await self._expire_run_if_due(run, evaluation, current):
+        if await self._expire_run_if_due(run, evaluation, None, current):
             return True
         next_poll = current + self._poll_interval
         await self._runs.mark_run_eval_waiting(
@@ -833,6 +906,7 @@ class EvolutionEvalPoller:
         current: datetime,
         error: BaseException | None = None,
         expected_paused_seconds: float | None = None,
+        timing: Mapping[str, Any] | None = None,
     ) -> bool:
         """Persist one run-level failure and block the run at the eval stage."""
         safe = sanitize_message(message, limit=2_000)
@@ -845,17 +919,20 @@ class EvolutionEvalPoller:
         if not changed:
             return False
         event_type = "eval_timeout" if status == "timeout" else "eval_failed"
+        payload: dict[str, Any] = {
+            "externalId": evaluation.eval_external_id,
+            "kind": evaluation.kind,
+            "status": status,
+        }
+        if timing is not None:
+            payload.update(timing)
         await self._record(
             run.id,
             event_type,
             level="error",
             message=safe,
             round_id="",
-            payload={
-                "externalId": evaluation.eval_external_id,
-                "kind": evaluation.kind,
-                "status": status,
-            },
+            payload=payload,
             error=error,
         )
         await self._runs.mark_blocked(
@@ -879,15 +956,48 @@ class EvolutionEvalPoller:
         return True
 
     async def _expire_if_due(
-        self, run: EvolutionRunRecord, round_: EvolutionRoundRecord, current: datetime
+        self,
+        run: EvolutionRunRecord,
+        round_: EvolutionRoundRecord,
+        status: EvalStatus | None,
+        current: datetime,
     ) -> bool:
-        """Charge only active observation time, after querying the original external ID."""
+        """Charge candidate execution time only after the platform starts."""
         observed = await self._runs.get_round(round_.id)
         if observed is None or observed.eval_started_at is None:
             return False
-        if current - observed.eval_started_at < self._timeout + timedelta(
-            seconds=observed.eval_paused_seconds
-        ):
+        timing = _timing_fields(
+            status,
+            eval_started_at=observed.eval_started_at,
+            paused_seconds=observed.eval_paused_seconds,
+            current=current,
+        )
+        queue_seconds = timing["queueSeconds"]
+        if queue_seconds is not None and queue_seconds >= self._queue_timeout.total_seconds():
+            return await self._fail(
+                run,
+                observed,
+                status="timeout",
+                message="evaluation queue timed out",
+                current=current,
+                expected_paused_seconds=observed.eval_paused_seconds,
+                timing=timing,
+            )
+        # A queued candidate has not started executing, so only the queue cap
+        # above can expire it; the execution budget starts at status.started_at.
+        if status is not None and status.status == "queued":
+            return False
+        execution_start = (
+            status.started_at
+            if status is not None and status.started_at is not None
+            else observed.eval_started_at
+        )
+        elapsed_seconds = _elapsed_seconds(
+            current,
+            execution_start,
+            observed.eval_paused_seconds,
+        )
+        if elapsed_seconds < self._timeout.total_seconds():
             return False
         return await self._fail(
             run,
@@ -896,6 +1006,7 @@ class EvolutionEvalPoller:
             message="evaluation timed out",
             current=current,
             expected_paused_seconds=observed.eval_paused_seconds,
+            timing=timing,
         )
 
     async def _defer_retryable(
@@ -916,7 +1027,7 @@ class EvolutionEvalPoller:
         """
         if not bool(getattr(exc, "retryable", False)):
             return False
-        if await self._expire_if_due(run, round_, current):
+        if await self._expire_if_due(run, round_, None, current):
             return True
         next_poll = current + self._poll_interval
         await self._runs.mark_eval_waiting(round_.id, next_poll_at=next_poll)
@@ -945,6 +1056,7 @@ class EvolutionEvalPoller:
         current: datetime,
         error: BaseException | None = None,
         expected_paused_seconds: float | None = None,
+        timing: Mapping[str, Any] | None = None,
     ) -> bool:
         """Persist one external failure and its two user-facing events."""
         safe = sanitize_message(message, limit=2_000)
@@ -959,13 +1071,20 @@ class EvolutionEvalPoller:
         if not changed:
             return False
         event_type = "eval_timeout" if status == "timeout" else "eval_failed"
+        payload: dict[str, Any] = {
+            "externalId": round_.eval_external_id,
+            "kind": "candidate",
+            "status": status,
+        }
+        if timing is not None:
+            payload.update(timing)
         await self._record(
             run.id,
             event_type,
             level="error",
             message=safe,
             round_id=round_.id,
-            payload={"externalId": round_.eval_external_id, "status": status},
+            payload=payload,
             error=error,
         )
         current_run = await self._runs.get_run(run.id)
@@ -1042,6 +1161,48 @@ class EvolutionEvalPoller:
                 "failed to record evaluation poller event",
                 extra={"run_id": run_id, "event_type": event_type},
             )
+
+
+def _timing_fields(
+    status: EvalStatus | None,
+    *,
+    eval_started_at: datetime | None,
+    paused_seconds: float,
+    current: datetime,
+) -> dict[str, Any]:
+    """Render observable timing shared by polling and timeout events.
+
+    ``queueSeconds`` measures the wait before platform execution: it stops at
+    ``status.started_at`` once reported and keeps growing while the evaluation
+    is still queued. When the platform omits the start time while running,
+    queue time stays unknown instead of being guessed from submission.
+    """
+    started_at = status.started_at if status is not None else None
+    queue_seconds: float | None = None
+    if eval_started_at is not None and status is not None:
+        if status.status == "queued":
+            queue_seconds = _elapsed_seconds(current, eval_started_at, paused_seconds)
+        elif started_at is not None:
+            queue_seconds = _elapsed_seconds(started_at, eval_started_at, paused_seconds)
+    if started_at is not None:
+        elapsed_seconds: float | None = _elapsed_seconds(current, started_at, paused_seconds)
+    elif status is not None and status.status == "running" and eval_started_at is not None:
+        # Legacy platforms do not report started_at; keep the old submission
+        # fallback so a genuinely stuck evaluation still expires.
+        elapsed_seconds = _elapsed_seconds(current, eval_started_at, paused_seconds)
+    else:
+        elapsed_seconds = None
+    return {
+        "startedAt": started_at.isoformat() if started_at is not None else None,
+        "elapsedSeconds": elapsed_seconds,
+        "queueSeconds": queue_seconds,
+        "progressPercent": status.progress_percent if status is not None else None,
+    }
+
+
+def _elapsed_seconds(end: datetime, start: datetime, paused_seconds: float) -> float:
+    """Return elapsed seconds net of paused time, never negative."""
+    return round(max((end - start).total_seconds() - paused_seconds, 0.0), 1)
 
 
 def _project_id(run: EvolutionRunRecord, purpose: str) -> str:

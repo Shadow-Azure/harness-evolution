@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import pytest
 import pytest_asyncio
 from pydantic import SecretStr
 
@@ -254,3 +255,56 @@ async def test_failed_run_evaluation_can_be_reset_for_retry(
     assert reset.eval_status == "pending"
     assert reset.eval_external_id is None
     assert reset.eval_error is None
+
+
+@pytest.mark.parametrize(
+    ("kind", "test_budget_hours", "expected_status"),
+    [
+        ("test_baseline", 6, "evaluating"),
+        ("test_final", 6, "evaluating"),
+        ("validation_baseline", 2, "timeout"),
+        ("test_baseline", 2, "timeout"),
+    ],
+)
+async def test_execution_budget_depends_on_the_evaluation_kind(
+    state: tuple[Any, EvolutionRepository],
+    kind: str,
+    test_budget_hours: int,
+    expected_status: str,
+) -> None:
+    """Test-set evaluations get the larger budget; candidates keep 2 hours."""
+    _database, repository = state
+    started_at = NOW - timedelta(hours=2, minutes=30)
+    evaluation = await repository.ensure_run_evaluation(RUN_ID, kind)
+    await repository.mark_run_eval_submitted(
+        evaluation.id,
+        external_id=f"fake:{RUN_ID}:{kind}:{'c' * 40}",
+        started_at=started_at,
+        next_poll_at=NOW - timedelta(seconds=1),
+    )
+    gateway = FakeEvalGateway(
+        EvalGatewayConfig.from_mapping(
+            {
+                "status": "running",
+                "startedAt": started_at.isoformat(),
+            },
+        ),
+    )
+    poller = EvolutionEvalPoller(
+        repository,
+        lambda _run: gateway,
+        Jobs(),
+        events=None,
+        now=lambda: NOW,
+        poll_interval=timedelta(seconds=1),
+        timeout=timedelta(hours=2),
+        test_timeout=timedelta(hours=test_budget_hours),
+    )
+
+    assert await poller.run_once() == 1
+
+    observed = await repository.get_run_evaluation(RUN_ID, kind)
+    assert observed is not None
+    assert observed.eval_status == expected_status, observed.eval_error
+    if expected_status == "timeout":
+        assert observed.eval_error == "evaluation timed out"

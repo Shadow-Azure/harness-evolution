@@ -282,3 +282,138 @@ class _NoJobs:
     async def submit(self, **kwargs: Any) -> None:
         """Absorb one follow-up submission."""
         del kwargs
+
+
+class _StatusGateway:
+    """Gateway seam returning one fixed status, including platform timing."""
+
+    config = EvalGatewayConfig.from_mapping({"mode": "http"})
+
+    def __init__(self, status: EvalStatus) -> None:
+        self._status = status
+
+    async def get_status(self, eval_id: str) -> EvalStatus:
+        del eval_id
+        return self._status
+
+    async def get_result(self, eval_id: str) -> EvalMeasurement:
+        del eval_id
+        raise AssertionError("a pending evaluation must not request its result yet")
+
+
+class _RecordingEvents:
+    """Capture poller events without the durable event store."""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[str, dict[str, Any]]] = []
+
+    async def record(self, run_id: str, event_type: str, **kwargs: Any) -> None:
+        self.events.append((event_type, {"run_id": run_id, **kwargs}))
+
+    async def record_blocked(self, *args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+
+
+async def _set_round_started_at(
+    database: Database,
+    started_at: datetime,
+) -> None:
+    async with database.transaction() as session:
+        await session.execute(
+            update(evolution_rounds)
+            .where(evolution_rounds.c.id == "round-transient")
+            .values(eval_started_at=started_at),
+        )
+
+
+async def test_queued_candidate_does_not_consume_the_execution_budget(
+    poll_state: tuple[Database, EvolutionRepository],
+) -> None:
+    """A 100-minute queue followed by execution stays inside the 2h budget."""
+    database, repository = poll_state
+    await _set_round_started_at(database, NOW - timedelta(minutes=100))
+    gateway = _StatusGateway(
+        EvalStatus(status="running", started_at=NOW),
+    )
+
+    first = _poller(repository, gateway, now=lambda: NOW)
+    assert await first.run_once() == 1
+    waiting = await repository.get_round("round-transient")
+    assert waiting is not None
+    assert waiting.eval_status == "evaluating"
+    assert waiting.eval_started_at == NOW - timedelta(minutes=100)
+
+    # 20 minutes of execution is only 120 minutes after submission: the old
+    # submission-based clock would already have expired the candidate here.
+    second = _poller(repository, gateway, now=lambda: NOW + timedelta(minutes=20))
+    assert await second.run_once() == 1
+    still_running = await repository.get_round("round-transient")
+    assert still_running is not None
+    assert still_running.eval_status == "evaluating"
+
+    third = _poller(
+        repository,
+        gateway,
+        now=lambda: NOW + timedelta(minutes=121),
+    )
+    assert await third.run_once() == 1
+    expired = await repository.get_round("round-transient")
+    assert expired is not None
+    assert expired.eval_status == "timeout"
+
+
+async def test_started_at_rebases_execution_without_rewriting_submission_time(
+    poll_state: tuple[Database, EvolutionRepository],
+) -> None:
+    """A 3h queue plus 30 minutes of execution never triggers eval_timeout."""
+    database, repository = poll_state
+    submitted_at = NOW - timedelta(hours=3, minutes=30)
+    await _set_round_started_at(database, submitted_at)
+    started_at = NOW - timedelta(minutes=30)
+    gateway = _StatusGateway(
+        EvalStatus(status="running", started_at=started_at, progress_percent=42.5),
+    )
+    events = _RecordingEvents()
+
+    poller = _poller(repository, gateway, events=events, now=lambda: NOW)
+    assert await poller.run_once() == 1
+    waiting = await repository.get_round("round-transient")
+    assert waiting is not None
+    assert waiting.eval_status == "evaluating"
+    assert waiting.eval_started_at == submitted_at
+
+    polled = [payload for event_type, payload in events.events if event_type == "eval_polled"]
+    assert len(polled) == 1
+    assert polled[0]["payload"]["startedAt"] == started_at.isoformat()
+    assert polled[0]["payload"]["elapsedSeconds"] == 1_800.0
+    assert polled[0]["payload"]["queueSeconds"] == 10_800.0
+    assert polled[0]["payload"]["progressPercent"] == 42.5
+
+
+async def test_queue_timeout_blocks_and_records_the_wait(
+    poll_state: tuple[Database, EvolutionRepository],
+) -> None:
+    """A permanently queued candidate ends as an explicit queue timeout."""
+    database, repository = poll_state
+    await _set_round_started_at(database, NOW - timedelta(hours=6, seconds=30))
+    gateway = _StatusGateway(EvalStatus(status="queued", progress_percent=5.0))
+    events = _RecordingEvents()
+
+    poller = _poller(repository, gateway, events=events, now=lambda: NOW)
+    assert await poller.run_once() == 1
+
+    run = await repository.get_run("run-transient")
+    round_ = await repository.get_round("round-transient")
+    assert run is not None and round_ is not None
+    assert run.status == "blocked" and run.blocked_stage == "eval"
+    assert round_.eval_status == "timeout"
+    assert round_.eval_error == "evaluation queue timed out"
+
+    timed_out = [payload for event_type, payload in events.events if event_type == "eval_timeout"]
+    assert len(timed_out) == 1
+    event_payload = timed_out[0]["payload"]
+    assert event_payload["kind"] == "candidate"
+    assert event_payload["startedAt"] is None
+    assert event_payload["elapsedSeconds"] is None
+    assert event_payload["queueSeconds"] == 21_630.0
+    assert event_payload["progressPercent"] == 5.0
