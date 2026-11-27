@@ -221,6 +221,10 @@ function onMemberInput(
   if (memberServerError(index, field)) serverErrorDismissed.value = true;
 }
 
+function toggleMemberMatch(member: MemberDraft): void {
+  member.matchByName = !member.matchByName;
+}
+
 let nextMemberKey = 0;
 
 function memberDraft(member: TargetMember): MemberDraft {
@@ -699,13 +703,16 @@ watch(
                   v-if="member.objectType !== 'knowledge'"
                   class="member-match"
                   title="关闭：按定义正文摘要匹配；开启：按名称关联，忽略同名不同正文的版本差异"
+                  @click="toggleMemberMatch(member)"
                 >
                   <span>名称匹配</span>
-                  <ElSwitch
-                    v-model="member.matchByName"
-                    aria-label="名称匹配"
-                    size="small"
-                  />
+                  <span @click.stop>
+                    <ElSwitch
+                      v-model="member.matchByName"
+                      aria-label="名称匹配"
+                      size="small"
+                    />
+                  </span>
                 </span>
                 <button
                   class="member-remove"

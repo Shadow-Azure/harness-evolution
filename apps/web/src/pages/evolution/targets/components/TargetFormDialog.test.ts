@@ -462,6 +462,13 @@ describe("TargetFormDialog", () => {
 
     nameMatch.vm.$emit("update:modelValue", true);
     await flushPromises();
+    expect(nameMatch.props("modelValue")).toBe(true);
+    await wrapper.get(".member-match").trigger("click");
+    await flushPromises();
+    expect(nameMatch.props("modelValue")).toBe(false);
+    await wrapper.get(".member-match").trigger("click");
+    await flushPromises();
+    expect(nameMatch.props("modelValue")).toBe(true);
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
