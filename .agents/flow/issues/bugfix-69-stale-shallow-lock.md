@@ -1,10 +1,10 @@
 # git fetch 中断残留的 shallow.lock 会让目标内容读取与 run 准备永久失败
 
-[English](bugfix-stale-shallow-lock.en.md) | 中文
+[English](bugfix-69-stale-shallow-lock.en.md) | 中文
 
 ```yaml flow
 kind: issue
-id: bugfix-68
+id: bugfix-69
 milestone: bugfix
 depends:
   - m19-01

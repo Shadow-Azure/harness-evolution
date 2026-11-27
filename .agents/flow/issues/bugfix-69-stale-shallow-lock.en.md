@@ -1,10 +1,10 @@
 # A stale shallow.lock from an interrupted git fetch permanently breaks target content reads and run preparation
 
-English | [中文](bugfix-stale-shallow-lock.md)
+English | [中文](bugfix-69-stale-shallow-lock.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-68
+id: bugfix-69
 milestone: bugfix
 depends:
   - m19-01
