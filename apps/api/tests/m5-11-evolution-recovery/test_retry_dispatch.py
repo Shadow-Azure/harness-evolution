@@ -456,6 +456,36 @@ async def test_final_blocked_push_continues_finalize(state: State) -> None:
     assert finalize.calls == [RUN_ID]
 
 
+async def test_legacy_failed_test_final_routes_through_finalize(state: State) -> None:
+    """A legacy no-acceptance final failure lets finalize create the result commit."""
+    await _create_run(
+        state.repository,
+        blocked_stage="eval",
+        push_status="succeeded",
+    )
+    evaluation = await state.repository.ensure_run_evaluation(RUN_ID, "test_final")
+    await state.repository.mark_run_eval_submitted(
+        evaluation.id,
+        external_id="legacy-final-id",
+        started_at=NOW,
+        next_poll_at=NOW + timedelta(minutes=5),
+    )
+    await state.repository.mark_run_eval_failed(
+        evaluation.id,
+        status="failed",
+        error="platform unavailable",
+        finished_at=NOW,
+    )
+    finalize = RecordingStage("finalize")
+    service = _service(state, finalize=finalize)
+
+    result = await service.handle(_retry_job(automatic=False))
+
+    assert result["resumed"] is True
+    assert result["stage"] == "finalize"
+    assert finalize.calls == [RUN_ID]
+
+
 async def test_push_blocked_with_eval_result_continues_apply(state: State) -> None:
     """A completed evaluation resumes through apply, not a second evaluation."""
     await _create_run(state.repository)
