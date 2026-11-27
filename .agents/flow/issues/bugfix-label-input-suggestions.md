@@ -4,11 +4,12 @@
 
 ```yaml flow
 kind: issue
-id: bugfix-65
+id: bugfix-68
 milestone: bugfix
-depends: []
+depends:
+  - bugfix-60
 priority: P2
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/web/**
@@ -72,7 +73,7 @@ github:
 
 ## 依赖与交付边界
 
-- 依赖：`bugfix-58`（#582，已实现 `catalog_label` 投影与 label 配置链路）为语义前提；本 issue 不改保存/重算事务。
+- 依赖：`bugfix-60`（#582，已实现 `catalog_label` 投影与 label 配置链路）为语义前提；本 issue 不改保存/重算事务。
 - 交付边界：只读候选 + 输入控件；不改 label 匹配规则、不改同步流程、不引入 label 字典表。
 - 非目标：不做「label 管理 / 重命名 / 删除」后台；不做全文模糊搜索（仅前缀）；不按 label 展示跨空间 case 数。
 

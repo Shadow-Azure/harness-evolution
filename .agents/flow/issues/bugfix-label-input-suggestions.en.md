@@ -4,11 +4,12 @@ English | [中文](bugfix-label-input-suggestions.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-65
+id: bugfix-68
 milestone: bugfix
-depends: []
+depends:
+  - bugfix-60
 priority: P2
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/web/**
@@ -72,7 +73,7 @@ The only recommended approach: add one read-only suggestion endpoint and swap th
 
 ## Dependencies and boundary
 
-- Depends on: `bugfix-58` (#582) for the `catalog_label` projection and label configuration chain; this issue never changes the save/reconciliation transaction.
+- Depends on: `bugfix-60` (#582) for the `catalog_label` projection and label configuration chain; this issue never changes the save/reconciliation transaction.
 - Delivery boundary: read-only suggestions plus the input control; no change to label matching, sync, or a label dictionary table.
 - Non-goals: no label management/rename/delete backend; no fuzzy full-text search (prefix only); no cross-workspace case counts per label.
 
