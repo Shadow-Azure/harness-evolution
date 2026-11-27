@@ -28,6 +28,7 @@ scope:
   - docs/architecture.md
   - docs/architecture.en.md
   - docs/architecture.i18n.yaml
+  - plans/**
   - plans/fullstack-design/05-api-design.md
   - plans/fullstack-design/06-database-design.md
   - plans/fullstack-design/07-backend-implementation.md

@@ -113,7 +113,7 @@ async def test_upgrade_backfills_report_and_catalog_origins(tmp_path: Path) -> N
             )
 
         origins = {str(row["bad_case_id"]): str(row["origin"]) for row in rows}
-        assert revision == "0035"
+        assert revision == "0036"
         assert origins == {
             "default-no-source": "catalog",
             "other-workspace": "report",
