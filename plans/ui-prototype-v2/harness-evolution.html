@@ -960,8 +960,12 @@
   .evo-app .tg-shared > .f-row .inp { width: 100%; }
   .evo-app .tg-shared-row .f-row { margin-bottom: 12px; }
   .evo-app .tg-members { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
-  .evo-app .tg-member { display: grid; grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1.25fr) 28px; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); }
+  .evo-app .tg-member { display: grid; grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1.1fr) 108px 28px; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); }
   .evo-app .tg-member .inp { width: 100%; }
+  .evo-app .tgm-match { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 11.5px; white-space: nowrap; cursor: pointer; user-select: none; }
+  .evo-app .tgm-match .switch { width: 34px; height: 18px; }
+  .evo-app .tgm-match .switch .slider::before { width: 14px; height: 14px; }
+  .evo-app .tgm-match .switch input:checked + .slider::before { transform: translateX(16px); }
   .evo-app .tgm-remove { border: none; background: transparent; color: var(--text-faint); cursor: pointer; font-size: 13px; }
   .evo-app .tgm-remove:hover { color: var(--red); }
   .evo-app .tg-member-add { width: fit-content; }
@@ -7844,12 +7848,13 @@ function v2MemberModal() {
   </div></div>`);
 }
 /* 一条配置 = 一个进化对象：共享块放仓库 / 基线 / 测试工程 / 主指标 / 归因 Skill；
-   成员行只填类型 + 名称 + 子目录。保存仍是一条配置。 */
-function v2TargetMemberRow(kind, name, subDir) {
+   成员行填类型 + 名称 + 子目录，并各自决定关闭摘要匹配后是否改为按名称匹配。 */
+function v2TargetMemberRow(kind, name, subDir, matchByName) {
   return `<div class="tg-member" data-v2-tg-member>
     <select class="inp tgm-kind" aria-label="类型"><option value="skill" ${kind === 'skill' ? 'selected' : ''}>skill</option><option value="agent" ${kind === 'agent' ? 'selected' : ''}>agent</option></select>
     <input class="inp tgm-name" value="${v2Esc(name)}" placeholder="成员名称，如 code-review" aria-label="成员名称">
     <input class="inp tgm-subdir mono" value="${v2Esc(subDir)}" placeholder="子目录，如 skills/code-review" aria-label="子目录" data-auto="${subDir ? '0' : '1'}">
+    <label class="tgm-match" title="关闭：按定义正文摘要匹配；开启：按名称关联，忽略同名不同正文的版本差异"><span>名称匹配</span><span class="switch"><input type="checkbox" class="tgm-match-input" aria-label="名称匹配" ${matchByName ? 'checked' : ''}><span class="slider"></span></span></label>
     <button type="button" class="x tgm-remove" data-v2-tg-member-remove title="移除这个成员" aria-label="移除这个成员">✕</button>
   </div>`;
 }
@@ -7876,8 +7881,8 @@ function v2TargetModal(id) {
           <div class="f-row"><div class="f-label">主指标 key <span class="req">*</span></div><input class="inp" id="v2TgMetric" value="${t ? v2Esc(t.primaryMetricKey || '') : ''}" placeholder="如 resolved_rate"></div>
         </div>
       </div>
-      <div class="f-row tg-members-row"><div class="f-label">成员 <span class="req">*</span><span class="f-hint">同一仓库里的 skill / agent；成员共享上面的仓库、基线、测试工程与主指标，但各自冻结定义、各自关联 bad case</span></div>
-        <div class="tg-members" id="v2TgMembers">${members.map(m => v2TargetMemberRow(m.kind, m.objectName, m.subDir)).join('')}</div>
+      <div class="f-row tg-members-row"><div class="f-label">成员 <span class="req">*</span><span class="f-hint">同一仓库里的 skill / agent；成员共享上面的仓库、基线、测试工程与主指标，但各自冻结定义、各自关联 bad case，并各自决定是否按名称匹配</span></div>
+        <div class="tg-members" id="v2TgMembers">${members.map(m => v2TargetMemberRow(m.kind, m.objectName, m.subDir, m.matchByName)).join('')}</div>
         <button type="button" class="btn sm tg-member-add" data-v2-tg-member-add>+ 再加一个成员</button>
       </div>
       <div class="notice">保存后，后台会为<b>每个成员</b>关联当前已上报的 bad case；启动自进化时整条配置一起进化，评测把全部成员目录作为资产一次提交。</div>
@@ -7907,6 +7912,7 @@ function v2SaveTarget(id) {
     kind: row.querySelector('.tgm-kind')?.value || 'skill',
     objectName: (row.querySelector('.tgm-name')?.value || '').trim(),
     subDir: (row.querySelector('.tgm-subdir')?.value || '').trim(),
+    matchByName: row.querySelector('.tgm-match-input')?.checked === true,
   }));
   if (!rows.length) return fail('至少配置一个成员');
   const seen = new Set();
