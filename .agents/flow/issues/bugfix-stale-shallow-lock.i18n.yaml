@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-stale-shallow-lock.md
-bugfix-stale-shallow-lock.md: 0cb8335d3f5700cc7ef27db300c9a5beecf4d961
-bugfix-stale-shallow-lock.en.md: 3d5ab47faa4ed418b9ea6bcb424d70d4177ce441
+bugfix-stale-shallow-lock.md: 1b75d771f841d68d41c1232ac06aa1627779fc64
+bugfix-stale-shallow-lock.en.md: 3f01df42550248121f514dc9ef0c1f9f8470c62e

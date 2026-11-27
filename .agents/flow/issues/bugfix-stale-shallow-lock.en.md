@@ -16,6 +16,7 @@ scope:
   - tests/**
   - docs/**
   - .agents/**
+  - plans/**
   - scripts/doc-budgets.manifest.json
 adr: []
 github:
