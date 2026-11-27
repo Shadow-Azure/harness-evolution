@@ -339,8 +339,16 @@ async def _no_sleep(seconds: float) -> None:
     del seconds
 
 
-def _retry_job(*, automatic: bool, job_id: str = "job-retry") -> JobRunRecord:
+def _retry_job(
+    *,
+    automatic: bool,
+    job_id: str = "job-retry",
+    recovery: bool = False,
+) -> JobRunRecord:
     """Build one durable retry job row."""
+    payload = {"runId": RUN_ID, "automatic": automatic}
+    if recovery:
+        payload["recovery"] = True
     return JobRunRecord(
         id=job_id,
         kind="evolution_retry",
@@ -350,7 +358,7 @@ def _retry_job(*, automatic: bool, job_id: str = "job-retry") -> JobRunRecord:
         executor="local",
         external_job_id=None,
         attempt=1,
-        payload={"runId": RUN_ID, "automatic": automatic},
+        payload=payload,
         result=None,
         error=None,
         created_by="user-1",
@@ -456,6 +464,36 @@ async def test_final_blocked_push_continues_finalize(state: State) -> None:
     assert finalize.calls == [RUN_ID]
 
 
+async def test_legacy_failed_test_final_routes_through_finalize(state: State) -> None:
+    """A legacy no-acceptance final failure lets finalize create the result commit."""
+    await _create_run(
+        state.repository,
+        blocked_stage="eval",
+        push_status="succeeded",
+    )
+    evaluation = await state.repository.ensure_run_evaluation(RUN_ID, "test_final")
+    await state.repository.mark_run_eval_submitted(
+        evaluation.id,
+        external_id="legacy-final-id",
+        started_at=NOW,
+        next_poll_at=NOW + timedelta(minutes=5),
+    )
+    await state.repository.mark_run_eval_failed(
+        evaluation.id,
+        status="failed",
+        error="platform unavailable",
+        finished_at=NOW,
+    )
+    finalize = RecordingStage("finalize")
+    service = _service(state, finalize=finalize)
+
+    result = await service.handle(_retry_job(automatic=False))
+
+    assert result["resumed"] is True
+    assert result["stage"] == "finalize"
+    assert finalize.calls == [RUN_ID]
+
+
 async def test_push_blocked_with_eval_result_continues_apply(state: State) -> None:
     """A completed evaluation resumes through apply, not a second evaluation."""
     await _create_run(state.repository)
@@ -496,6 +534,25 @@ async def test_pushing_round_resume_pushes_once_and_submits_eval(state: State) -
     assert round_.eval_external_id == f"fake:{RUN_ID}:{ROUND_ID}:{CANDIDATE_COMMIT}"
     events = await state.events.list(RUN_ID, after_seq=0, limit=100, level=None)
     assert [item.event_type for item in events.items].count("run_resumed") == 1
+
+
+async def test_recovery_pending_test_final_routes_through_finalize(state: State) -> None:
+    """An interrupted legacy retry creates the result commit before resubmitting."""
+    await _create_run(
+        state.repository,
+        status="running",
+        blocked_stage=None,
+        push_status="succeeded",
+    )
+    pending = await state.repository.ensure_run_evaluation(RUN_ID, "test_final")
+    assert pending.eval_external_id is None
+    finalize = RecordingStage("finalize")
+    service = _service(state, finalize=finalize)
+
+    result = await service.handle(_retry_job(automatic=False, recovery=True))
+
+    assert result["stage"] == "finalize"
+    assert finalize.calls == [RUN_ID]
 
 
 async def test_eval_blocked_resubmits_with_new_external_id(state: State) -> None:

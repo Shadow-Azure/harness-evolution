@@ -177,38 +177,61 @@ class EvolutionEvalSubmitter:
         )
         return submitted
 
-    async def submit_baselines(self, run: EvolutionRunRecord) -> None:
-        """Submit the validation and test baselines once, in parallel in flight."""
+    async def submit_validation_baseline(self, run: EvolutionRunRecord) -> None:
+        """Submit only the validation baseline before the first round starts."""
         if run.mode != "full" or run.status != "running" or not run.base_commit:
             return
-        for kind in ("validation_baseline", "test_baseline"):
-            await self._submit_run_evaluation(
-                run,
-                kind,
-                commit=run.base_commit,
-                ref=run.base_ref or run.base_commit,
-            )
+        await self._submit_run_evaluation(
+            run,
+            "validation_baseline",
+            commit=run.base_commit,
+            ref=run.base_ref or run.base_commit,
+        )
+
+    async def submit_test_evaluations(self, run: EvolutionRunRecord) -> None:
+        """Submit the held-out test baseline and final together at finalization.
+
+        Both submissions are in flight in parallel: the baseline targets
+        ``base_commit`` and the final targets the last accepted round or the
+        no-acceptance result commit.
+        """
+        if run.mode != "full" or run.status != "running" or not run.base_commit:
+            return
+        await self._submit_run_evaluation(
+            run,
+            "test_baseline",
+            commit=run.base_commit,
+            ref=run.base_ref or run.base_commit,
+        )
+        await self.submit_test_final(run)
 
     async def submit_test_final(
         self,
         run: EvolutionRunRecord,
     ) -> EvolutionEvaluationRecord:
-        """Submit the held-out test-set final at the final run-branch commit."""
-        rounds = await self._runs.list_rounds(run.id)
-        accepted = [round_ for round_ in rounds if round_.accepted and round_.commit_hash]
-        final_commit = (
-            max(accepted, key=lambda item: item.seq).commit_hash if accepted else run.base_commit
-        )
-        if not final_commit:
-            raise RunBlocked(
-                "run has no final commit for the test-set evaluation",
-                stage="eval",
-            )
+        """Submit the held-out test-set final at the final run commit."""
+        existing = await self._runs.get_run_evaluation(run.id, "test_final")
+        if existing is not None and existing.eval_external_id is not None:
+            return existing
+        final_commit = await self._test_final_commit(run)
         return await self._submit_run_evaluation(
             run,
             "test_final",
             commit=final_commit,
             ref=run.branch_name or final_commit,
+        )
+
+    async def _test_final_commit(self, run: EvolutionRunRecord) -> str:
+        """Resolve the final evaluation target without falling back to base."""
+        rounds = await self._runs.list_rounds(run.id)
+        accepted = [round_ for round_ in rounds if round_.accepted and round_.commit_hash]
+        if accepted:
+            return max(accepted, key=lambda item: item.seq).commit_hash or ""
+        if run.result_commit:
+            return run.result_commit
+        raise RunBlocked(
+            "run has no accepted commit or no-acceptance result commit for the test-set final",
+            stage="eval",
         )
 
     async def resubmit_run_evaluation(
@@ -547,8 +570,7 @@ class EvolutionEvalPoller:
             if pending:
                 kind = "evolution_advance"
             else:
-                test_final = await self._runs.get_run_evaluation(run.id, "test_final")
-                if test_final is not None and test_final.eval_status != "completed":
+                if not await self._test_evaluations_ready(run.id):
                     continue
                 kind = "evolution_finalize"
             if await self._ensure_followup(
@@ -559,6 +581,24 @@ class EvolutionEvalPoller:
             ):
                 acted_on.add(("run", run.id, kind))
         return len(acted_on)
+
+    async def _test_evaluations_ready(self, run_id: str) -> bool:
+        """Return whether finalize can progress without a test evaluation in flight.
+
+        A missing row still admits finalize so it can submit both test-set
+        evaluations. A row that exists but has no external id is not in flight
+        either: it was created but never accepted by the platform, so finalize
+        must be able to resubmit it.
+        """
+        for kind in ("test_baseline", "test_final"):
+            evaluation = await self._runs.get_run_evaluation(run_id, kind)
+            if (
+                evaluation is not None
+                and evaluation.eval_external_id is not None
+                and evaluation.eval_status != "completed"
+            ):
+                return False
+        return True
 
     async def _poll_round(
         self,

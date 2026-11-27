@@ -661,7 +661,9 @@ describe("evolution step content", () => {
     });
 
     expect(wrapper.text()).toContain("✓ 自进化有效");
-    expect(wrapper.text()).toContain("初始 v2.0.0");
+    expect(wrapper.text()).toContain("测试集终评得分");
+    expect(wrapper.text()).toContain("测试集基线（初始版本）");
+    expect(wrapper.text()).toContain("测试集基线 v2.0.0");
     expect(wrapper.text()).toContain("任务完成率");
     expect(wrapper.text()).toContain("cd34ab12ef56");
     expect(wrapper.text()).toContain("错误");

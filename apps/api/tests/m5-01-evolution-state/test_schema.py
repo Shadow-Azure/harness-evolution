@@ -107,6 +107,7 @@ async def test_evolution_schema_is_complete_and_indexed(
         "push_status",
         "pushed_at",
         "push_error",
+        "result_commit",
         "window_from",
         "window_to",
         "models",
