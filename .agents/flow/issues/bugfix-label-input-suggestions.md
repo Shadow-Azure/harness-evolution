@@ -52,15 +52,16 @@ github:
 唯一推荐方案：新增一个只读候选端点 + 把输入框换成远端自动补全控件；保存语义（完整集合替换）不变。
 
 - **API**：`GET /api/workspaces/{wid}/bad-case-labels/suggestions?q=<prefix>&limit=<n>`，`require_workspace_role("viewer")`，返回 `{ "items": [ { "label": "review", "badCaseCount": 12 } ] }`。
-  - 数据源：`SELECT catalog_label, COUNT(*) FROM bad_cases WHERE catalog_label IS NOT NULL [AND catalog_label LIKE :escaped_prefix || '%'] GROUP BY catalog_label ORDER BY count DESC, label ASC LIMIT :limit`。
-  - 参数：`q` 可选、最长 128；`limit` 1–50，默认 20；`%`/`_` 按字面量转义（沿用会话搜索的转义方式）。空 `q` 返回出现次数最多的前 N 个。
+  - 数据源：`SELECT catalog_label, COUNT(*) FROM bad_cases WHERE catalog_label IS NOT NULL AND catalog_label != '' [AND catalog_label LIKE :escaped_prefix || '%'] GROUP BY catalog_label ORDER BY count DESC, label ASC LIMIT :limit`。
+  - 参数：`q` 可选、最长 128、大小写不敏感；`limit` 1–50，默认 20；`%`/`_` 按字面量转义（沿用会话搜索的转义方式）。空 `q` 返回出现次数最多的前 N 个。
+  - 计数与排序按精确 label 值聚合（SQLite 默认 BINARY、MySQL `utf8mb4_bin`），`Review` 与 `review` 是两行各自计数；排除 `NULL` 与空串。
   - 为什么挂 workspace 前缀：复用既有 `viewer` 鉴权与 404 语义；候选是公共目录词表，**不按当前空间可见性收窄**（配置 label 前该空间本就看不到任何 case），也不读取任何其他空间的规则集合。
-- **前端**：`BadCaseLabelsTab.vue` 用 `el-autocomplete`（已在 `test/setup` 注册）替换纯 `input`：
-  - 远端 `fetch-suggestions`（200ms debounce），`value-key="label"`，展示 `label · N 条`；
-  - 保留自由输入（新 label 可能尚未同步到本地），禁用 `select-when-unmatched` 的隐式行为；
+- **前端**：`BadCaseLabelsTab.vue` 用自绘候选下拉（不引入 Element Plus 弹层）替换纯 `input`：
+  - 远端查询（200ms debounce），展示 `label · N 条`，本地候选再按当前输入做大小写不敏感前缀过滤；
+  - 保留自由输入（新 label 可能尚未同步到本地），不依赖控件的隐式提交行为；
   - 已配置/重复 label 从候选里过滤掉；选中只加入草稿（不保存），「添加」按钮与 Enter 行为不变；
   - 候选接口失败时降级为纯手输，不阻塞保存；loading 态不影响已输入内容。
-- **契约**：新增 `WorkspaceBadCaseLabelSuggestion`、`WorkspaceBadCaseLabelSuggestionListResponse`，`pnpm contract:generate` 后进 `packages/contracts`。
+- **契约**：新增 `WorkspaceBadCaseLabelSuggestion`、`WorkspaceBadCaseLabelSuggestions`，`pnpm contract:generate` 后进 `packages/contracts`。
 - **文档**：设计 17 §6 增加端点、§7 增加下拉交互；更新 Agent Note `2026-11-24-workspace-bad-case-label-routing` 的 API/UI 段并重录 i18n。
 
 ## 实施步骤
@@ -68,7 +69,7 @@ github:
 1. 先写失败测试：API 用例覆盖 DISTINCT、前缀过滤、`limit` 边界、空 `q` 按计数排序、`NULL` 排除、viewer 可读 / 未认证 401、非法 `limit` 422；组件用例覆盖候选渲染、选中加入草稿、自由输入、已配置去重、接口失败降级。
 2. 实现 repository 查询（复用 `bad_cases` 索引）与 service、路由、Pydantic 响应模型。
 3. `pnpm contract:generate`；前端加 `listWorkspaceBadCaseLabelSuggestions` API + 组合式函数（挂在 `adminBadCaseLabels` 前缀下便于失效）。
-4. 把输入框换成 `el-autocomplete`，接通 debounce、过滤、降级；补组件测试。
+4. 把输入框换成自绘候选下拉（不引入 Element Plus 弹层），接通 debounce、过滤、降级；补组件测试。
 5. 同步原型 `plans/ui-prototype-v2/harness-evolution.html` 的下拉形态；更新设计 17 与 Agent Note。
 
 ## 依赖与交付边界
@@ -90,7 +91,7 @@ pnpm contract:check && pnpm typecheck && pnpm lint:api && pnpm lint:web
 
 ## 验收标准
 
-- 候选端点只返回非空 `catalog_label`，按出现次数降序、同数按字典序，支持前缀与 `limit`，viewer 可读且未认证被拒。
+- 候选端点只返回非 `NULL`、非空串的 `catalog_label`，按出现次数降序、同数按字典序，支持大小写不敏感前缀与 `limit`，viewer 可读且未认证被拒。
 - 输入框有候选下拉且不阻塞自由输入；选中不自动保存；已配置 label 不出现在候选中。
 - 候选接口异常时页面仍可手动添加与保存。
 - 保存后的历史重算、计数与空间隔离行为与现状一致。

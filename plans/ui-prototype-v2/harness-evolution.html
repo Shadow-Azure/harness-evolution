@@ -7774,10 +7774,10 @@ function v2LabelSuggestFilter(value) {
   const box = document.getElementById('v2LabelSuggestions');
   const input = document.getElementById('v2LabelInput');
   if (!box || !input) return;
-  const prefix = (value || '').trim();
+  const prefix = (value || '').trim().toLowerCase();
   let visible = 0;
   box.querySelectorAll('[data-v2-label-pick]').forEach(row => {
-    const match = !prefix || (row.dataset.label || '').startsWith(prefix);
+    const match = !prefix || (row.dataset.label || '').toLowerCase().startsWith(prefix);
     row.hidden = !match;
     row.classList.remove('active');
     row.setAttribute('aria-selected', 'false');

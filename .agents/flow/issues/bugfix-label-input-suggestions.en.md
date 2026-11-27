@@ -52,15 +52,16 @@ Root cause: a missing read-only label vocabulary endpoint, plus an input control
 The only recommended approach: add one read-only suggestion endpoint and swap the input for a remote autocomplete control. Saving semantics (full-set replacement) stay unchanged.
 
 - **API**: `GET /api/workspaces/{wid}/bad-case-labels/suggestions?q=<prefix>&limit=<n>`, guarded by `require_workspace_role("viewer")`, returning `{ "items": [ { "label": "review", "badCaseCount": 12 } ] }`.
-  - Source: `SELECT catalog_label, COUNT(*) FROM bad_cases WHERE catalog_label IS NOT NULL [AND catalog_label LIKE :escaped_prefix || '%'] GROUP BY catalog_label ORDER BY count DESC, label ASC LIMIT :limit`.
-  - Parameters: optional `q` up to 128 characters; `limit` 1–50, default 20; `%` and `_` escaped as literals (the same escaping the session search uses). An empty `q` returns the most frequent labels.
+  - Source: `SELECT catalog_label, COUNT(*) FROM bad_cases WHERE catalog_label IS NOT NULL AND catalog_label != '' [AND catalog_label LIKE :escaped_prefix || '%'] GROUP BY catalog_label ORDER BY count DESC, label ASC LIMIT :limit`.
+  - Parameters: optional `q` up to 128 characters, matched case-insensitively; `limit` 1–50, default 20; `%` and `_` escaped as literals (the same escaping the session search uses). An empty `q` returns the most frequent labels.
+  - Counts and ordering aggregate exact label values (SQLite's default BINARY, MySQL's `utf8mb4_bin`), so `Review` and `review` stay separate rows with their own counts; `NULL` and empty strings are excluded.
   - Why a workspace prefix: it reuses the existing viewer authorization and 404 semantics. The vocabulary is the public catalog's, so it is not narrowed by current-space visibility (a space with no rules sees no cases yet) and never reads another workspace's rules.
-- **Frontend**: replace the plain input in `BadCaseLabelsTab.vue` with `el-autocomplete` (already registered in `test/setup`):
-  - remote `fetch-suggestions` with a 200 ms debounce, `value-key="label"`, rendering `label · N cases`;
-  - free-text entry stays (a new label may not be synced yet); do not rely on `select-when-unmatched` side effects;
+- **Frontend**: replace the plain input in `BadCaseLabelsTab.vue` with a self-drawn candidate dropdown that does not pull in an Element Plus popup layer:
+  - remote lookup with a 200 ms debounce, rendering `label · N cases`, plus a local case-insensitive prefix filter over already-loaded candidates;
+  - free-text entry stays (a new label may not be synced yet); no reliance on a control's implicit commit behavior;
   - configured or duplicate labels are filtered out of the list; selecting only adds to the draft (never saves), and the "Add" button plus Enter keep working;
   - when the suggestion endpoint fails, degrade to plain typing without blocking save; loading must not clear typed text.
-- **Contracts**: add `WorkspaceBadCaseLabelSuggestion` and `WorkspaceBadCaseLabelSuggestionListResponse`, then run `pnpm contract:generate` so `packages/contracts` carries them.
+- **Contracts**: add `WorkspaceBadCaseLabelSuggestion` and `WorkspaceBadCaseLabelSuggestions`, then run `pnpm contract:generate` so `packages/contracts` carries them.
 - **Docs**: extend design 17 §6 with the endpoint and §7 with the dropdown interaction; update the Agent Note `2026-11-24-workspace-bad-case-label-routing` API/UI paragraph and re-record the pair.
 
 ## Implementation steps
@@ -68,7 +69,7 @@ The only recommended approach: add one read-only suggestion endpoint and swap th
 1. Write the failing tests first: API cases for DISTINCT, prefix filtering, `limit` bounds, empty `q` ordering by count, `NULL` exclusion, viewer readable, 401 unauthenticated, 422 invalid `limit`; component cases for suggestion rendering, selection into the draft, free text, configured-label filtering, and endpoint-failure degradation.
 2. Implement the repository query (reusing the `bad_cases` index), the service, the route, and the Pydantic response model.
 3. Run `pnpm contract:generate`; add the frontend API call plus a composable under the `adminBadCaseLabels` prefix for invalidation.
-4. Swap the input for `el-autocomplete` with debounce, filtering, and degradation; extend the component tests.
+4. Swap the input for a self-drawn candidate dropdown (no Element Plus popup layer) with debounce, filtering, and degradation; extend the component tests.
 5. Mirror the dropdown in the prototype `plans/ui-prototype-v2/harness-evolution.html`, and update design 17 plus the Agent Note.
 
 ## Dependencies and boundary
@@ -90,7 +91,7 @@ pnpm contract:check && pnpm typecheck && pnpm lint:api && pnpm lint:web
 
 ## Acceptance
 
-- The suggestion endpoint returns only non-null `catalog_label` values, ordered by frequency then label, honoring prefix and `limit`, readable by viewers and rejected when unauthenticated.
+- The suggestion endpoint returns only non-null, non-empty `catalog_label` values, ordered by frequency then label, honoring a case-insensitive prefix and `limit`, readable by viewers and rejected when unauthenticated.
 - The input shows a suggestion dropdown without blocking free text; selection never auto-saves; configured labels are absent from suggestions.
 - A failing suggestion endpoint still allows manual add and save.
 - Save-time reconciliation, counters, and workspace isolation stay identical to the current behavior.
