@@ -14,6 +14,7 @@ priority: P2
 status: in-progress
 scope:
   - .agents/**
+  - .github/**
   - .env.example
   - apps/api/alembic/**
   - apps/api/app/api/**
