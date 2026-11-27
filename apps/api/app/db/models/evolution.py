@@ -105,6 +105,7 @@ evolution_runs = Table(
     Column("paused_by", String(36)),
     Column("resumed_at", DateTime(timezone=True)),
     Column("blocked_stage", String(16), nullable=True),
+    Column("result_commit", String(40), nullable=True),
     Column("retry_attempts", Integer, nullable=False, server_default="0"),
     Column("next_retry_at", DateTime(timezone=True), nullable=True),
     Column("eval_status", String(16), nullable=False, server_default="pending"),
@@ -449,6 +450,7 @@ class EvolutionRunRecord:
     created_by: str | None
     created_at: datetime
     finished_at: datetime | None
+    result_commit: str | None = None
     push_repo_url: str = ""
     validation_project_id: str = ""
     test_project_id: str = ""
@@ -747,6 +749,7 @@ def record_from_evolution_run(row: Mapping[str, Any]) -> EvolutionRunRecord:
         paused_by=_optional_text(row.get("paused_by")),
         resumed_at=_optional_timestamp(row.get("resumed_at")),
         finished_at=_optional_timestamp(row["finished_at"]),
+        result_commit=_optional_text(row.get("result_commit")),
         workspace_id=(_optional_text(row.get("workspace_id")) or DEFAULT_WORKSPACE_ID),
         potential_policy=_optional_json_dict(row.get("potential_policy")),
         cache_enabled=bool(row.get("cache_enabled", False)),

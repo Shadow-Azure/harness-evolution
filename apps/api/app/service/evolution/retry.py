@@ -239,18 +239,25 @@ class EvolutionRetryService:
         dispatched: Mapping[str, Any]
         try:
             if blocked_stage == "eval" and cleared_run_evals:
-                submitter = self._require_stage(self._eval_submitter, "eval submitter")
-                resubmitted_evaluations = [
-                    await submitter.resubmit_run_evaluation(run, cleared.kind)
-                    for cleared in cleared_run_evals
-                ]
-                dispatched = {
-                    "kind": cleared_run_evals[0].kind,
-                    "evalExternalId": resubmitted_evaluations[0].eval_external_id,
-                    "resubmittedKinds": [evaluation.kind for evaluation in resubmitted_evaluations],
-                    "previousEvalExternalId": previous_eval_id,
-                    "jobId": job.id,
-                }
+                if await self._legacy_no_acceptance_final(run, cleared_run_evals):
+                    # A legacy no-acceptance run has no result commit yet; let
+                    # finalize create and push it before resubmitting test_final.
+                    dispatched = await self._finalize(run, job)
+                else:
+                    submitter = self._require_stage(self._eval_submitter, "eval submitter")
+                    resubmitted_evaluations = [
+                        await submitter.resubmit_run_evaluation(run, cleared.kind)
+                        for cleared in cleared_run_evals
+                    ]
+                    dispatched = {
+                        "kind": cleared_run_evals[0].kind,
+                        "evalExternalId": resubmitted_evaluations[0].eval_external_id,
+                        "resubmittedKinds": [
+                            evaluation.kind for evaluation in resubmitted_evaluations
+                        ],
+                        "previousEvalExternalId": previous_eval_id,
+                        "jobId": job.id,
+                    }
             elif blocked_stage == "eval":
                 if cleared_round is None:
                     raise RuntimeError("evaluation retry round was not prepared")
@@ -279,6 +286,19 @@ class EvolutionRetryService:
         }
         result.update(dispatched)
         return result
+
+    async def _legacy_no_acceptance_final(
+        self,
+        run: EvolutionRunRecord,
+        cleared_run_evals: Sequence[EvolutionEvaluationRecord],
+    ) -> bool:
+        """Return whether finalize must create a result commit before resubmitting."""
+        if run.result_commit is not None:
+            return False
+        if not any(evaluation.kind == "test_final" for evaluation in cleared_run_evals):
+            return False
+        rounds = await self._runs.list_rounds(run.id)
+        return not any(round_.accepted for round_ in rounds)
 
     async def _pending_run_eval(
         self,
@@ -331,6 +351,13 @@ class EvolutionRetryService:
         """Resume an interrupted retry job from its durable round/final facts."""
         pending_run_eval = await self._pending_run_eval(run.id)
         if pending_run_eval is not None and self._eval_submitter is not None:
+            if pending_run_eval.kind == "test_final" and await self._legacy_no_acceptance_final(
+                run,
+                (pending_run_eval,),
+            ):
+                # The interrupted retry had not created the no-acceptance
+                # result commit yet; finalize creates it before resubmitting.
+                return await self._finalize(run, job)
             resubmitted = await self._eval_submitter.resubmit_run_evaluation(
                 run,
                 pending_run_eval.kind,
