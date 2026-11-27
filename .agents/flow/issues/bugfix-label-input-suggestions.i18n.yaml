@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-label-input-suggestions.md
-bugfix-label-input-suggestions.md: cfaf22a934d380cd47cd2fe17c24f729704fc2df
-bugfix-label-input-suggestions.en.md: 7c2b7e10fab956c510cd5386f48ad6089ae38c0e
+bugfix-label-input-suggestions.md: 12ef7ff8ad128e51a888cd75bc76afce41f78276
+bugfix-label-input-suggestions.en.md: 71ff4994a44cd4d5c920505c5eb9ef7c5b2098d2

@@ -10,6 +10,8 @@ The real-browser E2E suite (79 cases, M1–M8) has a 10-minute internal ceiling 
 
 ## Decision
 
+CI API and browser suites use a 30-minute budget: API reached 93% and browsers passed 84 cases before the 15-minute limit. HE_E2E_TIMEOUT_MS overrides the local default; step/job limits of 62/65 minutes accommodate one retry. Per-case and CDP limits remain unchanged.
+
 - Raise the internal ceiling in `scripts/run-e2e.mjs` from 600 to 900 seconds (`HE_E2E_TIMEOUT_MS` default) while keeping it environment-overridable.
 - Raise the CI e2e step limit from 12 to 18 minutes and the job limit from 15 to 25 minutes, leaving a 3-minute and a 10-minute margin over the suite budget.
 - The ceiling stays a hard gate: a genuine hang is still killed at 15 minutes and returns 124, so a performance regression cannot masquerade as a pass — it only separates "slow runner" from "failing case".

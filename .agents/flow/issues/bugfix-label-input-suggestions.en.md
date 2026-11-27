@@ -11,6 +11,7 @@ depends:
 priority: P2
 status: in-progress
 scope:
+  - .github/workflows/ci.yml
   - apps/api/**
   - apps/web/**
   - packages/contracts/**

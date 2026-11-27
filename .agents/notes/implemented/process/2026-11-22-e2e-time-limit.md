@@ -10,6 +10,8 @@ Status: implemented
 
 ## Decision
 
+CI API and browser suites use a 30-minute budget: API reached 93% and browsers passed 84 cases before the 15-minute limit. HE_E2E_TIMEOUT_MS overrides the local default; step/job limits of 62/65 minutes accommodate one retry. Per-case and CDP limits remain unchanged.
+
 - `scripts/run-e2e.mjs` 的内部上限从 600 秒提到 900 秒（`HE_E2E_TIMEOUT_MS` 默认值），仍可用环境变量覆盖。
 - CI 的 e2e 步骤上限从 12 分钟提到 18 分钟，job 上限从 15 分钟提到 25 分钟，给 suite 上限留出 3 分钟与 10 分钟的余量。
 - 上限仍是硬闸：真正的挂起在 15 分钟处被杀并返回 124，不把性能回归伪装成通过；只是把「慢 runner」与「用例失败」分开。
