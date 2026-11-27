@@ -7,9 +7,11 @@ import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
 import {
   useReplaceWorkspaceBadCaseLabels,
   useWorkspaceBadCaseLabels,
+  useWorkspaceBadCaseLabelSuggestions,
 } from "../../../composables/useWorkspaces";
 
 const LABEL_MAX_LENGTH = 128;
+const SUGGESTIONS_LIST_ID = "bad-case-label-suggestions";
 
 const props = defineProps<{
   workspaceId: string;
@@ -17,6 +19,9 @@ const props = defineProps<{
 }>();
 
 const labelsQuery = useWorkspaceBadCaseLabels(() => props.workspaceId);
+const suggestionsQuery = useWorkspaceBadCaseLabelSuggestions(
+  () => props.workspaceId,
+);
 const mutation = useReplaceWorkspaceBadCaseLabels(() => props.workspaceId);
 
 const savedItems = computed<string[]>(() => labelsQuery.data.value?.items ?? []);
@@ -28,17 +33,49 @@ const draft = ref<string[]>([...savedItems.value]);
 const inputValue = ref("");
 const inputError = ref("");
 const operationError = ref("");
+const suggestionsOpen = ref(false);
+const activeSuggestionIndex = ref(-1);
+
+/** Candidates not already pending in the draft, so added labels disappear. */
+const visibleSuggestions = computed(() =>
+  suggestionsQuery.suggestions.value.filter(
+    (item) => !draft.value.includes(item.label),
+  ),
+);
+
+const suggestionsVisible = computed(
+  () => suggestionsOpen.value && visibleSuggestions.value.length > 0,
+);
+
+const activeSuggestionId = computed(() =>
+  activeSuggestionIndex.value < 0
+    ? undefined
+    : suggestionOptionId(activeSuggestionIndex.value),
+);
+
+/**
+ * Build the stable id of one rendered option for `aria-activedescendant`.
+ * @param index Position in the filtered candidate list.
+ * @returns DOM id of that option.
+ */
+function suggestionOptionId(index: number): string {
+  return `${SUGGESTIONS_LIST_ID}-option-${index}`;
+}
 
 /** Identity comparison for label lists; order-sensitive because both sides sort. */
 function sameLabels(left: string[], right: string[]): boolean {
   return left.join("\u0000") === right.join("\u0000");
 }
 
-// Switching workspace discards unsaved edits: adopt the new workspace's snapshot.
+// Switching workspace discards unsaved edits and any open candidate list.
 watch(
   () => props.workspaceId,
   () => {
     draft.value = [...savedItems.value];
+    inputValue.value = "";
+    inputError.value = "";
+    suggestionsQuery.reset();
+    closeSuggestions();
   },
 );
 
@@ -79,6 +116,104 @@ function addLabel(): void {
   if (inputError.value) return;
   draft.value = [...draft.value, inputValue.value.trim()].sort();
   inputValue.value = "";
+  closeSuggestions();
+}
+
+/**
+ * Open the candidate dropdown and queue a debounced lookup for the input.
+ * @returns No value.
+ */
+function openSuggestions(): void {
+  suggestionsOpen.value = true;
+  activeSuggestionIndex.value = -1;
+  suggestionsQuery.load(inputValue.value);
+}
+
+/**
+ * Hide the candidate dropdown while keeping the already-loaded labels.
+ * @returns No value.
+ */
+function closeSuggestions(): void {
+  suggestionsOpen.value = false;
+  activeSuggestionIndex.value = -1;
+}
+
+/**
+ * Focus shows the most common catalog labels when the input is still empty.
+ * @returns No value.
+ */
+function onInputFocus(): void {
+  openSuggestions();
+}
+
+/**
+ * Typing debounces a prefix lookup and drops the previous highlight.
+ * @param event Native input event carrying the new text.
+ * @returns No value.
+ */
+function onInputInput(event: Event): void {
+  const value = (event.target as HTMLInputElement).value;
+  inputValue.value = value;
+  inputError.value = "";
+  activeSuggestionIndex.value = -1;
+  suggestionsOpen.value = true;
+  suggestionsQuery.load(value);
+}
+
+/**
+ * Reopen a closed dropdown when the already-focused input is clicked again.
+ * @returns No value.
+ */
+function onInputClick(): void {
+  if (!suggestionsOpen.value) openSuggestions();
+}
+
+/**
+ * Move the highlight through the visible candidates, wrapping at both ends.
+ * @param delta +1 for ArrowDown, -1 for ArrowUp.
+ * @returns No value.
+ */
+function moveSuggestion(delta: 1 | -1): void {
+  if (!suggestionsVisible.value) {
+    if (!suggestionsOpen.value) openSuggestions();
+    return;
+  }
+  const total = visibleSuggestions.value.length;
+  const current = activeSuggestionIndex.value;
+  activeSuggestionIndex.value =
+    delta === 1
+      ? (current + 1) % total
+      : current <= 0
+        ? total - 1
+        : current - 1;
+}
+
+/**
+ * Add one candidate to the draft without saving, exactly like a typed label.
+ * @param label Candidate label chosen with the mouse or Enter.
+ * @returns No value.
+ */
+function selectSuggestion(label: string): void {
+  inputError.value = "";
+  if (!draft.value.includes(label)) {
+    draft.value = [...draft.value, label].sort();
+  }
+  inputValue.value = "";
+  closeSuggestions();
+}
+
+/**
+ * Enter picks the highlighted candidate; without one it falls back to the
+ * regular free-input path so unsynced labels stay addable.
+ * @returns No value.
+ */
+function onEnter(): void {
+  const active = visibleSuggestions.value[activeSuggestionIndex.value];
+  if (suggestionsVisible.value && active) {
+    selectSuggestion(active.label);
+    return;
+  }
+  addLabel();
 }
 
 /**
@@ -206,15 +341,55 @@ function labelErrorMessage(error: unknown): string {
         v-if="canManage"
         class="add-row"
       >
-        <input
-          v-model="inputValue"
-          class="label-input"
-          type="text"
-          :maxlength="LABEL_MAX_LENGTH + 1"
-          placeholder="输入 label"
-          data-testid="bad-case-label-input"
-          @keyup.enter="addLabel"
-        >
+        <div class="label-input-wrap">
+          <input
+            class="label-input"
+            type="text"
+            :value="inputValue"
+            :maxlength="LABEL_MAX_LENGTH + 1"
+            placeholder="输入 label"
+            role="combobox"
+            autocomplete="off"
+            :aria-expanded="suggestionsVisible ? 'true' : 'false'"
+            :aria-controls="SUGGESTIONS_LIST_ID"
+            aria-autocomplete="list"
+            :aria-activedescendant="activeSuggestionId"
+            data-testid="bad-case-label-input"
+            @focus="onInputFocus"
+            @input="onInputInput"
+            @click="onInputClick"
+            @blur="closeSuggestions"
+            @keydown.down.prevent="moveSuggestion(1)"
+            @keydown.up.prevent="moveSuggestion(-1)"
+            @keydown.esc="closeSuggestions"
+            @keyup.enter="onEnter"
+          >
+          <div
+            v-if="suggestionsVisible"
+            :id="SUGGESTIONS_LIST_ID"
+            class="label-suggestions"
+            role="listbox"
+            aria-label="label 候选"
+            data-testid="bad-case-label-suggestions"
+            @mousedown.prevent
+          >
+            <div
+              v-for="(item, index) in visibleSuggestions"
+              :id="suggestionOptionId(index)"
+              :key="item.label"
+              class="label-suggestion"
+              :class="{ active: index === activeSuggestionIndex }"
+              role="option"
+              :aria-selected="index === activeSuggestionIndex ? 'true' : 'false'"
+              :data-testid="`bad-case-label-suggestion-${item.label}`"
+              @mouseenter="activeSuggestionIndex = index"
+              @click="selectSuggestion(item.label)"
+            >
+              <span class="label-suggestion-label">{{ item.label }}</span>
+              <span class="label-suggestion-count">{{ item.badCaseCount }} 条</span>
+            </div>
+          </div>
+        </div>
         <button
           class="btn"
           type="button"
@@ -363,6 +538,8 @@ function labelErrorMessage(error: unknown): string {
 
 .label-input {
   flex: 1;
+  box-sizing: border-box;
+  width: 100%;
   min-width: 0;
   padding: 5px 9px;
   border: 1px solid var(--border);
@@ -376,6 +553,65 @@ function labelErrorMessage(error: unknown): string {
 .label-input:focus {
   outline: none;
   border-color: var(--blue);
+}
+
+.label-input-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.label-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 214px;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.label-suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.label-suggestion:hover,
+.label-suggestion.active {
+  background: color-mix(in srgb, var(--blue) 9%, transparent);
+  color: var(--blue);
+}
+
+.label-suggestion-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.label-suggestion-count {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.label-suggestion.active .label-suggestion-count {
+  color: color-mix(in srgb, var(--blue) 65%, var(--text-faint));
 }
 
 .input-error {

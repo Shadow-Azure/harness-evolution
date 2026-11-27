@@ -3,6 +3,7 @@ import type {
   Workspace,
   WorkspaceBadCaseLabelConfiguration,
   WorkspaceBadCaseLabelRequest,
+  WorkspaceBadCaseLabelSuggestion,
   WorkspaceCreateRequest,
   WorkspaceCredentialCreated,
   WorkspaceMember,
@@ -13,6 +14,8 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import {
   computed,
+  onScopeDispose,
+  ref,
   toValue,
   type MaybeRefOrGetter,
   type Ref,
@@ -27,6 +30,7 @@ import {
   createWorkspaceCredential,
   listMemberCandidates,
   listWorkspaceBadCaseLabels,
+  listWorkspaceBadCaseLabelSuggestions,
   listWorkspaceCredentials,
   listWorkspaceMembers,
   listWorkspaces,
@@ -352,6 +356,84 @@ export function useWorkspaceBadCaseLabels(
       () => toValue(enabled) && toValue(workspaceId).length > 0,
     ),
   });
+}
+
+/** Debounce applied to label candidates so typing stays responsive. */
+const LABEL_SUGGESTION_DEBOUNCE_MS = 200;
+
+/**
+ * Load public catalog label candidates for the label input.
+ *
+ * The dropdown is advisory: lookups debounce for 200ms, only the newest
+ * response may replace the candidate list, and a failed lookup clears the
+ * candidates instead of surfacing an error so free-text entry keeps working.
+ * @param workspaceId Workspace route identifier.
+ * @returns Candidate list state plus its deferred loader and reset helper.
+ */
+export function useWorkspaceBadCaseLabelSuggestions(
+  workspaceId: MaybeRefOrGetter<string>,
+) {
+  const suggestions = ref<WorkspaceBadCaseLabelSuggestion[]>([]);
+  const loading = ref(false);
+  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+  let requestSequence = 0;
+
+  function cancelDebounce(): void {
+    if (debounceTimer === undefined) return;
+    globalThis.clearTimeout(debounceTimer);
+    debounceTimer = undefined;
+  }
+
+  async function fetchSuggestions(
+    query: string,
+    sequence: number,
+  ): Promise<void> {
+    loading.value = true;
+    try {
+      const response = await listWorkspaceBadCaseLabelSuggestions(
+        toValue(workspaceId),
+        { q: query },
+      );
+      if (sequence !== requestSequence) return;
+      suggestions.value = response.items;
+    } catch {
+      if (sequence !== requestSequence) return;
+      suggestions.value = [];
+    } finally {
+      if (sequence === requestSequence) loading.value = false;
+    }
+  }
+
+  /**
+   * Queue one debounced candidate lookup, dropping the pending one.
+   * @param query Prefix to match; an empty string requests the most common labels.
+   * @returns No value.
+   */
+  function load(query: string): void {
+    cancelDebounce();
+    const sequence = ++requestSequence;
+    const prefix = query.trim();
+    loading.value = true;
+    debounceTimer = globalThis.setTimeout(() => {
+      debounceTimer = undefined;
+      void fetchSuggestions(prefix, sequence);
+    }, LABEL_SUGGESTION_DEBOUNCE_MS);
+  }
+
+  /**
+   * Clear candidates and cancel any debounced lookup.
+   * @returns No value.
+   */
+  function reset(): void {
+    cancelDebounce();
+    requestSequence += 1;
+    suggestions.value = [];
+    loading.value = false;
+  }
+
+  onScopeDispose(cancelDebounce);
+
+  return { suggestions, loading, load, reset };
 }
 
 /**

@@ -2,6 +2,7 @@ import type {
   Workspace,
   WorkspaceBadCaseLabelConfiguration,
   WorkspaceBadCaseLabelRequest,
+  WorkspaceBadCaseLabelSuggestions,
   WorkspaceCreateRequest,
   WorkspaceCredentialCreated,
   WorkspaceCredentialListResponse,
@@ -221,6 +222,31 @@ export function listWorkspaceBadCaseLabels(
 ): Promise<WorkspaceBadCaseLabelConfiguration> {
   return request<WorkspaceBadCaseLabelConfiguration>(
     workspacePath(workspaceId, "/bad-case-labels"),
+  );
+}
+
+/**
+ * Read the public catalog labels available as candidates for one prefix.
+ *
+ * The vocabulary is the shared catalog projection, so it is not narrowed by
+ * this workspace's rules; an empty prefix asks for the most common labels.
+ * @param workspaceId Route workspace identifier.
+ * @param params Optional case-sensitive prefix (at most 128 characters) and page size (1–50, default 20).
+ * @returns Candidate labels ordered by case count, then label.
+ */
+export function listWorkspaceBadCaseLabelSuggestions(
+  workspaceId: string,
+  params: { q?: string; limit?: number } = {},
+): Promise<WorkspaceBadCaseLabelSuggestions> {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.limit !== undefined) search.set("limit", String(params.limit));
+  const suffix = search.toString();
+  return request<WorkspaceBadCaseLabelSuggestions>(
+    workspacePath(
+      workspaceId,
+      `/bad-case-labels/suggestions${suffix ? `?${suffix}` : ""}`,
+    ),
   );
 }
 

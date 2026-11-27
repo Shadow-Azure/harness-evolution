@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
-import type { WorkspaceBadCaseLabelConfiguration } from "@harness/contracts";
+import type {
+  WorkspaceBadCaseLabelConfiguration,
+  WorkspaceBadCaseLabelSuggestion,
+} from "@harness/contracts";
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { http, HttpResponse } from "msw";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { server } from "../../../test/server";
 import { elementPlusComponents } from "../../../test/setup";
@@ -12,7 +15,21 @@ import BadCaseLabelsTab from "./BadCaseLabelsTab.vue";
 
 const workspaceId = "ws-labels";
 const base = `/api/workspaces/${workspaceId}`;
+const suggestionsPath = `${base}/bad-case-labels/suggestions`;
+const inputSelector = "[data-testid='bad-case-label-input']";
 const wrappers: VueWrapper[] = [];
+
+/** Debounce wired into the suggestion lookup; tests advance exactly this much. */
+const SUGGESTION_DEBOUNCE_MS = 200;
+
+/** Real timer captured before any test installs fake ones. */
+const realSetTimeout = globalThis.setTimeout;
+
+const topSuggestions: WorkspaceBadCaseLabelSuggestion[] = [
+  { label: "review", badCaseCount: 12 },
+  { label: "tool-use", badCaseCount: 7 },
+  { label: "performance", badCaseCount: 2 },
+];
 
 function config(
   items: string[],
@@ -25,6 +42,16 @@ function newClient(gcTime = 0): QueryClient {
   return new QueryClient({
     defaultOptions: { queries: { gcTime, retry: false } },
   });
+}
+
+/**
+ * Register the empty candidate response every test starts from.
+ * @returns No value.
+ */
+function registerDefaultSuggestions(): void {
+  server.use(
+    http.get(suggestionsPath, () => HttpResponse.json({ items: [] })),
+  );
 }
 
 async function mountTab(
@@ -50,10 +77,41 @@ function chipLabels(wrapper: VueWrapper): string[] {
     .map((chip) => chip.text().replace("×", "").trim());
 }
 
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+function suggestionLabels(wrapper: VueWrapper): string[] {
+  return wrapper
+    .findAll(".label-suggestion .label-suggestion-label")
+    .map((node) => node.text());
+}
+
+/**
+ * Let real macrotasks run so mocked fetch promises settle under fake timers.
+ * @returns No value.
+ */
+async function settleRealTimers(): Promise<void> {
+  for (let round = 0; round < 4; round += 1) {
+    await new Promise<void>((resolve) => {
+      realSetTimeout(resolve, 0);
+    });
+  }
+}
+
+/**
+ * Advance the debounce and flush the mocked request behind it.
+ * @returns No value.
+ */
+async function advanceSuggestions(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(SUGGESTION_DEBOUNCE_MS);
+  await settleRealTimers();
+}
+
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: "error" });
+  registerDefaultSuggestions();
+});
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
   server.resetHandlers();
+  registerDefaultSuggestions();
 });
 afterAll(() => server.close());
 
@@ -225,5 +283,283 @@ describe("Badcase 类型 label management tab", () => {
     expect(wrapper.find("[data-testid='add-bad-case-label']").exists()).toBe(false);
     expect(wrapper.find(".chip-remove").exists()).toBe(false);
     expect(wrapper.findAll("[data-testid='bad-case-label-chips'] .chip")).toHaveLength(1);
+  });
+});
+
+describe("Badcase 类型 label candidate dropdown", () => {
+  it("shows the most common catalog labels when the empty input takes focus", async () => {
+    server.use(
+      http.get(`${base}/bad-case-labels`, () => HttpResponse.json(config([]))),
+      http.get(suggestionsPath, () =>
+        HttpResponse.json({ items: topSuggestions }),
+      ),
+    );
+    const wrapper = await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await wrapper.get(inputSelector).trigger("focus");
+      await advanceSuggestions();
+
+      const list = wrapper.get("[data-testid='bad-case-label-suggestions']");
+      expect(list.attributes("role")).toBe("listbox");
+      expect(suggestionLabels(wrapper)).toEqual([
+        "review",
+        "tool-use",
+        "performance",
+      ]);
+      expect(
+        wrapper.get("[data-testid='bad-case-label-suggestion-review']").text(),
+      ).toContain("12 条");
+      expect(wrapper.get(inputSelector).attributes("aria-expanded")).toBe(
+        "true",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("queries the typed prefix only after the 200ms debounce", async () => {
+    const queries: Array<string | null> = [];
+    server.use(
+      http.get(`${base}/bad-case-labels`, () => HttpResponse.json(config([]))),
+      http.get(suggestionsPath, ({ request }) => {
+        const q = new URL(request.url).searchParams.get("q");
+        queries.push(q);
+        return HttpResponse.json({
+          items:
+            q === "rev"
+              ? [{ label: "review", badCaseCount: 12 }]
+              : topSuggestions,
+        });
+      }),
+    );
+    const wrapper = await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await wrapper.get(inputSelector).setValue("rev");
+      await vi.advanceTimersByTimeAsync(SUGGESTION_DEBOUNCE_MS - 1);
+      expect(queries).toEqual([]);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await settleRealTimers();
+      expect(queries).toEqual(["rev"]);
+      expect(suggestionLabels(wrapper)).toEqual(["review"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("hides labels already configured in the draft", async () => {
+    server.use(
+      http.get(`${base}/bad-case-labels`, () =>
+        HttpResponse.json(config(["review"])),
+      ),
+      http.get(suggestionsPath, () =>
+        HttpResponse.json({ items: topSuggestions }),
+      ),
+    );
+    const wrapper = await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await wrapper.get(inputSelector).trigger("focus");
+      await advanceSuggestions();
+
+      expect(suggestionLabels(wrapper)).toEqual(["tool-use", "performance"]);
+      expect(chipLabels(wrapper)).toEqual(["review"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("adds a clicked candidate to the draft without saving", async () => {
+    let putCalls = 0;
+    server.use(
+      http.get(`${base}/bad-case-labels`, () => HttpResponse.json(config([]))),
+      http.put(`${base}/bad-case-labels`, () => {
+        putCalls += 1;
+        return HttpResponse.json(config(["review"], 1));
+      }),
+      http.get(suggestionsPath, () =>
+        HttpResponse.json({ items: topSuggestions }),
+      ),
+    );
+    const wrapper = await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await wrapper.get(inputSelector).trigger("focus");
+      await advanceSuggestions();
+
+      await wrapper
+        .get("[data-testid='bad-case-label-suggestion-review']")
+        .trigger("click");
+
+      expect(chipLabels(wrapper)).toEqual(["review"]);
+      expect(putCalls).toBe(0);
+      expect(wrapper.find("[data-testid='bad-case-label-dirty']").exists()).toBe(
+        true,
+      );
+      expect(
+        wrapper.get("[data-testid='save-bad-case-labels']").attributes("disabled"),
+      ).toBeUndefined();
+      expect(
+        wrapper.find("[data-testid='bad-case-label-suggestion-review']").exists(),
+      ).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("adds the highlighted candidate on Enter", async () => {
+    let putCalls = 0;
+    server.use(
+      http.get(`${base}/bad-case-labels`, () => HttpResponse.json(config([]))),
+      http.put(`${base}/bad-case-labels`, () => {
+        putCalls += 1;
+        return HttpResponse.json(config(["review"], 1));
+      }),
+      http.get(suggestionsPath, () =>
+        HttpResponse.json({ items: topSuggestions }),
+      ),
+    );
+    const wrapper = await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await wrapper.get(inputSelector).trigger("focus");
+      await advanceSuggestions();
+      await wrapper.get(inputSelector).trigger("keydown.down");
+
+      expect(
+        wrapper
+          .get("[data-testid='bad-case-label-suggestion-review']")
+          .attributes("aria-selected"),
+      ).toBe("true");
+
+      await wrapper.get(inputSelector).trigger("keyup.enter");
+
+      expect(chipLabels(wrapper)).toEqual(["review"]);
+      expect(putCalls).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to the typed label on Enter without a highlight", async () => {
+    const wrapper = await mountTab();
+
+    await wrapper.get(inputSelector).setValue("brand-new");
+    await wrapper.get(inputSelector).trigger("keyup.enter");
+
+    expect(chipLabels(wrapper)).toEqual(["brand-new"]);
+    expect(wrapper.find("[data-testid='bad-case-label-dirty']").exists()).toBe(
+      true,
+    );
+  });
+
+  it("closes the dropdown on Escape without touching the input", async () => {
+    server.use(
+      http.get(`${base}/bad-case-labels`, () => HttpResponse.json(config([]))),
+      http.get(suggestionsPath, () =>
+        HttpResponse.json({ items: topSuggestions }),
+      ),
+    );
+    const wrapper = await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await wrapper.get(inputSelector).trigger("focus");
+      await advanceSuggestions();
+      expect(
+        wrapper.find("[data-testid='bad-case-label-suggestions']").exists(),
+      ).toBe(true);
+
+      await wrapper.get(inputSelector).trigger("keydown.esc");
+
+      expect(
+        wrapper.find("[data-testid='bad-case-label-suggestions']").exists(),
+      ).toBe(false);
+      expect(wrapper.get(inputSelector).attributes("aria-expanded")).toBe(
+        "false",
+      );
+      expect(chipLabels(wrapper)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("degrades silently when the candidate endpoint fails", async () => {
+    let savedBody: unknown = null;
+    server.use(
+      http.get(`${base}/bad-case-labels`, () => HttpResponse.json(config([]))),
+      http.put(`${base}/bad-case-labels`, async ({ request }) => {
+        savedBody = await request.json();
+        return HttpResponse.json(config(["review"], 1));
+      }),
+      http.get(suggestionsPath, () =>
+        HttpResponse.json(
+          { error: { code: "INTERNAL_ERROR", message: "boom" } },
+          { status: 500 },
+        ),
+      ),
+    );
+    const wrapper = await mountTab();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await wrapper.get(inputSelector).trigger("focus");
+      await advanceSuggestions();
+
+      expect(
+        wrapper.find("[data-testid='bad-case-label-suggestions']").exists(),
+      ).toBe(false);
+      expect(wrapper.get(inputSelector).attributes("aria-expanded")).toBe(
+        "false",
+      );
+
+      await wrapper.get(inputSelector).setValue("review");
+      await wrapper.get(inputSelector).trigger("keyup.enter");
+      expect(chipLabels(wrapper)).toEqual(["review"]);
+
+      await wrapper.get("[data-testid='save-bad-case-labels']").trigger("click");
+      await settleRealTimers();
+      expect(savedBody).toEqual({ items: ["review"] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restores an empty input and closed dropdown after leaving the tab", async () => {
+    server.use(
+      http.get(`${base}/bad-case-labels`, () => HttpResponse.json(config([]))),
+      http.get(suggestionsPath, () =>
+        HttpResponse.json({ items: topSuggestions }),
+      ),
+    );
+    const client = newClient(30_000);
+    const first = await mountTab(true, client);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await first.get(inputSelector).trigger("focus");
+      await advanceSuggestions();
+      await first.get(inputSelector).setValue("rev");
+      await advanceSuggestions();
+      expect(
+        first.find("[data-testid='bad-case-label-suggestions']").exists(),
+      ).toBe(true);
+
+      first.unmount();
+      wrappers.splice(wrappers.indexOf(first), 1);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const second = await mountTab(true, client);
+    const input = second.get(inputSelector);
+    expect((input.element as HTMLInputElement).value).toBe("");
+    expect(input.attributes("aria-expanded")).toBe("false");
+    expect(
+      second.find("[data-testid='bad-case-label-suggestions']").exists(),
+    ).toBe(false);
+    expect(chipLabels(second)).toEqual([]);
+    expect(second.get("[data-testid='no-bad-case-labels']").text()).toContain(
+      "还没有配置 label",
+    );
   });
 });
