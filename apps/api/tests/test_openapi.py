@@ -262,6 +262,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "badCaseCount",
     }
     assert set(components["AttributionPreviewRequest"]["properties"]) == {
+        "targetId",
         "targetType",
         "targetName",
         "targetVersion",
@@ -469,6 +470,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "title",
         "mode",
         "target",
+        "targets",
         "window",
         "models",
         "policy",

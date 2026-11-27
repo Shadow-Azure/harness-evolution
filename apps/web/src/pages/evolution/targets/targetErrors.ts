@@ -1,15 +1,23 @@
 import { ApiError } from "../../../api/http";
 import { formatApiError } from "../../../app/apiError";
 
-/** Form fields that can carry a structured save failure. */
-export type TargetFormField =
-  | "objectName"
+/** Shared target fields that can carry a structured save failure. */
+export type TargetTopField =
   | "repoUrl"
-  | "subDir"
   | "defaultRef"
   | "validationProjectId"
   | "testProjectId"
   | "primaryMetricKey";
+
+/** Member fields addressable through `members[i].field`. */
+export type TargetMemberFieldName = "objectType" | "objectName" | "subDir";
+
+/** Backend field path of one member row, e.g. `members[0].objectName`. */
+export type TargetMemberField =
+  `members[${number}].${TargetMemberFieldName}`;
+
+/** Form fields that can carry a structured save failure. */
+export type TargetFormField = TargetTopField | TargetMemberField;
 
 /** Bounded git command metadata returned with a remote validation failure. */
 export interface TargetCommandDetails {
@@ -28,20 +36,32 @@ export interface TargetServerError {
   output?: string;
 }
 
-const TARGET_FIELDS = new Set<TargetFormField>([
-  "objectName",
+const TARGET_FIELDS = new Set<TargetTopField>([
   "repoUrl",
-  "subDir",
   "defaultRef",
   "validationProjectId",
   "testProjectId",
   "primaryMetricKey",
 ]);
 
+const MEMBER_FIELD_PATTERN =
+  /^members\[(\d+)\]\.(objectType|objectName|subDir)$/u;
+
+/** Copy shown when one member already belongs to another configuration. */
+const MEMBER_ALREADY_CONFIGURED_COPY = {
+  summary: "该成员已属于另一条配置",
+  message: "该成员已属于另一条配置",
+  suggestion: "同一对象只能属于一条配置；调整成员名称或先移除原配置。",
+};
+
 const REASON_COPY: Record<string, { message: string; suggestion: string }> = {
   object_name_invalid: {
     message: "对象名称不符合规则",
     suggestion: "填写 1–128 个字符的名称，不能包含控制字符。",
+  },
+  member_duplicated: {
+    message: "同一配置里成员重复",
+    suggestion: "同一配置中每个成员的类型和名称不能重复；移除或修改重复行。",
   },
   repo_url_format: {
     message: "仓库地址格式不正确",
@@ -108,8 +128,30 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Split a member-anchored field path into its row and member field.
+ * @param field Backend field path such as `members[2].subDir`.
+ * @returns Parsed row index and field name, or null for shared target fields.
+ */
+export function parseTargetMemberField(
+  field: TargetFormField | undefined,
+): { index: number; field: TargetMemberFieldName } | null {
+  if (!field) return null;
+  const match = MEMBER_FIELD_PATTERN.exec(field);
+  if (!match) return null;
+  const [, rawIndex, rawField] = match;
+  const index = Number(rawIndex);
+  const fieldName = rawField as TargetMemberFieldName | undefined;
+  if (!fieldName || !Number.isSafeInteger(index) || index < 0) return null;
+  return { index, field: fieldName };
+}
+
 function parseField(value: unknown): TargetFormField | null {
-  return typeof value === "string" && TARGET_FIELDS.has(value as TargetFormField)
+  if (typeof value !== "string") return null;
+  if (TARGET_FIELDS.has(value as TargetTopField)) {
+    return value as TargetTopField;
+  }
+  return parseTargetMemberField(value as TargetFormField)
     ? (value as TargetFormField)
     : null;
 }
@@ -175,6 +217,14 @@ export function targetServerError(errorValue: unknown): TargetServerError {
         summary: PRIMARY_METRIC_KEY_COPY.message,
         suggestion: PRIMARY_METRIC_KEY_COPY.suggestion,
       });
+    }
+    if (errorValue.code === "MEMBER_ALREADY_CONFIGURED") {
+      const field = isRecord(errorValue.details)
+        ? parseField(errorValue.details.field)
+        : null;
+      const error: TargetServerError = { ...MEMBER_ALREADY_CONFIGURED_COPY };
+      if (field) error.field = field;
+      return error;
     }
     if (errorValue.code === "TARGET_EXISTS") {
       return { summary: "同类型的对象名称已经配置" };

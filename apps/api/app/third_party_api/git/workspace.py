@@ -17,6 +17,18 @@ from pathlib import Path, PurePosixPath
 from typing import Literal, Protocol
 
 from app.db.models.evolution import EvolutionRunRecord
+from app.third_party_api.git.cache import (
+    cache_flock,
+    clean_git_locks,
+    has_git_locks,
+    is_lock_conflict,
+    log_stale_lock,
+    mark_complete,
+    mark_incomplete,
+    matches,
+    read_state,
+    remove_state,
+)
 from app.third_party_api.git.provider import (
     GitPushProvider,
     GitPushProviderError,
@@ -244,13 +256,19 @@ class GitWorkspaceManager:
         frozen_ref = (
             run.base_commit if run.workspace_path or run.resumed_at or run.target_revision else None
         )
+        # The cache path is keyed by target_version even when a frozen commit
+        # is fetched into it; the lifecycle marker must follow the cache key,
+        # not the effective commit, or a resumed run would rebuild a cache a
+        # previous run already completed.
         base_commit, cache_hit = await self._ensure_ref_cache(
-            cache_path, run.repo_url, frozen_ref or ref
+            cache_path, run.repo_url, frozen_ref or ref, cache_ref=ref
         )
         clone_seconds = time.monotonic() - clone_started
 
-        sub_dir = _normalize_sub_dir(run.sub_dir)
-        if sub_dir != ".":
+        sub_dirs = _run_sub_dirs(run)
+        for sub_dir in sub_dirs:
+            if sub_dir == ".":
+                continue
             object_type = await self._git_checked(
                 cache_path,
                 ("git", "cat-file", "-t", f"{base_commit}:{sub_dir}"),
@@ -1209,34 +1227,97 @@ class GitWorkspaceManager:
         cache_path: Path,
         repo_url: str,
         ref: str,
+        *,
+        cache_ref: str | None = None,
     ) -> tuple[str, bool]:
         """Fetch only ``ref`` into a bare cache and return its commit and hit flag."""
-        async with self._cache_lock(cache_path):
-            reusable = self._cache_usable(cache_path)
-            if reusable:
-                current = await self._git(
-                    cache_path,
-                    ("git", "remote", "get-url", "origin"),
-                    stage="clone",
-                )
-                if current.returncode != 0 or current.stdout.strip() != repo_url:
-                    self._remove_cache(cache_path)
-                    reusable = False
-            if not reusable:
-                await self._build_ref_cache(cache_path, repo_url)
-            try:
-                commit = await self._fetch_ref(cache_path, ref)
-            except GitOperationError:
-                if not reusable:
-                    self._remove_cache(cache_path)
-                raise
-            return commit, reusable
+        # The flock serializes clone, fetch, reset, and rebuild for one
+        # target/ref across processes; the kernel releases it on SIGKILL.
+        async with self._cache_lock(cache_path), cache_flock(self.repos_root, cache_path):
+            return await self._ensure_ref_cache_locked(cache_path, repo_url, ref, cache_ref or ref)
 
-    async def _build_ref_cache(self, cache_path: Path, repo_url: str) -> None:
+    async def _ensure_ref_cache_locked(
+        self,
+        cache_path: Path,
+        repo_url: str,
+        ref: str,
+        cache_ref: str,
+    ) -> tuple[str, bool]:
+        """Apply cache lifecycle rules while the cross-process lock is held."""
+        state = read_state(cache_path)
+        reusable = self._cache_usable(cache_path) and (
+            matches(state, repo_url=repo_url, ref=cache_ref)
+            or (state is None and not has_git_locks(cache_path))
+        )
+        if reusable:
+            current = await self._git(
+                cache_path,
+                ("git", "remote", "get-url", "origin"),
+                stage="clone",
+            )
+            if current.returncode != 0 or current.stdout.strip() != repo_url:
+                reusable = False
+        if reusable:
+            # No other service git process can own a lock file inside a cache
+            # covered by the held flock, so leftovers are provably stale.
+            clean_git_locks(cache_path)
+            previous = await self._current_ref_commit(cache_path, ref)
+            mark_incomplete(cache_path, repo_url=repo_url, ref=cache_ref)
+            try:
+                commit = await self._fetch_ref(cache_path, repo_url, ref)
+            except asyncio.CancelledError:
+                # The killed git process group cannot clean its lock; the
+                # incomplete marker plus one rebuild is the recovery path.
+                clean_git_locks(cache_path)
+                raise
+            except GitOperationError:
+                if has_git_locks(cache_path):
+                    # An interrupted fetch may leave a partial object store;
+                    # the next prepare rebuilds instead of reusing it.
+                    clean_git_locks(cache_path)
+                    raise
+                # A graceful git failure leaves complete objects in place; keep
+                # the cache reusable so a later retry does not rebuild it.
+                mark_complete(
+                    cache_path,
+                    repo_url=repo_url,
+                    ref=cache_ref,
+                    commit=previous,
+                )
+                raise
+            mark_complete(cache_path, repo_url=repo_url, ref=cache_ref, commit=commit)
+            return commit, True
+
+        self._remove_cache(cache_path)
+        try:
+            await self._build_ref_cache(cache_path, repo_url, cache_ref)
+            commit = await self._fetch_ref(cache_path, repo_url, ref)
+        except Exception:
+            self._remove_cache(cache_path)
+            raise
+        mark_complete(cache_path, repo_url=repo_url, ref=cache_ref, commit=commit)
+        return commit, False
+
+    async def _current_ref_commit(self, cache_path: Path, ref: str) -> str | None:
+        """Return the commit a reusable cache currently exposes, when known."""
+        if _FULL_COMMIT.fullmatch(ref):
+            return ref if await self._commit_present(cache_path, ref) else None
+        result = await self._git(
+            cache_path,
+            ("git", "rev-parse", "--verify", f"refs/heads/{_SYNTHETIC_REF}^{{commit}}"),
+            stage="clone",
+        )
+        commit = result.stdout.strip()
+        return commit if result.returncode == 0 and commit else None
+
+    async def _build_ref_cache(self, cache_path: Path, repo_url: str, cache_ref: str) -> None:
         """Initialize an empty bare cache; remove it entirely when setup fails."""
         try:
             if cache_path.exists():  # noqa: ASYNC240
                 self._remove_cache(cache_path)
+            # Record the mutation before git creates anything so a SIGKILL
+            # between init and fetch leaves a cache that is rebuilt, not reused.
+            mark_incomplete(cache_path, repo_url=repo_url, ref=cache_ref)
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             await self._git_checked(
                 None,
@@ -1254,28 +1335,27 @@ class GitWorkspaceManager:
             self._remove_cache(cache_path)
             raise
 
-    async def _fetch_ref(self, cache_path: Path, ref: str) -> str:
+    async def _fetch_ref(self, cache_path: Path, repo_url: str, ref: str) -> str:
         """Fetch exactly the requested ref (or full commit) and resolve its commit."""
         if _FULL_COMMIT.fullmatch(ref):
             if not await self._commit_present(cache_path, ref):
-                result = await self._git(
+                result = await self._fetch_with_lock_retry(
                     cache_path,
                     ("git", "fetch", "--depth", "1", "--no-tags", "origin", ref),
-                    stage="clone",
                 )
                 if result.returncode != 0:
-                    raise self._error_from_result(
+                    raise self._fetch_error(
+                        cache_path,
+                        repo_url,
+                        ref,
                         result,
-                        stage="clone",
                         failure="target commit could not be fetched",
-                        retryable=True,
                     )
             commit = await self._resolve_commit(cache_path, ref, stage="reference")
         else:
-            result = await self._git(
+            result = await self._fetch_with_lock_retry(
                 cache_path,
                 ("git", "fetch", "--no-tags", "origin", _fetch_source(ref)),
-                stage="clone",
             )
             if result.returncode != 0:
                 if _missing_ref(result.stderr):
@@ -1283,11 +1363,12 @@ class GitWorkspaceManager:
                         "target reference was not found",
                         stage="reference",
                     )
-                raise self._error_from_result(
+                raise self._fetch_error(
+                    cache_path,
+                    repo_url,
+                    ref,
                     result,
-                    stage="clone",
                     failure="target reference fetch failed",
-                    retryable=True,
                 )
             commit = await self._resolve_commit(cache_path, "FETCH_HEAD", stage="reference")
         # A clone from the cache only copies advertised refs, so expose the
@@ -1299,6 +1380,37 @@ class GitWorkspaceManager:
             failure="target commit reference could not be created",
         )
         return commit
+
+    async def _fetch_with_lock_retry(
+        self,
+        cache_path: Path,
+        argv: tuple[str, ...],
+    ) -> GitProcessResult:
+        """Run one fetch and retry once after cleaning a stale git lock."""
+        result = await self._git(cache_path, argv, stage="clone")
+        if result.returncode == 0 or not is_lock_conflict(result.stderr):
+            return result
+        clean_git_locks(cache_path)
+        return await self._git(cache_path, argv, stage="clone")
+
+    def _fetch_error(
+        self,
+        cache_path: Path,
+        repo_url: str,
+        ref: str,
+        result: GitProcessResult,
+        *,
+        failure: str,
+    ) -> GitOperationError:
+        """Classify one failed fetch and log a stale lock without raw output."""
+        if is_lock_conflict(result.stderr):
+            log_stale_lock(self.repos_root, cache_path, repo_url=repo_url, ref=ref)
+        return self._error_from_result(
+            result,
+            stage="clone",
+            failure=failure,
+            retryable=True,
+        )
 
     async def _resolve_commit(self, repository: Path, name: str, *, stage: GitStage) -> str:
         """Resolve one local name to a full commit id or raise a reference error."""
@@ -1330,11 +1442,12 @@ class GitWorkspaceManager:
         )
 
     def _remove_cache(self, cache_path: Path) -> None:
-        """Remove one cache path only inside the configured repository root."""
+        """Remove one cache path and its lifecycle marker inside the root."""
         try:
             cache_path.resolve().relative_to(self.repos_root.resolve())
         except (OSError, ValueError):
             return
+        remove_state(cache_path)
         if cache_path.is_file() or cache_path.is_symlink():
             cache_path.unlink(missing_ok=True)
             return
@@ -1903,6 +2016,14 @@ def _normalize_sub_dir(value: str) -> str:
     if normalized.startswith("/") or ".." in PurePosixPath(normalized).parts:
         raise GitOperationError("target subdirectory is unsafe", stage="subdirectory")
     return normalized or "."
+
+
+def _run_sub_dirs(run: EvolutionRunRecord) -> tuple[str, ...]:
+    """Return every member directory of a run, preserving snapshot order."""
+    values = tuple(
+        dict.fromkeys(_normalize_sub_dir(item.sub_dir) for item in run.targets),
+    )
+    return values or (_normalize_sub_dir(run.sub_dir),)
 
 
 def candidate_local_branch(candidate_ref: str) -> str:

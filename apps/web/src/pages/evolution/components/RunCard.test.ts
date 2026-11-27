@@ -16,6 +16,7 @@ const run = (overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard => ({
     type: "skill",
     name: "deep-research",
     version: "v2.0.0",
+    subDir: "skills/deep-research",
   },
   window: {
     from: "2026-08-20",

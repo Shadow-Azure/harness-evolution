@@ -523,10 +523,10 @@ evolution_targets = Table(
     Column("attribution_snapshot", JSON, nullable=True),
     Column("attribution_due", DateTime(timezone=True), nullable=True),
     Column("attribution_cutoff", DateTime(timezone=True), nullable=True),
-    Column("object_type", String(16), nullable=False),
-    Column("object_name", String(128), nullable=False),
+    Column("object_type", String(16), nullable=True),
+    Column("object_name", String(128), nullable=True),
     Column("repo_url", String(1024), nullable=False),
-    Column("sub_dir", String(512), nullable=False),
+    Column("sub_dir", String(512), nullable=True),
     Column("default_ref", String(128), nullable=False),
     Column(
         "validation_project_id",
@@ -558,6 +558,51 @@ evolution_targets = Table(
     ),
     Index("ix_evolution_targets_enabled", "enabled"),
     Index("ix_evolution_targets_workspace", "workspace_id"),
+)
+
+
+evolution_target_members = Table(
+    "evolution_target_members",
+    DOMAIN_METADATA,
+    Column("id", String(36), primary_key=True),
+    Column(
+        "workspace_id",
+        String(36),
+        nullable=False,
+        server_default=DEFAULT_WORKSPACE_ID,
+    ),
+    Column(
+        "target_id",
+        String(36),
+        ForeignKey("evolution_targets.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("seq", Integer, nullable=False),
+    Column("object_type", String(16), nullable=False),
+    Column("object_name", String(128), nullable=False),
+    Column("sub_dir", String(512), nullable=False),
+    Column("definition", JSON, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint(
+        "target_id",
+        "object_type",
+        "object_name",
+        name="uq_evolution_target_members_target_object",
+    ),
+    UniqueConstraint("target_id", "seq", name="uq_evolution_target_members_target_seq"),
+    UniqueConstraint(
+        "workspace_id",
+        "object_type",
+        "object_name",
+        name="uq_evolution_target_members_workspace_object",
+    ),
+    Index(
+        "ix_evolution_target_members_object",
+        "object_type",
+        "object_name",
+    ),
+    Index("ix_evolution_target_members_workspace", "workspace_id"),
+    Index("ix_evolution_target_members_target", "target_id"),
 )
 
 

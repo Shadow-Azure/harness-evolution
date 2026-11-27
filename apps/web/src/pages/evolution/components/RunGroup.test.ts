@@ -12,7 +12,7 @@ const card: EvolutionRunCard = {
   controlState: "running", canPause: false, canResume: false,
   title: "run",
   mode: "full",
-  target: { type: "skill", name: "deep-research", version: "v2.0.0" },
+  target: { type: "skill", name: "deep-research", version: "v2.0.0", subDir: "skills/deep-research" },
   window: { from: null, to: null },
   models: [],
   policy: { preset: "default" },

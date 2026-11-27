@@ -3,10 +3,9 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
-import type {
-  TargetOverviewDisabledItem,
-  TargetOverviewItem,
-} from "@harness/contracts";
+import type { TargetOverviewDisabledItem } from "@harness/contracts";
+
+import type { TargetOverviewItemView } from "../../../api/overview";
 import TargetSideList from "./TargetSideList.vue";
 
 function disabledItem(): TargetOverviewDisabledItem {
@@ -19,7 +18,7 @@ function disabledItem(): TargetOverviewDisabledItem {
   };
 }
 
-function item(index: number): TargetOverviewItem {
+function item(index: number): TargetOverviewItemView {
   return {
     targetId: `target-${index}`,
     objectType: "skill",
@@ -70,6 +69,26 @@ describe("TargetSideList", () => {
     });
     await wrapper.get("[data-testid='ov-target-side-create']").trigger("click");
     expect(wrapper.emitted("create")).toHaveLength(1);
+  });
+
+  it("renders configuration member chips when the backend exposes them", () => {
+    const wrapper = mount(TargetSideList, {
+      props: {
+        items: [
+          {
+            ...item(1),
+            members: [
+              { objectType: "skill", objectName: "deep-research", subDir: "skills/deep-research" },
+              { objectType: "skill", objectName: "code-review", subDir: "skills/code-review" },
+            ],
+          },
+        ],
+      },
+    });
+
+    const members = wrapper.get("[data-testid='ov-target-side-members']");
+    expect(members.text()).toContain("skill:deep-research");
+    expect(members.text()).toContain("skill:code-review");
   });
 
   it("hides management actions for readers and prompts configuration when empty", async () => {

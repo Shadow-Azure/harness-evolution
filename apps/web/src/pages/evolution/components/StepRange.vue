@@ -2,12 +2,26 @@
 import type { EvolutionStepRange } from "@harness/contracts";
 import { computed } from "vue";
 
+type RangeMember = NonNullable<
+  EvolutionStepRange["payload"]["condition"]["targets"]
+>[number];
+
 const props = withDefaults(
   defineProps<{
     step: EvolutionStepRange;
     targetRevision?: string | null;
+    sharedProject?: {
+      validationProjectId: string;
+      testProjectId: string;
+      primaryMetricKey: string;
+    } | null;
+    subDirs?: string[];
   }>(),
-  { targetRevision: null },
+  {
+    targetRevision: null,
+    sharedProject: null,
+    subDirs: () => [],
+  },
 );
 
 const condition = computed(() => props.step.payload.condition);
@@ -16,10 +30,41 @@ const effectiveTargetRevision = computed(
   () => condition.value.targetRevision || props.targetRevision || null,
 );
 
-const targetLabel = computed(
-  () =>
-    `${condition.value.targetType}:${condition.value.targetName}@${condition.value.targetVersion}`,
-);
+const members = computed<RangeMember[]>(() => {
+  const configured = condition.value.targets ?? [];
+  if (configured.length > 0) {
+    return configured;
+  }
+  return [
+    {
+      objectType: condition.value.targetType,
+      objectName: condition.value.targetName,
+      targetVersion: condition.value.targetVersion,
+      targetRevision: condition.value.targetRevision,
+      subDir: "",
+    },
+  ];
+});
+
+const targetLabel = computed(() => {
+  const list = members.value;
+  const first = list[0];
+  if (!first) {
+    return "—";
+  }
+  const extra = list.length > 1 ? ` +${list.length - 1}` : "";
+  return `${first.objectType}:${first.objectName}${extra}@${first.targetVersion}`;
+});
+
+const changeScope = computed(() => {
+  const configured = props.subDirs ?? [];
+  if (configured.length > 0) {
+    return configured;
+  }
+  return members.value
+    .map((member) => member.subDir)
+    .filter((subDir): subDir is string => Boolean(subDir));
+});
 
 const windowLabel = computed(() => {
   const { from, to } = condition.value;
@@ -44,11 +89,14 @@ const policyLabel = computed(() =>
   isDefaultPolicy.value ? "默认策略" : "自定义策略",
 );
 
-const policyDetail = computed(() =>
-  isDefaultPolicy.value
-    ? "对象自身 self 上报 或 触发点在对象之后"
-    : JSON.stringify(condition.value.policy),
-);
+const policyDetail = computed(() => {
+  if (!isDefaultPolicy.value) {
+    return JSON.stringify(condition.value.policy);
+  }
+  return members.value.length > 1
+    ? "任一成员自身 self 上报 或 触发点在任一成员之后"
+    : "对象自身 self 上报 或 触发点在对象之后";
+});
 
 const cacheLabel = computed(() =>
   condition.value.cacheEnabled ? "复用最近一次成功归因" : "全部重新归因",
@@ -77,6 +125,48 @@ const cacheLabel = computed(() =>
             :title="condition.workspaceId"
           >
             {{ condition.workspaceId }}
+          </td>
+        </tr>
+        <tr>
+          <th>成员与子目录</th>
+          <td
+            colspan="3"
+            data-testid="step-range-members"
+          >
+            <div class="scope-members">
+              <div
+                v-for="member in members"
+                :key="`${member.objectType}:${member.objectName}`"
+                class="scope-member"
+              >
+                <span class="chip kind">{{ member.objectType }}:{{ member.objectName }}</span>
+                <span class="mono sub">{{ member.subDir || "—" }}</span>
+                <span
+                  v-if="member.targetRevision"
+                  class="mono revision-inline"
+                  :title="member.targetRevision"
+                >{{ member.targetRevision }}</span>
+              </div>
+              <p
+                v-if="members.length > 1"
+                class="member-note"
+              >
+                全部成员共用版本 {{ condition.targetVersion }}；每个成员各自冻结定义并提交评测资产。
+              </p>
+            </div>
+          </td>
+        </tr>
+        <tr
+          v-if="sharedProject"
+          data-testid="step-range-test-project"
+        >
+          <th>测试工程</th>
+          <td
+            colspan="3"
+            class="mono project-cell"
+          >
+            验证集 {{ sharedProject.validationProjectId || "—" }} · 测试集 {{ sharedProject.testProjectId || "—" }} · 主指标 {{ sharedProject.primaryMetricKey || "—" }}
+            <span class="member-note">成员共用一套；一次评测提交全部成员资产</span>
           </td>
         </tr>
         <tr>
@@ -113,6 +203,24 @@ const cacheLabel = computed(() =>
               :class="{ default: isDefaultPolicy }"
             >{{ policyLabel }}</span>
             <span class="policy-detail">{{ policyDetail }}</span>
+          </td>
+        </tr>
+        <tr
+          v-if="changeScope.length > 0"
+          data-testid="step-range-change-scope"
+        >
+          <th>改动范围</th>
+          <td
+            colspan="3"
+            class="mono"
+          >
+            <div
+              v-for="dir in changeScope"
+              :key="dir"
+            >
+              {{ dir }}/**
+            </div>
+            <span class="member-note">agent-edit 只允许改这些目录</span>
           </td>
         </tr>
       </tbody>
@@ -234,6 +342,43 @@ table.rep tr:last-child td {
   color: var(--text-dim);
   font-size: 11.5px;
   word-break: break-all;
+}
+
+.scope-members {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scope-member {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.scope-member .sub {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.revision-inline {
+  overflow-wrap: anywhere;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.member-note {
+  display: inline-block;
+  margin-left: 8px;
+  color: var(--text-faint);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.project-cell {
+  overflow-wrap: anywhere;
+  font-size: 11.5px;
 }
 
 .mono {

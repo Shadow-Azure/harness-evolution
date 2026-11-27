@@ -37,8 +37,9 @@ class AttributeStats(IdentityModel):
 class ProbeQueryRequest(IdentityModel):
     """Wizard filter condition shared by preview and launch endpoints."""
 
-    target_type: Literal["skill", "agent", "knowledge"]
-    target_name: str = Field(min_length=1, max_length=128)
+    target_id: str | None = Field(default=None, min_length=1, max_length=36)
+    target_type: Literal["skill", "agent", "knowledge"] | None = None
+    target_name: str | None = Field(default=None, min_length=1, max_length=128)
     target_version: str | None = Field(default=None, max_length=96)
     window_from: date | None = Field(default=None, alias="from")
     window_to: date | None = Field(default=None, alias="to")
@@ -155,6 +156,15 @@ class TargetConfigStore(Protocol):
         """Return one configured object pair inside the optional space scope."""
         ...
 
+    async def get(
+        self,
+        target_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> TargetConfigRecord | None:
+        """Return one configured target by id inside the optional space scope."""
+        ...
+
 
 def normalized_query(
     body: ProbeQueryRequest,
@@ -173,6 +183,12 @@ def normalized_query(
         Repository query with a non-null resolved version.
     """
     version = body.target_version or default_version
+    if not body.target_type or not body.target_name:
+        raise AppError(
+            status_code=422,
+            code=ErrorCode.VALIDATION_INVALID,
+            message="target identity is required",
+        )
     if not version:
         raise AppError(
             status_code=422,
@@ -270,17 +286,31 @@ class ProbeQueryService:
             AppError: With `TARGET_NOT_CONFIGURED` when the target is missing or
                 disabled, and `NO_PROBES_MATCHED` when the probe count is zero.
         """
-        config = await self._targets.find(
-            body.target_type,
-            body.target_name,
-            workspace_ids=workspace_ids,
-        )
+        if body.target_id is not None:
+            config = await self._targets.get(
+                body.target_id,
+                workspace_ids=workspace_ids,
+            )
+        elif body.target_type is not None and body.target_name is not None:
+            config = await self._targets.find(
+                body.target_type,
+                body.target_name,
+                workspace_ids=workspace_ids,
+            )
+        else:
+            config = None
         if config is None or not config.enabled:
             raise AppError(
                 status_code=409,
                 code=ErrorCode.TARGET_NOT_CONFIGURED,
                 message="target is not configured or enabled",
             )
+        body = body.model_copy(
+            update={
+                "target_type": config.object_type,
+                "target_name": config.object_name,
+            },
+        )
         query = normalized_query(
             body,
             default_version=config.default_ref,

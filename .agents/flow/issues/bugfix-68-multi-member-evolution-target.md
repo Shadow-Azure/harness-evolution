@@ -1,19 +1,21 @@
 # 同仓多 Skill / Agent 作为一条进化对象
 
-[English](m28-01-multi-member-evolution-target.en.md) | 中文
+[English](bugfix-68-multi-member-evolution-target.en.md) | 中文
 
 ```yaml flow
 kind: issue
-id: m28-01
-milestone: m28
+id: bugfix-68
+milestone: bugfix
 depends:
   - m5-02
   - m10-02
   - m12-03
-priority: P1
-status: ready
+priority: P2
+status: done
 scope:
+  - apps/api/alembic/**
   - apps/api/app/db/**
+  - apps/api/app/errors.py
   - apps/api/app/service/**
   - apps/api/app/api/**
   - apps/api/app/third_party_api/**
