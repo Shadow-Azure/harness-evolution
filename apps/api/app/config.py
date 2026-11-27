@@ -163,6 +163,8 @@ class Settings(BaseSettings):
     eval_scan_seconds: float = Field(default=30.0, gt=0, le=300)
     eval_poll_seconds: int = Field(default=300, gt=0)
     eval_timeout_seconds: int = Field(default=7_200, gt=0)
+    eval_test_timeout_seconds: int = Field(default=21_600, gt=0)
+    eval_queue_timeout_seconds: int = Field(default=21_600, gt=0)
     eval_mode: str = "fake"
     eval_base_url: str | None = None
     eval_api_key: SecretStr | None = None

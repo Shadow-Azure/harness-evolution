@@ -95,8 +95,8 @@ jobs:
     # 90% 分支覆盖率仍由本 job 单独判定，不做跨 job coverage 聚合。
     # 本 job 只跑 Python 测试：pnpm 仅用于转发 package.json 脚本，不需要
     # node_modules，因此跳过 pnpm install，把 setup 压到 venv + pip。
-    # 15 分钟预算在 2026-11-27 的套件规模上稳定超时（约 17 分钟），
-    # 保留覆盖率的完整套件需要 20 分钟。
+    # 共享 runner 上 2.5k+ 用例实测 11–15+ 分钟；保留 20 分钟上限，
+    # 避免慢 runner 在套件执行到一半时被 job 超时取消。
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

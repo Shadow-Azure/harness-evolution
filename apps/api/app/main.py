@@ -525,6 +525,8 @@ def create_app(
         scan_interval=timedelta(seconds=resolved_settings.eval_scan_seconds),
         poll_interval=timedelta(seconds=resolved_settings.eval_poll_seconds),
         timeout=timedelta(seconds=resolved_settings.eval_timeout_seconds),
+        test_timeout=timedelta(seconds=resolved_settings.eval_test_timeout_seconds),
+        queue_timeout=timedelta(seconds=resolved_settings.eval_queue_timeout_seconds),
     )
     evolution_lifecycle = EvolutionJobLifecycle(
         evolution_repository,

@@ -968,7 +968,8 @@ async def eval_poller_loop():
 
 - 轮询间隔 `HE_EVAL_POLL_SECONDS=300`；扫描节奏 30s，只查 `next_poll_at<=now` 的行。
 - `next_poll_at` 落库，进程重启后可继续，不依赖内存 sleep。
-- 超时兜底：网关长时间不返回终态时，按 `eval_started_at + HE_EVAL_TIMEOUT_SECONDS`（默认 2h）判 `timeout`，与网关返回的 `failed/timeout` 走同一条 `blocked(stage=eval)` 路径。
+- 超时兜底按执行时间计费：平台返回 `running` 时以 `started_at` 为执行起点（缺失则回退 `eval_started_at`），验证集基线与逐轮候选用 `HE_EVAL_TIMEOUT_SECONDS`（默认 2h），测试集基线与测试集终评用 `HE_EVAL_TEST_TIMEOUT_SECONDS`（默认 6h）。
+- 排队不消耗执行预算：平台状态为 `queued` 时只检查 `HE_EVAL_QUEUE_TIMEOUT_SECONDS`（默认 6h，从 `eval_started_at` 起算），超时以排队超时阻塞；若下一次轮询已看到 `running` 但回看排队时长仍超上限，同样按排队超时结束。平台状态请求连续可重试失败、无法判断阶段时，也只按排队上限兜底，不把提交时刻当执行起点。`eval_polled` / `eval_timeout` 事件带 `startedAt`、`elapsedSeconds`、`queueSeconds`、`progressPercent`，可直接区分排队与执行。超时与网关返回的 `failed/timeout` 走同一条 `blocked(stage=eval)` 路径。
 - `eval_poller` 只做 DB 读写和外部 HTTP，不执行 git，也不持有 JobRunner 全局锁。
 - 评测失败/超时 → `run.status=blocked`、`blocked_stage=eval`；不自动重新提交，等 `/retry` 或人工处理。
 

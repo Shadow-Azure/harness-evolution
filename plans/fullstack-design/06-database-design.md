@@ -714,7 +714,7 @@ erDiagram
 | `eval_status` | `VARCHAR(16)` | `pending` / `evaluating` / `completed` / `failed` / `timeout` |
 | `eval_attempts` | `INTEGER` | 提交评测次数 |
 | `eval_next_poll_at` | DATETIME NULL | 下一次轮询评测状态的时间 |
-| `eval_started_at` / `eval_finished_at` | DATETIME NULL | 评测起止 |
+| `eval_started_at` / `eval_finished_at` | DATETIME NULL | 评测提交 / 结束时间；执行预算从平台 `started_at` 起算 |
 | `eval_current` / `eval_candidate` | DOUBLE | 评测分（V1 占位） |
 | `eval_result` | JSON NULL | 评测平台返回的规范化结果 + 原始 payload |
 | `eval_error` | `TEXT` NULL | 评测失败/超时摘要（脱敏） |
@@ -738,7 +738,7 @@ erDiagram
 | `run_id` | `VARCHAR(36)` FK → `evolution_runs.id` ON DELETE CASCADE | 归属 run |
 | `kind` | `VARCHAR(32)` | `validation_baseline` / `test_baseline` / `test_final` |
 | `eval_external_id` / `eval_status` / `eval_attempts` / `eval_next_poll_at` | — | 平台任务 ID、状态、尝试次数与下次轮询时间 |
-| `eval_started_at` / `eval_finished_at` / `eval_paused_seconds` | — | 观察时间与暂停扣除 |
+| `eval_started_at` / `eval_finished_at` / `eval_paused_seconds` | — | 提交与结束时刻；排队/执行预算与暂停扣除 |
 | `eval_score` / `eval_result` / `eval_error` | — | 主指标分数、原始指标项与脱敏错误 |
 | `created_at` | `DATETIME` NOT NULL | — |
 
