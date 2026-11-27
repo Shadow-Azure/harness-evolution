@@ -17,6 +17,7 @@ scope:
   - docs/**
   - plans/**
   - .agents/**
+  - .github/**
 adr: []
 github:
   number: 656
