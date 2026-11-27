@@ -63,6 +63,7 @@ CANDIDATE_COLUMNS = {
     "order_state",
     "included",
     "included_reason",
+    "source_evidence",
     "probe_id",
     "is_cached",
     "created_at",
@@ -246,7 +247,7 @@ async def test_attribution_migration_backfills_legacy_rows_and_evolves_schema(
                 .one()
             )
 
-        assert revision == "0034"
+        assert revision == "0035"
         assert dict(pending) == {
             "bad_case_id": PENDING_CASE_ID,
             "analysis_status": "unanalyzed",
@@ -526,7 +527,7 @@ async def test_attribution_migration_downgrade_restores_v1_shape(tmp_path: Path)
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-        assert revision == "0034"
+        assert revision == "0035"
     finally:
         await database.dispose()
 

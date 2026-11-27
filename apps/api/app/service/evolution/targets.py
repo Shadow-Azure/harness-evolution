@@ -18,6 +18,7 @@ from app.db.crud.evolution_targets import (
 )
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.errors import AppError, ErrorCode
+from app.service.evolution.candidate_policy import CandidatePolicy
 from app.service.evolution.target_definition import TargetDefinitions
 from app.service.identity.schemas import IdentityModel
 from app.third_party_api.git.remote import GitRemote, RepoFailureReason, RepoInvalid
@@ -55,6 +56,7 @@ class EvolutionTargetWrite(IdentityModel):
     test_project_id: str = Field(max_length=128)
     primary_metric_key: str = Field(max_length=128)
     attribution_package_id: str | None = Field(default=None, min_length=1, max_length=64)
+    candidate_policy: CandidatePolicy | None = None
     enabled: bool = True
 
     @model_validator(mode="before")
@@ -388,6 +390,7 @@ def _normalize_write(body: EvolutionTargetWrite) -> EvolutionTargetWrite:
             field="testProjectId",
         ),
         primary_metric_key=_validate_primary_metric_key(body.primary_metric_key),
+        candidate_policy=body.candidate_policy,
         enabled=body.enabled,
         attribution_package_id=body.attribution_package_id,
     )
@@ -397,6 +400,7 @@ def _public(record: EvolutionTargetRecord) -> EvolutionTarget:
     """Map one persistence row to the public model."""
     return EvolutionTarget(
         id=record.id,
+        candidate_policy=CandidatePolicy.model_validate(record.candidate_policy or {}),
         attribution_package_id=record.attribution_package_id,
         attribution_skill_name=record.attribution_skill_name,
         definition=TargetDefinitionPreview(

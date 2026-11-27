@@ -170,6 +170,7 @@ evolution_run_candidates = Table(
     Column("case_trigger_at", DateTime(timezone=True), nullable=True),
     Column("order_state", String(16), nullable=False),
     Column("included", Boolean, nullable=False),
+    Column("source_evidence", JSON, nullable=True),
     Column("included_reason", String(16), nullable=False),
     Column(
         "probe_id",
@@ -459,6 +460,7 @@ class EvolutionRunCandidateRecord:
     probe_id: str | None
     is_cached: bool
     created_at: datetime
+    source_evidence: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -761,6 +763,7 @@ def record_from_evolution_run_candidate(
         order_state=_required_text(row["order_state"]),
         included=bool(row["included"]),
         included_reason=_required_text(row["included_reason"]),
+        source_evidence=row.get("source_evidence"),
         probe_id=_optional_text(row["probe_id"]),
         is_cached=bool(row["is_cached"]),
         created_at=_timestamp(row["created_at"]),

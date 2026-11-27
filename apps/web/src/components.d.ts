@@ -30,7 +30,6 @@ declare module 'vue' {
     ElRadioButton: typeof import('element-plus/es/components/radio/index')['ElRadioButton']
     ElRadioGroup: typeof import('element-plus/es/components/radio/index')['ElRadioGroup']
     ElSelect: typeof import('element-plus/es/components/select/index')['ElSelect']
-    ElSwitch: typeof import('element-plus/es/components/switch/index')['ElSwitch']
     EmptyState: typeof import('./components/ui/EmptyState.vue')['default']
     ErrorState: typeof import('./components/ui/ErrorState.vue')['default']
     LaneDag: typeof import('./components/agent-tree/lane/LaneDag.vue')['default']

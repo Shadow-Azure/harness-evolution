@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import type {
+  CandidatePolicy,
   EvolutionTarget,
   EvolutionTargetWrite,
 } from "@harness/contracts";
 import { computed, nextTick, reactive, ref, watch } from "vue";
 
+import CandidateRules from "./CandidateRules.vue";
 import type {
   TargetFormField,
   TargetServerError,
@@ -13,6 +15,8 @@ import type {
 const props = withDefaults(
   defineProps<{
     modelValue: boolean;
+    workspaceId?: string;
+    window?: { from: string; to: string } | null;
     target: EvolutionTarget | null;
     packages?: {id: string; skillName: string}[];
     runtimeEnabled?: boolean;
@@ -24,6 +28,8 @@ const props = withDefaults(
     serverError?: TargetServerError | null;
   }>(),
   {
+    workspaceId: "",
+    window: null,
     packages: () => [],
     runtimeEnabled: undefined,
     packagesLoading: false,
@@ -70,6 +76,9 @@ const form = reactive<EvolutionTargetWrite>({
   primaryMetricKey: "",
   enabled: true,
 });
+const step = ref(1);
+const policy = ref<CandidatePolicy>({ mode: "default", rules: [] });
+const policyError = ref("");
 const errors = reactive<FormErrors>({});
 const versionAutocomplete = ref<{ focus: () => void } | null>(null);
 const formElement = ref<HTMLFormElement | null>(null);
@@ -145,6 +154,9 @@ function onFieldInput(field: TargetFormField, value: string): void {
 }
 
 function resetForm(): void {
+  step.value = 1;
+  policy.value = { mode: "default", rules: [] };
+  policyError.value = "";
   form.attributionPackageId = props.target?.attributionPackageId ?? null;
   if (!props.target && props.runtimeEnabled) form.attributionPackageId = "default-attribute-badcases";
   form.objectType = props.target?.objectType ?? "skill";
@@ -220,7 +232,18 @@ function submit(): void {
     errors.primaryMetricKey = "主指标 key 不能包含空格或控制字符";
   }
   if (Object.keys(errors).length > 0) return;
+  if (!props.target && step.value === 1) {
+    step.value = 2;
+    return;
+  }
+  const candidatePolicy = policy.value.mode === "default" ? { mode: "default" as const, rules: [] } : policy.value;
+  if (!props.target && candidatePolicy.mode !== "default" &&
+      (!candidatePolicy.rules?.length || candidatePolicy.rules.some((rule) => !rule.name || !rule.types.length))) {
+    policyError.value = "请选择来源名称和上报类型。";
+    return;
+  }
   emit("submit", {
+    ...(!props.target && { candidatePolicy }),
     objectType: form.objectType,
     objectName,
     repoUrl,
@@ -256,6 +279,7 @@ watch(
   async (value) => {
     serverErrorDismissed.value = false;
     if (!value?.field) return;
+    step.value = 1;
     await nextTick();
     formElement.value
       ?.querySelector<HTMLElement>(`[name="${value.field}"]`)
@@ -267,6 +291,7 @@ watch(
 <template>
   <ElDialog
     class="target-form-dialog"
+    :class="{ 'target-create-dialog': !target }"
     body-class="target-dialog-body"
     footer-class="target-dialog-foot"
     header-class="target-dialog-head"
@@ -274,16 +299,25 @@ watch(
     :show-close="!submitting"
     :teleported="false"
     :title="title"
-    width="min(720px, calc(100vw - 32px))"
+    :width="target ? 'min(720px, calc(100vw - 32px))' : 'min(660px, calc(100vw - 32px))'"
     @close="close"
   >
+    <nav
+      v-if="!target"
+      aria-label="新增进化对象步骤"
+    >
+      <b :aria-current="step === 1 ? 'step' : undefined">① 对象信息</b> → <b :aria-current="step === 2 ? 'step' : undefined">② 候选规则</b>
+    </nav>
     <form
       id="target-form"
       ref="formElement"
       class="target-form"
       @submit.prevent="submit"
     >
-      <ElForm label-position="top">
+      <ElForm
+        v-show="step === 1"
+        label-position="top"
+      >
         <ElFormItem label="对象类型">
           <ElRadioGroup v-model="form.objectType">
             <ElRadioButton value="skill">
@@ -579,6 +613,19 @@ watch(
           <pre v-if="visibleServerError.output">{{ visibleServerError.output }}</pre>
         </details>
       </div>
+      <CandidateRules
+        v-if="step === 2"
+        v-model="policy"
+        :workspace-id="workspaceId ?? ''"
+        :window="window"
+        create
+      />
+      <p
+        v-if="step === 2 && policyError"
+        role="alert"
+      >
+        {{ policyError }}
+      </p>
     </form>
 
     <template #footer>
@@ -590,13 +637,20 @@ watch(
           取消
         </ElButton>
         <ElButton
+          v-if="step === 2"
+          :disabled="submitting"
+          @click="step = 1"
+        >
+          上一步
+        </ElButton>
+        <ElButton
           form="target-form"
           :loading="submitting"
           :disabled="packagesLoading"
           native-type="submit"
           type="primary"
         >
-          {{ target ? "保存修改" : "新增配置" }}
+          {{ target ? "保存修改" : step === 1 ? "下一步" : "保存进化对象" }}
         </ElButton>
       </footer>
     </template>
@@ -604,6 +658,32 @@ watch(
 </template>
 
 <style scoped>
+:global(.el-dialog.target-create-dialog) {
+  height: min(720px, calc(100dvh - 64px));
+  margin: max(32px, calc((100dvh - 720px) / 2)) auto;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+:global(.el-dialog.target-create-dialog .target-dialog-body) {
+  display: flex;
+  flex-direction: column;
+  max-height: none;
+  overflow: hidden;
+}
+.target-create-dialog .target-form {
+  overflow: auto;
+  min-height: 0;
+}
+nav {
+  flex: none;
+  margin: -18px -18px 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-dim);
+}
+nav [aria-current] { color: var(--blue); }
+
 :global(.el-dialog.target-form-dialog) {
   overflow: hidden;
   border-radius: 14px;

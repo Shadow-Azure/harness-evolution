@@ -31,6 +31,7 @@ type SideRow = {
 
 const props = defineProps({
   runtimeUnavailable: Boolean,
+  policyLabels:{type:Object as ()=>Record<string,string>,default:()=>({})},
   items: {
     type: Array as () => TargetOverviewItem[],
     default: () => [],
@@ -70,6 +71,7 @@ const emit = defineEmits<{
   toggle: [targetId: string];
   create: [];
   enable: [item: EditItem];
+  rules: [item: EditItem];
   edit: [item: EditItem];
   remove: [item: EditItem];
   retry: [];
@@ -244,6 +246,17 @@ function primaryVersion(item: TargetOverviewItem): string {
                 <span>（是问题 {{ row.attributed }}；未分析 {{ row.unanalyzed }}）</span>
               </span>
             </button>
+            <div class="rule-entry">
+              <span>{{ policyLabels[row.id] }}</span>
+              <button
+                type="button"
+                class="btn"
+                :data-testid="`ov-target-side-rules-${row.id}`"
+                @click="emit('rules', row.item)"
+              >
+                候选规则
+              </button>
+            </div>
             <div
               v-if="canManage"
               class="actions"
@@ -282,6 +295,17 @@ function primaryVersion(item: TargetOverviewItem): string {
             </div>
             <span class="meta">归因 Skill · {{ row.attributionSkillName || "未绑定" }}</span>
             <span class="note">保留配置；重新启用后才进入筛选、图表与其它统计。</span>
+            <div class="rule-entry">
+              <span>{{ policyLabels[row.id] }}</span>
+              <button
+                type="button"
+                class="btn"
+                :data-testid="`ov-target-side-rules-${row.id}`"
+                @click="emit('rules', row.item)"
+              >
+                候选规则
+              </button>
+            </div>
             <div
               v-if="canManage"
               class="actions"
@@ -341,6 +365,17 @@ function primaryVersion(item: TargetOverviewItem): string {
 </template>
 
 <style scoped>
+.rule-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-dim);
+}
 .side-card {
   display: flex;
   flex-direction: column;

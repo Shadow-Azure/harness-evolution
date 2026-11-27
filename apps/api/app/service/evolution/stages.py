@@ -848,6 +848,7 @@ def _potential_summary(facts: _RunFacts, total: int) -> StepPotentialSummary:
         potential=_int_stat(raw, "potential") or total,
         by_reason=PotentialReasonCounts(
             self_report=_int_stat(by_reason, "self_report"),
+            custom_source=_int_stat(by_reason, "custom_source"),
             after_object=_int_stat(by_reason, "after_object"),
             both=_int_stat(by_reason, "both"),
             policy_excluded=_int_stat(by_reason, "policy_excluded"),
@@ -956,9 +957,10 @@ def _v2_potential_rows(facts: _RunFacts) -> list[StepPotentialRow]:
     return [
         StepPotentialRow(
             bad_case_id=candidate.bad_case_id,
-            object_name=facts.run.target_name,
-            bad_case_type=(
-                "self" if candidate.included_reason in {"self_report", "both"} else "discovery"
+            object_name=(candidate.source_evidence or {}).get("name", facts.run.target_name),
+            bad_case_type=(candidate.source_evidence or {}).get(
+                "type",
+                "self" if candidate.included_reason in {"self_report", "both"} else "discovery",
             ),
             trigger_at=candidate.case_trigger_at,
             session_id=candidate.session_id,
@@ -1074,9 +1076,10 @@ def _cluster_cases(facts: _RunFacts, cluster_id: str) -> list[StepClusterCase]:
         StepClusterCase(
             bad_case_id=candidate.bad_case_id,
             title=facts.case_titles.get(candidate.bad_case_id) or candidate.bad_case_id,
-            object_name=facts.run.target_name,
-            bad_case_type=(
-                "self" if candidate.included_reason in {"self_report", "both"} else "discovery"
+            object_name=(candidate.source_evidence or {}).get("name", facts.run.target_name),
+            bad_case_type=(candidate.source_evidence or {}).get(
+                "type",
+                "self" if candidate.included_reason in {"self_report", "both"} else "discovery",
             ),
             trigger_at=candidate.case_trigger_at,
             created_at=candidate.created_at,

@@ -537,6 +537,26 @@ test("m11-04 target overview renders, filters, paginates, and analyses one objec
       "targets tab restores the shared window",
     );
 
+    const rulesEntry = "[data-testid^='ov-target-side-rules-']";
+    const targetId = await evaluate(page, `document.querySelector("${rulesEntry}").dataset.testid.replace("ov-target-side-rules-", "")`);
+    const targetEntry = `[data-testid="ov-target-side-rules-${targetId}"]`;
+    await click(page, targetEntry);
+    await click(page, ".candidate-layout .editor header button");
+    await click(page, ".candidate-layout .el-select__wrapper");
+    await click(page, ".candidate-source-menu .el-select-dropdown__item");
+    await click(page, ".candidate-layout .types button");
+    await waitForDocument(page.session, 'document.querySelector(".candidate-layout .reports")?.textContent.includes("条上报")', "per-source reports");
+    await click(page, ".el-dialog__footer .el-button--primary");
+    await waitForDocument(page.session, '!document.querySelector(".candidate-layout")', "saved rules");
+    const saved = await apiJson(`/api/workspaces/${workspaceId}/evolution/targets`, authSession.accessToken);
+    const policy = saved.items.find((item) => item.id === targetId).candidatePolicy;
+    assert.equal(policy.mode, "combined");
+    assert.equal(policy.rules.length, 1);
+    assert.ok(policy.rules[0].name);
+    await click(page, targetEntry);
+    await waitForDocument(page.session,
+      `document.querySelector(".candidate-layout .reports header")?.textContent.includes(${JSON.stringify(policy.rules[0].name)})`,
+      "saved source reopens in the report pane");
     assert.deepEqual(violations, []);
   } finally {
     await page.close();

@@ -204,6 +204,33 @@ async function clickText(page, selector, text) {
   assert.equal(clicked, true, `missing ${selector} with text ${text}`);
 }
 
+async function confirmNewTarget(page, inspectSource = false) {
+  const geometry = () => evaluate(page, `[".target-form-dialog", ".target-form-dialog nav", ".target-dialog-foot"].map(s=>{
+    const r=document.querySelector(s).getBoundingClientRect();
+    return [r.x,r.y,r.width,r.height];
+  })`);
+  await evaluate(page, `Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{}))).then(()=>true)`);
+  const first=await geometry();
+  await clickText(page, ".target-form-dialog button", "下一步");
+  await waitForDocument(page.session,'document.querySelector(".candidate-layout.single")',"candidate policy step");
+  assert.deepEqual(await geometry(), first);
+  if(inspectSource){
+    await clickText(page,".candidate-layout button","＋ 添加来源");
+    await evaluate(page,`document.querySelector(".candidate-layout .el-select__wrapper").click()`);
+    await waitForDocument(page.session,'document.querySelector(".candidate-source-menu .el-select-dropdown__item")',"reported sources");
+    await evaluate(page, `new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))).then(()=>Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{})))).then(()=>true)`);
+    const bounds=await evaluate(page,`(()=>{const card=document.querySelector(".candidate-layout fieldset").getBoundingClientRect();
+      const option=document.querySelector(".candidate-source-menu .el-select-dropdown__item").getBoundingClientRect();
+      return [option.left, option.right, option.height, card.left, card.right]})()`);
+    assert.ok(bounds[0]>=bounds[3] && bounds[1]<=bounds[4] && bounds[2]>=44, JSON.stringify(bounds));
+    await evaluate(page,`document.querySelector(".candidate-source-menu .el-select-dropdown__item").click()`);
+    await clickText(page,".candidate-layout button","查看 badcase");
+    await waitForDocument(page.session,'document.querySelector(".reports")?.textContent.includes("条上报")',"source reports from database");
+    await evaluate(page,`document.querySelector(".reports").closest(".el-dialog").querySelector(".el-dialog__headerbtn").click()`);
+  }
+  await clickText(page, ".target-form-dialog button", "保存进化对象");
+}
+
 async function fillTargetForm(page, values) {
   await setInput(page, "input[name='objectName']", values.name);
   await setInput(page, "input[name='repoUrl']", values.repoUrl);
@@ -610,15 +637,11 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
         };
       })()`,
     );
-    assert.ok(Math.abs(dialogLayout.width - 720) <= 1, JSON.stringify(dialogLayout));
+    assert.ok(Math.abs(dialogLayout.width - 660) <= 1, JSON.stringify(dialogLayout));
     assert.equal(dialogLayout.radius, "14px", JSON.stringify(dialogLayout));
     assert.equal(dialogLayout.headPadding, "14px 18px", JSON.stringify(dialogLayout));
     assert.equal(dialogLayout.bodyPadding, "18px");
-    assert.ok(
-      Math.abs(dialogLayout.bodyMaxHeight - dialogLayout.viewportHeight * 0.66) <= 1,
-      JSON.stringify(dialogLayout),
-    );
-    assert.equal(dialogLayout.bodyOverflowY, "auto");
+    assert.equal(dialogLayout.bodyOverflowY, "hidden");
     assert.equal(dialogLayout.footPadding, "13px 18px");
     assert.equal(dialogLayout.footBackground, "rgb(250, 251, 252)");
     assert.equal(dialogLayout.titleFontSize, "15px");
@@ -654,10 +677,7 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
       subDir: "skills/m5-e2e-target",
       defaultRef: "main",
     });
-    await evaluate(
-      page,
-      `document.querySelector(".target-form-dialog .el-button--primary").click()`,
-    );
+    await confirmNewTarget(page);
     const localError = await waitForDocument(
       page.session,
       `document.querySelector("#target-repoUrl-error")?.textContent.trim()`,
@@ -689,10 +709,7 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
       "input[name='repoUrl']",
       "https://invalid.example.com/repo.git",
     );
-    await evaluate(
-      page,
-      `document.querySelector(".target-form-dialog .el-button--primary").click()`,
-    );
+    await confirmNewTarget(page);
     await waitForDocument(
       page.session,
       `document.querySelector(".server-error")?.textContent.includes("无法访问仓库")`,
@@ -714,10 +731,7 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
       "https://git.example.com/agent-skills.git",
     );
     await setInput(page, "input[name='defaultRef']", "bad-ref");
-    await evaluate(
-      page,
-      `document.querySelector(".target-form-dialog .el-button--primary").click()`,
-    );
+    await confirmNewTarget(page);
     const refError = await waitForDocument(
       page.session,
       `document.querySelector("#target-defaultRef-error")?.textContent.trim()`,
@@ -752,10 +766,7 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
       subDir: "skills/m5-e2e-target",
       defaultRef: "v2.0.0",
     });
-    await evaluate(
-      page,
-      `document.querySelector(".target-form-dialog .el-button--primary").click()`,
-    );
+    await confirmNewTarget(page, true);
     await waitForDocument(
       page.session,
       `[...document.querySelectorAll(".object-name")]
@@ -785,6 +796,8 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
     const createdRows = await apiJson("/api/evolution/targets", admin.accessToken);
     const created = createdRows.items.find((item) => item.objectName === "m5-e2e-target");
     assert.ok(created);
+    assert.equal(created.candidatePolicy.mode,"combined");
+    assert.ok(created.candidatePolicy.rules[0].name);
     assert.equal(created.validationProjectId, "val-m5-e2e");
     assert.equal(created.testProjectId, "test-m5-e2e");
     assert.equal(created.primaryMetricKey, "resolved_rate");

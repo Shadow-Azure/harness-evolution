@@ -14,6 +14,7 @@ from app.errors import AppError, ErrorCode
 from app.service.evolution.attribution import DEFAULT_ATTRIBUTION_ENGINE
 from app.service.evolution.attribution_contracts import is_platform_rule
 from app.service.evolution.attribution_executor import AGENT_SKILL_STUB_ENGINE
+from app.service.evolution.candidate_policy import CandidatePolicy
 from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.events import EvolutionRunEventService
 from app.service.evolution.potential import (
@@ -159,8 +160,8 @@ class EvolutionLaunchService:
             workspace_ids=(config.workspace_id,),
         )
         resolved = await self._resolve_version(body, query.target_version, config)
-        policy = resolve_policy(body.policy)
-        condition = _match_condition(query, config.workspace_id, resolved)
+        policy = resolve_policy(None if config.candidate_policy else body.policy)
+        condition = _match_condition(query, config.workspace_id, resolved, config.candidate_policy)
         cases = await self._require_potential(condition, policy)
         if (
             self._reports
@@ -304,6 +305,7 @@ class EvolutionLaunchService:
             ),
             "potential_policy": {
                 **policy.snapshot(),
+                **({"candidatePolicy": config.candidate_policy} if config.candidate_policy else {}),
                 **({"latestReportsOnly": True} if latest_only else {}),
                 **({"legacyRule": True} if legacy_rule else {}),
                 **(
@@ -432,6 +434,7 @@ def _match_condition(
     query: Any,
     workspace_id: str,
     resolved: ResolvedTargetVersion,
+    candidate_policy: dict[str, Any] | None = None,
 ) -> MatchCondition:
     """Build the shared matcher condition from the validated launch request."""
     start, end = resolve_window(query.window_from, query.window_to)
@@ -444,4 +447,7 @@ def _match_condition(
         target_revision=resolved.target_revision,
         window_start=window_start,
         window_end=window_end,
+        candidate_policy=CandidatePolicy.model_validate(candidate_policy)
+        if candidate_policy
+        else None,
     )

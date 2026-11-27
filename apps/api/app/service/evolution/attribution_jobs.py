@@ -105,15 +105,20 @@ async def candidate_snapshot(
     """Rebuild included candidates with the original trigger and anchor coordinates."""
     rows = [item for item in await candidates.list(run.id) if item.included]
     evidence = await attributions.load_bad_case_evidence(
-        tuple(item.bad_case_id for item in rows),
+        tuple(item.bad_case_id for item in rows if not item.source_evidence),
     )
     return tuple(
         PotentialCase(
             bad_case_id=item.bad_case_id,
             session_id=item.session_id,
-            object_name=run.target_name,
-            bad_case_type=(
-                evidence[item.bad_case_id].bad_case_type if item.bad_case_id in evidence else "self"
+            object_name=(item.source_evidence or {}).get("name", run.target_name),
+            source_kind=(item.source_evidence or {}).get("kind"),
+            matched_sources=tuple((item.source_evidence or {}).get("matches", [])),
+            bad_case_type=(item.source_evidence or {}).get(
+                "type",
+                evidence[item.bad_case_id].bad_case_type
+                if item.bad_case_id in evidence
+                else "self",
             ),
             trigger_at=item.case_trigger_at or item.created_at,
             hit_reason=cast(HitReason, item.included_reason),

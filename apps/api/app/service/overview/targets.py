@@ -32,6 +32,7 @@ from app.db.crud.overview_targets import (
 from app.db.crud.potential import window_day_boundaries
 from app.errors import AppError, ErrorCode
 from app.service.evolution.attribution_contracts import REPORT_SCHEMA_VERSION
+from app.service.evolution.candidate_policy import CandidatePolicy
 from app.service.evolution.potential import (
     MatchCondition,
     PotentialMatch,
@@ -1184,6 +1185,7 @@ class TargetOverviewService:
         """
         condition = MatchCondition(
             workspace_id=workspace_id,
+            candidate_policy=CandidatePolicy.model_validate(target.candidate_policy or {}),
             target_type=target.object_type,
             target_name=target.object_name,
             target_version=resolved.target_version,

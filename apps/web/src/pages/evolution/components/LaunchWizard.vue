@@ -72,6 +72,7 @@ const SHORT_ID_MIN_LENGTH = SHORT_ID_HEAD + SHORT_ID_TAIL + 1;
 
 const HIT_REASON_LABELS: Record<string, string> = {
   self_report: "self 上报",
+  custom_source: "命中来源规则",
   after_object: "对象之后",
   both: "两者命中",
   policy_excluded: "策略排除",
@@ -302,6 +303,11 @@ const hasAnyTarget = computed(() => {
 const selectedTarget = computed(
   () => targetOptions.value.find((target) => target.id === targetId.value) ?? null,
 );
+const savedPolicy = computed(() => selectedTarget.value?.candidatePolicy);
+const policyLabel = computed(() => {
+  if (!savedPolicy.value) return policyPreset.value === "default" ? "默认潜在策略" : "自定义潜在策略";
+  return { default: "默认规则", combined: "默认规则 + 自定义来源", custom: "仅自定义来源" }[savedPolicy.value.mode];
+});
 const versionSuggestions = computed(() => {
   const values: string[] = [];
   const remoteDefault =
@@ -400,7 +406,7 @@ watch([policyPreset, sameObjectOnly], () => {
 
 const policyRuleError = computed(
   () =>
-    policyPreset.value === "custom" &&
+    !savedPolicy.value && policyPreset.value === "custom" &&
     !includeSelfReport.value &&
     !includeAfterObject.value,
 );
@@ -736,7 +742,7 @@ function condition() {
 
 /** Build the raw policy payload sent to preview and launch endpoints. */
 function currentPolicy(): PotentialPolicy {
-  if (policyPreset.value === "default") {
+  if (savedPolicy.value || policyPreset.value === "default") {
     return { preset: "default" };
   }
   return {
@@ -1185,6 +1191,7 @@ const reasonEntries = computed(() => {
   return (
     [
       ["self_report", summary.byReason.selfReport],
+      ["custom_source", summary.byReason.customSource],
       ["after_object", summary.byReason.afterObject],
       ["both", summary.byReason.both],
       ["order_unknown", summary.byReason.orderUnknown],
@@ -1669,80 +1676,91 @@ const reasonEntries = computed(() => {
                 <div class="f-label">
                   潜在 bad case 策略
                 </div>
-                <div
-                  class="policy"
-                  :class="{ selected: policyPreset === 'default' }"
-                  @click="policyPreset = 'default'"
-                >
-                  <label>
-                    <input
-                      v-model="policyPreset"
-                      type="radio"
-                      name="wizard-policy"
-                      value="default"
-                      data-testid="wizard-policy-default"
-                    >
-                    默认策略
-                  </label>
-                  <p>进化对象自身 <b>self</b> 上报的 bad case，或触发点在对象触发点之后的 bad case。</p>
-                </div>
-                <div
-                  class="policy"
-                  :class="{ selected: policyPreset === 'custom' }"
-                  @click="policyPreset = 'custom'"
-                >
-                  <label>
-                    <input
-                      v-model="policyPreset"
-                      type="radio"
-                      name="wizard-policy"
-                      value="custom"
-                      data-testid="wizard-policy-custom"
-                    >
-                    自定义策略
-                  </label>
-                  <div
-                    v-if="policyPreset === 'custom'"
-                    class="policy-rules"
+                <div v-if="savedPolicy">
+                  <b>{{ policyLabel }}</b>
+                  <p
+                    v-for="(rule,i) in savedPolicy.rules"
+                    :key="i"
                   >
-                    <label class="switch-row">
-                      <input
-                        v-model="includeSelfReport"
-                        type="checkbox"
-                        data-testid="wizard-rule-self"
-                      >
-                      包含对象自身 self 上报
-                    </label>
-                    <label class="switch-row">
-                      <input
-                        v-model="includeAfterObject"
-                        type="checkbox"
-                        data-testid="wizard-rule-after"
-                      >
-                      包含触发点在对象之后
-                    </label>
-                    <label class="switch-row">
-                      <input
-                        v-model="sameObjectOnly"
-                        type="checkbox"
-                        data-testid="wizard-rule-same"
-                      >
-                      仅纳入同 object_name
-                    </label>
-                  </div>
-                  <p v-else>
-                    勾选规则组合成策略；两条匹配规则至少勾选一条。
+                    {{ rule.kind }} · {{ rule.name }} · {{ rule.types.join(" / ") }} · {{ {any:"同 Session",before:"目标先执行",after:"目标后执行"}[rule.relation] }}
                   </p>
                 </div>
-                <p
-                  v-if="policyRuleError"
-                  id="wizard-policy-error"
-                  data-testid="wizard-policy-error"
-                  class="field-error"
-                  role="alert"
-                >
-                  请至少勾选一条潜在匹配规则
-                </p>
+                <template v-else>
+                  <div
+                    class="policy"
+                    :class="{ selected: policyPreset === 'default' }"
+                    @click="policyPreset = 'default'"
+                  >
+                    <label>
+                      <input
+                        v-model="policyPreset"
+                        type="radio"
+                        name="wizard-policy"
+                        value="default"
+                        data-testid="wizard-policy-default"
+                      >
+                      默认策略
+                    </label>
+                    <p>进化对象自身 <b>self</b> 上报的 bad case，或触发点在对象触发点之后的 bad case。</p>
+                  </div>
+                  <div
+                    class="policy"
+                    :class="{ selected: policyPreset === 'custom' }"
+                    @click="policyPreset = 'custom'"
+                  >
+                    <label>
+                      <input
+                        v-model="policyPreset"
+                        type="radio"
+                        name="wizard-policy"
+                        value="custom"
+                        data-testid="wizard-policy-custom"
+                      >
+                      自定义策略
+                    </label>
+                    <div
+                      v-if="policyPreset === 'custom'"
+                      class="policy-rules"
+                    >
+                      <label class="switch-row">
+                        <input
+                          v-model="includeSelfReport"
+                          type="checkbox"
+                          data-testid="wizard-rule-self"
+                        >
+                        包含对象自身 self 上报
+                      </label>
+                      <label class="switch-row">
+                        <input
+                          v-model="includeAfterObject"
+                          type="checkbox"
+                          data-testid="wizard-rule-after"
+                        >
+                        包含触发点在对象之后
+                      </label>
+                      <label class="switch-row">
+                        <input
+                          v-model="sameObjectOnly"
+                          type="checkbox"
+                          data-testid="wizard-rule-same"
+                        >
+                        仅纳入同 object_name
+                      </label>
+                    </div>
+                    <p v-else>
+                      勾选规则组合成策略；两条匹配规则至少勾选一条。
+                    </p>
+                  </div>
+                  <p
+                    v-if="policyRuleError"
+                    id="wizard-policy-error"
+                    data-testid="wizard-policy-error"
+                    class="field-error"
+                    role="alert"
+                  >
+                    请至少勾选一条潜在匹配规则
+                  </p>
+                </template>
               </div>
 
               <div
@@ -1787,7 +1805,7 @@ const reasonEntries = computed(() => {
               <div class="wz-condstrip">
                 <span class="chip kind">{{ targetType }}:{{ selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
                 <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
-                <span class="chip">{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
+                <span class="chip">{{ policyLabel }}</span>
                 <span
                   v-if="previewTargetRevision !== undefined"
                   class="chip revision"
@@ -1918,7 +1936,7 @@ const reasonEntries = computed(() => {
               <div class="wz-condstrip">
                 <span class="chip kind">{{ targetType }}:{{ selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
                 <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
-                <span class="chip">{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
+                <span class="chip">{{ policyLabel }}</span>
                 <span
                   v-if="previewTargetRevision !== undefined"
                   class="chip revision"
@@ -1937,7 +1955,7 @@ const reasonEntries = computed(() => {
 
               <div class="wz-section-title">
                 第 3 步 · 潜在 bad case
-                <span>{{ policyPreset === "default" ? "默认策略：对象自身 self 上报 或 触发点在对象触发点之后" : "自定义策略：按第 1 步勾选的规则组合" }}</span>
+                <span>{{ savedPolicy ? policyLabel : policyPreset === "default" ? "默认策略：对象自身 self 上报 或 触发点在对象触发点之后" : "自定义策略：按第 1 步勾选的规则组合" }}</span>
               </div>
 
               <div class="wz-stats">
@@ -2074,7 +2092,7 @@ const reasonEntries = computed(() => {
                 <span
                   class="v2-badge"
                   :class="{ ok: policyPreset === 'default' }"
-                >{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
+                >{{ policyLabel }}</span>
                 <span
                   class="v2-badge"
                   :class="{ warn: !cacheEnabled }"

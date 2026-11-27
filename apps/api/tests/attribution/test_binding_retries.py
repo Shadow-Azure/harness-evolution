@@ -187,7 +187,8 @@ async def test_recovered_worker_preserves_snapshot_and_skips_reports_from_same_g
     matcher = AsyncMock()
     matcher.associated_sessions.return_value = Mock(pending=0)
     matcher.potential_cases.return_value = Mock(
-        cases=(potential_case(), potential_case(OTHER_CASE_ID))
+        included=(potential_case(), potential_case(OTHER_CASE_ID)),
+        cases=(potential_case(), potential_case(OTHER_CASE_ID), potential_case("excluded")),
     )
     reports = AsyncMock()
     reports.latest_reports.side_effect = [{}, {CASE_ID: ("report-id", "example", "attributed")}]
@@ -296,7 +297,9 @@ async def test_binding_polls_missing_session_without_reanalyzing_completed_cases
     resolver.resolve.return_value = Mock(target_version="v1", target_revision="fixed")
     matcher, reports, acquisition, runner = (AsyncMock() for _ in range(4))
     matcher.associated_sessions.return_value = Mock(pending=1)
-    matcher.potential_cases.return_value = Mock(cases=(potential_case(),))
+    matcher.potential_cases.return_value = Mock(
+        included=(potential_case(),), cases=(potential_case(), potential_case("excluded"))
+    )
     reports.latest_reports.return_value = {CASE_ID: ("report", "bound", "attributed")}
     worker = BindingWorker(queue, acquisition, runtime, resolver, matcher, reports, runner)
     assert await worker.tick()

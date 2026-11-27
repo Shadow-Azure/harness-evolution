@@ -92,7 +92,7 @@ const potentialStep = {
       badCases: 6,
       potential: 3,
       byReason: {
-        selfReport: 1,
+        selfReport: 1, customSource: 0,
         afterObject: 1,
         both: 1,
         policyExcluded: 2,

@@ -19,6 +19,7 @@ def catalogs_from(request: Request) -> CatalogService:
 
 @router.get(
     "/targets",
+    response_model_exclude_none=True,
     dependencies=[Security(BEARER_AUTH)],
     responses={
         401: {"model": ErrorResponse, "description": "Authentication is required"},

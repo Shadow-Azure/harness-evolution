@@ -47,6 +47,7 @@ class WindowCaseRecord:
     object_type: str
     bad_case_agent_id: str | None
     created_at: datetime
+    trigger_line: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +97,7 @@ class AnchorEventRecord:
     name: str | None
     tool_use_id: str | None
     triggered_at: datetime | None
+    line_no: int | None = None
 
 
 def _time(value: object) -> datetime | None:
@@ -131,6 +133,7 @@ class PotentialRepository:
                 bad_cases.c.object_type,
                 bad_cases.c.bad_case_agent_id,
                 bad_cases.c.created_at,
+                bad_cases.c.trigger_line,
             )
             .where(
                 WorkspaceReadScope.for_workspace(workspace_id).case_condition(),
@@ -153,6 +156,7 @@ class PotentialRepository:
                     str(row["bad_case_agent_id"]) if row["bad_case_agent_id"] is not None else None
                 ),
                 created_at=as_shanghai(row["created_at"]),
+                trigger_line=row["trigger_line"],
             )
             for row in rows
         )
@@ -195,6 +199,11 @@ class PotentialRepository:
         if not session_ids:
             return ()
         events: list[ObjectEventRecord] = []
+        name = (
+            agent_events.c.name.collate("utf8mb4_0900_bin")
+            if self._database.dialect == "mysql"
+            else agent_events.c.name
+        )
         for chunk in _chunks(tuple(dict.fromkeys(session_ids))):
             statement = (
                 select(
@@ -213,7 +222,7 @@ class PotentialRepository:
                 .where(
                     agents.c.root_session_id.in_(chunk),
                     agent_events.c.kind == object_type,
-                    agent_events.c.name == object_name,
+                    name == object_name,
                 )
                 .order_by(
                     agents.c.root_session_id,
@@ -322,11 +331,14 @@ class PotentialRepository:
         self,
         agent_ids: Sequence[str],
         skill_names: Sequence[str],
+        trigger_lines: Sequence[int] = (),
     ) -> tuple[AnchorEventRecord, ...]:
         """Return parent-call events and the named skill triggers for anchors."""
         if not agent_ids:
             return ()
         anchor_conditions = [agent_events.c.kind == "agent"]
+        if trigger_lines:
+            anchor_conditions.append(agent_events.c.line_no.in_(trigger_lines))
         if skill_names:
             anchor_conditions.append(
                 and_(
@@ -343,6 +355,7 @@ class PotentialRepository:
                     agent_events.c.kind,
                     agent_events.c.name,
                     agent_events.c.tool_use_id,
+                    agent_events.c.line_no,
                     agent_events.c.triggered_at,
                 )
                 .where(
@@ -355,6 +368,7 @@ class PotentialRepository:
                 rows = (await session.execute(statement)).mappings().all()
             events.extend(
                 AnchorEventRecord(
+                    line_no=row["line_no"],
                     agent_id=str(row["agent_id"]),
                     event_index=int(row["event_index"]),
                     kind=str(row["kind"]),

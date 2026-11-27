@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-from dataclasses import replace
 from datetime import datetime, timedelta
 
 from app.db.crud.attributions import AttributionRepository
@@ -14,6 +13,7 @@ from app.service.evolution.attribution import (
     AttributionRunProgress,
     BindingBatch,
 )
+from app.service.evolution.candidate_policy import CandidatePolicy
 from app.service.evolution.local_attribution import ENGINE, LocalAttribution
 from app.service.evolution.potential import MatchCondition, PotentialMatcher, resolve_policy
 from app.service.evolution.target_content import GitDefinitionRef, TargetVersionResolver
@@ -94,6 +94,8 @@ class BindingWorker:
         ):
             return False
         snapshot = dict(target.attribution_snapshot or {})
+        if target.candidate_policy:
+            snapshot["candidatePolicy"] = target.candidate_policy
         definition = snapshot.get("definition")
         if "skill" not in snapshot:
             skill = await self.runtime.resolve_bound_skill(target)
@@ -122,6 +124,7 @@ class BindingWorker:
             snapshot["revision"],
             datetime(1970, 1, 1, tzinfo=SHANGHAI),
             claim.cutoff,
+            CandidatePolicy.model_validate(target.candidate_policy or {}),
         )
         association = await self.matcher.associated_sessions(condition)
         if association.pending:
@@ -132,10 +135,10 @@ class BindingWorker:
             target.object_type,
             target.object_name,
             snapshot["revision"],
-            tuple(c.bad_case_id for c in match.cases),
+            tuple(c.bad_case_id for c in match.included),
             generation=claim.generation,
         )
-        pending = [replace(c, included=True) for c in match.cases if c.bad_case_id not in completed]
+        pending = [c for c in match.included if c.bad_case_id not in completed]
         if not pending:
             return association.pending > 0
         batch = BindingBatch(
@@ -152,6 +155,7 @@ class BindingWorker:
             snapshot["skill"],
             snapshot["skillRevision"],
             snapshot["hash"],
+            candidate_policy=condition.candidate_policy,
             definition=GitDefinitionRef(definition["key"], definition["commit"], definition["path"])
             if definition
             else None,

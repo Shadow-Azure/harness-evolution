@@ -4,11 +4,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
-from sqlalchemy import delete, distinct, func, insert, select, update
+from sqlalchemy import and_, delete, distinct, func, insert, select, update
 from sqlalchemy.engine import CursorResult, RowMapping
 from sqlalchemy.exc import IntegrityError
 
 from app.db.base import Database
+from app.db.crud.candidate_sources import validate_sources
 from app.db.crud.integrity import is_unique_violation
 from app.db.crud.read_scope import scoped_case_ids
 from app.db.models.domain import agents, attribution_skill_packages, bad_cases, evolution_targets
@@ -45,6 +46,7 @@ class EvolutionTargetRecord:
     attribution_will_retry: bool = False
     attribution_generation: str | None = None
     attribution_snapshot: dict[str, Any] | None = None
+    candidate_policy: dict[str, Any] | None = None
     primary_metric_key: str = ""
 
     @property
@@ -89,6 +91,7 @@ def _record(row: RowMapping) -> EvolutionTargetRecord:
         validation_project_id=row["validation_project_id"],
         test_project_id=row["test_project_id"],
         primary_metric_key=row["primary_metric_key"],
+        candidate_policy=row["candidate_policy"],
         enabled=bool(row["enabled"]),
         attribution_package_id=row["attribution_package_id"],
         attribution_skill_name=row["attribution_skill_name"],
@@ -245,6 +248,37 @@ class EvolutionTargetRepository:
                 )
             return dict(snapshot)
 
+    async def save_policy(self, workspace: str, target_id: str, policy: dict[str, Any]) -> None:
+        t = evolution_targets.c
+        scope = and_(t.workspace_id == workspace, t.id == target_id)
+        async with self._database.transaction() as session:
+            row = (
+                (await session.execute(select(evolution_targets).where(scope).with_for_update()))
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                raise AppError(
+                    status_code=404,
+                    code=ErrorCode.TARGET_NOT_CONFIGURED,
+                    message="target not found",
+                )
+            if policy == row["candidate_policy"]:
+                return
+            await validate_sources(session, workspace, policy)
+            values = dict(candidate_policy=policy, updated_at=now_shanghai())
+            if row["attribution_package_id"]:
+                values.update(
+                    await self._binding(
+                        session,
+                        workspace,
+                        row["attribution_package_id"],
+                        row["enabled"],
+                        (row["attribution_snapshot"] or {}).get("definition"),
+                    )
+                )
+            await session.execute(update(evolution_targets).where(scope).values(**values))
+
     async def bind_package(self, workspace: str, target: str, package: str) -> None:
         async with self._database.transaction() as session:
             table = evolution_targets
@@ -282,6 +316,9 @@ class EvolutionTargetRepository:
         workspace_id = str(values.get("workspace_id", DEFAULT_WORKSPACE_ID))
         async with self._database.transaction() as session:
             try:
+                policy = values.get("candidate_policy")
+                if isinstance(policy, dict):
+                    await validate_sources(session, workspace_id, policy)
                 package = values.get("attribution_package_id", "default-attribute-badcases")
                 binding = (
                     await self._binding(
@@ -298,6 +335,7 @@ class EvolutionTargetRepository:
                     insert(evolution_targets).values(
                         **binding,
                         id=target_id,
+                        candidate_policy=policy,
                         workspace_id=workspace_id,
                         object_type=values["object_type"],
                         object_name=values["object_name"],
@@ -363,6 +401,11 @@ class EvolutionTargetRepository:
                 )
                 if existing is None:
                     raise LookupError("evolution target not found")
+                policy = values.get("candidate_policy")
+                policy_changed = isinstance(policy, dict) and policy != existing["candidate_policy"]
+                if isinstance(policy, dict) and policy_changed:
+                    await validate_sources(session, existing["workspace_id"], policy)
+                    statement = statement.values(candidate_policy=policy)
                 package = values.get("attribution_package_id") or existing["attribution_package_id"]
                 if not package and values.get("definition"):
                     # A legacy inline Skill remains bound until a package is selected.
@@ -370,7 +413,8 @@ class EvolutionTargetRepository:
                         attribution_snapshot={"definition": values["definition"]}
                     )
                 if package and (
-                    package != existing["attribution_package_id"]
+                    policy_changed
+                    or package != existing["attribution_package_id"]
                     or values.get("definition")
                     != (existing["attribution_snapshot"] or {}).get("definition")
                     or any(

@@ -507,6 +507,7 @@ bad_case_catalog_sync = Table(
 evolution_targets = Table(
     "evolution_targets",
     DOMAIN_METADATA,
+    Column("candidate_policy", JSON, nullable=True),
     Column("id", String(36), primary_key=True),
     Column(
         "workspace_id",

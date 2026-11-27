@@ -1392,6 +1392,13 @@ async def test_local_attribution_from_wizard_to_cluster(
     bound_id = "default-attribute-badcases" if selection == "bound" else uploaded.json()["id"]
     bound_name = "attribute-badcases" if selection == "bound" else "acceptance-skill"
     body["attributionPackageId"] = bound_id
+    if selection == "implicit":
+        body["candidatePolicy"] = {
+            "mode": "custom",
+            "rules": [
+                {"kind": "skill", "name": "web-search", "types": ["self"], "relation": "any"}
+            ],
+        }
     created = await launch_api.post(f"{workspace}/evolution/targets", json=body)
     assert created.status_code == 201, created.text
     target_id = created.json()["id"]
@@ -1420,6 +1427,11 @@ async def test_local_attribution_from_wizard_to_cluster(
     offline.assert_not_awaited()
     monkeypatch.setattr(runtime_source, "read_file", runtime_read)
     assert binding_inputs
+    if selection == "implicit":
+        assert {manifest["badcaseId"] for manifest in binding_inputs} == {
+            "case-unanalyzed",
+            "case-nonissue",
+        }
     for manifest in binding_inputs:
         definition = root / "attribute_source" / manifest["definitionKey"] / "definition.md"
         assert definition.read_text() == created.json()["definition"]["preview"]
@@ -1507,6 +1519,11 @@ async def test_local_attribution_from_wizard_to_cluster(
         resource_bytes = archive.getvalue()
     assert resource["contentHash"] == hashlib.sha256(resource_bytes).hexdigest()
     for report in reports:
+        if selection == "implicit":
+            assert (
+                report["execution_manifest"]["candidatePolicy"] == created.json()["candidatePolicy"]
+            )
+            assert report["execution_manifest"]["sourceMatches"][0]["rule"] == 1
         assert report["attribution_skill_name"] == expected_skill
         assert report["attribution_engine"] == "local-agent-skill-v1"
         case_id = report["execution_manifest"]["badCaseId"]

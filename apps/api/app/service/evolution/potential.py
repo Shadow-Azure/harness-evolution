@@ -31,6 +31,7 @@ from app.db.crud.potential import (
 )
 from app.errors import AppError, ErrorCode
 from app.service.evolution.attribution_contracts import default_execution_manifest, is_platform_rule
+from app.service.evolution.candidate_policy import CandidatePolicy, policy_version
 from app.service.evolution.target_content import (
     TargetVersionResolver,
     resolve_legacy_target_version,
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
 
 OrderState = Literal["comparable", "unknown"]
 HitReason = Literal[
+    "custom_source",
     "self_report",
     "after_object",
     "both",
@@ -83,6 +85,7 @@ REVISION_PREFIXES: tuple[str, ...] = ("tag:", "digest:", "provider:")
 """Normalized revision prefixes persisted in `agent_events.object_revision`."""
 
 REASONS: tuple[HitReason, ...] = (
+    "custom_source",
     "self_report",
     "after_object",
     "both",
@@ -291,6 +294,7 @@ class PotentialReasonCounts(IdentityModel):
     """Every closed hit reason, zero-filled for a stable contract."""
 
     self_report: int = Field(default=0, ge=0)
+    custom_source: int = Field(default=0, ge=0)
     after_object: int = Field(default=0, ge=0)
     both: int = Field(default=0, ge=0)
     policy_excluded: int = Field(default=0, ge=0)
@@ -348,6 +352,7 @@ class MatchCondition:
     target_revision: str
     window_start: datetime
     window_end: datetime
+    candidate_policy: CandidatePolicy | None = None
 
     @property
     def revision_candidates(self) -> frozenset[str]:
@@ -400,6 +405,7 @@ class AssociatedSession:
     object_trigger_at: datetime
     object_entry: TriggerPoint
     bad_case_count: int
+    object_entries: tuple[TriggerPoint, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -430,6 +436,8 @@ class PotentialCase:
     object_trigger: TriggerPoint
     case_trigger: TriggerPoint | None
     anchor_source: AnchorSource = "unknown"
+    matched_sources: tuple[dict[str, object], ...] = ()
+    source_kind: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -675,6 +683,10 @@ class PotentialMatcher:
                             triggered_at=entry.triggered_at,
                             tree_index=entry.tree_index,
                         ),
+                        object_entries=tuple(
+                            TriggerPoint(e.agent_id, e.event_index, e.triggered_at, e.tree_index)
+                            for e in session_events
+                        ),
                         bad_case_count=case_counts.get(session_id, 0),
                     ),
                 )
@@ -736,9 +748,20 @@ class PotentialMatcher:
             if reporter.parent_agent_id is not None:
                 involved.add(reporter.parent_agent_id)
 
+        source_policy = condition.candidate_policy
+        if source_policy is not None:
+            policy = resolve_policy(None)
+        lines = sorted(
+            {
+                c.trigger_line
+                for c in cases
+                if c.trigger_line and source_policy and source_policy.rules
+            }
+        )
         anchor_events = await self._repository.list_anchor_events(
             tuple(sorted(involved)),
             tuple(sorted(skill_names)),
+            **({"trigger_lines": lines} if lines else {}),
         )
         events_by_agent: dict[str, list[AnchorEventRecord]] = {}
         for event in anchor_events:
@@ -770,6 +793,53 @@ class PotentialMatcher:
                 same_object=same_object,
                 policy=policy,
             )
+            witness = session.object_entry
+            evidence: list[dict[str, object]] = []
+            if source_policy and source_policy.rules:
+                anchor, kind = _source_anchor(
+                    case, reporters[case.bad_case_id], events_by_agent, case_trigger, anchor_source
+                )
+                unknown = False
+                keep_default = source_policy.mode == "combined" and verdict.included
+                for index, rule in enumerate(source_policy.rules):
+                    if (rule.kind, rule.name) != (
+                        case.object_type,
+                        case.object_name,
+                    ) or case.bad_case_type not in rule.types:
+                        continue
+                    for entry in session.object_entries or (session.object_entry,):
+                        order = _source_order(anchor, entry)
+                        if rule.relation != "any" and (anchor is None or order.state == "unknown"):
+                            unknown = True
+                            continue
+                        if rule.relation == "before" and not order.after:
+                            continue
+                        if rule.relation == "after" and not (
+                            anchor and _source_order(entry, anchor).after
+                        ):
+                            continue
+                        if not evidence and not keep_default:
+                            witness, case_trigger, anchor_source, comparison = (
+                                entry,
+                                anchor,
+                                kind,
+                                order,
+                            )
+                        evidence.append(
+                            {
+                                "rule": index + 1,
+                                "relation": rule.relation,
+                                "agentId": entry.agent_id,
+                                "eventIndex": entry.event_index,
+                                "anchorAgentId": anchor.agent_id if anchor else None,
+                                "anchorEventIndex": anchor.event_index if anchor else None,
+                            }
+                        )
+                        break
+                if evidence and not keep_default:
+                    verdict = CaseVerdict("custom_source", True)
+                elif not evidence and source_policy.mode == "custom":
+                    verdict = CaseVerdict("order_unknown" if unknown else "policy_excluded", False)
             evaluated.append(
                 PotentialCase(
                     bad_case_id=case.bad_case_id,
@@ -784,7 +854,9 @@ class PotentialMatcher:
                     hit_reason=verdict.hit_reason,
                     order_state=comparison.state,
                     included=verdict.included,
-                    object_trigger=session.object_entry,
+                    object_trigger=witness,
+                    matched_sources=tuple(evidence),
+                    source_kind=case.object_type,
                     case_trigger=case_trigger,
                     anchor_source=anchor_source,
                 ),
@@ -827,7 +899,7 @@ class PotentialMatcher:
                     condition.target_type,
                     condition.target_name,
                     condition.target_revision,
-                    POLICY_VERSION,
+                    policy_version(condition.candidate_policy),
                     ATTRIBUTION_ENGINE,
                 )
                 if legacy_rule
@@ -837,7 +909,9 @@ class PotentialMatcher:
                     target_type=condition.target_type,
                     target_name=condition.target_name,
                     target_version=condition.target_revision,
-                    policy_version=POLICY_VERSION,
+                    candidate_policy=condition.candidate_policy,
+                    source_matches=item.matched_sources,
+                    policy_version=policy_version(condition.candidate_policy),
                     engine=ATTRIBUTION_ENGINE,
                     session_id=item.session_id,
                     hit_reason=item.hit_reason,
@@ -949,6 +1023,7 @@ class PotentialPreviewService:
                 potential=match.potential,
                 by_reason=PotentialReasonCounts(
                     self_report=match.by_reason.get("self_report", 0),
+                    custom_source=match.by_reason.get("custom_source", 0),
                     after_object=match.by_reason.get("after_object", 0),
                     both=match.by_reason.get("both", 0),
                     policy_excluded=match.by_reason.get("policy_excluded", 0),
@@ -1062,6 +1137,9 @@ class PotentialPreviewService:
             target_name=body.target_name,
             target_version=target_version,
             target_revision=target_revision,
+            candidate_policy=CandidatePolicy.model_validate(config.candidate_policy)
+            if config.candidate_policy
+            else None,
             window_start=window_start,
             window_end=window_end,
         ), config
@@ -1174,6 +1252,45 @@ def _resolve_case_trigger(
         ),
         "node",
     )
+
+
+def _source_order(case: TriggerPoint | None, target: TriggerPoint) -> OrderComparison:
+    """Within one agent, ordered events disambiguate invocations sharing a timestamp."""
+    if (
+        case
+        and case.agent_id == target.agent_id
+        and case.event_index is not None
+        and target.event_index is not None
+    ):
+        return OrderComparison("comparable", case.event_index > target.event_index)
+    return compare_triggers(case, target)
+
+
+def _source_anchor(
+    case: WindowCaseRecord,
+    reporter: AgentNodeRecord | None,
+    events: Mapping[str, Sequence[AnchorEventRecord]],
+    fallback: TriggerPoint | None,
+    source: AnchorSource,
+) -> tuple[TriggerPoint | None, AnchorSource]:
+    """Use a real, unambiguous invocation for a directional source rule."""
+    if reporter is None:
+        return None, "unknown"
+    rows = events.get(reporter.id, ())
+    if case.trigger_line is not None:
+        matches = [e for e in rows if e.line_no == case.trigger_line]
+        if len(matches) == 1:
+            event = matches[0]
+            return TriggerPoint(
+                reporter.id, event.event_index, event.triggered_at, reporter.tree_index
+            ), "event"
+        return None, "unknown"
+    if source == "post_process" or (
+        case.object_type == "skill"
+        and sum(e.kind == "skill" and e.name == case.object_name for e in rows) > 1
+    ):
+        return None, "unknown"
+    return fallback, source
 
 
 def _post_process_anchor(

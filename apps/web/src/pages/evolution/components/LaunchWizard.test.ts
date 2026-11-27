@@ -60,7 +60,7 @@ const potentialPreview: PotentialPreviewResult = {
     badCases: 5,
     potential: 2,
     byReason: {
-      selfReport: 1,
+      selfReport: 1, customSource: 0,
       afterObject: 1,
       both: 0,
       orderUnknown: 1,

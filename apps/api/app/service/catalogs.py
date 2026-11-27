@@ -8,6 +8,7 @@ from app.db.crud.evolution_targets import (
     EvolutionTargetRepository,
 )
 from app.errors import AppError, ErrorCode
+from app.service.evolution.candidate_policy import CandidatePolicy
 from app.service.identity.schemas import IdentityModel
 from app.third_party_api.git.remote import GitRemote, RepoInvalid
 
@@ -21,6 +22,7 @@ class CatalogTarget(IdentityModel):
     sub_dir: str
     default_ref: str
     versions: list[str]
+    candidate_policy: CandidatePolicy | None = None
 
 
 class CatalogTargets(IdentityModel):
@@ -127,6 +129,9 @@ def _catalog_target(
     """Map one enabled persistence record to the public catalog item."""
     return CatalogTarget(
         id=row.id,
+        candidate_policy=CandidatePolicy.model_validate(row.candidate_policy)
+        if row.candidate_policy
+        else None,
         name=row.object_name,
         repo_url=row.repo_url,
         sub_dir=row.sub_dir,

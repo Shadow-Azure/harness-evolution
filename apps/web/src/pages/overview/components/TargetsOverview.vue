@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import type { CandidatePolicy } from "@harness/contracts";
+import { request } from "../../../api/http";
+import CandidateRules from "../../evolution/targets/components/CandidateRules.vue";
 import type {
   EvolutionTarget,
   EvolutionTargetWrite,
@@ -285,6 +288,59 @@ const {
   updateTarget,
   deleteTarget,
 } = useEvolutionTargets(workspaceId);
+const policyLabels = computed(() => Object.fromEntries(
+  (evolutionTargetsData.value?.items ?? []).map(({ id, candidatePolicy }) => {
+    if (!candidatePolicy || candidatePolicy.mode === "default") return [id, "默认规则"];
+    const mode = candidatePolicy.mode === "combined" ? "默认规则 + 自定义来源" : "仅自定义来源";
+    return [id, `${mode} · ${candidatePolicy.rules?.length ?? 0} 条`];
+  }),
+));
+const ruleTarget = ref<EvolutionTarget | null>(null);
+const ruleDraft = ref<CandidatePolicy>({ mode: "default", rules: [] });
+const ruleError = ref("");
+const ruleSaving = ref(false);
+function openRules(item: TargetOverviewItem | TargetOverviewDisabledItem) {
+  const target = evolutionTargetsData.value?.items.find((row) => row.id === item.targetId);
+  if (!target) {
+    operationError.value = "对象配置尚未加载完成，请稍后重试。";
+    return;
+  }
+  const policy = target.candidatePolicy;
+  ruleDraft.value = {
+    mode: policy?.mode ?? "default",
+    rules: (policy?.rules ?? []).map((rule) => ({ ...rule, types: [...rule.types] })),
+  };
+  ruleError.value = "";
+  ruleTarget.value = target;
+}
+async function saveRules() {
+  if (!ruleTarget.value || ruleSaving.value) return;
+  const policy = ruleDraft.value.mode === "default" ? { mode: "default", rules: [] } : ruleDraft.value;
+  if (policy.mode !== "default" && (!policy.rules?.length || policy.rules.some((rule) => !rule.name || !rule.types.length))) {
+    ruleError.value = "请选择来源名称和上报类型。";
+    return;
+  }
+  ruleSaving.value = true;
+  ruleError.value = "";
+  try {
+    const workspace = encodeURIComponent(props.workspaceId);
+    const target = encodeURIComponent(ruleTarget.value.id);
+    await request(`/api/workspaces/${workspace}/evolution/targets/${target}/candidate-policy`, {
+      method: "PUT",
+      body: JSON.stringify(policy),
+    });
+    ruleTarget.value = null;
+    await Promise.all([
+      refetchEvolutionTargets(),
+      invalidateOverview(),
+      queryClient.invalidateQueries({ queryKey: queryKeys.catalogs(props.workspaceId) }),
+    ]);
+  } catch {
+    ruleError.value = "规则保存失败，请检查来源或重试。";
+  } finally {
+    ruleSaving.value = false;
+  }
+}
 const dialogOpen = ref(false);
 const editingTarget = ref<EvolutionTarget | null>(null);
 const formError = ref<TargetServerError | null>(null);
@@ -592,6 +648,7 @@ watch(
       </section>
 
       <TargetSideList
+        :policy-labels="policyLabels"
         :runtime-unavailable="runtimeUnavailable"
         :can-manage="canManage"
         :code="targetsCode"
@@ -602,6 +659,7 @@ watch(
         :page="state.targetPage"
         :selected="state.targets"
         @create="openCreate"
+        @rules="openRules"
         @edit="openEdit"
         @enable="enableTarget"
         @remove="removeTarget"
@@ -659,9 +717,60 @@ watch(
       />
     </div>
 
+    <ElDialog
+      v-if="ruleTarget"
+      class="candidate-policy-dialog"
+      body-class="candidate-policy-body"
+      :model-value="true"
+      :close-on-click-modal="!ruleSaving"
+      :close-on-press-escape="!ruleSaving"
+      :show-close="!ruleSaving"
+      width="min(1080px, calc(100vw - 36px))"
+      @close="ruleTarget = null"
+    >
+      <template #header>
+        <small>进化对象总览 / {{ ruleTarget.objectType }} · {{ ruleTarget.objectName }}</small>
+        <h2>潜在 bad case 候选规则</h2>
+        <p>选择来源，并查看该来源已经上报的问题。</p>
+      </template>
+      <div class="rule-body">
+        <CandidateRules
+          v-model="ruleDraft"
+          :workspace-id="workspaceId"
+          :window="effectiveWindow"
+          :own="ruleTarget"
+          :readonly="!canManage || ruleSaving"
+        />
+      </div>
+      <template #footer>
+        <span class="rule-scope"><b>应用范围</b> 自动归因 · 进化对象总览 · 自进化向导</span>
+        <p
+          v-if="ruleError"
+          role="alert"
+        >
+          {{ ruleError }}
+        </p>
+        <ElButton
+          :disabled="ruleSaving"
+          @click="ruleTarget = null"
+        >
+          {{ canManage ? '取消' : '关闭' }}
+        </ElButton>
+        <ElButton
+          v-if="canManage"
+          type="primary"
+          :loading="ruleSaving"
+          @click="saveRules"
+        >
+          保存候选规则
+        </ElButton>
+      </template>
+    </ElDialog>
     <TargetFormDialog
       v-if="dialogOpen"
       v-model="dialogOpen"
+      :workspace-id="workspaceId"
+      :window="effectiveWindow"
       :packages="skillLibrary.packages.data.value?.items"
       :runtime-enabled="skillLibrary.packages.data.value?.runtimeEnabled"
       :packages-loading="skillLibrary.packages.isPending.value"
@@ -677,6 +786,34 @@ watch(
 </template>
 
 <style scoped>
+:global(.el-dialog.candidate-policy-dialog) {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: min(788px, calc(100dvh - 36px));
+  margin: max(18px, calc((100dvh - 788px) / 2)) auto;
+  padding: 0;
+  overflow: hidden;
+}
+:global(.candidate-policy-dialog .el-dialog__header),
+:global(.candidate-policy-dialog .el-dialog__footer) {
+  margin: 0;
+  padding: 18px 24px;
+}
+:global(.candidate-policy-dialog .el-dialog__footer) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+}
+:global(.candidate-policy-dialog .el-dialog__header) {
+  border-bottom: 1px solid var(--border);
+}
+:global(.candidate-policy-dialog .el-dialog__header h2) { margin: 4px 0 6px; }
+:global(.candidate-policy-dialog .el-dialog__header p) { margin: 0; color: var(--text-dim); }
+:global(.candidate-policy-body) { min-height: 0; padding: 0; }
+.rule-body { height: 100%; overflow: auto; }
+.rule-scope { margin-right: auto; font-size: 12px; text-align: left; }
+
 .targets-view {
   min-width: 0;
 }
