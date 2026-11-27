@@ -4,7 +4,7 @@ English | [中文](bugfix-skill-name-match-toggle.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-70
+id: bugfix-71
 milestone: bugfix
 depends:
   - m13-01
