@@ -270,6 +270,111 @@ async def test_suggestions_treat_like_metacharacters_in_prefix_as_literals(
     assert backslash.json() == {"items": [{"label": "c\\d", "badCaseCount": 1}]}
 
 
+async def test_suggestions_aggregate_exact_label_values(
+    workspace_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """Case variants remain separate rows instead of merging into one count."""
+    app, client = workspace_client
+    workspace_id = await insert_workspace(app.state.database, name="Suggestion exact labels")
+    admin_id = await create_user(
+        app.state.database,
+        username="suggestion-exact-admin",
+        role="admin",
+    )
+    headers = bearer(access_token(app, user_id=admin_id, role="admin"))
+    await _insert_catalog_cases(app, ["Review", "review", "review"])
+
+    response = await client.get(
+        f"/api/workspaces/{workspace_id}/bad-case-labels/suggestions",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [
+            {"label": "review", "badCaseCount": 2},
+            {"label": "Review", "badCaseCount": 1},
+        ],
+    }
+
+
+async def test_suggestions_exclude_empty_catalog_labels(
+    workspace_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """A blank catalog label never becomes a candidate row."""
+    app, client = workspace_client
+    workspace_id = await insert_workspace(app.state.database, name="Suggestion blank label")
+    admin_id = await create_user(
+        app.state.database,
+        username="suggestion-blank-admin",
+        role="admin",
+    )
+    headers = bearer(access_token(app, user_id=admin_id, role="admin"))
+    await _insert_catalog_cases(app, ["", "review", None])
+
+    response = await client.get(
+        f"/api/workspaces/{workspace_id}/bad-case-labels/suggestions",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [{"label": "review", "badCaseCount": 1}]}
+
+
+async def test_suggestions_match_prefix_case_insensitively(
+    workspace_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """An upper-case prefix hits lower-case labels while rows keep exact text."""
+    app, client = workspace_client
+    workspace_id = await insert_workspace(app.state.database, name="Suggestion prefix case")
+    admin_id = await create_user(
+        app.state.database,
+        username="suggestion-prefix-case-admin",
+        role="admin",
+    )
+    headers = bearer(access_token(app, user_id=admin_id, role="admin"))
+    await _insert_catalog_cases(app, ["review", "review", "Review", "tool-use"])
+    url = f"/api/workspaces/{workspace_id}/bad-case-labels/suggestions"
+
+    response = await client.get(url, headers=headers, params={"q": "REV"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [
+            {"label": "review", "badCaseCount": 2},
+            {"label": "Review", "badCaseCount": 1},
+        ],
+    }
+
+
+async def test_suggestions_default_to_twenty_labels_in_ranked_order(
+    workspace_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """Omitting limit returns the twenty most common labels in name order."""
+    app, client = workspace_client
+    workspace_id = await insert_workspace(app.state.database, name="Suggestion default limit")
+    admin_id = await create_user(
+        app.state.database,
+        username="suggestion-default-limit-admin",
+        role="admin",
+    )
+    headers = bearer(access_token(app, user_id=admin_id, role="admin"))
+    await _insert_catalog_cases(
+        app,
+        [f"label-{index:02d}" for index in range(25)],
+    )
+
+    response = await client.get(
+        f"/api/workspaces/{workspace_id}/bad-case-labels/suggestions",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert [item["label"] for item in response.json()["items"]] == [
+        f"label-{index:02d}" for index in range(20)
+    ]
+
+
 async def test_suggestions_apply_limit_and_validate_query_parameters(
     workspace_client: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
@@ -286,12 +391,15 @@ async def test_suggestions_apply_limit_and_validate_query_parameters(
     url = f"/api/workspaces/{workspace_id}/bad-case-labels/suggestions"
 
     limited = await client.get(url, headers=headers, params={"limit": 1})
+    maximum = await client.get(url, headers=headers, params={"limit": 50})
     zero = await client.get(url, headers=headers, params={"limit": 0})
     oversize = await client.get(url, headers=headers, params={"limit": 51})
     textual = await client.get(url, headers=headers, params={"limit": "many"})
     long_prefix = await client.get(url, headers=headers, params={"q": "x" * 129})
 
     assert limited.json() == {"items": [{"label": "review", "badCaseCount": 2}]}
+    assert maximum.status_code == 200
+    assert len(maximum.json()["items"]) == 3
     for response in (zero, oversize, textual, long_prefix):
         assert response.status_code == 422
 

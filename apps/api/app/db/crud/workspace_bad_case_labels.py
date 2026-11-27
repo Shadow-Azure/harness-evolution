@@ -79,8 +79,17 @@ class WorkspaceBadCaseLabelRepository:
         prefix: str | None,
         limit: int,
     ) -> Sequence[BadCaseLabelSuggestionRecord]:
-        """Return the most common public labels, optionally restricted to a prefix."""
-        conditions: list[ColumnElement[bool]] = [bad_cases.c.catalog_label.is_not(None)]
+        """Return the most common public labels, optionally restricted to a prefix.
+
+        The prefix comparison follows the database's default case-insensitive
+        ``LIKE`` semantic (SQLite ASCII and MySQL's default collation agree),
+        while grouping and tie-breaking use the exact label bytes so ``Review``
+        and ``review`` remain separate rows with their own counts.
+        """
+        conditions: list[ColumnElement[bool]] = [
+            bad_cases.c.catalog_label.is_not(None),
+            bad_cases.c.catalog_label != "",
+        ]
         if prefix:
             conditions.append(
                 bad_cases.c.catalog_label.like(
@@ -88,14 +97,20 @@ class WorkspaceBadCaseLabelRepository:
                     escape="\\",
                 ),
             )
+        catalog_expression: ColumnElement[str] = bad_cases.c.catalog_label
+        if self._database.dialect == "mysql":
+            # MySQL's default case-insensitive collation would merge the two
+            # casings; pin exact grouping/order to binary comparison so the
+            # result matches SQLite's default BINARY collation.
+            catalog_expression = catalog_expression.collate("utf8mb4_bin")
         statement = (
             select(
-                bad_cases.c.catalog_label,
+                catalog_expression.label("catalog_label"),
                 func.count().label("bad_case_count"),
             )
             .where(*conditions)
-            .group_by(bad_cases.c.catalog_label)
-            .order_by(func.count().desc(), bad_cases.c.catalog_label)
+            .group_by(catalog_expression)
+            .order_by(func.count().desc(), catalog_expression)
             .limit(limit)
         )
         async with self._database.session() as session:
