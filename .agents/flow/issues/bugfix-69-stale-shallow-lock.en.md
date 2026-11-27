@@ -10,7 +10,7 @@ depends:
   - m19-01
   - m24-01
 priority: P2
-status: ready
+status: done
 scope:
   - apps/api/**
   - tests/**
