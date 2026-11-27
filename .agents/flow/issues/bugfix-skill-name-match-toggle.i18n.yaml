@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-skill-name-match-toggle.md
-bugfix-skill-name-match-toggle.md: 1d80d2b05ef455ac60137c5ab21f410242877994
-bugfix-skill-name-match-toggle.en.md: 1e16446ab74f0e89ebd86a548b65663541cba131
+bugfix-skill-name-match-toggle.md: 4a1923bfce8fab3eefab2c7a3753b035e306885a
+bugfix-skill-name-match-toggle.en.md: 5be1a581e512fdf7a52070bc2092250b274eee24
