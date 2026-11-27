@@ -1058,6 +1058,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{wid}/bad-case-labels/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Bad Case Label Suggestions
+         * @description Return the most common public catalog labels matching a typed prefix.
+         */
+        get: operations["list_bad_case_label_suggestions_api_workspaces__wid__bad_case_labels_suggestions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{wid}/bad-cases": {
         parameters: {
             query?: never;
@@ -6384,6 +6404,24 @@ export interface components {
             items: string[];
         };
         /**
+         * WorkspaceBadCaseLabelSuggestion
+         * @description One public catalog label and the number of cases currently carrying it.
+         */
+        WorkspaceBadCaseLabelSuggestion: {
+            /** Badcasecount */
+            badCaseCount: number;
+            /** Label */
+            label: string;
+        };
+        /**
+         * WorkspaceBadCaseLabelSuggestions
+         * @description Most common public catalog labels matching the requested prefix.
+         */
+        WorkspaceBadCaseLabelSuggestions: {
+            /** Items */
+            items: components["schemas"]["WorkspaceBadCaseLabelSuggestion"][];
+        };
+        /**
          * WorkspaceCreateRequest
          * @description Administrator-provisioned workspace with at least one initial space admin.
          */
@@ -9977,6 +10015,58 @@ export interface operations {
                 };
             };
             /** @description Label set is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_bad_case_label_suggestions_api_workspaces__wid__bad_case_labels_suggestions_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceBadCaseLabelSuggestions"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Suggestion query is invalid */
             422: {
                 headers: {
                     [name: string]: unknown;

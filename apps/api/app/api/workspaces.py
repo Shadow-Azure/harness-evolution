@@ -15,6 +15,7 @@ from app.service.workspaces.schemas import (
     Workspace,
     WorkspaceBadCaseLabelConfiguration,
     WorkspaceBadCaseLabelRequest,
+    WorkspaceBadCaseLabelSuggestions,
     WorkspaceCreateRequest,
     WorkspaceCredentialCreated,
     WorkspaceCredentialListResponse,
@@ -34,6 +35,7 @@ WorkspaceId = Annotated[str, Path(min_length=1, max_length=36)]
 MemberId = Annotated[str, Path(min_length=1, max_length=36)]
 CredentialId = Annotated[str, Path(min_length=1, max_length=36)]
 CandidateLimit = Annotated[int, Query(ge=1, le=20)]
+SuggestionLimit = Annotated[int, Query(ge=1, le=50)]
 
 
 def workspaces_from(request: Request) -> WorkspaceService:
@@ -133,6 +135,26 @@ async def get_bad_case_labels(
 ) -> WorkspaceBadCaseLabelConfiguration:
     """Return the public badcase labels accepted by this workspace."""
     return await bad_case_labels_from(request).get(access.workspace_id)
+
+
+@router.get(
+    "/{wid}/bad-case-labels/suggestions",
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication is required"},
+        404: {"model": ErrorResponse, "description": "Workspace does not exist"},
+        422: {"model": ErrorResponse, "description": "Suggestion query is invalid"},
+    },
+)
+async def list_bad_case_label_suggestions(
+    wid: WorkspaceId,
+    request: Request,
+    access: Annotated[WorkspaceAccess, Depends(require_workspace_role("viewer"))],
+    q: Annotated[str, Query(max_length=128)] = "",
+    limit: SuggestionLimit = 20,
+) -> WorkspaceBadCaseLabelSuggestions:
+    """Return the most common public catalog labels matching a typed prefix."""
+    return await bad_case_labels_from(request).suggest(q or None, limit)
 
 
 @router.put(

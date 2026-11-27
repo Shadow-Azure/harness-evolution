@@ -176,3 +176,16 @@ class WorkspaceBadCaseLabelConfiguration(WorkspaceModel):
 
     items: list[str]
     assigned_bad_case_count: int = Field(ge=0)
+
+
+class WorkspaceBadCaseLabelSuggestion(WorkspaceModel):
+    """One public catalog label and the number of cases currently carrying it."""
+
+    label: str
+    bad_case_count: int = Field(ge=0)
+
+
+class WorkspaceBadCaseLabelSuggestions(WorkspaceModel):
+    """Most common public catalog labels matching the requested prefix."""
+
+    items: list[WorkspaceBadCaseLabelSuggestion]

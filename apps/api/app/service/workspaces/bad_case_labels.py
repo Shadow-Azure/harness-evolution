@@ -7,7 +7,11 @@ from app.db.crud.workspace_bad_case_labels import (
     WorkspaceBadCaseLabelRepository,
 )
 from app.errors import AppError, ErrorCode
-from app.service.workspaces.schemas import WorkspaceBadCaseLabelConfiguration
+from app.service.workspaces.schemas import (
+    WorkspaceBadCaseLabelConfiguration,
+    WorkspaceBadCaseLabelSuggestion,
+    WorkspaceBadCaseLabelSuggestions,
+)
 
 
 class WorkspaceBadCaseLabelService:
@@ -20,6 +24,23 @@ class WorkspaceBadCaseLabelService:
     async def get(self, workspace_id: str) -> WorkspaceBadCaseLabelConfiguration:
         """Return one workspace's complete label configuration."""
         return self._to_configuration(await self._repository.get(workspace_id))
+
+    async def suggest(
+        self,
+        prefix: str | None,
+        limit: int,
+    ) -> WorkspaceBadCaseLabelSuggestions:
+        """Return the most common catalog labels matching an optional prefix."""
+        records = await self._repository.suggestions(prefix, limit)
+        return WorkspaceBadCaseLabelSuggestions(
+            items=[
+                WorkspaceBadCaseLabelSuggestion(
+                    label=record.label,
+                    bad_case_count=record.bad_case_count,
+                )
+                for record in records
+            ],
+        )
 
     async def replace(
         self,

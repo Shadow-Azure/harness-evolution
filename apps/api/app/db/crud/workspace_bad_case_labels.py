@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sqlalchemy import delete, func, insert, literal, select, update
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.base import Database
 from app.db.models.domain import (
@@ -23,6 +24,19 @@ class WorkspaceBadCaseLabelRecord:
 
     items: tuple[str, ...]
     assigned_bad_case_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class BadCaseLabelSuggestionRecord:
+    """One public catalog label and the number of cases currently carrying it."""
+
+    label: str
+    bad_case_count: int
+
+
+def _escape_like(value: str) -> str:
+    """Treat user-provided LIKE metacharacters as literal text."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class WorkspaceBadCaseLabelRepository:
@@ -59,6 +73,40 @@ class WorkspaceBadCaseLabelRepository:
             items=tuple(labels),
             assigned_bad_case_count=assigned_count,
         )
+
+    async def suggestions(
+        self,
+        prefix: str | None,
+        limit: int,
+    ) -> Sequence[BadCaseLabelSuggestionRecord]:
+        """Return the most common public labels, optionally restricted to a prefix."""
+        conditions: list[ColumnElement[bool]] = [bad_cases.c.catalog_label.is_not(None)]
+        if prefix:
+            conditions.append(
+                bad_cases.c.catalog_label.like(
+                    f"{_escape_like(prefix)}%",
+                    escape="\\",
+                ),
+            )
+        statement = (
+            select(
+                bad_cases.c.catalog_label,
+                func.count().label("bad_case_count"),
+            )
+            .where(*conditions)
+            .group_by(bad_cases.c.catalog_label)
+            .order_by(func.count().desc(), bad_cases.c.catalog_label)
+            .limit(limit)
+        )
+        async with self._database.session() as session:
+            rows = (await session.execute(statement)).mappings().all()
+        return [
+            BadCaseLabelSuggestionRecord(
+                label=str(row["catalog_label"]),
+                bad_case_count=int(row["bad_case_count"]),
+            )
+            for row in rows
+        ]
 
     async def replace(
         self,

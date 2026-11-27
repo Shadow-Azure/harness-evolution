@@ -42,6 +42,12 @@ async def _insert_catalog_case(
         )
 
 
+async def _insert_catalog_cases(app: FastAPI, labels: list[str | None]) -> None:
+    """Insert one catalog case per entry so repeated labels produce counts."""
+    for index, label in enumerate(labels):
+        await _insert_catalog_case(app, case_id=f"case-{index}", label=label)
+
+
 async def test_viewers_read_labels_but_only_space_admins_replace_them(
     workspace_client: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
@@ -193,3 +199,162 @@ async def test_label_request_rejects_duplicates_whitespace_and_oversize(
         json={},
     )
     assert missing.status_code == 422
+
+
+async def test_suggestions_rank_distinct_catalog_labels_by_count_then_name(
+    workspace_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """Non-null labels are grouped, counted, and ordered without duplicates."""
+    app, client = workspace_client
+    database = app.state.database
+    workspace_id = await insert_workspace(database, name="Suggestion ranking")
+    viewer_id = await create_user(database, username="suggestion-viewer")
+    await insert_member(
+        database,
+        workspace_id=workspace_id,
+        user_id=viewer_id,
+        role="viewer",
+    )
+    headers = bearer(access_token(app, user_id=viewer_id))
+    await _insert_catalog_cases(
+        app,
+        ["review", "review", "code-review", "code-review", "tool-use", None],
+    )
+
+    response = await client.get(
+        f"/api/workspaces/{workspace_id}/bad-case-labels/suggestions",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [
+            {"label": "code-review", "badCaseCount": 2},
+            {"label": "review", "badCaseCount": 2},
+            {"label": "tool-use", "badCaseCount": 1},
+        ],
+    }
+
+
+async def test_suggestions_treat_like_metacharacters_in_prefix_as_literals(
+    workspace_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """Percent, underscore, and backslash only match their literal characters."""
+    app, client = workspace_client
+    workspace_id = await insert_workspace(app.state.database, name="Suggestion escaping")
+    admin_id = await create_user(
+        app.state.database,
+        username="suggestion-escaping-admin",
+        role="admin",
+    )
+    headers = bearer(access_token(app, user_id=admin_id, role="admin"))
+    await _insert_catalog_cases(
+        app,
+        ["review", "review", "review-ui", "100%done", "a_b", "axb", "c\\d"],
+    )
+    url = f"/api/workspaces/{workspace_id}/bad-case-labels/suggestions"
+
+    prefix = await client.get(url, headers=headers, params={"q": "review"})
+    percent = await client.get(url, headers=headers, params={"q": "100%"})
+    underscore = await client.get(url, headers=headers, params={"q": "a_"})
+    backslash = await client.get(url, headers=headers, params={"q": "c\\"})
+
+    assert prefix.json() == {
+        "items": [
+            {"label": "review", "badCaseCount": 2},
+            {"label": "review-ui", "badCaseCount": 1},
+        ],
+    }
+    assert percent.json() == {"items": [{"label": "100%done", "badCaseCount": 1}]}
+    assert underscore.json() == {"items": [{"label": "a_b", "badCaseCount": 1}]}
+    assert backslash.json() == {"items": [{"label": "c\\d", "badCaseCount": 1}]}
+
+
+async def test_suggestions_apply_limit_and_validate_query_parameters(
+    workspace_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """The limit caps the payload and out-of-range values fail validation."""
+    app, client = workspace_client
+    workspace_id = await insert_workspace(app.state.database, name="Suggestion limits")
+    admin_id = await create_user(
+        app.state.database,
+        username="suggestion-limits-admin",
+        role="admin",
+    )
+    headers = bearer(access_token(app, user_id=admin_id, role="admin"))
+    await _insert_catalog_cases(app, ["review", "review", "tool-use", "code-review"])
+    url = f"/api/workspaces/{workspace_id}/bad-case-labels/suggestions"
+
+    limited = await client.get(url, headers=headers, params={"limit": 1})
+    zero = await client.get(url, headers=headers, params={"limit": 0})
+    oversize = await client.get(url, headers=headers, params={"limit": 51})
+    textual = await client.get(url, headers=headers, params={"limit": "many"})
+    long_prefix = await client.get(url, headers=headers, params={"q": "x" * 129})
+
+    assert limited.json() == {"items": [{"label": "review", "badCaseCount": 2}]}
+    for response in (zero, oversize, textual, long_prefix):
+        assert response.status_code == 422
+
+
+async def test_suggestions_with_empty_query_return_most_common_labels(
+    workspace_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """An empty query returns the globally most frequent labels up to the limit."""
+    app, client = workspace_client
+    workspace_id = await insert_workspace(app.state.database, name="Suggestion top")
+    admin_id = await create_user(
+        app.state.database,
+        username="suggestion-top-admin",
+        role="admin",
+    )
+    headers = bearer(access_token(app, user_id=admin_id, role="admin"))
+    await _insert_catalog_cases(
+        app,
+        ["alpha", "alpha", "beta", "beta", "beta", "gamma"],
+    )
+    url = f"/api/workspaces/{workspace_id}/bad-case-labels/suggestions"
+
+    response = await client.get(url, headers=headers, params={"q": "", "limit": 2})
+
+    assert response.json() == {
+        "items": [
+            {"label": "beta", "badCaseCount": 3},
+            {"label": "alpha", "badCaseCount": 2},
+        ],
+    }
+
+
+async def test_suggestions_require_authentication_and_an_accessible_workspace(
+    workspace_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """Anonymous callers get 401, unknown workspaces get the shared 404."""
+    app, client = workspace_client
+    database = app.state.database
+    workspace_id = await insert_workspace(database, name="Suggestion auth")
+    viewer_id = await create_user(database, username="suggestion-auth-viewer")
+    await insert_member(
+        database,
+        workspace_id=workspace_id,
+        user_id=viewer_id,
+        role="viewer",
+    )
+    headers = bearer(access_token(app, user_id=viewer_id))
+
+    anonymous = await client.get(
+        f"/api/workspaces/{workspace_id}/bad-case-labels/suggestions",
+    )
+    missing = await client.get(
+        "/api/workspaces/ws-does-not-exist/bad-case-labels/suggestions",
+        headers=headers,
+    )
+    readable = await client.get(
+        f"/api/workspaces/{workspace_id}/bad-case-labels/suggestions",
+        headers=headers,
+    )
+
+    assert anonymous.status_code == 401
+    assert anonymous.json()["error"]["code"] == "AUTH_REQUIRED"
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "WORKSPACE_NOT_FOUND"
+    assert readable.status_code == 200
+    assert readable.json() == {"items": []}

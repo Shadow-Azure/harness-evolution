@@ -71,5 +71,13 @@ export type WorkspaceBadCaseLabelConfiguration =
 export type WorkspaceBadCaseLabelRequest =
   components["schemas"]["WorkspaceBadCaseLabelRequest"];
 
+/** One public catalog label with the number of cases currently carrying it. */
+export type WorkspaceBadCaseLabelSuggestion =
+  components["schemas"]["WorkspaceBadCaseLabelSuggestion"];
+
+/** Most common public catalog labels matching the requested prefix. */
+export type WorkspaceBadCaseLabelSuggestions =
+  components["schemas"]["WorkspaceBadCaseLabelSuggestions"];
+
 /** Current user plus every workspace they can see for this session. */
 export type SessionPayload = components["schemas"]["SessionPayload"];

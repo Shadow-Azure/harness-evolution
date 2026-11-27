@@ -467,6 +467,8 @@ export type {
   WorkspaceAdmin,
   WorkspaceBadCaseLabelConfiguration,
   WorkspaceBadCaseLabelRequest,
+  WorkspaceBadCaseLabelSuggestion,
+  WorkspaceBadCaseLabelSuggestions,
   WorkspaceCreateRequest,
   WorkspaceCredential,
   WorkspaceCredentialCreated,

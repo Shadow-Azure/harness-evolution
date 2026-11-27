@@ -10470,6 +10470,45 @@
         "title": "WorkspaceBadCaseLabelRequest",
         "type": "object"
       },
+      "WorkspaceBadCaseLabelSuggestion": {
+        "additionalProperties": false,
+        "description": "One public catalog label and the number of cases currently carrying it.",
+        "properties": {
+          "badCaseCount": {
+            "minimum": 0.0,
+            "title": "Badcasecount",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "badCaseCount"
+        ],
+        "title": "WorkspaceBadCaseLabelSuggestion",
+        "type": "object"
+      },
+      "WorkspaceBadCaseLabelSuggestions": {
+        "additionalProperties": false,
+        "description": "Most common public catalog labels matching the requested prefix.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceBadCaseLabelSuggestion"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "WorkspaceBadCaseLabelSuggestions",
+        "type": "object"
+      },
       "WorkspaceCreateRequest": {
         "additionalProperties": false,
         "description": "Administrator-provisioned workspace with at least one initial space admin.",
@@ -15669,6 +15708,99 @@
           }
         ],
         "summary": "Replace Bad Case Labels",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/bad-case-labels/suggestions": {
+      "get": {
+        "description": "Return the most common public catalog labels matching a typed prefix.",
+        "operationId": "list_bad_case_label_suggestions_api_workspaces__wid__bad_case_labels_suggestions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 128,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceBadCaseLabelSuggestions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Suggestion query is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Bad Case Label Suggestions",
         "tags": [
           "workspaces"
         ]
