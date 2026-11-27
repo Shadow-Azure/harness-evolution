@@ -214,10 +214,10 @@ async def save_candidate_policy(
     access: AdminAccess,
 ) -> CandidatePolicy:
     """Update only source rules under the target lock, preserving concurrent metadata edits."""
-    await EvolutionTargetRepository(request.app.state.database).save_policy(
+    saved = await EvolutionTargetRepository(request.app.state.database).save_policy(
         wid, targetId, body.model_dump()
     )
-    return body
+    return CandidatePolicy.model_validate(saved)
 
 
 @router.get("/candidate-sources", dependencies=[Security(BEARER_AUTH)])

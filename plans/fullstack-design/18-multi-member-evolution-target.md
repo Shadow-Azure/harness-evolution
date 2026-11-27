@@ -1,6 +1,6 @@
 # 18 同仓多成员进化对象
 
-> 状态：设计已确认，待 m28-01 实现。本文是「一条配置 = 一个进化对象（含多个成员）」的前后端设计权威；原型见 [ui-prototype-v2/harness-evolution.html](../ui-prototype-v2/harness-evolution.html)，前后截图在本地 `plans/ui-prototype-v2/evidence/multi-object-target/`（不入库）。
+> 状态：已实现（m28-01）。本文是「一条配置 = 一个进化对象（含多个成员）」的前后端设计权威；原型见 [ui-prototype-v2/harness-evolution.html](../ui-prototype-v2/harness-evolution.html)，前后截图在本地 `plans/ui-prototype-v2/evidence/multi-object-target/`（不入库）。
 >
 > 关联：[06 数据库表结构设计](06-database-design.md)、[05 后端接口设计](05-api-design.md)、[07 后端实现设计](07-backend-implementation.md)、[08 前端实现设计](08-frontend-implementation.md)、[roadmap](../../.agents/flow/roadmap.md) 的 m28。
 

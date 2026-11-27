@@ -15,7 +15,7 @@ const props = defineProps<{
   window?: { from: string; to: string } | null;
   create?: boolean;
   readonly?: boolean;
-  own?: { objectType: string; objectName: string };
+  own?: { objectType?: string | null; objectName?: string | null };
 }>();
 const policy = defineModel<CandidatePolicy>({ required: true });
 const rules = computed(() => policy.value.rules ?? []);
@@ -85,7 +85,7 @@ function initialView() {
     return;
   }
   if (
-    props.own &&
+    props.own?.objectName &&
     (props.own.objectType === "agent" || props.own.objectType === "skill")
   )
     view({
@@ -222,6 +222,7 @@ watch(
           <div class="fields">
             <label>来源类型<select
               v-model="rule.kind"
+              class="evolution-form-select"
               :disabled="readonly"
               @change="
                 clearView(rule);
@@ -285,6 +286,7 @@ watch(
           </div>
           <label>轨迹顺序<select
             v-model="rule.relation"
+            class="evolution-form-select"
             :disabled="readonly"
           >
             <option value="any">同一 Session 内执行过目标</option>
@@ -501,14 +503,6 @@ legend,
   grid-template-columns: 88px minmax(0, 1fr);
   gap: 8px;
 }
-.editor select {
-  width: 100%;
-  height: 32px;
-  color: var(--text);
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-}
 .name-field span,
 fieldset select {
   display: block;
@@ -517,6 +511,23 @@ fieldset select {
 .filters {
   margin: 12px 0;
   font-size: 12px;
+}
+.editor .btn {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+.editor .btn:hover:enabled {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.editor .btn:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
 }
 .types button {
   margin-left: auto;

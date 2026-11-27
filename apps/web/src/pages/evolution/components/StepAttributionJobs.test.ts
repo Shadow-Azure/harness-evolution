@@ -39,7 +39,7 @@ const run = {
   mode: "full",
   policy: { preset: "default" },
   cacheEnabled: true,
-  target: { type: "skill", name: "Explore", version: "v1" },
+  target: { type: "skill", name: "Explore", version: "v1", subDir: "skills/Explore" },
   window: { from: null, to: null },
   models: [],
   createdBy: null,

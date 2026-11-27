@@ -56,6 +56,9 @@ CANDIDATE_COLUMNS = {
     "object_trigger_agent_id",
     "object_trigger_event_index",
     "object_trigger_at",
+    "object_type",
+    "object_name",
+    "object_revision",
     "case_trigger_agent_id",
     "case_trigger_event_index",
     "case_anchor_kind",
@@ -247,7 +250,7 @@ async def test_attribution_migration_backfills_legacy_rows_and_evolves_schema(
                 .one()
             )
 
-        assert revision == "0035"
+        assert revision == "0036"
         assert dict(pending) == {
             "bad_case_id": PENDING_CASE_ID,
             "analysis_status": "unanalyzed",
@@ -527,7 +530,7 @@ async def test_attribution_migration_downgrade_restores_v1_shape(tmp_path: Path)
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-        assert revision == "0035"
+        assert revision == "0036"
     finally:
         await database.dispose()
 

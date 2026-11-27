@@ -3,6 +3,10 @@ import type {
   TargetOverviewDisabledItem,
   TargetOverviewItem,
 } from "@harness/contracts";
+import type {
+  OverviewTargetMember,
+  TargetOverviewItemView,
+} from "../../../api/overview";
 import { computed } from "vue";
 
 import ErrorState from "../../../components/ui/ErrorState.vue";
@@ -11,7 +15,7 @@ import AttributionRuntimeNotice from "../../evolution/targets/components/Attribu
 
 const PAGE_SIZE = 5;
 
-type EditItem = TargetOverviewItem | TargetOverviewDisabledItem;
+type EditItem = TargetOverviewItemView | TargetOverviewDisabledItem;
 
 type SideRow = {
   kind: "enabled" | "disabled";
@@ -27,13 +31,14 @@ type SideRow = {
   nonTarget: number;
   unanalyzed: number;
   evolvable: number;
+  members: OverviewTargetMember[];
 };
 
 const props = defineProps({
   runtimeUnavailable: Boolean,
   policyLabels:{type:Object as ()=>Record<string,string>,default:()=>({})},
   items: {
-    type: Array as () => TargetOverviewItem[],
+    type: Array as () => TargetOverviewItemView[],
     default: () => [],
   },
   disabled: {
@@ -92,6 +97,7 @@ const rows = computed<SideRow[]>(() => [
     nonTarget: item.nonTarget,
     unanalyzed: item.unanalyzed,
     evolvable: item.attributed + item.unanalyzed,
+    members: item.members ?? [],
   })),
   ...props.disabled.map<SideRow>((item) => ({
     kind: "disabled",
@@ -107,6 +113,7 @@ const rows = computed<SideRow[]>(() => [
     nonTarget: 0,
     unanalyzed: 0,
     evolvable: 0,
+    members: [],
   })),
 ]);
 const pages = computed(() =>
@@ -230,6 +237,18 @@ function primaryVersion(item: TargetOverviewItem): string {
                   <span class="mono">@{{ row.version }}</span>
                 </span>
               </span>
+              <span
+                v-if="row.members.length > 1"
+                class="members"
+                data-testid="ov-target-side-members"
+              >
+                <span
+                  v-for="member in row.members"
+                  :key="`${member.objectType}:${member.objectName}`"
+                  class="chip"
+                  :title="member.subDir"
+                >{{ member.objectType }}:{{ member.objectName }}</span>
+              </span>
               <span class="meta">
                 归因 Skill · {{ row.attributionSkillName || "未绑定" }}
                 <AttributionRuntimeNotice
@@ -246,17 +265,6 @@ function primaryVersion(item: TargetOverviewItem): string {
                 <span>（是问题 {{ row.attributed }}；未分析 {{ row.unanalyzed }}）</span>
               </span>
             </button>
-            <div class="rule-entry">
-              <span>{{ policyLabels[row.id] }}</span>
-              <button
-                type="button"
-                class="btn"
-                :data-testid="`ov-target-side-rules-${row.id}`"
-                @click="emit('rules', row.item)"
-              >
-                候选规则
-              </button>
-            </div>
             <div
               v-if="canManage"
               class="actions"
@@ -278,6 +286,17 @@ function primaryVersion(item: TargetOverviewItem): string {
                 移除
               </button>
             </div>
+            <div class="rule-entry">
+              <span>{{ policyLabels[row.id] }}</span>
+              <button
+                type="button"
+                class="btn"
+                :data-testid="`ov-target-side-rules-${row.id}`"
+                @click="emit('rules', row.item)"
+              >
+                候选规则
+              </button>
+            </div>
           </div>
           <div
             v-else
@@ -295,17 +314,6 @@ function primaryVersion(item: TargetOverviewItem): string {
             </div>
             <span class="meta">归因 Skill · {{ row.attributionSkillName || "未绑定" }}</span>
             <span class="note">保留配置；重新启用后才进入筛选、图表与其它统计。</span>
-            <div class="rule-entry">
-              <span>{{ policyLabels[row.id] }}</span>
-              <button
-                type="button"
-                class="btn"
-                :data-testid="`ov-target-side-rules-${row.id}`"
-                @click="emit('rules', row.item)"
-              >
-                候选规则
-              </button>
-            </div>
             <div
               v-if="canManage"
               class="actions"
@@ -333,6 +341,17 @@ function primaryVersion(item: TargetOverviewItem): string {
                 @click.stop="emit('remove', row.item)"
               >
                 移除
+              </button>
+            </div>
+            <div class="rule-entry">
+              <span>{{ policyLabels[row.id] }}</span>
+              <button
+                type="button"
+                class="btn"
+                :data-testid="`ov-target-side-rules-${row.id}`"
+                @click="emit('rules', row.item)"
+              >
+                候选规则
               </button>
             </div>
           </div>
@@ -445,6 +464,11 @@ function primaryVersion(item: TargetOverviewItem): string {
   border-top: 1px solid var(--border);
 }
 
+.side-item:not(.is-disabled) .actions,
+.side-item:not(.is-disabled) .rule-entry {
+  margin-inline: 6px;
+}
+
 .side-item:first-child {
   border-top: 0;
 }
@@ -549,6 +573,22 @@ function primaryVersion(item: TargetOverviewItem): string {
   color: var(--text-faint);
   font-family: var(--mono);
   font-size: 10px;
+}
+
+.members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.members .chip {
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--purple) 30%, var(--border));
+  border-radius: 999px;
+  color: var(--purple);
+  font-family: var(--mono);
+  font-size: 9px;
 }
 
 .meta {

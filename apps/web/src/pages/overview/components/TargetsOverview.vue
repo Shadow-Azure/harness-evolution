@@ -20,6 +20,7 @@ import {
   type TargetCaseFilters,
   type TargetDetailFilters,
   type TargetOverviewFilters,
+  type TargetOverviewItemView,
 } from "../../../api/overview";
 import { ApiError } from "../../../api/http";
 import { queryKeys } from "../../../api/queryKeys";
@@ -96,7 +97,7 @@ const sharedFilters = computed<TargetOverviewFilters>(() => ({
   ...overviewSharedWindow(props.state),
 }));
 const targetsQuery = useOverviewTargets(workspaceId, sharedFilters);
-const targetItems = computed<TargetOverviewItem[]>(
+const targetItems = computed<TargetOverviewItemView[]>(
   () => targetsQuery.data.value?.items ?? [],
 );
 const disabledItems = computed<TargetOverviewDisabledItem[]>(
@@ -738,7 +739,7 @@ watch(
           v-model="ruleDraft"
           :workspace-id="workspaceId"
           :window="effectiveWindow"
-          :own="ruleTarget"
+          :own="ruleTarget.members?.[0] ?? ruleTarget"
           :readonly="!canManage || ruleSaving"
         />
       </div>
@@ -746,6 +747,7 @@ watch(
         <span class="rule-scope"><b>应用范围</b> 自动归因 · 进化对象总览 · 自进化向导</span>
         <p
           v-if="ruleError"
+          class="form-validation-error"
           role="alert"
         >
           {{ ruleError }}

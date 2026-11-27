@@ -51,6 +51,19 @@ def _scope(workspace: str) -> Any:
     )
 
 
+def normalize_sources(policy: dict[str, Any]) -> dict[str, Any]:
+    """Keep the first rule for each exact source, report-type set and relation."""
+    seen = set()
+    rules = []
+    for rule in policy["rules"]:
+        types = tuple(kind for kind in ("self", "discovery") if kind in rule["types"])
+        key = (rule["kind"], rule["name"], types, rule["relation"])
+        if key not in seen:
+            seen.add(key)
+            rules.append({**rule, "types": list(types)})
+    return {**policy, "rules": rules}
+
+
 async def validate_sources(session: AsyncSession, workspace: str, policy: dict[str, Any]) -> None:
     required = {(rule["kind"], rule["name"]) for rule in policy["rules"]}
     if not required:

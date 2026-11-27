@@ -188,11 +188,21 @@ async def create_run(
 ) -> RunAccepted:
     """Admit one full evolution run for a target in a visible space."""
     scope = await visible_workspace_ids(request)
-    config = await targets_from(request).enabled_config(
-        body.target_type,
-        body.target_name,
-        workspace_ids=scope,
-    )
+    targets = targets_from(request)
+    if body.target_id is not None:
+        config = await targets.enabled_config_by_id(body.target_id, workspace_ids=scope)
+    elif body.target_type is not None and body.target_name is not None:
+        config = await targets.enabled_config(
+            body.target_type,
+            body.target_name,
+            workspace_ids=scope,
+        )
+    else:
+        raise AppError(
+            status_code=422,
+            code=ErrorCode.VALIDATION_INVALID,
+            message="target identity is required",
+        )
     await authorize_workspace(request, config.workspace_id, "space_admin")
     return await launch_from(request).request_run(
         body,

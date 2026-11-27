@@ -13,7 +13,9 @@ depends:
 priority: P1
 status: ready
 scope:
+  - apps/api/alembic/**
   - apps/api/app/db/**
+  - apps/api/app/errors.py
   - apps/api/app/service/**
   - apps/api/app/api/**
   - apps/api/app/third_party_api/**

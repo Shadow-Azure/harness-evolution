@@ -29,6 +29,31 @@ select {
   font: inherit;
 }
 
+.evolution-form-select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text);
+}
+.evolution-form-select:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.evolution-form-select:disabled {
+  background: var(--bg-panel);
+  color: var(--text-dim);
+}
+.form-validation-error {
+  margin: 0;
+  color: var(--state-error-text);
+  font-size: 13px;
+}
+
 code,
 pre {
   font-family: var(--mono);

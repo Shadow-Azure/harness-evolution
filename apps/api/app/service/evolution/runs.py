@@ -81,6 +81,7 @@ class EvolutionRunTarget(IdentityModel):
             "skill/agent/knowledge file targets); null on historical runs."
         ),
     )
+    sub_dir: str = ""
 
 
 class EvolutionRunWindow(IdentityModel):
@@ -156,6 +157,7 @@ class EvolutionRunCard(EvolutionRunControl):
     title: str
     mode: Literal["full", "cluster_only"]
     target: EvolutionRunTarget
+    targets: list[EvolutionRunTarget] = Field(default_factory=list)
     window: EvolutionRunWindow
     models: list[str]
     policy: EvolutionRunPolicy
@@ -176,6 +178,7 @@ class EvolutionRunWorkspace(IdentityModel):
     repo_url: str
     push_repo_url: str
     sub_dir: str
+    sub_dirs: list[str] = Field(default_factory=list)
     repo_path: str | None
     base_ref: str | None
     base_commit: str | None
@@ -399,7 +402,18 @@ def _card(summary: EvolutionRunSummaryRecord) -> EvolutionRunCard:
             name=run.target_name,
             version=run.target_version,
             target_revision=run.target_revision,
+            sub_dir=run.sub_dir,
         ),
+        targets=[
+            EvolutionRunTarget(
+                type=cast(Literal["skill", "agent", "knowledge"], item.object_type),
+                name=item.object_name,
+                version=item.target_version,
+                target_revision=item.target_revision,
+                sub_dir=item.sub_dir,
+            )
+            for item in run.targets
+        ],
         window=EvolutionRunWindow.model_validate(
             {"from": run.window_from, "to": run.window_to},
         ),
@@ -537,6 +551,7 @@ class EvolutionRunService:
                 repo_url=run.repo_url,
                 push_repo_url=run.push_repo_url or run.repo_url,
                 sub_dir=run.sub_dir,
+                sub_dirs=[item.sub_dir for item in run.targets] or [run.sub_dir],
                 repo_path=run.repo_path,
                 base_ref=run.base_ref,
                 base_commit=run.base_commit,

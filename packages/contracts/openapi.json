@@ -1032,20 +1032,47 @@
               }
             ]
           },
+          "targetId": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetid"
+          },
           "targetName": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Targetname",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetname"
           },
           "targetType": {
-            "enum": [
-              "skill",
-              "agent",
-              "knowledge"
+            "anyOf": [
+              {
+                "enum": [
+                  "skill",
+                  "agent",
+                  "knowledge"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Targettype",
-            "type": "string"
+            "title": "Targettype"
           },
           "targetVersion": {
             "anyOf": [
@@ -1072,10 +1099,6 @@
             "title": "To"
           }
         },
-        "required": [
-          "targetType",
-          "targetName"
-        ],
         "title": "AttributionPreviewRequest",
         "type": "object"
       },
@@ -2576,6 +2599,87 @@
         "title": "CandidatePolicy",
         "type": "object"
       },
+      "CatalogConfig": {
+        "additionalProperties": false,
+        "description": "One enabled configuration with all of its members.",
+        "properties": {
+          "candidatePolicy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CandidatePolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "defaultRef": {
+            "title": "Defaultref",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogMember"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "repoUrl": {
+            "title": "Repourl",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "repoUrl",
+          "defaultRef",
+          "versions",
+          "members"
+        ],
+        "title": "CatalogConfig",
+        "type": "object"
+      },
+      "CatalogMember": {
+        "additionalProperties": false,
+        "description": "One member of a selectable evolution configuration.",
+        "properties": {
+          "objectName": {
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "subDir": {
+            "title": "Subdir",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectType",
+          "objectName",
+          "subDir"
+        ],
+        "title": "CatalogMember",
+        "type": "object"
+      },
       "CatalogModel": {
         "additionalProperties": false,
         "description": "One normalized model and its usage across the trace corpus.",
@@ -2674,7 +2778,7 @@
       },
       "CatalogTargets": {
         "additionalProperties": false,
-        "description": "Enabled targets grouped by the kind selectable in the wizard.",
+        "description": "Enabled targets grouped by member kind and by configuration.",
         "properties": {
           "agent": {
             "items": {
@@ -2688,6 +2792,13 @@
               "$ref": "#/components/schemas/CatalogTarget"
             },
             "title": "Skill",
+            "type": "array"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogConfig"
+            },
+            "title": "Targets",
             "type": "array"
           }
         },
@@ -2995,6 +3106,7 @@
           "TARGET_IN_USE",
           "TARGET_NOT_CONFIGURED",
           "TARGET_CONTENT_UNRESOLVED",
+          "MEMBER_ALREADY_CONFIGURED",
           "NO_PROBES_MATCHED",
           "POLICY_INVALID",
           "NO_ASSOCIATED_SESSIONS",
@@ -3327,6 +3439,13 @@
           "target": {
             "$ref": "#/components/schemas/EvolutionRunTarget"
           },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/EvolutionRunTarget"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -3636,6 +3755,13 @@
           },
           "target": {
             "$ref": "#/components/schemas/EvolutionRunTarget"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/EvolutionRunTarget"
+            },
+            "title": "Targets",
+            "type": "array"
           },
           "title": {
             "title": "Title",
@@ -4193,6 +4319,11 @@
             "title": "Name",
             "type": "string"
           },
+          "subDir": {
+            "default": "",
+            "title": "Subdir",
+            "type": "string"
+          },
           "targetRevision": {
             "anyOf": [
               {
@@ -4356,6 +4487,13 @@
           "subDir": {
             "title": "Subdir",
             "type": "string"
+          },
+          "subDirs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Subdirs",
+            "type": "array"
           },
           "workspacePath": {
             "anyOf": [
@@ -4795,8 +4933,6 @@
           "attributionPackageId": {
             "anyOf": [
               {
-                "maxLength": 64,
-                "minLength": 1,
                 "type": "string"
               },
               {
@@ -4841,7 +4977,6 @@
             ]
           },
           "enabled": {
-            "default": true,
             "title": "Enabled",
             "type": "boolean"
           },
@@ -4849,21 +4984,41 @@
             "title": "Id",
             "type": "string"
           },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/EvolutionTargetMember"
+            },
+            "title": "Members",
+            "type": "array"
+          },
           "objectName": {
-            "title": "Objectname",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectname"
           },
           "objectType": {
-            "enum": [
-              "skill",
-              "agent",
-              "knowledge"
+            "anyOf": [
+              {
+                "enum": [
+                  "skill",
+                  "agent",
+                  "knowledge"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Objecttype",
-            "type": "string"
+            "title": "Objecttype"
           },
           "primaryMetricKey": {
-            "maxLength": 128,
             "title": "Primarymetrickey",
             "type": "string"
           },
@@ -4872,30 +5027,34 @@
             "type": "string"
           },
           "subDir": {
-            "title": "Subdir",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subdir"
           },
           "testProjectId": {
-            "maxLength": 128,
             "title": "Testprojectid",
             "type": "string"
           },
           "validationProjectId": {
-            "maxLength": 128,
             "title": "Validationprojectid",
             "type": "string"
           }
         },
         "required": [
-          "objectType",
-          "objectName",
+          "id",
           "repoUrl",
-          "subDir",
           "defaultRef",
           "validationProjectId",
           "testProjectId",
           "primaryMetricKey",
-          "id"
+          "enabled",
+          "members"
         ],
         "title": "EvolutionTarget",
         "type": "object"
@@ -4916,6 +5075,76 @@
           "items"
         ],
         "title": "EvolutionTargetList",
+        "type": "object"
+      },
+      "EvolutionTargetMember": {
+        "additionalProperties": false,
+        "description": "Persisted member with its frozen definition preview.",
+        "properties": {
+          "definition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetDefinitionPreview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "objectName": {
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "subDir": {
+            "title": "Subdir",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectType",
+          "objectName",
+          "subDir"
+        ],
+        "title": "EvolutionTargetMember",
+        "type": "object"
+      },
+      "EvolutionTargetMemberWrite": {
+        "additionalProperties": false,
+        "description": "One skill or agent member of a target configuration.",
+        "properties": {
+          "objectName": {
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "subDir": {
+            "title": "Subdir",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectType",
+          "objectName",
+          "subDir"
+        ],
+        "title": "EvolutionTargetMemberWrite",
         "type": "object"
       },
       "EvolutionTargetVersions": {
@@ -4977,18 +5206,40 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/EvolutionTargetMemberWrite"
+            },
+            "minItems": 1,
+            "title": "Members",
+            "type": "array"
+          },
           "objectName": {
-            "title": "Objectname",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectname"
           },
           "objectType": {
-            "enum": [
-              "skill",
-              "agent",
-              "knowledge"
+            "anyOf": [
+              {
+                "enum": [
+                  "skill",
+                  "agent",
+                  "knowledge"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Objecttype",
-            "type": "string"
+            "title": "Objecttype"
           },
           "primaryMetricKey": {
             "maxLength": 128,
@@ -5000,8 +5251,15 @@
             "type": "string"
           },
           "subDir": {
-            "title": "Subdir",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subdir"
           },
           "testProjectId": {
             "maxLength": 128,
@@ -5015,10 +5273,7 @@
           }
         },
         "required": [
-          "objectType",
-          "objectName",
           "repoUrl",
-          "subDir",
           "defaultRef",
           "validationProjectId",
           "testProjectId",
@@ -5871,20 +6126,47 @@
               }
             ]
           },
+          "targetId": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetid"
+          },
           "targetName": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Targetname",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetname"
           },
           "targetType": {
-            "enum": [
-              "skill",
-              "agent",
-              "knowledge"
+            "anyOf": [
+              {
+                "enum": [
+                  "skill",
+                  "agent",
+                  "knowledge"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Targettype",
-            "type": "string"
+            "title": "Targettype"
           },
           "targetVersion": {
             "anyOf": [
@@ -5911,10 +6193,6 @@
             "title": "To"
           }
         },
-        "required": [
-          "targetType",
-          "targetName"
-        ],
         "title": "PotentialPreviewRequest",
         "type": "object"
       },
@@ -6288,20 +6566,47 @@
               }
             ]
           },
+          "targetId": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetid"
+          },
           "targetName": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Targetname",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetname"
           },
           "targetType": {
-            "enum": [
-              "skill",
-              "agent",
-              "knowledge"
+            "anyOf": [
+              {
+                "enum": [
+                  "skill",
+                  "agent",
+                  "knowledge"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Targettype",
-            "type": "string"
+            "title": "Targettype"
           },
           "targetVersion": {
             "anyOf": [
@@ -6328,10 +6633,6 @@
             "title": "To"
           }
         },
-        "required": [
-          "targetType",
-          "targetName"
-        ],
         "title": "ProbeQueryRequest",
         "type": "object"
       },
@@ -7588,20 +7889,47 @@
             "title": "Pagesize",
             "type": "integer"
           },
+          "targetId": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetid"
+          },
           "targetName": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Targetname",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetname"
           },
           "targetType": {
-            "enum": [
-              "skill",
-              "agent",
-              "knowledge"
+            "anyOf": [
+              {
+                "enum": [
+                  "skill",
+                  "agent",
+                  "knowledge"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Targettype",
-            "type": "string"
+            "title": "Targettype"
           },
           "targetVersion": {
             "anyOf": [
@@ -7628,10 +7956,6 @@
             "title": "To"
           }
         },
-        "required": [
-          "targetType",
-          "targetName"
-        ],
         "title": "SessionsPreviewRequest",
         "type": "object"
       },
@@ -8962,6 +9286,13 @@
             "title": "Targetversion",
             "type": "string"
           },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/StepRangeTarget"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
           "to": {
             "anyOf": [
               {
@@ -9029,6 +9360,52 @@
           }
         },
         "title": "StepRangeStats",
+        "type": "object"
+      },
+      "StepRangeTarget": {
+        "additionalProperties": false,
+        "description": "One member shown by the selection step.",
+        "properties": {
+          "objectName": {
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "subDir": {
+            "default": "",
+            "title": "Subdir",
+            "type": "string"
+          },
+          "targetRevision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetrevision"
+          },
+          "targetVersion": {
+            "title": "Targetversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectType",
+          "objectName",
+          "targetVersion"
+        ],
+        "title": "StepRangeTarget",
         "type": "object"
       },
       "StepRound": {
@@ -9342,6 +9719,13 @@
             "default": 0,
             "title": "Badcasecount",
             "type": "integer"
+          },
+          "members": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Members",
+            "type": "array"
           },
           "objectTriggerAt": {
             "anyOf": [
@@ -9833,6 +10217,13 @@
             "title": "Defaultref",
             "type": "string"
           },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/TargetOverviewMember"
+            },
+            "title": "Members",
+            "type": "array"
+          },
           "objectName": {
             "maxLength": 128,
             "minLength": 1,
@@ -10018,6 +10409,13 @@
             "title": "Evolvable",
             "type": "integer"
           },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/TargetOverviewMember"
+            },
+            "title": "Members",
+            "type": "array"
+          },
           "nonTarget": {
             "minimum": 0.0,
             "title": "Nontarget",
@@ -10136,6 +10534,38 @@
           "pageSize"
         ],
         "title": "TargetOverviewListResponse",
+        "type": "object"
+      },
+      "TargetOverviewMember": {
+        "additionalProperties": false,
+        "description": "One member chip of a configuration row.",
+        "properties": {
+          "objectName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "subDir": {
+            "default": "",
+            "title": "Subdir",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectType",
+          "objectName"
+        ],
+        "title": "TargetOverviewMember",
         "type": "object"
       },
       "TargetOverviewSummary": {

@@ -63,6 +63,7 @@ from app.service.evolution.events import (
 from app.service.evolution.git_failures import classify_git_failure
 from app.service.evolution.potential import (
     MatchCondition,
+    MatchTarget,
     PotentialCase,
     PotentialMatcher,
     ResolvedPolicy,
@@ -257,6 +258,8 @@ class EvolutionPrepareService:
                             "short": session.short,
                             "objectTriggerAt": session.object_trigger_at.isoformat(),
                             "badCaseCount": session.bad_case_count,
+                            "members": [entry.object_name for entry in session.object_entries]
+                            or [run.target_name],
                         }
                         for session in association.sessions
                     ],
@@ -496,6 +499,15 @@ class EvolutionPrepareService:
             if (run.potential_policy or {}).get("candidatePolicy")
             else None,
             window_end=window_end,
+            targets=tuple(
+                MatchTarget(
+                    object_type=cast(ObjectType, item.object_type),
+                    object_name=item.object_name,
+                    target_version=item.target_version,
+                    target_revision=item.target_revision or resolved.target_revision,
+                )
+                for item in run.targets
+            ),
         )
 
     async def _already_prepared(self, run: EvolutionRunRecord) -> bool:
@@ -900,7 +912,7 @@ def _candidate_writes(
             included_reason=case.hit_reason,
             source_evidence={
                 "kind": case.source_kind,
-                "name": case.object_name,
+                "name": case.source_name or case.object_name,
                 "type": case.bad_case_type,
                 "matches": list(case.matched_sources),
             },
@@ -908,6 +920,9 @@ def _candidate_writes(
             object_trigger_agent_id=case.object_trigger.agent_id,
             object_trigger_event_index=case.object_trigger.event_index,
             object_trigger_at=case.object_trigger.triggered_at,
+            object_type=case.object_type,
+            object_name=case.object_name,
+            object_revision=case.object_revision,
             case_trigger_agent_id=(
                 case.case_trigger.agent_id if case.case_trigger is not None else None
             ),

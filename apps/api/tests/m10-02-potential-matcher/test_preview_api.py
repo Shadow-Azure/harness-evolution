@@ -860,7 +860,7 @@ async def test_catalog_keeps_knowledge_targets_out_of_the_wizard(
 
     assert created.status_code == 201
     assert catalog.status_code == 200
-    assert set(catalog.json()) == {"skill", "agent"}
+    assert set(catalog.json()) == {"skill", "agent", "targets"}
     assert [item["name"] for item in catalog.json()["skill"]] == [TARGET_NAME]
 
 

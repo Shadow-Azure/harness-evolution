@@ -111,7 +111,8 @@ async def candidate_snapshot(
         PotentialCase(
             bad_case_id=item.bad_case_id,
             session_id=item.session_id,
-            object_name=(item.source_evidence or {}).get("name", run.target_name),
+            object_name=item.object_name or run.target_name,
+            source_name=(item.source_evidence or {}).get("name"),
             source_kind=(item.source_evidence or {}).get("kind"),
             matched_sources=tuple((item.source_evidence or {}).get("matches", [])),
             bad_case_type=(item.source_evidence or {}).get(
@@ -125,6 +126,8 @@ async def candidate_snapshot(
             order_state=cast(OrderState, item.order_state),
             included=True,
             anchor_source=cast(AnchorSource, item.case_anchor_kind or "unknown"),
+            object_type=item.object_type or run.target_type,
+            object_revision=item.object_revision,
             object_trigger=_trigger(
                 item.object_trigger_agent_id,
                 item.object_trigger_event_index,

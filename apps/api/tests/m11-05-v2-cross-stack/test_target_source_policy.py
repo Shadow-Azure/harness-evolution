@@ -133,7 +133,9 @@ async def test_roundtrip_source_policy(tmp_path: Path, mysql: bool) -> None:
         )
         target = await repo.insert(values)
         assert target.candidate_policy == policy.model_dump()
-        condition = MatchCondition(wid, "skill", "A", "main", "tag:main", start, end, policy)
+        condition = MatchCondition(
+            wid, "skill", "A", "main", "tag:main", start, end, candidate_policy=policy
+        )
         matcher = PotentialMatcher(PotentialRepository(db))
         sessions = await matcher.associated_sessions(condition)
         matched = await matcher.potential_cases(condition, sessions, resolve_policy(None))
@@ -156,7 +158,9 @@ async def test_roundtrip_source_policy(tmp_path: Path, mysql: bool) -> None:
             target.id, {k: v for k, v in values.items() if k != "candidate_policy"}
         )
         assert updated.candidate_policy == saved.candidate_policy
-        condition = MatchCondition(wid, "skill", "A", "main", "tag:main", start, end, policy)
+        condition = MatchCondition(
+            wid, "skill", "A", "main", "tag:main", start, end, candidate_policy=policy
+        )
         assert {
             row.bad_case_id
             for row in (

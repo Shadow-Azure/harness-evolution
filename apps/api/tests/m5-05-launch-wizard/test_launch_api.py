@@ -1073,6 +1073,7 @@ async def test_start_run_redacts_eval_secrets_before_snapshot(
         "testProjectId": "test-deep-research",
         "primaryMetricKey": "resolved_rate",
         "subDir": "skills/deep-research",
+        "subDirs": ["skills/deep-research"],
     }
     serialized = json.dumps(row["eval_config"])
     assert "sk-live-abc123" not in serialized
@@ -1564,3 +1565,73 @@ async def test_local_attribution_from_wizard_to_cluster(
         f"{workspace}/evolution/preview/attribution", json=preview_body
     )
     assert refreshed.json()["summary"]["bySkill"] == {expected_skill: counts["potential"]}
+
+
+async def test_launch_by_target_id_snapshots_every_member(
+    launch_api: httpx.AsyncClient,
+) -> None:
+    """A configuration id launches one run with a frozen row per member."""
+    from sqlalchemy import select
+
+    from app.db.crud.evolution_targets import EvolutionTargetRepository
+    from app.db.models.evolution import evolution_run_targets
+
+    app = _app_of(launch_api)
+    repository = EvolutionTargetRepository(app.state.database)
+    existing = await repository.get("target-enabled")
+    assert existing is not None
+    target = await repository.update(
+        existing.id,
+        {
+            "repo_url": existing.repo_url,
+            "default_ref": existing.default_ref,
+            "validation_project_id": existing.validation_project_id,
+            "test_project_id": existing.test_project_id,
+            "primary_metric_key": existing.primary_metric_key,
+            "enabled": True,
+            "object_type": "skill",
+            "object_name": "deep-research",
+            "sub_dir": "skills/deep-research",
+            "members": [
+                {
+                    "object_type": "skill",
+                    "object_name": "deep-research",
+                    "sub_dir": "skills/deep-research",
+                },
+                {
+                    "object_type": "skill",
+                    "object_name": "reported-object",
+                    "sub_dir": "skills/reported-object",
+                },
+            ],
+        },
+    )
+    body = _query_body(cacheEnabled=False)
+    body.pop("targetType")
+    body.pop("targetName")
+    body["targetId"] = target.id
+
+    response = await launch_api.post("/api/evolution/runs", json=body)
+
+    assert response.status_code == 202
+    run_id = response.json()["runId"]
+    async with app.state.database.session() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(evolution_run_targets)
+                    .where(evolution_run_targets.c.run_id == run_id)
+                    .order_by(evolution_run_targets.c.seq),
+                )
+            )
+            .mappings()
+            .all()
+        )
+    assert [row["object_name"] for row in rows] == [
+        "deep-research",
+        "reported-object",
+    ]
+    assert [row["sub_dir"] for row in rows] == [
+        "skills/deep-research",
+        "skills/reported-object",
+    ]

@@ -73,6 +73,8 @@ class ObjectEventRecord:
     definition_hash: str | None
     document_revision: str | None
     triggered_at: datetime | None
+    object_type: str | None = None
+    object_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,21 +191,41 @@ class PotentialRepository:
         self,
         session_ids: Sequence[str],
         *,
-        object_type: ObjectType,
-        object_name: str,
+        object_type: ObjectType | None = None,
+        object_name: str | None = None,
+        targets: Sequence[tuple[ObjectType, str]] | None = None,
     ) -> tuple[ObjectEventRecord, ...]:
-        """Return every trigger event of one object kind/name in the sessions.
+        """Return every trigger event of the selected objects in the sessions.
 
-        Read all agents under each root. Observed versions are attribution evidence.
+        Args:
+            session_ids: Root Sessions to scan.
+            object_type: One object kind when ``targets`` is omitted.
+            object_name: One object name when ``targets`` is omitted.
+            targets: Multiple ``(kind, name)`` members of one configuration.
+
+        Returns:
+            Trigger events carrying their own object identity so a multi-member
+            matcher can pick the entry point of each member independently.
         """
         if not session_ids:
             return ()
-        events: list[ObjectEventRecord] = []
-        name = (
-            agent_events.c.name.collate("utf8mb4_0900_bin")
+        pairs: tuple[tuple[ObjectType, str], ...]
+        if targets:
+            pairs = tuple(dict.fromkeys(targets))
+        elif object_type is not None and object_name is not None:
+            pairs = ((object_type, object_name),)
+        else:
+            raise ValueError("object_type/object_name or targets is required")
+        name_column = agent_events.c.name
+        exact_name = (
+            name_column.collate("utf8mb4_0900_bin")
             if self._database.dialect == "mysql"
-            else agent_events.c.name
+            else name_column
         )
+        identity_condition = or_(
+            *(and_(agent_events.c.kind == kind, exact_name == name) for kind, name in pairs)
+        )
+        events: list[ObjectEventRecord] = []
         for chunk in _chunks(tuple(dict.fromkeys(session_ids))):
             statement = (
                 select(
@@ -216,13 +238,14 @@ class PotentialRepository:
                     agent_events.c.definition_hash,
                     agent_events.c.document_revision,
                     agent_events.c.triggered_at,
+                    agent_events.c.kind,
+                    agent_events.c.name,
                 )
                 .select_from(agent_events)
                 .join(agents, agents.c.id == agent_events.c.agent_id)
                 .where(
                     agents.c.root_session_id.in_(chunk),
-                    agent_events.c.kind == object_type,
-                    name == object_name,
+                    identity_condition,
                 )
                 .order_by(
                     agents.c.root_session_id,
@@ -253,22 +276,44 @@ class PotentialRepository:
                         else None
                     ),
                     triggered_at=_time(row["triggered_at"]),
+                    object_type=str(row["kind"]),
+                    object_name=str(row["name"]),
                 )
                 for row in rows
             )
         # Some transcripts identify the agent or skill on a node without logging a call.
         # Prefer event coordinates whenever the Session has recorded the invocation.
-        if object_type in ("agent", "skill"):
-            traced = {event.session_id for event in events}
-            missing = tuple(dict.fromkeys(root for root in session_ids if root not in traced))
+        pairs_by_kind: dict[str, list[str]] = {}
+        for kind, name in pairs:
+            if kind in ("agent", "skill"):
+                pairs_by_kind.setdefault(kind, []).append(name)
+        for object_kind, names in pairs_by_kind.items():
+            traced = {
+                (event.session_id, event.object_type, event.object_name)
+                for event in events
+                if event.object_type == object_kind
+            }
+            missing = tuple(
+                dict.fromkeys(
+                    root
+                    for root in session_ids
+                    if not any((root, object_kind, name) in traced for name in names)
+                ),
+            )
             identity = (
                 func.coalesce(func.nullif(agents.c.agent_type, ""), agents.c.name)
-                if object_type == "agent"
+                if object_kind == "agent"
                 else agents.c.skill_name
             )
             for chunk in _chunks(missing):
-                nodes = select(agents.c.root_session_id, agents.c.id, agents.c.tree_index).where(
-                    agents.c.root_session_id.in_(chunk), identity == object_name
+                nodes = select(
+                    agents.c.root_session_id,
+                    agents.c.id,
+                    agents.c.tree_index,
+                    identity.label("object_name"),
+                ).where(
+                    agents.c.root_session_id.in_(chunk),
+                    identity.in_(tuple(names)),
                 )
                 async with self._database.session() as session:
                     for row in (await session.execute(nodes)).mappings():
@@ -283,6 +328,8 @@ class PotentialRepository:
                                 definition_hash=None,
                                 document_revision=None,
                                 triggered_at=None,
+                                object_type=object_kind,
+                                object_name=str(row["object_name"]),
                             )
                         )
         return tuple(events)

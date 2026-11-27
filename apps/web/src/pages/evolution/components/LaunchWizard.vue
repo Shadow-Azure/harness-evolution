@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type {
   AttributionPreviewResult,
+  CandidatePolicy,
   PotentialPolicy,
   PotentialPreviewItem,
   PotentialPreviewResult,
@@ -26,7 +27,10 @@ import {
 import { ApiError } from "../../../api/http";
 import { queryKeys } from "../../../api/queryKeys";
 import { formatApiError } from "../../../app/apiError";
-import { useEvolutionTargetVersions } from "../../../composables/useEvolutionTargets";
+import {
+  useEvolutionTargets,
+  useEvolutionTargetVersions,
+} from "../../../composables/useEvolutionTargets";
 import { workspacePath } from "../../../router/workspace";
 import { useAuthStore } from "../../../stores/auth";
 import {
@@ -51,6 +55,24 @@ type WizardStep = 1 | 2 | 3 | 4;
 type PendingAction = "" | "sessions" | "potential" | "attribution" | "launch";
 type PreviewAction = "sessions" | "potential" | "attribution";
 type PreviewFromStep = 1 | 2 | 3;
+
+/** One member of the selected evolution configuration. */
+interface WizardMember {
+  objectType: string;
+  objectName: string;
+  subDir: string;
+}
+
+/** One selectable evolution configuration and its members. */
+interface WizardConfig {
+  id: string;
+  name: string;
+  repoUrl: string;
+  defaultRef: string;
+  versions: string[];
+  members: WizardMember[];
+  candidatePolicy?: CandidatePolicy | null;
+}
 
 interface PreviewStage {
   label: string;
@@ -127,7 +149,6 @@ const auth = useAuthStore();
 const router = useRouter();
 
 const step = ref<WizardStep>(1);
-const targetType = ref<"skill" | "agent">("skill");
 const targetId = ref<string | null>(null);
 const targetVersion = ref("");
 const versionPinned = ref(false);
@@ -141,8 +162,8 @@ const includeAfterObject = ref(true);
 const sameObjectOnly = ref(false);
 const cacheEnabled = ref(true);
 const library = useAttributionSkillPackages(() => props.wid);
-const overridePackage = ref("");
-watch(() => [props.wid, targetId.value], () => { overridePackage.value = ""; });
+const overridePackage = ref<string | null>(null);
+watch(() => [props.wid, targetId.value], () => { overridePackage.value = null; });
 
 const sessionPreview = ref<SessionPreviewResult | null>(null);
 const sessionEmptySummary = ref<SessionPreviewSummary | null>(null);
@@ -275,12 +296,6 @@ const effectiveSkill = useQuery({
   enabled: computed(() => Boolean(targetId.value)),
   retry: false,
 });
-const selectedPackage = computed({
-  get: () => overridePackage.value || library.packages.data.value?.items.find(
-    item => item.id === effectiveSkill.data.value?.id,
-  )?.id || "",
-  set: (id: string) => { overridePackage.value = id; },
-});
 const focusCase = useQuery({
   queryKey: computed(() =>
     queryKeys.badCase(props.wid, props.focusCaseId ?? "none"),
@@ -290,20 +305,92 @@ const focusCase = useQuery({
   retry: false,
 });
 
-const targetOptions = computed(
-  () => catalogs.data.value?.[targetType.value] ?? [],
-);
-const hasAnyTarget = computed(() => {
+function fallbackConfig(
+  target: { id: string; name: string; repoUrl: string; subDir: string; defaultRef: string; versions: string[]; candidatePolicy?: CandidatePolicy | null },
+  objectType: "skill" | "agent",
+): WizardConfig {
+  return {
+    id: target.id,
+    name: target.name,
+    repoUrl: target.repoUrl,
+    defaultRef: target.defaultRef,
+    versions: target.versions,
+    candidatePolicy: target.candidatePolicy,
+    members: [
+      {
+        objectType,
+        objectName: target.name,
+        subDir: target.subDir,
+      },
+    ],
+  };
+}
+
+const configOptions = computed<WizardConfig[]>(() => {
   const data = catalogs.data.value;
   if (!data) {
-    return false;
+    return [];
   }
-  return data.skill.length + data.agent.length > 0;
+  if (data.targets && data.targets.length > 0) {
+    return data.targets.map((config) => ({
+      id: config.id,
+      name: config.name,
+      repoUrl: config.repoUrl,
+      defaultRef: config.defaultRef,
+      versions: config.versions,
+      candidatePolicy: config.candidatePolicy,
+      members: config.members.map((member) => ({
+        objectType: member.objectType,
+        objectName: member.objectName,
+        subDir: member.subDir,
+      })),
+    }));
+  }
+  // Older catalog captures only expose skill/agent rows; render each as a
+  // single-member configuration so the wizard still works.
+  return [
+    ...data.skill.map((target) => fallbackConfig(target, "skill")),
+    ...data.agent.map((target) => fallbackConfig(target, "agent")),
+  ];
 });
-const selectedTarget = computed(
-  () => targetOptions.value.find((target) => target.id === targetId.value) ?? null,
+const hasAnyTarget = computed(() => configOptions.value.length > 0);
+const selectedConfig = computed(
+  () => configOptions.value.find((config) => config.id === targetId.value) ?? null,
 );
-const savedPolicy = computed(() => selectedTarget.value?.candidatePolicy);
+const selectedMembers = computed(() => selectedConfig.value?.members ?? []);
+const selectedConfigLabel = computed(() => {
+  const config = selectedConfig.value;
+  if (!config) {
+    return "";
+  }
+  const version = targetVersion.value || config.defaultRef;
+  const first = config.members[0];
+  if (!first) {
+    return `${config.name}@${version}`;
+  }
+  const extra =
+    config.members.length > 1 ? ` +${config.members.length - 1}` : "";
+  return `${first.objectType}:${first.objectName}${extra}@${version}`;
+});
+const targetConfigs = useEvolutionTargets(computed(() => props.wid));
+const selectedConfigDetail = computed(
+  () =>
+    targetConfigs.data.value?.items.find(
+      (item) => item.id === targetId.value,
+    ) ?? null,
+);
+const selectedProject = computed(() => {
+  const detail = selectedConfigDetail.value;
+  if (!detail) {
+    return null;
+  }
+  return {
+    validationProjectId: detail.validationProjectId,
+    testProjectId: detail.testProjectId,
+    primaryMetricKey: detail.primaryMetricKey,
+  };
+});
+const savedPolicy = computed(() => selectedConfig.value?.candidatePolicy);
 const policyLabel = computed(() => {
   if (!savedPolicy.value) return policyPreset.value === "default" ? "默认潜在策略" : "自定义潜在策略";
   return { default: "默认规则", combined: "默认规则 + 自定义来源", custom: "仅自定义来源" }[savedPolicy.value.mode];
@@ -311,13 +398,13 @@ const policyLabel = computed(() => {
 const versionSuggestions = computed(() => {
   const values: string[] = [];
   const remoteDefault =
-    versions.data.value?.defaultRef || selectedTarget.value?.defaultRef;
+    versions.data.value?.defaultRef || selectedConfig.value?.defaultRef;
   if (remoteDefault) {
     values.push(remoteDefault);
   }
   const options = versions.data.value?.versions.length
     ? versions.data.value.versions
-    : selectedTarget.value?.versions ?? [];
+    : selectedConfig.value?.versions ?? [];
   for (const version of options) {
     if (!values.includes(version)) {
       values.push(version);
@@ -332,7 +419,7 @@ const versionSuggestions = computed(() => {
  */
 function defaultVersion(): string {
   const remoteDefault =
-    versions.data.value?.defaultRef || selectedTarget.value?.defaultRef;
+    versions.data.value?.defaultRef || selectedConfig.value?.defaultRef;
   if (remoteDefault) {
     return remoteDefault;
   }
@@ -343,7 +430,7 @@ function defaultVersion(): string {
 function versionKind(version: string): string {
   const tags = versions.data.value?.versions.length
     ? versions.data.value.versions
-    : selectedTarget.value?.versions ?? [];
+    : selectedConfig.value?.versions ?? [];
   return tags.includes(version) ? "tag" : "基线";
 }
 
@@ -461,7 +548,7 @@ const previewStages = computed<PreviewStage[]>(() => {
       },
       {
         label: "关联 Session",
-        detail: `在 ${windowFrom.value} ~ ${windowTo.value} 内匹配对象出现过的 Session。`,
+        detail: `在 ${windowFrom.value} ~ ${windowTo.value} 内匹配任一成员出现过的 Session。`,
       },
     ];
   }
@@ -569,13 +656,19 @@ const potentialPageCount = computed(() =>
 );
 const agentAvailable = computed(() => attributionPreview.value?.canRecompute === true);
 const usesBoundSkill = computed(() => attributionPreview.value?.usesBoundSkill === true);
+const selectedPackage = computed({
+  get: () => overridePackage.value ?? (agentAvailable.value
+    ? library.packages.data.value?.items.find(item => item.id === effectiveSkill.data.value?.id)?.id ?? ""
+    : ""),
+  set: (id: string) => { overridePackage.value = id; },
+});
 const canRecompute = computed(() => agentAvailable.value || !usesBoundSkill.value);
 const attributionSummary = computed(() => attributionPreview.value?.summary ?? null);
 const canLaunch = computed(() => {
   const summary = attributionSummary.value;
   if (!hasPotential.value || isBusy.value || requestError.value || !summary) return false;
   if (cacheEnabled.value) return usesBoundSkill.value ? (summary.reused ?? 0) > 0 : summary.potential > 0;
-  return agentAvailable.value ? Boolean(selectedPackage.value) : !usesBoundSkill.value;
+  return agentAvailable.value ? Boolean(selectedPackage.value) : !usesBoundSkill.value && !selectedPackage.value;
 });
 const previewTargetRevision = computed<string | null | undefined>(() => {
   const revisions = [
@@ -603,25 +696,27 @@ function applyFocusCase(): void {
     return;
   }
   const caseData = focusCase.data.value;
-  const data = catalogs.data.value;
-  if (!caseData || !data) {
+  if (!caseData || !catalogs.data.value) {
     return;
   }
   focusApplied.value = true;
-  targetType.value = caseData.objectType;
-  const target = data[caseData.objectType]?.find(
-    (item) => item.name === caseData.objectName,
+  const config = configOptions.value.find((item) =>
+    item.members.some(
+      (member) =>
+        member.objectType === caseData.objectType &&
+        member.objectName === caseData.objectName,
+    ),
   );
-  if (!target) {
+  if (!config) {
     focusTargetMissing.value = true;
     return;
   }
-  targetId.value = target.id;
+  targetId.value = config.id;
   versionPinned.value = true;
   targetVersion.value =
     caseData.objectVersion ||
-    target.defaultRef ||
-    target.versions[0] ||
+    config.defaultRef ||
+    config.versions[0] ||
     "";
   focusTargetMissing.value = false;
 }
@@ -646,19 +741,6 @@ function resetDownstream(): void {
   if (step.value !== 1) {
     step.value = 1;
   }
-}
-
-/** Reset the cascading name and version selections when the type changes. */
-function selectType(next: "skill" | "agent"): void {
-  if (targetType.value === next) {
-    return;
-  }
-  targetType.value = next;
-  targetId.value = null;
-  targetVersion.value = "";
-  versionPinned.value = false;
-  versionOpen.value = false;
-  resetDownstream();
 }
 
 /** Record the chosen target id and reset its dependent version. */
@@ -732,8 +814,7 @@ function versionRefFormatError(value: string): string {
 /** Build the shared preview/launch condition from the current step-1 form. */
 function condition() {
   return {
-    targetType: targetType.value,
-    targetName: selectedTarget.value?.name ?? "",
+    targetId: targetId.value ?? undefined,
     targetVersion: targetVersion.value.trim() || undefined,
     from: windowFrom.value || undefined,
     to: windowTo.value || undefined,
@@ -759,7 +840,7 @@ function validateStep1(): boolean {
     windowFrom.value && windowTo.value && windowFrom.value > windowTo.value,
   );
   versionFormatError.value = versionRefFormatError(targetVersion.value);
-  fieldErrors.target = !selectedTarget.value;
+  fieldErrors.target = !selectedConfig.value;
   fieldErrors.version =
     Boolean(versionFormatError.value) || contentUnresolved.value;
   fieldErrors.from = !windowFrom.value || reversed;
@@ -1138,7 +1219,7 @@ async function refreshAttribution(): Promise<void> {
 
 /** Accept one full run or cluster-only preview and leave the wizard. */
 async function launch(mode: "full" | "cluster_only"): Promise<void> {
-  if (!selectedTarget.value || !canLaunch.value) {
+  if (!selectedConfig.value || !canLaunch.value) {
     return;
   }
   pending.value = "launch";
@@ -1283,7 +1364,7 @@ const reasonEntries = computed(() => {
               ∅
             </div>
             <h3>当前空间还没有启用的进化对象</h3>
-            <p>请先在「进化对象配置」中新增 skill / agent，并确认已启用，再回到这里启动自进化。</p>
+            <p>请先在「进化对象配置」中新增一条包含 skill / agent 成员的配置，并确认已启用，再回到这里启动自进化。</p>
             <button
               class="btn primary"
               type="button"
@@ -1415,23 +1496,7 @@ const reasonEntries = computed(() => {
                   进化对象 <span class="req">*</span>
                 </div>
                 <div class="f-inline wz-controls">
-                  <div class="seg">
-                    <button
-                      :class="{ active: targetType === 'skill' }"
-                      type="button"
-                      @click="selectType('skill')"
-                    >
-                      skill
-                    </button>
-                    <button
-                      :class="{ active: targetType === 'agent' }"
-                      type="button"
-                      @click="selectType('agent')"
-                    >
-                      agent
-                    </button>
-                  </div>
-                  <div class="wz-field">
+                  <div class="wz-field wz-target-field">
                     <select
                       class="inp"
                       :class="{ 'input-error': fieldErrors.target }"
@@ -1442,14 +1507,14 @@ const reasonEntries = computed(() => {
                       @change="selectTargetId(($event.target as HTMLSelectElement).value)"
                     >
                       <option value="">
-                        {{ catalogs.isPending.value ? "读取对象…" : "选择对象" }}
+                        {{ catalogs.isPending.value ? "读取配置…" : "选择进化对象配置" }}
                       </option>
                       <option
-                        v-for="target in targetOptions"
-                        :key="target.id"
-                        :value="target.id"
+                        v-for="config in configOptions"
+                        :key="config.id"
+                        :value="config.id"
                       >
-                        {{ target.name }}
+                        {{ config.members[0]?.objectName ?? config.name }}<span v-if="config.members.length > 1"> · {{ config.members.length }} 个对象</span>
                       </option>
                     </select>
                     <p
@@ -1459,13 +1524,13 @@ const reasonEntries = computed(() => {
                       class="field-error"
                       role="alert"
                     >
-                      请选择进化对象
+                      请选择进化对象配置
                     </p>
                     <p
-                      v-else-if="!targetOptions.length"
+                      v-else-if="!configOptions.length"
                       class="field-error"
                     >
-                      当前类型没有已启用的对象，可切换到另一种类型或前往配置。
+                      当前空间没有已启用的进化对象，可前往配置页新增并启用。
                     </p>
                   </div>
                   <span class="wz-inline-label">版本</span>
@@ -1561,12 +1626,48 @@ const reasonEntries = computed(() => {
                   </button>
                 </p>
                 <p class="f-note">
-                  版本可直接输入 tag、分支名或 commit id；下拉建议来自当前对象的 tag 与基线。服务端会先用 git 校验该 ref 是否存在，再读取 SKILL.md / AGENT.md 并解析 body hash 作为目标 revision；解析结果可在运行详情查看。只列出当前空间已启用的进化对象；点击<!-- eslint-disable vue/multiline-html-element-content-newline -- 中文句内按钮与前后文字紧邻渲染，不留多余空格 --><button
+                  版本可直接输入 tag、分支名或 commit id；下拉建议来自当前配置仓库的 tag 与基线，全部成员共用这个版本。服务端会先用 git 校验该 ref 是否存在，再逐成员读取 SKILL.md / AGENT.md 并解析 body hash 作为目标 revision；解析结果可在运行详情查看。只列出当前空间已启用的配置；点击<!-- eslint-disable vue/multiline-html-element-content-newline -- 中文句内按钮与前后文字紧邻渲染，不留多余空格 --><button
                     class="cfg-link"
                     type="button"
                     data-testid="wizard-target-config-link"
                     @click="goTargetConfig"
                   >配置页</button><!-- eslint-enable vue/multiline-html-element-content-newline -->调整。
+                </p>
+              </div>
+
+              <div
+                v-if="selectedConfig"
+                class="f-row"
+                data-testid="wizard-members"
+              >
+                <div class="f-label">
+                  成员
+                </div>
+                <div class="wz-members">
+                  <div
+                    v-for="member in selectedMembers"
+                    :key="`${member.objectType}:${member.objectName}`"
+                    class="wz-member static"
+                  >
+                    <span class="chip kind">{{ member.objectType }}:{{ member.objectName }}</span>
+                    <span class="mono sub">{{ member.subDir || "—" }}</span>
+                  </div>
+                  <div class="wz-shared">
+                    <template v-if="selectedProject">
+                      <b>共享测试工程</b>
+                      <span>验证集 <span class="mono">{{ selectedProject.validationProjectId || "—" }}</span> · 测试集 <span class="mono">{{ selectedProject.testProjectId || "—" }}</span> · 主指标 <span class="mono">{{ selectedProject.primaryMetricKey || "—" }}</span></span>
+                      <span class="v2-note">一次评测提交全部成员资产；Session 只要出现任一成员就算关联。</span>
+                    </template>
+                    <template v-else-if="targetConfigs.isPending.value">
+                      <span class="v2-note">正在读取共享测试工程…</span>
+                    </template>
+                    <template v-else>
+                      <span class="v2-note">共享测试工程暂不可读；启动仍会使用该配置保存的测试工程。</span>
+                    </template>
+                  </div>
+                </div>
+                <p class="f-note">
+                  成员只读；仓库、基线、验证集与测试集测试工程、主指标、归因 Skill 由这条配置共享，启动后作为一次运行整体进化。
                 </p>
               </div>
 
@@ -1803,7 +1904,7 @@ const reasonEntries = computed(() => {
 
             <template v-else-if="step === 2">
               <div class="wz-condstrip">
-                <span class="chip kind">{{ targetType }}:{{ selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
+                <span class="chip kind">{{ selectedConfigLabel }}</span>
                 <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
                 <span class="chip">{{ policyLabel }}</span>
                 <span
@@ -1824,12 +1925,12 @@ const reasonEntries = computed(() => {
 
               <div class="wz-section-title">
                 第 2 步 · Session 关联
-                <span>先判断对象出现在哪些 Session，只有出现的 Session 才进入下一步</span>
+                <span>先判断任一成员出现在哪些 Session，只有出现的 Session 才进入下一步</span>
               </div>
 
               <div class="wz-stats">
                 <span class="st"><b>{{ sessionSummary?.reported ?? 0 }}</b><span>上报过 bad case 的 Session</span></span>
-                <span class="st accent"><b>{{ sessionSummary?.associated ?? 0 }}</b><span>对象出现 · 已关联</span></span>
+                <span class="st accent"><b>{{ sessionSummary?.associated ?? 0 }}</b><span>成员出现 · 已关联</span></span>
                 <span class="st"><b>{{ sessionSummary?.skipped ?? 0 }}</b><span>未出现 · 跳过</span></span>
                 <span class="st"><b>{{ sessionSummary?.pending ?? 0 }}</b><span>待轨迹同步</span></span>
               </div>
@@ -1849,8 +1950,8 @@ const reasonEntries = computed(() => {
                     <thead>
                       <tr>
                         <th>Session</th>
-                        <th>对象出现</th>
-                        <th>对象触发点时间</th>
+                        <th>成员出现</th>
+                        <th>成员触发点时间</th>
                         <th>该 Session 的 bad case 数</th>
                       </tr>
                     </thead>
@@ -1902,7 +2003,7 @@ const reasonEntries = computed(() => {
                   </button>
                 </div>
                 <p class="f-note">
-                  只展示对象出现过的 Session；未出现的 Session 已跳过，下一步再按策略筛选潜在 bad case。
+                  只展示成员出现过的 Session；未出现的 Session 已跳过，下一步再按策略筛选潜在 bad case。
                 </p>
               </template>
               <div
@@ -1917,8 +2018,8 @@ const reasonEntries = computed(() => {
                   >
                     ∅
                   </div>
-                  <h3>没有对象出现过的 Session</h3>
-                  <p>可回第 1 步调整时间段或选择其他对象后重试。</p>
+                  <h3>没有成员出现过的 Session</h3>
+                  <p>可回第 1 步调整时间段或选择其他配置后重试。</p>
                 </div>
               </div>
 
@@ -1934,7 +2035,7 @@ const reasonEntries = computed(() => {
 
             <template v-else-if="step === 3">
               <div class="wz-condstrip">
-                <span class="chip kind">{{ targetType }}:{{ selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
+                <span class="chip kind">{{ selectedConfigLabel }}</span>
                 <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
                 <span class="chip">{{ policyLabel }}</span>
                 <span
@@ -1955,7 +2056,7 @@ const reasonEntries = computed(() => {
 
               <div class="wz-section-title">
                 第 3 步 · 潜在 bad case
-                <span>{{ savedPolicy ? policyLabel : policyPreset === "default" ? "默认策略：对象自身 self 上报 或 触发点在对象触发点之后" : "自定义策略：按第 1 步勾选的规则组合" }}</span>
+                <span>{{ savedPolicy ? policyLabel : policyPreset === "default" ? "默认策略：任一成员自身 self 上报 或 触发点在成员触发点之后" : "自定义策略：按第 1 步勾选的规则组合" }}</span>
               </div>
 
               <div class="wz-stats">
@@ -2087,7 +2188,7 @@ const reasonEntries = computed(() => {
 
             <template v-else>
               <div class="wz-condstrip">
-                <span class="chip kind">{{ targetType }}:{{ selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
+                <span class="chip kind">{{ selectedConfigLabel }}</span>
                 <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
                 <span
                   class="v2-badge"
@@ -2115,7 +2216,7 @@ const reasonEntries = computed(() => {
 
               <div class="wz-section-title">
                 第 4 步 · 归因预览与启动
-                <span>确认缓存策略后启动；归因结果会写回该对象版本</span>
+                <span>确认缓存策略后启动；归因结果按成员写回该配置版本</span>
               </div>
 
               <div class="cache-option">
@@ -2182,24 +2283,28 @@ const reasonEntries = computed(() => {
                 <p>尚无报告 {{ attributionSummary?.missing ?? 0 }} 个 Badcase<span v-if="cacheEnabled && usesBoundSkill">，本次跳过</span>。</p>
               </div>
               <label
-                v-if="!cacheEnabled && agentAvailable"
-                class="cache-option"
+                v-if="!cacheEnabled"
+                class="recompute-skill"
               >
                 本次重算使用的归因 Skill
                 <select
                   v-model="selectedPackage"
+                  class="evolution-form-select"
                   aria-label="本次重算使用的归因 Skill"
                 >
                   <option
                     value=""
-                    disabled
-                  >请选择空间内的归因 Skill</option>
+                    :disabled="agentAvailable || usesBoundSkill"
+                  >{{ agentAvailable || usesBoundSkill ? "请选择空间内的归因 Skill" : "内置归因规则" }}</option>
                   <option
                     v-for="item in library.packages.data.value?.items"
                     :key="item.id"
                     :value="item.id"
                   >{{ item.skillName }}</option>
                 </select>
+                <small v-if="!agentAvailable">
+                  {{ selectedPackage || usesBoundSkill ? "所选 Skill 需要可用的归因运行时。" : "当前归因运行时不可用，本次使用内置规则。" }}
+                </small>
               </label>
 
               <p
@@ -2877,6 +2982,66 @@ const reasonEntries = computed(() => {
   width: 100%;
 }
 
+.wz-target-field {
+  min-width: 260px;
+}
+
+.wz-members {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel);
+}
+
+.wz-member {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 8px;
+}
+
+.wz-member.static {
+  cursor: default;
+}
+
+.wz-member .sub {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.wz-shared {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 2px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.wz-shared b {
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.chip.kind {
+  display: inline-block;
+  padding: 1px 9px;
+  border: 1px solid color-mix(in srgb, var(--purple) 35%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--purple) 9%, transparent);
+  color: var(--purple);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
 .wz-version-combo {
   position: relative;
   width: 100%;
@@ -3244,6 +3409,12 @@ table.rep.wz-session-table th {
 .pager .btn {
   padding: 3px 12px;
   font-size: 11.5px;
+}
+
+.recompute-skill {
+  display: grid;
+  gap: 5px;
+  color: var(--text-dim);
 }
 
 .cache-option {

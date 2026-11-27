@@ -619,6 +619,18 @@ class AttributionSkillSnapshotResolver(Protocol):
 
 
 @dataclass(frozen=True)
+class AttributionTarget:
+    """One member identity available to an attribution run or binding batch."""
+
+    object_type: str
+    object_name: str
+    target_version: str
+    target_revision: str
+    sub_dir: str = ""
+    definition: GitDefinitionRef | None = None
+
+
+@dataclass(frozen=True)
 class BindingBatch:
     id: str
     owner: str
@@ -634,8 +646,60 @@ class BindingBatch:
     attribution_skill_revision: int
     attribution_skill_content_hash: str
     definition: GitDefinitionRef | None = None
-
+    targets: tuple[AttributionTarget, ...] = ()
     candidate_policy: CandidatePolicy | None = None
+
+
+def _batch_targets(run: EvolutionRunRecord | BindingBatch) -> tuple[AttributionTarget, ...]:
+    """Return the member identities frozen by a run or binding batch."""
+    if isinstance(run, BindingBatch):
+        if run.targets:
+            return run.targets
+        return (
+            AttributionTarget(
+                run.target_type,
+                run.target_name,
+                run.target_version,
+                run.target_revision,
+                run.sub_dir,
+                run.definition,
+            ),
+        )
+    if run.targets:
+        return tuple(
+            AttributionTarget(
+                item.object_type,
+                item.object_name,
+                item.target_version,
+                item.target_revision or "",
+                item.sub_dir,
+            )
+            for item in run.targets
+        )
+    return (
+        AttributionTarget(
+            run.target_type,
+            run.target_name,
+            run.target_version,
+            run.target_revision or "",
+            run.sub_dir,
+        ),
+    )
+
+
+def _target_for(
+    run: EvolutionRunRecord | BindingBatch,
+    candidate: PotentialCase,
+) -> AttributionTarget:
+    """Return the member owning one case, falling back to the first member."""
+    targets = _batch_targets(run)
+    for target in targets:
+        if (
+            target.object_type == candidate.object_type
+            and target.object_name == candidate.object_name
+        ):
+            return target
+    return targets[0]
 
 
 class AttributionStore(Protocol):
@@ -786,13 +850,26 @@ class AttributionRunner:
             and isinstance(run, EvolutionRunRecord)
             and (run.potential_policy or {}).get("latestReportsOnly")
         ):
-            reports = await self._store.latest_reports(
-                run.workspace_id,
-                run.target_type,
-                run.target_name,
-                target_revision or run.target_revision or run.target_version,
-                case_ids,
-            )
+            reports: dict[str, tuple[str, str, str]] = {}
+            for batch_target in _batch_targets(run):
+                target_cases = tuple(
+                    candidate.bad_case_id
+                    for candidate in pending
+                    if _target_for(run, candidate) == batch_target
+                )
+                if not target_cases:
+                    continue
+                reports.update(
+                    await self._store.latest_reports(
+                        run.workspace_id,
+                        batch_target.object_type,
+                        batch_target.object_name,
+                        batch_target.target_revision
+                        or target_revision
+                        or batch_target.target_version,
+                        target_cases,
+                    ),
+                )
             for case_id, (probe_id, _, _) in reports.items():
                 await self._store.reuse_probe_and_link(probe_id, run.id, case_id, self._now())
             return AttributionRunSummary(
@@ -811,28 +888,31 @@ class AttributionRunner:
                 if self._context_provider is not None
                 else {}
             )
-            contexts = (
-                await self._context_provider.prepare(
-                    target_type=run.target_type,  # type: ignore[arg-type]
-                    target_name=run.target_name,
-                    target_version=run.target_version,
-                    target_revision=target_revision or run.target_revision,
-                    candidates=pending,
-                    bad_cases=bad_cases,
-                    knowledge=knowledge,
-                    historical_probe_ids=historical_probe_ids,
-                )
-                if self._context_provider is not None
-                else {}
-            )
+            contexts: dict[str, AttributionCaseContext] = {}
+            if self._context_provider is not None:
+                for batch_target in _batch_targets(run):
+                    group = tuple(
+                        candidate
+                        for candidate in pending
+                        if _target_for(run, candidate) == batch_target
+                    )
+                    if not group:
+                        continue
+                    contexts.update(
+                        await self._context_provider.prepare(
+                            target_type=batch_target.object_type,  # type: ignore[arg-type]
+                            target_name=batch_target.object_name,
+                            target_version=batch_target.target_version,
+                            target_revision=(target_revision or batch_target.target_revision),
+                            candidates=group,
+                            bad_cases=bad_cases,
+                            knowledge=knowledge,
+                            historical_probe_ids=historical_probe_ids,
+                        ),
+                    )
         except Exception as exc:
             raise self._blocked(run.id, None, exc) from exc
 
-        object_version = (
-            target_revision
-            or run.target_revision
-            or resolve_legacy_target_version(run.target_version).target_revision
-        )
         skill_snapshot = await self._resolve_skill_snapshot(run, engine)
         semaphore = asyncio.Semaphore(self._max_concurrency)
 
@@ -844,7 +924,7 @@ class AttributionRunner:
                     candidate,
                     bad_cases,
                     knowledge,
-                    object_version,
+                    target_revision,
                     contexts,
                     skill_snapshot,
                 ),
@@ -908,9 +988,9 @@ class AttributionRunner:
                         workspace_id=run.workspace_id,
                         session_id=candidate.session_id,
                         bad_case_id=candidate.bad_case_id,
-                        probe_type=run.target_type,
-                        probe_object=run.target_name,
-                        object_version=object_version,
+                        probe_type=item.probe_type,
+                        probe_object=item.probe_object,
+                        object_version=item.object_version,
                         attribute_type=result.category,
                         conclusion=result.conclusion,
                         confidence=result.confidence,
@@ -1047,7 +1127,7 @@ class AttributionRunner:
         candidate: PotentialCase,
         bad_cases: Mapping[str, BadCaseEvidenceRecord],
         knowledge: Mapping[str, tuple[KnowledgeEvidenceRecord, ...]],
-        object_version: str,
+        target_revision_override: str | None,
         contexts: Mapping[str, AttributionCaseContext],
         skill_snapshot: AttributionSkillSnapshot | None,
     ) -> AttributionInput:
@@ -1055,6 +1135,13 @@ class AttributionRunner:
         evidence = bad_cases.get(candidate.bad_case_id)
         if evidence is None:
             raise LookupError(f"bad case evidence not found: {candidate.bad_case_id}")
+        target = _target_for(run, candidate)
+        object_version = (
+            target.target_revision
+            or target_revision_override
+            or run.target_revision
+            or resolve_legacy_target_version(run.target_version).target_revision
+        )
         legacy_rule = False
         if (
             isinstance(run, EvolutionRunRecord)
@@ -1076,12 +1163,12 @@ class AttributionRunner:
             candidate_policy=policy,
             bad_case_id=candidate.bad_case_id,
             run_id=run.id,
-            definition=run.definition if isinstance(run, BindingBatch) else None,
+            definition=target.definition if isinstance(run, BindingBatch) else None,
             batch_trigger="target_binding" if isinstance(run, BindingBatch) else "evolution_run",
             workspace_id=run.workspace_id,
             session_id=candidate.session_id,
-            probe_type=run.target_type,
-            probe_object=run.target_name,
+            probe_type=target.object_type,
+            probe_object=target.object_name,
             object_version=object_version,
             policy_version=policy_version(policy),
             attribution_engine=run.attribution_engine,
@@ -1103,8 +1190,8 @@ class AttributionRunner:
             description=evidence.description,
             metadata=evidence.metadata,
             repo_url=run.repo_url,
-            sub_dir=run.sub_dir,
-            selected_version=run.target_version,
+            sub_dir=target.sub_dir or run.sub_dir,
+            selected_version=target.target_version,
             source_commit=run.base_commit if isinstance(run, EvolutionRunRecord) else None,
             report_source=evidence.source or "",
             hit_reason=candidate.hit_reason,

@@ -146,6 +146,7 @@ async def test_run_detail_returns_workspace_and_seven_backend_states(
         "repoUrl": "https://example.invalid/skills.git",
         "pushRepoUrl": "https://example.invalid/skills.git",
         "subDir": "skills/deep-research",
+        "subDirs": ["skills/deep-research"],
         "repoPath": "data/repos/target",
         "baseRef": "v2.0.0",
         "baseCommit": "9f3c2a1",

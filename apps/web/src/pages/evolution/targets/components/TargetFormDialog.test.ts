@@ -20,6 +20,13 @@ const target: EvolutionTarget = {
   testProjectId: "test-deep-research",
   primaryMetricKey: "resolved_rate",
   enabled: true,
+  members: [
+    {
+      objectType: "skill",
+      objectName: "deep-research",
+      subDir: "skills/deep-research",
+    },
+  ],
 };
 
 async function mountDialog(overrides: Record<string, unknown> = {}) {
@@ -54,13 +61,13 @@ async function fillRequired(
     primaryMetricKey?: string;
   } = {},
 ) {
-  await wrapper.get('input[name="objectName"]').setValue(
+  await wrapper.get('input[name="members[0].objectName"]').setValue(
     values.objectName ?? "  deep-research  ",
   );
   await wrapper.get('input[name="repoUrl"]').setValue(
     values.repoUrl ?? "  https://example.com/skills.git  ",
   );
-  await wrapper.get('input[name="subDir"]').setValue(
+  await wrapper.get('input[name="members[0].subDir"]').setValue(
     values.subDir ?? "  skills/deep-research  ",
   );
   await wrapper
@@ -126,7 +133,14 @@ describe("TargetFormDialog", () => {
     await wrapper.get("form").trigger("submit");
     await wrapper.get("form").trigger("submit");
     expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
-      attributionPackageId: "default-attribute-badcases", objectName: "deep-research",
+      attributionPackageId: "default-attribute-badcases",
+      members: [
+        {
+          objectType: "skill",
+          objectName: "deep-research",
+          subDir: "skills/deep-research",
+        },
+      ],
     });
     wrapper.unmount();
   });
@@ -142,15 +156,19 @@ describe("TargetFormDialog", () => {
       {
         candidatePolicy:{mode:"default",rules:[]},
         attributionPackageId: "default-attribute-badcases",
-        objectType: "skill",
-        objectName: "deep-research",
         repoUrl: "https://example.com/skills.git",
-        subDir: "skills/deep-research",
         defaultRef: "main",
         validationProjectId: "val-2026-q3",
         testProjectId: "test-2026-q3",
         primaryMetricKey: "resolved_rate",
         enabled: true,
+        members: [
+          {
+            objectType: "skill",
+            objectName: "deep-research",
+            subDir: "skills/deep-research",
+          },
+        ],
       },
     ]]);
   });
@@ -185,9 +203,9 @@ describe("TargetFormDialog", () => {
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
-    expect(wrapper.text()).toContain("请填写对象名称");
+    expect(wrapper.text()).toContain("请填写成员名称");
     expect(wrapper.text()).toContain("请填写仓库地址");
-    expect(wrapper.text()).toContain("请填写子目录");
+    expect(wrapper.text()).toContain("请填写成员子目录");
     expect(wrapper.text()).toContain("请填写基线分支或标签");
     expect(wrapper.text()).toContain("请填写验证集测试工程 ID");
     expect(wrapper.text()).toContain("请填写测试集测试工程 ID");
@@ -297,7 +315,7 @@ describe("TargetFormDialog", () => {
 
   it("shows definition snapshot guidance only when the target is bound", async () => {
     const wrapper = await mountDialog({ runtimeEnabled: false });
-    const guidance = "保存绑定时从指定版本读取此目录的对象定义";
+    const guidance = "保存绑定时从指定版本读取每个成员的目录定义";
     expect(wrapper.text()).not.toContain(guidance);
     await wrapper.get("select[aria-label='归因 Skill']").setValue("default-attribute-badcases");
     expect(wrapper.text()).toContain(guidance);
@@ -319,7 +337,10 @@ describe("TargetFormDialog", () => {
     });
 
     expect(
-      (wrapper.get('input[name="objectName"]').element as HTMLInputElement).value,
+      (
+        wrapper.get('input[name="members[0].objectName"]')
+          .element as HTMLInputElement
+      ).value,
     ).toBe("deep-research");
     expect(
       (wrapper.get('input[name="defaultRef"]').element as HTMLInputElement).value,
@@ -361,8 +382,14 @@ describe("TargetFormDialog", () => {
     await flushPromises();
 
     expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
-      objectName: "deep-research",
       enabled: false,
+      members: [
+        {
+          objectType: "skill",
+          objectName: "deep-research",
+          subDir: "skills/deep-research",
+        },
+      ],
     });
   });
 
@@ -379,10 +406,138 @@ describe("TargetFormDialog", () => {
     await flushPromises();
 
     expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
-      objectName: "deep-research",
       enabled: true,
+      members: [
+        {
+          objectType: "skill",
+          objectName: "deep-research",
+          subDir: "skills/deep-research",
+        },
+      ],
     });
     wrapper.unmount();
+  });
+
+  it("prefills every member row when editing a multi-member target", async () => {
+    const wrapper = await mountDialog({
+      target: {
+        ...target,
+        members: [
+          ...target.members,
+          {
+            objectType: "agent",
+            objectName: "Explore",
+            subDir: "agents/explore",
+          },
+        ],
+      },
+    });
+
+    expect(wrapper.findAll("[data-testid^='target-member-']")).toHaveLength(2);
+    expect(
+      (
+        wrapper.get('input[name="members[1].objectName"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe("Explore");
+    expect(
+      (
+        wrapper.get('select[name="members[1].objectType"]')
+          .element as HTMLSelectElement
+      ).value,
+    ).toBe("agent");
+    expect(
+      (
+        wrapper.get('input[name="members[1].subDir"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe("agents/explore");
+  });
+
+  it("adds and removes member rows and submits every member", async () => {
+    const wrapper = await mountDialog();
+    await fillRequired(wrapper);
+
+    await wrapper.get(".member-add").trigger("click");
+    await wrapper.get('input[name="members[1].objectName"]').setValue("code-review");
+    await wrapper.get('input[name="members[1].subDir"]').setValue("skills/code-review");
+    await wrapper.get('select[name="members[1].objectType"]').setValue("agent");
+    await flushPromises();
+
+    expect(wrapper.findAll("[data-testid^='target-member-']")).toHaveLength(2);
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
+      members: [
+        {
+          objectType: "skill",
+          objectName: "deep-research",
+          subDir: "skills/deep-research",
+        },
+        {
+          objectType: "agent",
+          objectName: "code-review",
+          subDir: "skills/code-review",
+        },
+      ],
+    });
+
+    await wrapper.findAll("button").find(button => button.text() === "上一步")!.trigger("click");
+    await wrapper.get('button[aria-label="移除成员 2"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.findAll("[data-testid^='target-member-']")).toHaveLength(1);
+    expect(
+      wrapper.get('button[aria-label="移除成员 1"]').attributes("disabled"),
+    ).toBeDefined();
+  });
+
+  it("rejects duplicate member names before submitting", async () => {
+    const wrapper = await mountDialog();
+    await fillRequired(wrapper);
+    await wrapper.get(".member-add").trigger("click");
+    await wrapper.get('input[name="members[1].objectName"]').setValue("deep-research");
+    await wrapper.get('input[name="members[1].subDir"]').setValue("skills/deep-research-2");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("同一配置中成员重复");
+    expect(wrapper.emitted("submit")).toBeUndefined();
+  });
+
+  it("anchors a member validation error and focuses its row", async () => {
+    const wrapper = await mountDialog();
+    await fillRequired(wrapper);
+    await wrapper.get(".member-add").trigger("click");
+    await wrapper.get('input[name="members[1].objectName"]').setValue("code-review");
+    await wrapper.get('input[name="members[1].subDir"]').setValue("skills/code-review");
+    await wrapper.setProps({
+      serverError: {
+        summary: "子目录必须是仓库内的相对路径",
+        field: "members[1].subDir",
+        reason: "sub_dir_format",
+        message: "子目录必须是仓库内的相对路径",
+        suggestion: "使用如 skills/code-review 的相对路径。",
+      },
+    });
+    await flushPromises();
+
+    const input = wrapper.get('input[name="members[1].subDir"]');
+    expect(input.attributes("aria-invalid")).toBe("true");
+    expect(input.attributes("aria-describedby")).toBe(
+      "target-members-1-subDir-error",
+    );
+    expect(wrapper.get("#target-members-1-subDir-error").text()).toContain(
+      "子目录必须是仓库内的相对路径",
+    );
+    expect(document.activeElement).toBe(input.element);
+
+    await input.setValue("skills/next");
+    await flushPromises();
+    expect(wrapper.find("#target-members-1-subDir-error").exists()).toBe(false);
   });
 
   it("keeps tag suggestions available when the saved baseline is a branch", async () => {
@@ -482,8 +637,12 @@ describe("TargetFormDialog", () => {
     await flushPromises();
 
     expect(
-      (wrapper.get('input[name="objectName"]').element as HTMLInputElement).value,
+      (
+        wrapper.get('input[name="members[0].objectName"]')
+          .element as HTMLInputElement
+      ).value,
     ).toBe("");
+    expect(wrapper.findAll("[data-testid^='target-member-']")).toHaveLength(1);
     expect(wrapper.find("[role='alert']").exists()).toBe(false);
   });
 

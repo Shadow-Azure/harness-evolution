@@ -46,6 +46,13 @@ const target: EvolutionTarget = {
   testProjectId: "test-deep-research",
   primaryMetricKey: "resolved_rate",
   enabled: true,
+  members: [
+    {
+      objectType: "skill",
+      objectName: "deep-research",
+      subDir: "skills/deep-research",
+    },
+  ],
 };
 
 const skillPackages = [
@@ -241,12 +248,12 @@ describe("target configuration page", () => {
     await wrapper.get(".target-create").trigger("click");
     await vi.waitFor(() => expect(wrapper.get("select.skill-select").text()).toContain("review-attribution"));
     await wrapper.get("select.skill-select").setValue("package-review");
-    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper.get('input[name="members[0].objectName"]').setValue("deep-research");
     await wrapper
       .get('input[name="repoUrl"]')
       .setValue("https://example.com/skills.git");
     await wrapper
-      .get('input[name="subDir"]')
+      .get('input[name="members[0].subDir"]')
       .setValue("skills/deep-research");
     await wrapper.get('input[name="defaultRef"]').setValue("main");
     await wrapper
@@ -264,15 +271,19 @@ describe("target configuration page", () => {
     expect(submitted).toEqual({
       candidatePolicy: {mode:"default",rules:[]},
       attributionPackageId: "package-review",
-      objectType: "skill",
-      objectName: "deep-research",
       repoUrl: "https://example.com/skills.git",
-      subDir: "skills/deep-research",
       defaultRef: "main",
       validationProjectId: "val-2026-q3",
       testProjectId: "test-2026-q3",
       primaryMetricKey: "resolved_rate",
       enabled: true,
+      members: [
+        {
+          objectType: "skill",
+          objectName: "deep-research",
+          subDir: "skills/deep-research",
+        },
+      ],
     });
     expect(wrapper.getComponent(TargetFormDialog).props("modelValue")).toBe(false);
   });
@@ -295,12 +306,12 @@ describe("target configuration page", () => {
     const wrapper = await mountPage("admin");
 
     await wrapper.get(".target-create").trigger("click");
-    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper.get('input[name="members[0].objectName"]').setValue("deep-research");
     await wrapper
       .get('input[name="repoUrl"]')
       .setValue("https://example.com/skills.git");
     await wrapper
-      .get('input[name="subDir"]')
+      .get('input[name="members[0].subDir"]')
       .setValue("skills/deep-research");
     await wrapper.get('input[name="defaultRef"]').setValue("main");
     await wrapper
@@ -345,12 +356,12 @@ describe("target configuration page", () => {
     const wrapper = await mountPage("admin");
 
     await wrapper.get(".target-create").trigger("click");
-    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper.get('input[name="members[0].objectName"]').setValue("deep-research");
     await wrapper
       .get('input[name="repoUrl"]')
       .setValue("https://user:secret@example.com/skills.git");
     await wrapper
-      .get('input[name="subDir"]')
+      .get('input[name="members[0].subDir"]')
       .setValue("skills/deep-research");
     await wrapper.get('input[name="defaultRef"]').setValue("main");
     await wrapper
@@ -405,12 +416,12 @@ describe("target configuration page", () => {
     const wrapper = await mountPage("admin");
 
     await wrapper.get(".target-create").trigger("click");
-    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper.get('input[name="members[0].objectName"]').setValue("deep-research");
     await wrapper
       .get('input[name="repoUrl"]')
       .setValue("https://git.example.com/repo.git");
     await wrapper
-      .get('input[name="subDir"]')
+      .get('input[name="members[0].subDir"]')
       .setValue("skills/deep-research");
     await wrapper.get('input[name="defaultRef"]').setValue("main");
     await wrapper
@@ -456,12 +467,12 @@ describe("target configuration page", () => {
     const wrapper = await mountPage("admin");
 
     await wrapper.get(".target-create").trigger("click");
-    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper.get('input[name="members[0].objectName"]').setValue("deep-research");
     await wrapper
       .get('input[name="repoUrl"]')
       .setValue("https://git.example.com/repo.git");
     await wrapper
-      .get('input[name="subDir"]')
+      .get('input[name="members[0].subDir"]')
       .setValue("skills/deep-research");
     await wrapper.get('input[name="defaultRef"]').setValue("feature/missing");
     await wrapper
@@ -506,12 +517,12 @@ describe("target configuration page", () => {
     const wrapper = await mountPage("admin");
 
     await wrapper.get(".target-create").trigger("click");
-    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper.get('input[name="members[0].objectName"]').setValue("deep-research");
     await wrapper
       .get('input[name="repoUrl"]')
       .setValue("https://example.com/skills.git");
     await wrapper
-      .get('input[name="subDir"]')
+      .get('input[name="members[0].subDir"]')
       .setValue("skills/deep-research");
     await wrapper.get('input[name="defaultRef"]').setValue("main");
     await wrapper
@@ -553,12 +564,12 @@ describe("target configuration page", () => {
     const wrapper = await mountPage("admin");
 
     await wrapper.get(".target-create").trigger("click");
-    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper.get('input[name="members[0].objectName"]').setValue("deep-research");
     await wrapper
       .get('input[name="repoUrl"]')
       .setValue("https://example.com/skills.git");
     await wrapper
-      .get('input[name="subDir"]')
+      .get('input[name="members[0].subDir"]')
       .setValue("skills/deep-research");
     await wrapper.get('input[name="defaultRef"]').setValue("main");
     await wrapper
@@ -587,6 +598,61 @@ describe("target configuration page", () => {
     expect(wrapper.getComponent(TargetFormDialog).props("modelValue")).toBe(true);
   });
 
+  it("maps MEMBER_ALREADY_CONFIGURED to the member row", async () => {
+    server.use(
+      http.get(base, () =>
+        HttpResponse.json({ items: [] })),
+      http.post(base, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "MEMBER_ALREADY_CONFIGURED",
+              message: "member is already configured by another target",
+              details: { field: "members[0].objectName" },
+            },
+          },
+          { status: 409 },
+        )),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get(".target-create").trigger("click");
+    await wrapper.get('input[name="members[0].objectName"]').setValue("deep-research");
+    await wrapper
+      .get('input[name="repoUrl"]')
+      .setValue("https://example.com/skills.git");
+    await wrapper
+      .get('input[name="members[0].subDir"]')
+      .setValue("skills/deep-research");
+    await wrapper.get('input[name="defaultRef"]').setValue("main");
+    await wrapper
+      .get('input[name="validationProjectId"]')
+      .setValue("val-2026-q3");
+    await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await wrapper
+      .get('input[name="primaryMetricKey"]')
+      .setValue("resolved_rate");
+    await flushPromises();
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.get("[role='alert']").text()).toContain(
+      "该成员已属于另一条配置",
+    );
+    expect(wrapper.get("#target-members-0-objectName-error").text()).toContain(
+      "该成员已属于另一条配置",
+    );
+    expect(
+      wrapper
+        .get('input[name="members[0].objectName"]')
+        .attributes("aria-invalid"),
+    ).toBe("true");
+    expect(wrapper.getComponent(TargetFormDialog).props("modelValue")).toBe(true);
+  });
+
   it("hides an unknown save failure behind the shared save guidance", async () => {
     server.use(
       http.get(base, () =>
@@ -605,12 +671,12 @@ describe("target configuration page", () => {
     const wrapper = await mountPage("admin");
 
     await wrapper.get(".target-create").trigger("click");
-    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper.get('input[name="members[0].objectName"]').setValue("deep-research");
     await wrapper
       .get('input[name="repoUrl"]')
       .setValue("https://example.com/skills.git");
     await wrapper
-      .get('input[name="subDir"]')
+      .get('input[name="members[0].subDir"]')
       .setValue("skills/deep-research");
     await wrapper.get('input[name="defaultRef"]').setValue("main");
     await wrapper
@@ -739,12 +805,12 @@ describe("target configuration page", () => {
     const wrapper = await mountPage("admin");
 
     await wrapper.get(".target-create").trigger("click");
-    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper.get('input[name="members[0].objectName"]').setValue("deep-research");
     await wrapper
       .get('input[name="repoUrl"]')
       .setValue("https://example.com/skills.git");
     await wrapper
-      .get('input[name="subDir"]')
+      .get('input[name="members[0].subDir"]')
       .setValue("skills/deep-research");
     await wrapper.get('input[name="defaultRef"]').setValue("v9.9.9");
     await wrapper
@@ -764,6 +830,42 @@ describe("target configuration page", () => {
     expect(error.text()).toContain("body hash");
     expect(error.text()).not.toContain("target content could not");
     expect(wrapper.getComponent(TargetFormDialog).props("modelValue")).toBe(true);
+  });
+
+  it("confirms deletion with the configuration display name for multiple members", async () => {
+    const multi: EvolutionTarget = {
+      ...target,
+      members: [
+        {
+          objectType: "skill",
+          objectName: "deep-research",
+          subDir: "skills/deep-research",
+        },
+        {
+          objectType: "agent",
+          objectName: "Explore",
+          subDir: "agents/explore",
+        },
+      ],
+    };
+    const confirm = vi
+      .spyOn(ElMessageBox, "confirm")
+      .mockRejectedValue("cancel");
+    server.use(
+      http.get(base, () => HttpResponse.json({ items: [multi] })),
+    );
+    const wrapper = await mountPage("admin");
+
+    expect(wrapper.text()).toContain("deep-research +1");
+    expect(wrapper.text()).toContain("agent:Explore");
+    await wrapper.get(".delete-target").trigger("click");
+    await flushPromises();
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining("删除 deep-research +1 的配置"),
+      "删除进化对象",
+      expect.any(Object),
+    );
   });
 
   it("cancels target deletion without sending a request", async () => {
@@ -863,15 +965,19 @@ describe("target configuration page", () => {
 
     expect(updates).toBe(1);
     expect(submitted).toEqual({
-      objectType: "skill",
-      objectName: "deep-research",
       repoUrl: "https://example.com/skills.git",
-      subDir: "skills/deep-research",
       defaultRef: "main",
       validationProjectId: "val-deep-research",
       testProjectId: "test-deep-research",
       primaryMetricKey: "resolved_rate",
       enabled: false,
+      members: [
+        {
+          objectType: "skill",
+          objectName: "deep-research",
+          subDir: "skills/deep-research",
+        },
+      ],
     });
   });
 });

@@ -14,6 +14,8 @@ Confirm source rules during target creation and manage them separately on the ta
 
 An existence check on workspace_bad_cases scopes the canonical reports and counts each case once across repeated assignments. Source names are case-sensitive. Historical reports determine the available names and the selected time window determines the self and discovery counts. The catalog label takes precedence, with metaData.label available for direct reports. Reports without anchors remain visible. Repeated source invocations without an identifiable report anchor can satisfy only the same-Session condition.
 
+Rule identity combines source kind, name, the set of report types and execution order. Keeping the first occurrence of each rule gives a stable card order and count when the editor reopens.
+
 ## Alternatives considered
 
 Requiring every source to be a registered target adds repository and version configuration for report-only Skills. Taking the first execution misses C2 in C1, A1, C2.
