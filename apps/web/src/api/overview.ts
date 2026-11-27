@@ -8,6 +8,7 @@ import type {
   OverviewTrendResponse,
   TargetCaseListResponse,
   TargetDetailResponse,
+  TargetOverviewItem,
   TargetOverviewListResponse,
   TargetState,
   TargetTrendResponse,
@@ -39,6 +40,23 @@ export type OverviewFilters = {
   objects?: string[];
   /** Requested trend grain; only the trend endpoint consumes it. */
   grain?: OverviewGrain;
+};
+
+/** One member a configuration-level overview row may expose after a backend join. */
+export type OverviewTargetMember = {
+  objectType: "skill" | "agent" | "knowledge";
+  objectName: string;
+  subDir?: string;
+};
+
+/**
+ * Overview target row with the optional configuration members.
+ *
+ * The current backend still projects one object per row; rendering falls back
+ * to that single object until `members` is present.
+ */
+export type TargetOverviewItemView = TargetOverviewItem & {
+  members?: OverviewTargetMember[];
 };
 
 /** One overview list page including its type filter and paging. */

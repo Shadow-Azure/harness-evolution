@@ -23,6 +23,7 @@ from app.service.evolution.engine.contracts import (
     EvalGateway,
     EvalPurpose,
     EvalRequest,
+    EvalTarget,
     RunBlocked,
 )
 from app.service.evolution.events import EvolutionRunEventService
@@ -122,6 +123,7 @@ class EvolutionEvalSubmitter:
                     attempt=attempt,
                     round_seq=round_.seq,
                     parent_commit=parent_commit,
+                    targets=_eval_targets(run),
                 ),
             )
             if not submission.eval_id.strip():
@@ -266,6 +268,7 @@ class EvolutionEvalSubmitter:
                     project_id=_project_id(run, kind),
                     sub_dir=_sub_dir(run),
                     attempt=attempt,
+                    targets=_eval_targets(run),
                 ),
             )
             if not submission.eval_id.strip():
@@ -1058,6 +1061,15 @@ def _sub_dir(run: EvolutionRunRecord) -> str:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return run.sub_dir
+
+
+def _eval_targets(run: EvolutionRunRecord) -> tuple[EvalTarget, ...]:
+    """Return every frozen member asset for one platform launch."""
+    if run.targets:
+        return tuple(
+            EvalTarget(item.object_type, item.object_name, item.sub_dir) for item in run.targets
+        )
+    return (EvalTarget(run.target_type, run.target_name, _sub_dir(run)),)
 
 
 def _evaluation_label(kind: str) -> str:

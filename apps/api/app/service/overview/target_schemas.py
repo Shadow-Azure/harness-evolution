@@ -37,6 +37,14 @@ class TargetOverviewSummary(IdentityModel):
     unanalyzed: int = Field(ge=0)
 
 
+class TargetOverviewMember(IdentityModel):
+    """One member chip of a configuration row."""
+
+    object_type: EvolutionObjectType
+    object_name: str = Field(min_length=1, max_length=128)
+    sub_dir: str = ""
+
+
 class TargetVersionOption(IdentityModel):
     """One selectable version: canonical identity plus its display evidence.
 
@@ -81,10 +89,26 @@ class TargetOverviewItem(IdentityModel):
         ge=0,
     )
     unanalyzed: int = Field(ge=0)
+    members: list[TargetOverviewMember] = Field(default_factory=list)
     evolvable: int = Field(
         ge=0,
         description="Attributed plus unanalyzed potential rows; the list sort key.",
     )
+
+
+class TargetOverviewDisabledItem(IdentityModel):
+    """Read-only identity of one disabled target kept out of every statistic.
+
+    The side list renders these rows greyed out and offers enable/edit/remove,
+    but ``items``, ``summary``, trend, distributions and the potential-case list
+    stay on the enabled-only projection.
+    """
+
+    target_id: str = Field(max_length=36)
+    object_type: EvolutionObjectType
+    object_name: str = Field(min_length=1, max_length=128)
+    attribution_skill_name: str | None = None
+    default_ref: str = Field(max_length=128)
 
 
 class TargetOverviewListResponse(IdentityModel):
@@ -92,6 +116,13 @@ class TargetOverviewListResponse(IdentityModel):
 
     summary: TargetOverviewSummary
     items: list[TargetOverviewItem]
+    disabled: list[TargetOverviewDisabledItem] = Field(
+        default_factory=list,
+        description=(
+            "Every disabled target of the workspace, ordered by object name; "
+            "never included in summary, items or total."
+        ),
+    )
     total: int = Field(ge=0)
     page: int = Field(ge=1)
     page_size: int = Field(ge=1)
@@ -189,6 +220,7 @@ class TargetDetailTarget(IdentityModel):
     default_ref: str = Field(max_length=128)
     versions: list[str]
     version_options: list[TargetVersionOption] = Field(default_factory=list)
+    members: list[TargetOverviewMember] = Field(default_factory=list)
 
 
 class TargetDetailStats(IdentityModel):

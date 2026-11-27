@@ -76,6 +76,16 @@ _SESSION_SHORT_TITLE_LIMIT = 120
 POTENTIAL_PAGE_SIZE = 5
 
 
+class StepRangeTarget(IdentityModel):
+    """One member shown by the selection step."""
+
+    object_type: Literal["skill", "agent", "knowledge"]
+    object_name: str
+    target_version: str
+    target_revision: str | None = None
+    sub_dir: str = ""
+
+
 class StepRangeCondition(IdentityModel):
     """Immutable selection snapshot shown on step 1."""
 
@@ -89,6 +99,7 @@ class StepRangeCondition(IdentityModel):
             "historical runs that were created before content resolution."
         ),
     )
+    targets: list[StepRangeTarget] = Field(default_factory=list)
     window_from: date | None = Field(default=None, alias="from")
     window_to: date | None = Field(default=None, alias="to")
     policy: dict[str, Any]
@@ -131,6 +142,7 @@ class StepSessionRow(IdentityModel):
     object_trigger_at: datetime | None
     bad_case_count: int = 0
     potential_count: int = 0
+    members: list[str] = Field(default_factory=list)
 
 
 class StepSessionsPayload(IdentityModel):
@@ -653,6 +665,16 @@ class EvolutionStageService:
                         "targetName": run.target_name,
                         "targetVersion": run.target_version,
                         "targetRevision": run.target_revision,
+                        "targets": [
+                            {
+                                "objectType": item.object_type,
+                                "objectName": item.object_name,
+                                "targetVersion": item.target_version,
+                                "targetRevision": item.target_revision,
+                                "subDir": item.sub_dir,
+                            }
+                            for item in run.targets
+                        ],
                         "from": run.window_from,
                         "to": run.window_to,
                         "policy": policy,
@@ -896,6 +918,11 @@ def _v2_session_rows(facts: _RunFacts) -> list[StepSessionRow]:
                     ),
                     bad_case_count=_int_stat(item, "badCaseCount"),
                     potential_count=_int_stat(item, "potentialCount"),
+                    members=[
+                        str(member) for member in item.get("members", []) if isinstance(member, str)
+                    ]
+                    if isinstance(item.get("members"), list)
+                    else [],
                 ),
             )
         if persisted:
@@ -921,6 +948,11 @@ def _v2_session_rows(facts: _RunFacts) -> list[StepSessionRow]:
                 bad_case_count=len({candidate.bad_case_id for candidate in candidates}),
                 potential_count=len(
                     {candidate.bad_case_id for candidate in candidates if candidate.included},
+                ),
+                members=list(
+                    dict.fromkeys(
+                        candidate.object_name or facts.run.target_name for candidate in candidates
+                    ),
                 ),
             ),
         )
@@ -956,7 +988,7 @@ def _v2_potential_rows(facts: _RunFacts) -> list[StepPotentialRow]:
     return [
         StepPotentialRow(
             bad_case_id=candidate.bad_case_id,
-            object_name=facts.run.target_name,
+            object_name=candidate.object_name or facts.run.target_name,
             bad_case_type=(
                 "self" if candidate.included_reason in {"self_report", "both"} else "discovery"
             ),
@@ -1074,7 +1106,7 @@ def _cluster_cases(facts: _RunFacts, cluster_id: str) -> list[StepClusterCase]:
         StepClusterCase(
             bad_case_id=candidate.bad_case_id,
             title=facts.case_titles.get(candidate.bad_case_id) or candidate.bad_case_id,
-            object_name=facts.run.target_name,
+            object_name=candidate.object_name or facts.run.target_name,
             bad_case_type=(
                 "self" if candidate.included_reason in {"self_report", "both"} else "discovery"
             ),

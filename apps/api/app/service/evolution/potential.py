@@ -195,8 +195,9 @@ def resolve_policy(policy: PotentialPolicy | None) -> ResolvedPolicy:
 class PreviewCondition(IdentityModel):
     """Target and window condition shared by the three preview stages."""
 
-    target_type: ObjectType
-    target_name: str = Field(min_length=1, max_length=128)
+    target_id: str | None = Field(default=None, min_length=1, max_length=36)
+    target_type: ObjectType | None = None
+    target_name: str | None = Field(default=None, min_length=1, max_length=128)
     target_version: str | None = Field(default=None, max_length=MAX_TARGET_VERSION_LENGTH)
     window_from: date | None = Field(default=None, alias="from")
     window_to: date | None = Field(default=None, alias="to")
@@ -338,6 +339,26 @@ class AttributionPreviewResult(IdentityModel):
 
 
 @dataclass(frozen=True, slots=True)
+class MatchTarget:
+    """One configured member identity used by the shared matcher."""
+
+    object_type: ObjectType
+    object_name: str
+    target_version: str
+    target_revision: str
+
+    @property
+    def revision_candidates(self) -> frozenset[str]:
+        """Return every persisted identity form accepted for this member."""
+        return _revision_candidates(self.target_version, self.target_revision)
+
+    @property
+    def key(self) -> tuple[str, str]:
+        """Return the object identity key used to select entry points."""
+        return (self.object_type, self.object_name)
+
+
+@dataclass(frozen=True, slots=True)
 class MatchCondition:
     """Normalized condition shared by preview and future run prepare."""
 
@@ -348,19 +369,39 @@ class MatchCondition:
     target_revision: str
     window_start: datetime
     window_end: datetime
+    targets: tuple[MatchTarget, ...] = ()
+
+    @property
+    def objects(self) -> tuple[MatchTarget, ...]:
+        """Return the configured members, or one synthesized legacy member."""
+        if self.targets:
+            return self.targets
+        return (
+            MatchTarget(
+                object_type=self.target_type,
+                object_name=self.target_name,
+                target_version=self.target_version,
+                target_revision=self.target_revision,
+            ),
+        )
 
     @property
     def revision_candidates(self) -> frozenset[str]:
-        """Return every persisted identity form accepted for this target."""
-        candidates = {self.target_version, self.target_revision}
-        for value in (self.target_version, self.target_revision):
-            if value.startswith("tag:"):
-                candidates.add(value[4:])
-            elif value.startswith("digest:"):
-                # Events persist the body hash bare in ``definition_hash`` and
-                # with the digest prefix in ``object_revision``/``document_revision``.
-                candidates.add(value[7:])
-        return frozenset(candidates)
+        """Return every persisted identity form accepted for the first target."""
+        return _revision_candidates(self.target_version, self.target_revision)
+
+
+def _revision_candidates(version: str, revision: str) -> frozenset[str]:
+    """Return every persisted identity form accepted for one target."""
+    candidates = {version, revision}
+    for value in (version, revision):
+        if value.startswith("tag:"):
+            candidates.add(value[4:])
+        elif value.startswith("digest:"):
+            # Events persist the body hash bare in ``definition_hash`` and
+            # with the digest prefix in ``object_revision``/``document_revision``.
+            candidates.add(value[7:])
+    return frozenset(candidates)
 
 
 @dataclass(frozen=True, slots=True)
@@ -390,6 +431,15 @@ class CaseVerdict:
 
 
 @dataclass(frozen=True, slots=True)
+class SessionObjectEntry:
+    """One member's entry point inside an associated Session."""
+
+    object_type: str
+    object_name: str
+    entry: TriggerPoint
+
+
+@dataclass(frozen=True, slots=True)
 class AssociatedSession:
     """One Session whose trace contains the requested object."""
 
@@ -400,6 +450,14 @@ class AssociatedSession:
     object_trigger_at: datetime
     object_entry: TriggerPoint
     bad_case_count: int
+    object_entries: tuple[SessionObjectEntry, ...] = ()
+
+    def entry_for(self, object_type: str, object_name: str) -> TriggerPoint:
+        """Return the member-specific entry, falling back to the earliest entry."""
+        for item in self.object_entries:
+            if item.object_type == object_type and item.object_name == object_name:
+                return item.entry
+        return self.object_entry
 
 
 @dataclass(frozen=True, slots=True)
@@ -430,6 +488,8 @@ class PotentialCase:
     object_trigger: TriggerPoint
     case_trigger: TriggerPoint | None
     anchor_source: AnchorSource = "unknown"
+    object_type: str = "skill"
+    object_revision: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -586,12 +646,59 @@ def _window_invalid(reason: str, start: date, end: date) -> AppError:
     )
 
 
+def _target_for_case(condition: MatchCondition, item: PotentialCase) -> MatchTarget:
+    """Return the member identity that owns one evaluated case."""
+    for target in condition.objects:
+        if target.object_type == item.object_type and target.object_name == item.object_name:
+            return target
+    return condition.objects[0]
+
+
+def _preview_cache_key(
+    condition: MatchCondition,
+    item: PotentialCase,
+    legacy_rule: bool,
+) -> str:
+    """Build the cache identity of one case under its owning member."""
+    target = _target_for_case(condition, item)
+    if legacy_rule:
+        return attribution_cache_key(
+            condition.workspace_id,
+            item.bad_case_id,
+            target.object_type,
+            target.object_name,
+            target.target_revision,
+            POLICY_VERSION,
+            ATTRIBUTION_ENGINE,
+        )
+    return default_execution_manifest(
+        workspace_id=condition.workspace_id,
+        bad_case_id=item.bad_case_id,
+        target_type=target.object_type,
+        target_name=target.object_name,
+        target_version=target.target_revision,
+        policy_version=POLICY_VERSION,
+        engine=ATTRIBUTION_ENGINE,
+        session_id=item.session_id,
+        hit_reason=item.hit_reason,
+        order_state=item.order_state,
+        object_trigger_at=item.object_trigger.triggered_at,
+        case_trigger_at=(item.case_trigger.triggered_at if item.case_trigger is not None else None),
+    ).content_hash
+
+
 class PotentialMatcher:
     """Single implementation of session association, potential, and cache preview."""
 
-    def __init__(self, repository: PotentialRepository) -> None:
-        """Bind the matcher to its read-only repository."""
+    def __init__(
+        self,
+        repository: PotentialRepository,
+        *,
+        agent_match_by_name: bool = False,
+    ) -> None:
+        """Bind the matcher to its read-only repository and the opt-in name switch."""
         self._repository = repository
+        self._agent_match_by_name = agent_match_by_name
 
     async def associated_sessions(
         self, condition: MatchCondition, *, observed_revisions: frozenset[str] | None = None
@@ -623,19 +730,31 @@ class PotentialMatcher:
             )
         metas = await self._repository.list_sessions(session_ids)
         traced = tuple(session_id for session_id in session_ids if session_id in metas)
+        objects = condition.objects
         events = await self._repository.list_object_events(
             traced,
-            object_type=condition.target_type,
-            object_name=condition.target_name,
+            targets=tuple((item.object_type, item.object_name) for item in objects),
         )
+        name_switch = self._agent_match_by_name
         events_by_session: dict[str, list[ObjectEventRecord]] = {}
         for event in events:
-            if observed_revisions is None or not observed_revisions.isdisjoint(
-                (
-                    event.object_version,
-                    event.object_revision,
-                    event.definition_hash,
-                    event.document_revision,
+            object_key = (
+                event.object_type or condition.target_type,
+                event.object_name or condition.target_name,
+            )
+            if object_key not in {(item.object_type, item.object_name) for item in objects}:
+                continue
+            ignore_revisions = name_switch and event.object_type == "agent"
+            if (
+                ignore_revisions
+                or observed_revisions is None
+                or not observed_revisions.isdisjoint(
+                    (
+                        event.object_version,
+                        event.object_revision,
+                        event.definition_hash,
+                        event.document_revision,
+                    )
                 )
             ):
                 events_by_session.setdefault(event.session_id, []).append(event)
@@ -647,6 +766,30 @@ class PotentialMatcher:
             session_events = events_by_session.get(session_id, [])
             if session_events:
                 entry = min(session_events, key=cmp_to_key(_compare_entry_order))
+                entries: list[SessionObjectEntry] = []
+                for entry_key in dict.fromkeys(
+                    (event.object_type, event.object_name) for event in session_events
+                ):
+                    member_events = [
+                        event
+                        for event in session_events
+                        if (event.object_type, event.object_name) == entry_key
+                    ]
+                    if not member_events:
+                        continue
+                    member_entry = min(member_events, key=cmp_to_key(_compare_entry_order))
+                    entries.append(
+                        SessionObjectEntry(
+                            object_type=entry_key[0] or condition.target_type,
+                            object_name=entry_key[1] or condition.target_name,
+                            entry=TriggerPoint(
+                                agent_id=member_entry.agent_id,
+                                event_index=member_entry.event_index,
+                                triggered_at=member_entry.triggered_at,
+                                tree_index=member_entry.tree_index,
+                            ),
+                        ),
+                    )
                 associated.append(
                     AssociatedSession(
                         session_id=session_id,
@@ -665,6 +808,7 @@ class PotentialMatcher:
                             tree_index=entry.tree_index,
                         ),
                         bad_case_count=case_counts.get(session_id, 0),
+                        object_entries=tuple(entries),
                     ),
                 )
             else:
@@ -733,6 +877,8 @@ class PotentialMatcher:
         for event in anchor_events:
             events_by_agent.setdefault(event.agent_id, []).append(event)
         entries = {session.session_id: session for session in association.sessions}
+        objects = condition.objects
+        target_names = {item.object_name for item in objects}
 
         evaluated: list[PotentialCase] = []
         for case in cases:
@@ -746,18 +892,27 @@ class PotentialMatcher:
                 events_by_agent,
                 session.started_at,
             )
+            object_entry = session.entry_for(case.object_type, case.object_name)
             comparison = compare_triggers(
                 case_trigger,
-                session.object_entry,
+                object_entry,
                 post_process=anchor_source == "post_process",
             )
-            same_object = case.object_name == condition.target_name
+            same_object = case.object_name in target_names
             verdict = evaluate_hit(
                 self_match=same_object and case.bad_case_type == "self",
                 after_match=comparison.after,
                 order_state=comparison.state,
                 same_object=same_object,
                 policy=policy,
+            )
+            target = next(
+                (
+                    item
+                    for item in objects
+                    if item.object_name == case.object_name and item.object_type == case.object_type
+                ),
+                None,
             )
             evaluated.append(
                 PotentialCase(
@@ -773,9 +928,13 @@ class PotentialMatcher:
                     hit_reason=verdict.hit_reason,
                     order_state=comparison.state,
                     included=verdict.included,
-                    object_trigger=session.object_entry,
+                    object_trigger=object_entry,
                     case_trigger=case_trigger,
                     anchor_source=anchor_source,
+                    object_type=case.object_type,
+                    object_revision=(
+                        target.target_revision if target is not None else condition.target_revision
+                    ),
                 ),
             )
 
@@ -810,41 +969,17 @@ class PotentialMatcher:
         reused = 0
         if cache_enabled and match.included:
             keys = tuple(
-                attribution_cache_key(
-                    condition.workspace_id,
-                    item.bad_case_id,
-                    condition.target_type,
-                    condition.target_name,
-                    condition.target_revision,
-                    POLICY_VERSION,
-                    ATTRIBUTION_ENGINE,
-                )
-                if legacy_rule
-                else default_execution_manifest(
-                    workspace_id=condition.workspace_id,
-                    bad_case_id=item.bad_case_id,
-                    target_type=condition.target_type,
-                    target_name=condition.target_name,
-                    target_version=condition.target_revision,
-                    policy_version=POLICY_VERSION,
-                    engine=ATTRIBUTION_ENGINE,
-                    session_id=item.session_id,
-                    hit_reason=item.hit_reason,
-                    order_state=item.order_state,
-                    object_trigger_at=item.object_trigger.triggered_at,
-                    case_trigger_at=(
-                        item.case_trigger.triggered_at if item.case_trigger is not None else None
-                    ),
-                ).content_hash
-                for item in match.included
+                _preview_cache_key(condition, item, legacy_rule) for item in match.included
             )
             reused = len(await self._repository.existing_cache_keys(keys))
-        non_target_known = await self._repository.count_non_target_cases(
-            workspace_id=condition.workspace_id,
-            probe_type=condition.target_type,
-            probe_object=condition.target_name,
-            object_versions=tuple(sorted(condition.revision_candidates)),
-        )
+        non_target_known = 0
+        for target in {item.key: item for item in condition.objects}.values():
+            non_target_known += await self._repository.count_non_target_cases(
+                workspace_id=condition.workspace_id,
+                probe_type=target.object_type,
+                probe_object=target.object_name,
+                object_versions=tuple(sorted(target.revision_candidates)),
+            )
         return AttributionPreviewCounts(
             potential=match.potential,
             reused=reused,
@@ -1020,10 +1155,28 @@ class PotentialPreviewService:
         workspace_id: str,
     ) -> tuple[MatchCondition, EvolutionTargetRecord]:
         """Validate the target/window and resolve the version and day bounds."""
-        config = await self._targets.enabled_config(
-            body.target_type,
-            body.target_name,
-            workspace_ids=(workspace_id,),
+        if body.target_id is not None:
+            config = await self._targets.enabled_config_by_id(
+                body.target_id,
+                workspace_ids=(workspace_id,),
+            )
+        elif body.target_type is not None and body.target_name is not None:
+            config = await self._targets.enabled_config(
+                body.target_type,
+                body.target_name,
+                workspace_ids=(workspace_id,),
+            )
+        else:
+            raise AppError(
+                status_code=422,
+                code=ErrorCode.VALIDATION_INVALID,
+                message="target identity is required",
+            )
+        body = body.model_copy(
+            update={
+                "target_type": config.object_type,
+                "target_name": config.object_name,
+            },
         )
         version = (body.target_version or config.default_ref or "").strip()
         if not version:
@@ -1047,8 +1200,8 @@ class PotentialPreviewService:
         window_start, window_end = window_day_boundaries(start, end)
         return MatchCondition(
             workspace_id=workspace_id,
-            target_type=body.target_type,
-            target_name=body.target_name,
+            target_type=config.object_type,
+            target_name=config.object_name,
             target_version=target_version,
             target_revision=target_revision,
             window_start=window_start,
@@ -1063,7 +1216,7 @@ class PotentialPreviewService:
     ) -> tuple[str, str]:
         """Resolve a selected version to its persisted body-hash revision."""
         resolved = await self._resolver.resolve(
-            object_type=body.target_type,
+            object_type=config.object_type,
             repo_url=config.repo_url,
             sub_dir=config.sub_dir,
             version=version,

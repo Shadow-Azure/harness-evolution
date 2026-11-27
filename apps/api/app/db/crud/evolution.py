@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime
 from typing import Any, cast
 
@@ -21,11 +22,13 @@ from app.db.models.evolution import (
     EvolutionRoundRecord,
     EvolutionRunRecord,
     EvolutionRunSummaryRecord,
+    EvolutionRunTargetRecord,
     ProbeClusterLinkRecord,
     ProbeClusterRecord,
     evolution_evaluations,
     evolution_finals,
     evolution_rounds,
+    evolution_run_targets,
     evolution_runs,
     probe_cluster_probes,
     probe_clusters,
@@ -33,6 +36,7 @@ from app.db.models.evolution import (
     record_from_evolution_final,
     record_from_evolution_round,
     record_from_evolution_run,
+    record_from_evolution_run_target,
     record_from_probe_cluster,
     record_from_probe_cluster_link,
 )
@@ -115,6 +119,13 @@ class EvolutionRepository:
         }
         async with self._database.transaction() as session:
             await session.execute(insert(evolution_runs).values(**payload))
+            target_rows = _run_target_rows(
+                values.get("targets"),
+                run_id=str(payload["id"]),
+                config_id=cast("str | None", values.get("target_config_id")),
+            )
+            if target_rows:
+                await session.execute(insert(evolution_run_targets), target_rows)
             if initial_job_id is not None:
                 run_id = str(payload["id"])
                 await session.execute(
@@ -145,7 +156,13 @@ class EvolutionRepository:
             statement = statement.where(evolution_runs.c.workspace_id.in_(workspace_ids))
         async with self._database.session() as session:
             row = (await session.execute(statement)).mappings().one_or_none()
-        return record_from_evolution_run(cast(Mapping[str, Any], row)) if row is not None else None
+            targets = await _load_run_targets(session, [run_id])
+        if row is None:
+            return None
+        return replace(
+            record_from_evolution_run(cast(Mapping[str, Any], row)),
+            targets=targets.get(run_id, ()),
+        )
 
     async def mark_failed(
         self,
@@ -370,7 +387,17 @@ class EvolutionRepository:
                 .mappings()
                 .all()
             )
-        return tuple(record_from_evolution_run(cast(Mapping[str, Any], row)) for row in rows)
+            targets = await _load_run_targets(
+                session,
+                [str(row["id"]) for row in rows],
+            )
+        return tuple(
+            replace(
+                record_from_evolution_run(cast(Mapping[str, Any], row)),
+                targets=targets.get(str(row["id"]), ()),
+            )
+            for row in rows
+        )
 
     async def freeze_revision(self, run_id: str, revision: str) -> None:
         async with self._database.transaction() as session:
@@ -668,6 +695,7 @@ class EvolutionRepository:
                 .mappings()
                 .all()
             }
+            run_targets = await _load_run_targets(session, run_ids)
             final_by_run = {
                 str(row["run_id"]): record_from_evolution_final(
                     cast(Mapping[str, Any], row),
@@ -684,7 +712,10 @@ class EvolutionRepository:
             }
         return tuple(
             EvolutionRunSummaryRecord(
-                run=record_from_evolution_run(cast(Mapping[str, Any], row)),
+                run=replace(
+                    record_from_evolution_run(cast(Mapping[str, Any], row)),
+                    targets=run_targets.get(str(row["id"]), ()),
+                ),
                 cluster_count=cluster_counts.get(str(row["id"]), 0),
                 accepted_count=accepted_counts.get(str(row["id"]), 0),
                 final=final_by_run.get(str(row["id"])),
@@ -1523,7 +1554,17 @@ class EvolutionRepository:
                 .mappings()
                 .all()
             )
-        return tuple(record_from_evolution_run(cast(Mapping[str, Any], row)) for row in rows)
+            targets = await _load_run_targets(
+                session,
+                [str(row["id"]) for row in rows],
+            )
+        return tuple(
+            replace(
+                record_from_evolution_run(cast(Mapping[str, Any], row)),
+                targets=targets.get(str(row["id"]), ()),
+            )
+            for row in rows
+        )
 
     async def mark_eval_waiting(
         self,
@@ -2292,6 +2333,62 @@ def _eval_projection(
         "eval_candidate": float(candidate),
         "eval_result": deepcopy(dict(eval_result)),
     }
+
+
+def _run_target_rows(
+    targets: object,
+    *,
+    run_id: str,
+    config_id: str | None,
+) -> list[dict[str, object]]:
+    """Build frozen run-member rows from the launch snapshot payload."""
+    if not isinstance(targets, Sequence) or isinstance(targets, (str, bytes)):
+        return []
+    rows: list[dict[str, object]] = []
+    for seq, target in enumerate(targets):
+        if not isinstance(target, Mapping):
+            continue
+        rows.append(
+            {
+                "id": new_id(),
+                "run_id": run_id,
+                "seq": seq,
+                "target_config_id": config_id,
+                "member_id": target.get("member_id"),
+                "object_type": target["object_type"],
+                "object_name": target["object_name"],
+                "target_version": target["target_version"],
+                "target_revision": target.get("target_revision"),
+                "sub_dir": target["sub_dir"],
+                "base_commit": target.get("base_commit"),
+            },
+        )
+    return rows
+
+
+async def _load_run_targets(
+    session: AsyncSession,
+    run_ids: Sequence[str],
+) -> dict[str, tuple[EvolutionRunTargetRecord, ...]]:
+    """Batch-load ordered member snapshots for the requested run ids."""
+    if not run_ids:
+        return {}
+    rows = (
+        (
+            await session.execute(
+                select(evolution_run_targets)
+                .where(evolution_run_targets.c.run_id.in_(tuple(run_ids)))
+                .order_by(evolution_run_targets.c.run_id, evolution_run_targets.c.seq),
+            )
+        )
+        .mappings()
+        .all()
+    )
+    grouped: dict[str, list[EvolutionRunTargetRecord]] = {}
+    for row in rows:
+        record = record_from_evolution_run_target(cast(Mapping[str, Any], row))
+        grouped.setdefault(record.run_id, []).append(record)
+    return {key: tuple(value) for key, value in grouped.items()}
 
 
 async def _run_cursor(session: AsyncSession, run_id: str) -> tuple[int, str]:

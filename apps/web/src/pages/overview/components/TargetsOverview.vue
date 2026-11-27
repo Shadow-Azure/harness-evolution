@@ -3,6 +3,7 @@ import type {
   EvolutionTarget,
   EvolutionTargetWrite,
   OverviewWindow,
+  TargetOverviewDisabledItem,
   TargetOverviewItem,
   TargetState,
 } from "@harness/contracts";
@@ -16,6 +17,7 @@ import {
   type TargetCaseFilters,
   type TargetDetailFilters,
   type TargetOverviewFilters,
+  type TargetOverviewItemView,
 } from "../../../api/overview";
 import { ApiError } from "../../../api/http";
 import { queryKeys } from "../../../api/queryKeys";
@@ -92,8 +94,11 @@ const sharedFilters = computed<TargetOverviewFilters>(() => ({
   ...overviewSharedWindow(props.state),
 }));
 const targetsQuery = useOverviewTargets(workspaceId, sharedFilters);
-const targetItems = computed<TargetOverviewItem[]>(
+const targetItems = computed<TargetOverviewItemView[]>(
   () => targetsQuery.data.value?.items ?? [],
+);
+const disabledItems = computed<TargetOverviewDisabledItem[]>(
+  () => targetsQuery.data.value?.disabled ?? [],
 );
 const summary = computed(() => targetsQuery.data.value?.summary ?? null);
 
@@ -276,6 +281,7 @@ function setDetailWindow(value: { from: string; to: string } | null): void {
 
 const {
   data: evolutionTargetsData,
+  refetch: refetchEvolutionTargets,
   createTarget,
   updateTarget,
   deleteTarget,
@@ -285,6 +291,7 @@ const editingTarget = ref<EvolutionTarget | null>(null);
 const formError = ref<TargetServerError | null>(null);
 const operationError = ref("");
 const submitting = ref(false);
+const enablingTargetId = ref("");
 const editingTargetId = computed(() => editingTarget.value?.id ?? null);
 const skillLibrary = useAttributionSkillPackages(workspaceId);
 const runtimeUnavailable = computed(() => skillLibrary.packages.data.value?.runtimeEnabled === false);
@@ -313,7 +320,9 @@ function openCreate(): void {
   dialogOpen.value = true;
 }
 
-function openEdit(item: TargetOverviewItem): void {
+function openEdit(
+  item: TargetOverviewItem | TargetOverviewDisabledItem,
+): void {
   if (!props.canManage) return;
   const target =
     evolutionTargetsData.value?.items.find(
@@ -349,7 +358,9 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
   }
 }
 
-async function removeTarget(item: TargetOverviewItem): Promise<void> {
+async function removeTarget(
+  item: TargetOverviewItem | TargetOverviewDisabledItem,
+): Promise<void> {
   operationError.value = "";
   try {
     await ElMessageBox.confirm(
@@ -384,6 +395,49 @@ async function removeTarget(item: TargetOverviewItem): Promise<void> {
   }
 }
 
+async function enableTarget(
+  item: TargetOverviewItem | TargetOverviewDisabledItem,
+): Promise<void> {
+  if (!props.canManage || enablingTargetId.value) return;
+  let target = evolutionTargetsData.value?.items.find(
+    (candidate) => candidate.id === item.targetId,
+  );
+  if (!target) {
+    const refreshed = await refetchEvolutionTargets();
+    target = refreshed.data?.items.find(
+      (candidate) => candidate.id === item.targetId,
+    );
+  }
+  if (!target) {
+    operationError.value = "对象配置尚未加载完成，请稍后重试。";
+    return;
+  }
+  operationError.value = "";
+  enablingTargetId.value = item.targetId;
+  try {
+    await updateTarget(target.id, {
+      objectType: target.objectType,
+      objectName: target.objectName,
+      repoUrl: target.repoUrl,
+      subDir: target.subDir,
+      defaultRef: target.defaultRef,
+      validationProjectId: target.validationProjectId,
+      testProjectId: target.testProjectId,
+      primaryMetricKey: target.primaryMetricKey,
+      attributionPackageId: target.attributionPackageId ?? null,
+      enabled: true,
+    });
+    patch({ targetPage: 1 });
+    await invalidateOverview();
+    ElMessage.success(`已启用 ${target.objectName}`);
+  } catch (error) {
+    operationError.value =
+      error instanceof Error ? error.message : "启用进化对象失败";
+  } finally {
+    enablingTargetId.value = "";
+  }
+}
+
 /* ── keep URL state consistent with the loaded target set ── */
 
 watch(
@@ -406,10 +460,10 @@ watch(
 );
 
 watch(
-  targetItems,
-  (items) => {
+  [targetItems, disabledItems],
+  ([items, disabled]) => {
     if (targetsQuery.data.value === undefined) return;
-    const pages = Math.max(1, Math.ceil(items.length / 5));
+    const pages = Math.max(1, Math.ceil((items.length + disabled.length) / 5));
     if (props.state.targetPage > pages) patch({ targetPage: pages });
   },
 );
@@ -542,6 +596,7 @@ watch(
         :runtime-unavailable="runtimeUnavailable"
         :can-manage="canManage"
         :code="targetsCode"
+        :disabled="disabledItems"
         :error="targetsQuery.error.value"
         :items="targetItems"
         :loading="targetsQuery.isPending.value"
@@ -549,6 +604,7 @@ watch(
         :selected="state.targets"
         @create="openCreate"
         @edit="openEdit"
+        @enable="enableTarget"
         @remove="removeTarget"
         @retry="targetsQuery.refetch()"
         @toggle="

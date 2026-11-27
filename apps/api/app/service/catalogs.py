@@ -3,6 +3,8 @@
 import asyncio
 from collections.abc import Sequence
 
+from pydantic import Field
+
 from app.db.crud.evolution_targets import (
     EvolutionTargetRecord,
     EvolutionTargetRepository,
@@ -23,11 +25,31 @@ class CatalogTarget(IdentityModel):
     versions: list[str]
 
 
+class CatalogMember(IdentityModel):
+    """One member of a selectable evolution configuration."""
+
+    object_type: str
+    object_name: str
+    sub_dir: str
+
+
+class CatalogConfig(IdentityModel):
+    """One enabled configuration with all of its members."""
+
+    id: str
+    name: str
+    repo_url: str
+    default_ref: str
+    versions: list[str]
+    members: list[CatalogMember]
+
+
 class CatalogTargets(IdentityModel):
-    """Enabled targets grouped by the kind selectable in the wizard."""
+    """Enabled targets grouped by member kind and by configuration."""
 
     skill: list[CatalogTarget]
     agent: list[CatalogTarget]
+    targets: list[CatalogConfig] = Field(default_factory=list)
 
 
 class CatalogModel(IdentityModel):
@@ -84,9 +106,31 @@ class CatalogService:
             *(self._versions(row.repo_url) for row in rows),
         )
         grouped: dict[str, list[CatalogTarget]] = {"skill": [], "agent": []}
+        configs: list[CatalogConfig] = []
         for row, tags in zip(rows, versions, strict=True):
             grouped[row.object_type].append(_catalog_target(row, tags))
-        return CatalogTargets(skill=grouped["skill"], agent=grouped["agent"])
+            configs.append(
+                CatalogConfig(
+                    id=row.id,
+                    name=row.object_name,
+                    repo_url=row.repo_url,
+                    default_ref=row.default_ref,
+                    versions=tags,
+                    members=[
+                        CatalogMember(
+                            object_type=member.object_type,
+                            object_name=member.object_name,
+                            sub_dir=member.sub_dir,
+                        )
+                        for member in row.member_objects
+                    ],
+                ),
+            )
+        return CatalogTargets(
+            skill=grouped["skill"],
+            agent=grouped["agent"],
+            targets=configs,
+        )
 
     async def models(
         self,

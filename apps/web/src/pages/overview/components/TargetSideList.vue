@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import type { TargetOverviewItem } from "@harness/contracts";
+import type {
+  TargetOverviewDisabledItem,
+  TargetOverviewItem,
+} from "@harness/contracts";
+import type {
+  OverviewTargetMember,
+  TargetOverviewItemView,
+} from "../../../api/overview";
 import { computed } from "vue";
 
 import ErrorState from "../../../components/ui/ErrorState.vue";
@@ -8,10 +15,33 @@ import AttributionRuntimeNotice from "../../evolution/targets/components/Attribu
 
 const PAGE_SIZE = 5;
 
+type EditItem = TargetOverviewItemView | TargetOverviewDisabledItem;
+
+type SideRow = {
+  kind: "enabled" | "disabled";
+  item: EditItem;
+  id: string;
+  objectType: TargetOverviewItem["objectType"];
+  objectName: string;
+  version: string;
+  attributionSkillName: string | null;
+  sessions: number;
+  potential: number;
+  attributed: number;
+  nonTarget: number;
+  unanalyzed: number;
+  evolvable: number;
+  members: OverviewTargetMember[];
+};
+
 const props = defineProps({
   runtimeUnavailable: Boolean,
   items: {
-    type: Array as () => TargetOverviewItem[],
+    type: Array as () => TargetOverviewItemView[],
+    default: () => [],
+  },
+  disabled: {
+    type: Array as () => TargetOverviewDisabledItem[],
     default: () => [],
   },
   page: {
@@ -44,24 +74,72 @@ const emit = defineEmits<{
   "update:page": [value: number];
   toggle: [targetId: string];
   create: [];
-  edit: [item: TargetOverviewItem];
-  remove: [item: TargetOverviewItem];
+  enable: [item: EditItem];
+  edit: [item: EditItem];
+  remove: [item: EditItem];
   retry: [];
 }>();
 
+const rows = computed<SideRow[]>(() => [
+  ...props.items.map<SideRow>((item) => ({
+    kind: "enabled",
+    item,
+    id: item.targetId,
+    objectType: item.objectType,
+    objectName: item.objectName,
+    version: primaryVersion(item),
+    attributionSkillName: item.attributionSkillName ?? null,
+    sessions: item.sessions,
+    potential: item.potential,
+    attributed: item.attributed,
+    nonTarget: item.nonTarget,
+    unanalyzed: item.unanalyzed,
+    evolvable: item.attributed + item.unanalyzed,
+    members: item.members ?? [],
+  })),
+  ...props.disabled.map<SideRow>((item) => ({
+    kind: "disabled",
+    item,
+    id: item.targetId,
+    objectType: item.objectType,
+    objectName: item.objectName,
+    version: item.defaultRef,
+    attributionSkillName: item.attributionSkillName ?? null,
+    sessions: 0,
+    potential: 0,
+    attributed: 0,
+    nonTarget: 0,
+    unanalyzed: 0,
+    evolvable: 0,
+    members: [],
+  })),
+]);
 const pages = computed(() =>
-  Math.max(1, Math.ceil(props.items.length / PAGE_SIZE)),
+  Math.max(1, Math.ceil(rows.value.length / PAGE_SIZE)),
 );
 const safePage = computed(() =>
   Math.min(Math.max(1, props.page), pages.value),
 );
 const visible = computed(() =>
-  props.items.slice((safePage.value - 1) * PAGE_SIZE, safePage.value * PAGE_SIZE),
+  rows.value.slice((safePage.value - 1) * PAGE_SIZE, safePage.value * PAGE_SIZE),
 );
 const selectedSet = computed(() => new Set(props.selected));
+const pagerInfo = computed(() => {
+  const disabled = props.disabled.length
+    ? ` · ${props.disabled.length} 个已停用`
+    : "";
+  return `共 ${rows.value.length} 个${disabled} · 第 ${safePage.value} / ${pages.value} 页`;
+});
 
 function isSelected(id: string): boolean {
   return selectedSet.value.has(id);
+}
+
+function showsDisabledDivider(index: number): boolean {
+  const row = visible.value[index];
+  if (!row || row.kind !== "disabled") return false;
+  const previous = visible.value[index - 1];
+  return !previous || previous.kind !== "disabled";
 }
 
 function primaryVersion(item: TargetOverviewItem): string {
@@ -70,10 +148,6 @@ function primaryVersion(item: TargetOverviewItem): string {
     item.versions[0] ??
     "—"
   );
-}
-
-function evolvable(item: TargetOverviewItem): number {
-  return item.attributed + item.unanalyzed;
 }
 </script>
 
@@ -112,7 +186,7 @@ function evolvable(item: TargetOverviewItem): number {
       @retry="emit('retry')"
     />
     <div
-      v-else-if="items.length === 0"
+      v-else-if="rows.length === 0"
       class="empty"
       data-testid="ov-target-side-empty"
     >
@@ -130,71 +204,140 @@ function evolvable(item: TargetOverviewItem): number {
     </div>
     <template v-else>
       <div class="side-list">
-        <div
-          v-for="item in visible"
-          :key="item.targetId"
-          class="side-item"
-          :class="{ selected: isSelected(item.targetId) }"
-          :data-testid="`ov-target-side-item-${item.targetId}`"
-          :title="`${item.objectName} · 潜在 ${item.potential} · 是 ${item.attributed} / 非 ${item.nonTarget} / 未 ${item.unanalyzed}`"
+        <template
+          v-for="(row, index) in visible"
+          :key="`${row.kind}-${row.id}`"
         >
-          <button
-            class="select"
-            type="button"
-            :aria-pressed="isSelected(item.targetId)"
-            @click="emit('toggle', item.targetId)"
-          >
-            <span class="top">
-              <span class="title">
-                <span class="chip kind">{{ item.objectType }}</span>
-                <b>{{ item.objectName }}</b>
-                <span class="mono">@{{ primaryVersion(item) }}</span>
-              </span>
-            </span>
-            <span class="meta">
-              归因 Skill · {{ item.attributionSkillName || "未绑定" }}
-              <AttributionRuntimeNotice
-                v-if="runtimeUnavailable && item.attributionSkillName"
-                badge
-              />
-            </span>
-            <span class="meta">
-              <span><b>{{ item.sessions }}</b> 关联 Session</span>
-              <span><b>{{ item.potential }}</b> 潜在 bad case</span>
-            </span>
-            <span class="evolvable">
-              可进化潜在 bad case 数量 <b>{{ evolvable(item) }}</b>
-              <span>（是问题 {{ item.attributed }}；未分析 {{ item.unanalyzed }}）</span>
-            </span>
-          </button>
           <div
-            v-if="canManage"
-            class="actions"
+            v-if="showsDisabledDivider(index)"
+            class="side-group"
+            data-testid="ov-target-side-disabled-group"
+          >
+            已停用对象 · 仅展示，不参与统计
+          </div>
+          <div
+            v-if="row.kind === 'enabled'"
+            class="side-item"
+            :class="{ selected: isSelected(row.id) }"
+            :data-testid="`ov-target-side-item-${row.id}`"
+            :title="`${row.objectName} · 潜在 ${row.potential} · 是 ${row.attributed} / 非 ${row.nonTarget} / 未 ${row.unanalyzed}`"
           >
             <button
-              class="btn"
-              :data-testid="`ov-target-side-edit-${item.targetId}`"
+              class="select"
               type="button"
-              @click.stop="emit('edit', item)"
+              :aria-pressed="isSelected(row.id)"
+              @click="emit('toggle', row.id)"
             >
-              编辑
+              <span class="top">
+                <span class="title">
+                  <span class="chip kind">{{ row.objectType }}</span>
+                  <b>{{ row.objectName }}</b>
+                  <span class="mono">@{{ row.version }}</span>
+                </span>
+              </span>
+              <span
+                v-if="row.members.length > 1"
+                class="members"
+                data-testid="ov-target-side-members"
+              >
+                <span
+                  v-for="member in row.members"
+                  :key="`${member.objectType}:${member.objectName}`"
+                  class="chip"
+                  :title="member.subDir"
+                >{{ member.objectType }}:{{ member.objectName }}</span>
+              </span>
+              <span class="meta">
+                归因 Skill · {{ row.attributionSkillName || "未绑定" }}
+                <AttributionRuntimeNotice
+                  v-if="runtimeUnavailable && row.attributionSkillName"
+                  badge
+                />
+              </span>
+              <span class="meta">
+                <span><b>{{ row.sessions }}</b> 关联 Session</span>
+                <span><b>{{ row.potential }}</b> 潜在 bad case</span>
+              </span>
+              <span class="evolvable">
+                可进化潜在 bad case 数量 <b>{{ row.evolvable }}</b>
+                <span>（是问题 {{ row.attributed }}；未分析 {{ row.unanalyzed }}）</span>
+              </span>
             </button>
-            <button
-              class="btn danger"
-              :data-testid="`ov-target-side-remove-${item.targetId}`"
-              type="button"
-              @click.stop="emit('remove', item)"
+            <div
+              v-if="canManage"
+              class="actions"
             >
-              移除
-            </button>
+              <button
+                class="btn"
+                :data-testid="`ov-target-side-edit-${row.id}`"
+                type="button"
+                @click.stop="emit('edit', row.item)"
+              >
+                编辑
+              </button>
+              <button
+                class="btn danger"
+                :data-testid="`ov-target-side-remove-${row.id}`"
+                type="button"
+                @click.stop="emit('remove', row.item)"
+              >
+                移除
+              </button>
+            </div>
           </div>
-        </div>
+          <div
+            v-else
+            class="side-item is-disabled"
+            :data-testid="`ov-target-side-disabled-row-${row.id}`"
+            :title="`${row.objectName} · 已停用 · 不参与统计`"
+          >
+            <div class="top">
+              <span class="title">
+                <span class="chip kind">{{ row.objectType }}</span>
+                <b>{{ row.objectName }}</b>
+                <span class="mono">@{{ row.version }}</span>
+                <span class="badge off">已停用</span>
+              </span>
+            </div>
+            <span class="meta">归因 Skill · {{ row.attributionSkillName || "未绑定" }}</span>
+            <span class="note">保留配置；重新启用后才进入筛选、图表与其它统计。</span>
+            <div
+              v-if="canManage"
+              class="actions"
+            >
+              <button
+                class="btn enable"
+                :data-testid="`ov-target-side-enable-${row.id}`"
+                type="button"
+                @click.stop="emit('enable', row.item)"
+              >
+                启用
+              </button>
+              <button
+                class="btn"
+                :data-testid="`ov-target-side-edit-${row.id}`"
+                type="button"
+                @click.stop="emit('edit', row.item)"
+              >
+                编辑
+              </button>
+              <button
+                class="btn danger"
+                :data-testid="`ov-target-side-remove-${row.id}`"
+                type="button"
+                @click.stop="emit('remove', row.item)"
+              >
+                移除
+              </button>
+            </div>
+          </div>
+        </template>
       </div>
       <div
         class="pager"
         data-testid="ov-target-side-pager"
       >
-        <span class="info">共 {{ items.length }} 个 · 第 {{ safePage }} / {{ pages }} 页</span>
+        <span class="info">{{ pagerInfo }}</span>
         <button
           :disabled="safePage <= 1"
           data-testid="ov-target-side-prev"
@@ -296,6 +439,59 @@ function evolvable(item: TargetOverviewItem): number {
   box-shadow: inset 2px 0 0 var(--blue);
 }
 
+.side-group {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  color: var(--text-faint);
+  font-size: 9.5px;
+}
+
+.side-item.is-disabled {
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+
+.side-item.is-disabled:first-child {
+  border-top: 1px solid var(--border);
+}
+
+.side-item.is-disabled .title b {
+  color: var(--text-faint);
+}
+
+.side-item.is-disabled .chip.kind {
+  opacity: 0.55;
+}
+
+.side-item.is-disabled .meta,
+.side-item.is-disabled .note {
+  color: var(--text-faint);
+}
+
+.note {
+  display: block;
+  margin-top: 4px;
+  font-size: 9.5px;
+}
+
+.badge.off {
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  color: var(--text-faint);
+  font-size: 9px;
+}
+
+.btn.enable {
+  border-color: color-mix(in srgb, var(--green) 40%, var(--border));
+  color: var(--green);
+}
+
 .select {
   display: block;
   width: 100%;
@@ -337,6 +533,22 @@ function evolvable(item: TargetOverviewItem): number {
   color: var(--text-faint);
   font-family: var(--mono);
   font-size: 10px;
+}
+
+.members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.members .chip {
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--purple) 30%, var(--border));
+  border-radius: 999px;
+  color: var(--purple);
+  font-family: var(--mono);
+  font-size: 9px;
 }
 
 .meta {

@@ -1,4 +1,5 @@
 import type {
+  EvolutionRunCard,
   EvolutionRunStep,
   EvolutionStep,
   EvolutionStepKey,
@@ -6,6 +7,32 @@ import type {
 
 /** Backend-emitted stepper node; `clickable` gates query and step requests. */
 export type RunStep = EvolutionRunStep;
+
+/** One immutable run target snapshot; the generated contract does not export a name. */
+export type RunTarget = EvolutionRunCard["target"];
+
+/** Smallest run shape needed to read its member snapshots. */
+type RunTargetsSource = Pick<EvolutionRunCard, "target" | "targets">;
+
+/**
+ * Read every member of a run, falling back to the legacy single target.
+ * @param run Run card or detail shell with an optional member snapshot.
+ * @returns The member snapshot, or the compatibility target for older runs.
+ */
+export function runTargets(run: RunTargetsSource): RunTarget[] {
+  return run.targets && run.targets.length > 0 ? run.targets : [run.target];
+}
+
+/**
+ * Label a run at configuration level: the first member plus the member count.
+ * @param run Run card or detail shell with an optional member snapshot.
+ * @returns `deep-research 等 2 个对象` for multi-member runs, else the member name.
+ */
+export function runTargetLabel(run: RunTargetsSource): string {
+  const members = runTargets(run);
+  const first = members[0]?.name ?? "—";
+  return members.length > 1 ? `${first} 等 ${members.length} 个对象` : first;
+}
 
 /**
  * Select the first active step, otherwise the last completed step.

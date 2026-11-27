@@ -871,12 +871,6 @@
 .evo-app .kind-choice::before { content: ""; width: 14px; height: 14px; border: 1px solid var(--border); border-radius: 50%; background: var(--bg-card); }
 .evo-app .kind-choice.active { color: var(--text); }
 .evo-app .kind-choice.active::before { border-color: var(--blue); background: radial-gradient(circle, var(--blue) 0 3px, var(--bg-card) 3.5px); }
-.evo-app .proto-switch { position: relative; display: inline-flex; width: 40px; height: 20px; flex: none; }
-.evo-app .proto-switch input { position: absolute; opacity: 0; pointer-events: none; }
-.evo-app .proto-switch-track { width: 40px; height: 20px; border-radius: 999px; background: var(--border); transition: background .15s ease; }
-.evo-app .proto-switch-track::after { content: ""; display: block; width: 16px; height: 16px; margin: 2px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(30,40,60,.18); transition: transform .15s ease; }
-.evo-app .proto-switch input:checked + .proto-switch-track { background: var(--blue); }
-.evo-app .proto-switch input:checked + .proto-switch-track::after { transform: translateX(20px); }
 .evo-app .switch-row { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 11.5px; }
 .evo-app .form-error { margin: 0 0 12px; padding: 8px 10px; border-radius: 8px; color: var(--red); background: color-mix(in srgb, var(--red) 7%, var(--bg-card)); border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border)); font-size: 12px; }
 .evo-app .target-loading { display: inline-flex; align-items: center; gap: 6px; color: var(--blue); font-size: 11px; }
@@ -958,6 +952,41 @@
 .evo-app .wz-inline-label { padding-top: 8px; color: var(--text-faint); font-size: 12px; }
 .evo-app .wz-range-row { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 10px; }
 .evo-app .wz-range-presets { display: inline-flex; align-items: center; gap: 6px; padding-top: 1px; }
+/* ── 多对象：配置弹窗成员行 / 向导多选 / run 范围 ─────────────────── */
+  .evo-app .f-label .f-hint { display: block; margin-top: 2px; font-size: 11px; font-weight: 400; color: var(--text-faint); line-height: 1.5; }
+  .evo-app .modal.tg-modal { width: 760px; }
+  .evo-app .tg-shared { padding: 12px 14px 2px; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); }
+  .evo-app .tg-shared-row { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 0 14px; align-items: end; }
+  .evo-app .tg-shared > .f-row .inp { width: 100%; }
+  .evo-app .tg-shared-row .f-row { margin-bottom: 12px; }
+  .evo-app .tg-members { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+  .evo-app .tg-member { display: grid; grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1.25fr) 28px; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); }
+  .evo-app .tg-member .inp { width: 100%; }
+  .evo-app .tgm-remove { border: none; background: transparent; color: var(--text-faint); cursor: pointer; font-size: 13px; }
+  .evo-app .tgm-remove:hover { color: var(--red); }
+  .evo-app .tg-member-add { width: fit-content; }
+  .evo-app .tg-members-row .notice { margin-top: 10px; }
+  .evo-app .wz-members { display: flex; flex-direction: column; gap: 10px; }
+  .evo-app .wz-repo { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px 10px; background: var(--bg-card); }
+  .evo-app .wz-repo-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 11.5px; color: var(--text-dim); }
+  .evo-app .wz-repo.locked { opacity: .55; }
+  .evo-app .wz-repo.locked .wz-repo-head { color: var(--text); opacity: 1; }
+  .evo-app .wz-member { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+  .evo-app .wz-member:hover { background: var(--bg-panel); }
+  .evo-app .wz-member.on { background: color-mix(in srgb, var(--blue) 7%, var(--bg-card)); }
+  .evo-app .wz-member.disabled { cursor: not-allowed; }
+  .evo-app .wz-member .sub { color: var(--text-faint); font-size: 11px; }
+  .evo-app .wz-member em, .evo-app .chip.kind.primary em { margin-left: auto; font-style: normal; font-size: 10px; font-weight: 600; color: var(--blue); border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent); background: color-mix(in srgb, var(--blue) 9%, transparent); border-radius: 999px; padding: 0 7px; }
+  .evo-app .chip.kind.primary { border-color: color-mix(in srgb, var(--blue) 45%, transparent); }
+  .evo-app .chip.kind.primary em { margin-left: 6px; }
+  .evo-app .wz-summary { margin-top: 10px; padding: 8px 12px; border-radius: 8px; background: var(--bg-panel); font-size: 11.5px; color: var(--text-dim); line-height: 1.6; }
+  .evo-app .wz-group-picker { display: flex; flex-direction: column; gap: 8px; }
+  .evo-app .wz-group-picker > .inp { max-width: 420px; }
+  .evo-app .wz-group-members { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); }
+  .evo-app .wz-member.static { cursor: default; padding: 4px 6px; }
+  .evo-app .wz-summary.multi { border-left: 3px solid var(--blue); background: color-mix(in srgb, var(--blue) 5%, var(--bg-card)); }
+  .evo-app .wz-summary .v2-note { display: inline-block; margin-top: 2px; }
+  .evo-app .scope-member { display: flex; align-items: center; gap: 10px; padding: 2px 0; }
 .evo-app .wz-range-chip { display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-card); color: var(--text-dim); font: inherit; font-size: 11.5px; line-height: 1; white-space: nowrap; cursor: pointer; transition: color .12s, background .12s, border-color .12s; }
 .evo-app .wz-range-chip:hover { color: var(--text); border-color: color-mix(in srgb, var(--blue) 28%, var(--border)); background: var(--bg-panel); }
 .evo-app .wz-range-chip.active { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 45%, var(--border)); background: color-mix(in srgb, var(--blue) 8%, var(--bg-card)); font-weight: 600; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 10%, transparent); }
@@ -1069,6 +1098,7 @@
   .v2-badge.viewer { color: var(--text-faint); }
   .v2-badge.warn { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 40%, transparent); background: color-mix(in srgb, var(--orange) 8%, transparent); }
   .v2-badge.ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 38%, transparent); background: color-mix(in srgb, var(--green) 8%, transparent); }
+  .v2-badge.off { color: var(--text-faint); border-color: var(--border); background: var(--bg-panel); }
   .v2-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .v2-toolbar .spacer { flex: 1; }
 
@@ -1331,11 +1361,24 @@
 .v2-page .tg-side-head .btn { padding: 3px 8px; font-size: 10.5px; }
 .v2-page .tg-side-item { padding: 7px 0; border-top: 1px solid #f0f2f5; }
 .v2-page .tg-side-item:first-child { border-top: 0; }
+.v2-page .tg-side-item.is-disabled { margin-top: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); }
+.v2-page .tg-side-item.is-disabled .tg-target-title b { color: var(--text-faint); }
+.v2-page .tg-side-item.is-disabled .tg-target-title .chip.kind { opacity: .55; }
+.v2-page .tg-side-item.is-disabled .tg-side-meta,
+.v2-page .tg-side-item.is-disabled .tg-side-note { color: var(--text-faint); }
+.v2-page .tg-side-item.is-disabled .tg-side-note { margin-top: 4px; font-size: 9.5px; }
+.v2-page .tg-side-item.is-disabled .tg-target-actions .btn.enable { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--border)); }
+.v2-page .tg-side-group { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 9.5px; color: var(--text-faint); }
 .v2-page .tg-side-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 7px; }
 .v2-page .tg-side-top .tg-target-title b { font-size: 12.5px; }
 .v2-page .tg-side-top .tg-target-actions .btn { padding: 1px 5px; font-size: 9.5px; }
 .v2-page .tg-side-repo { margin-top: 4px; font-family: var(--mono); font-size: 9px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .v2-page .tg-side-meta { display: flex; gap: 12px; margin-top: 4px; font-size: 10px; color: var(--text-dim); }
+.v2-page .tg-side-members { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.v2-page .tg-side-members .chip.kind { font-family: var(--mono); font-size: 10px; color: var(--purple); border-color: color-mix(in srgb, var(--purple) 30%, transparent); background: color-mix(in srgb, var(--purple) 7%, transparent); }
+.v2-page .target-members { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.v2-page .target-member { display: flex; align-items: center; gap: 8px; }
+.v2-page .target-member .chip.kind { font-family: var(--mono); font-size: 10px; color: var(--purple); border-color: color-mix(in srgb, var(--purple) 30%, transparent); background: color-mix(in srgb, var(--purple) 7%, transparent); }
 .v2-page .tg-side-meta b { font-family: var(--mono); font-size: 12px; color: var(--text); }
 .v2-page .tg-side-evolvable { margin-top: 3px; font-size: 10px; color: var(--text-dim); }
 .v2-page .tg-side-evolvable b { font-family: var(--mono); font-size: 12px; color: var(--text); }
@@ -4618,7 +4661,7 @@ function v2AttrVersionMeta(a) {
     return { ref: "", commit: version, digest: "", copy: version, full: version, missing: false };
   }
   const targets = window.v2Targets ? window.v2Targets() : [];
-  const target = targets.find(t => t.objectName === a.objectName);
+  const target = targets.find(t => evGroupHas(t, a.objectName));
   const hit = target && window.v2TargetVersions
     ? window.v2TargetVersions(target).find(v => v.ref === version)
     : null;
@@ -4953,16 +4996,21 @@ function evDateIn(iso, from, to) {
 }
 function evSessionHasTarget(sess, target) {
   if (!sess) return false;
-  if (sess.skills && sess.skills.some(x => x === target.name || x.endsWith(':' + target.name))) return true;
-  return (v2Hash(sess.id + target.name) % 3) === 0;
+  const name = target.name || target.objectName;
+  if (!name) return false;
+  if (sess.skills && sess.skills.some(x => x === name || x.endsWith(':' + name))) return true;
+  return (v2Hash(sess.id + name) % 3) === 0;
 }
 function evObjectLine(run, sess) { return 24 + (v2Hash(run.id + sess.id + run.target.name) % 58); }
+/* 多对象 run：run.targets 是成员快照，首个为主对象；历史 run 没有该字段时退化为单成员。 */
+function evRunMembers(run) { return run.targets || [run.target]; }
+function evIsMember(run, objectName) { return evRunMembers(run).some(m => m.name === objectName); }
 function evPolicyInclude(c, line, run) {
   const p = run.policy;
-  if (p === 'default') return (c.type === 'self' && c.objectName === run.target.name) || c.triggerLine > line;
+  if (p === 'default') return (c.type === 'self' && evIsMember(run, c.objectName)) || c.triggerLine > line;
   const rules = run.policyRules || { includeSelf: true, includeAfter: true, sameObject: false };
-  if (rules.sameObject && c.objectName !== run.target.name) return false;
-  return (rules.includeSelf && c.type === 'self' && c.objectName === run.target.name) ||
+  if (rules.sameObject && !evIsMember(run, c.objectName)) return false;
+  return (rules.includeSelf && c.type === 'self' && evIsMember(run, c.objectName)) ||
     (rules.includeAfter && c.triggerLine > line);
 }
 function evRunModel(run) {
@@ -4971,12 +5019,15 @@ function evRunModel(run) {
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
   const sessionIds = [...new Set(cases.map(c => c.sessionId))];
   const sessions = sessionIds.map(sid => SESSIONS.find(s => s.id === sid)).filter(Boolean);
+  const members = evRunMembers(run);
   const assoc = sessions.map(sess => {
     const line = evObjectLine(run, sess);
-    const appeared = evSessionHasTarget(sess, run.target);
+    // 并集语义：任一成员在该 Session 出现即关联；hitMembers 记录是谁出现的。
+    const hitMembers = members.filter(m => evSessionHasTarget(sess, m));
+    const appeared = hitMembers.length > 0;
     const sessCases = cases.filter(c => c.sessionId === sess.id);
     const potential = appeared ? sessCases.filter(c => evPolicyInclude(c, line, run)) : [];
-    return { sess, sid: sess.id, line, appeared, cases: sessCases, potential };
+    return { sess, sid: sess.id, line, appeared, hitMembers, cases: sessCases, potential };
   });
   const potentialRows = [];
   assoc.forEach(a => a.potential.forEach(c => potentialRows.push({ c, a })));
@@ -4984,7 +5035,7 @@ function evRunModel(run) {
   potentialRows.forEach((row, idx) => {
     const h = v2Hash(run.id + row.c.id + run.target.name);
     row.attributionId = `AR-${runShort}-${String(idx + 1).padStart(3, '0')}`;
-    const notObject = row.c.objectName !== run.target.name && row.c.type === 'discovery' && (h % 4 === 0);
+    const notObject = !evIsMember(run, row.c.objectName) && row.c.type === 'discovery' && (h % 4 === 0);
     row.hasReport = h % 2 === 0;
     row.reportSkill = row.hasReport ? evReportSkill(run, h) : null;
     row.cached = run.cache !== false && row.hasReport;
@@ -5003,7 +5054,7 @@ function evRunModel(run) {
 
 function evRunSkill(run) {
   if (run.attributionSkill) return run.attributionSkill;
-  const target = (EV_TARGETS[run.workspace] || []).find(t => t.objectName === run.target.name && t.kind === run.target.kind);
+  const target = (EV_TARGETS[run.workspace] || []).find(t => evGroupHas(t, run.target.name));
   if (target?.attributionInline && !target.attributionSkill) return '历史内联提示词';
   return target?.attributionSkill || 'attribute-badcases';
 }
@@ -5020,22 +5071,87 @@ function evReportSkill(run, hash) {
 
 /* 原型打桩：生产由服务端用 git 读取真实仓库；这里用少量示例 ref 模拟存在性校验。 */
 const EV_DEMO_REFS = ['main', 'feature/foo'];
+/* 进化对象 = 一条配置 + 同一仓库里的多个成员；单对象是成员的退化形态。
+   共享：仓库、默认版本、验证集/测试集测试工程、主指标、归因 Skill。
+   成员：类型 + 名称 + 子目录；各自冻结定义、各自关联 bad case。 */
 const EV_TARGETS = {
   'ws-harness': [
-    { id: 't-dr', kind: 'skill', objectName: 'deep-research', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/deep-research', defaultRef: 'v2.4.0', tags: ['v2.4.0', 'v2.3.1', 'v2.2.0'], versions: [{ ref: 'v2.4.0', commit: 'a3f9c21', date: '2026-11-08' }, { ref: 'v2.3.1', commit: '7b2e084', date: '2026-10-30' }, { ref: 'v2.3.0', commit: 'e62b1c8', date: '2026-10-21' }, { ref: 'v2.2.0', commit: '5c41d7a', date: '2026-10-09' }, { ref: 'v2.1.3', commit: '2f9ab60', date: '2026-09-27' }, { ref: 'v2.1.2', commit: '9d03ee1', date: '2026-09-18' }, { ref: 'v2.1.1', commit: '4b6c2f5', date: '2026-09-11' }, { ref: 'v2.1.0', commit: 'c8d1a72', date: '2026-09-03' }, { ref: 'v2.0.9', commit: '1a7e3b9', date: '2026-08-26' }, { ref: 'v2.0.8', commit: '6e5f0c4', date: '2026-08-19' }, { ref: 'v2.0.7', commit: '0b9d27e', date: '2026-08-11' }, { ref: 'v2.0.6', commit: 'f4a8c13', date: '2026-08-04' }, { ref: 'v2.0.5', commit: '3d2f9b7', date: '2026-07-28' }, { ref: 'v2.0.4', commit: '9a6c1e8', date: '2026-07-20' }, { ref: 'v2.0.3', commit: '5f7b2d1', date: '2026-07-13' }, { ref: 'v2.0.2', commit: 'c3e8f6a', date: '2026-07-05' }, { ref: 'v2.0.1', commit: '8b4d5c2', date: '2026-06-27' }, { ref: 'v2.0.0', commit: 'a71f3e5', date: '2026-06-19' }], validationProjectId: 'val-dr-2026q4', testProjectId: 'test-dr-2026q4', primaryMetricKey: 'resolved_rate', enabled: true },
-    { id: 't-cr', kind: 'skill', objectName: 'code-review', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/code-review', defaultRef: 'v1.8.0', tags: ['v1.8.0', 'v1.7.2'], versions: [{ ref: 'v1.8.0', commit: 'f2c9a41', date: '2026-11-06' }, { ref: 'v1.7.2', commit: 'b7d3e58', date: '2026-10-24' }, { ref: 'v1.7.1', commit: '4e1a9c2', date: '2026-10-15' }, { ref: 'v1.7.0', commit: '9c5f2b8', date: '2026-10-03' }, { ref: 'v1.6.2', commit: '3a7e1d9', date: '2026-09-22' }, { ref: 'v1.6.1', commit: '8f2b4c7', date: '2026-09-12' }, { ref: 'v1.6.0', commit: 'd5e9a13', date: '2026-09-01' }, { ref: 'v1.5.3', commit: '6b1c8f4', date: '2026-08-22' }, { ref: 'v1.5.2', commit: 'e4a7d29', date: '2026-08-12' }, { ref: 'v1.5.1', commit: '1c6f9b3', date: '2026-08-02' }, { ref: 'v1.5.0', commit: 'a9d2e75', date: '2026-07-22' }, { ref: 'v1.4.0', commit: '7e3b5c1', date: '2026-07-10' }], validationProjectId: 'val-cr-2026q4', testProjectId: 'test-cr-2026q4', primaryMetricKey: 'resolved_rate', enabled: true },
-    { id: 't-ex', kind: 'agent', objectName: 'Explore', repoUrl: 'git@github.com:acme/agents.git', subDir: 'agents/Explore', defaultRef: 'v1.5.0', tags: ['v1.5.0', 'v1.4.3'], versions: [{ ref: 'v1.5.0', commit: 'c4a8b13', date: '2026-11-04' }, { ref: 'v1.4.3', commit: '6d2f9e1', date: '2026-10-20' }, { ref: 'v1.4.2', commit: 'b1e7c34', date: '2026-10-08' }, { ref: 'v1.4.1', commit: '9a3d5f7', date: '2026-09-25' }, { ref: 'v1.4.0', commit: 'f8c2e61', date: '2026-09-14' }, { ref: 'v1.3.2', commit: '2b6a9d4', date: '2026-09-02' }, { ref: 'v1.3.1', commit: 'd7e4b18', date: '2026-08-20' }, { ref: 'v1.3.0', commit: '5c1f7a2', date: '2026-08-08' }, { ref: 'v1.2.0', commit: '8e9b3c6', date: '2026-07-26' }], validationProjectId: 'val-ex-2026q4', testProjectId: 'test-ex-2026q4', primaryMetricKey: 'resolved_rate', enabled: true },
+    { id: 'g-skills', name: 'agent-skills', kind: 'group', objectName: 'agent-skills',
+      repoUrl: 'https://github.com/acme/agent-skills.git', defaultRef: 'v2.4.0',
+      tags: ['v2.4.0', 'v2.3.1', 'v2.2.0'],
+      versions: [{ ref: 'v2.4.0', commit: 'a3f9c21', date: '2026-11-08' }, { ref: 'v2.3.1', commit: '7b2e084', date: '2026-10-30' }, { ref: 'v2.3.0', commit: 'e62b1c8', date: '2026-10-21' }, { ref: 'v2.2.0', commit: '5c41d7a', date: '2026-10-09' }, { ref: 'v2.1.3', commit: '2f9ab60', date: '2026-09-27' }],
+      validationProjectId: 'val-skills-2026q4', testProjectId: 'test-skills-2026q4',
+      primaryMetricKey: 'resolved_rate', attributionSkill: 'attribute-badcases', enabled: true,
+      members: [
+        { kind: 'skill', objectName: 'deep-research', subDir: 'skills/deep-research' },
+        { kind: 'skill', objectName: 'code-review', subDir: 'skills/code-review' },
+      ] },
+    { id: 'g-agents', name: 'agents', kind: 'group', objectName: 'agents',
+      repoUrl: 'git@github.com:acme/agents.git', defaultRef: 'v1.5.0',
+      tags: ['v1.5.0', 'v1.4.3'],
+      versions: [{ ref: 'v1.5.0', commit: 'c4a8b13', date: '2026-11-04' }, { ref: 'v1.4.3', commit: '6d2f9e1', date: '2026-10-20' }, { ref: 'v1.4.2', commit: 'b1e7c34', date: '2026-10-08' }],
+      validationProjectId: 'val-agents-2026q4', testProjectId: 'test-agents-2026q4',
+      primaryMetricKey: 'resolved_rate', attributionSkill: 'attribute-badcases', enabled: true,
+      members: [{ kind: 'agent', objectName: 'Explore', subDir: 'agents/Explore' }] },
+    { id: 'g-release-notes', name: 'release-notes', kind: 'group', objectName: 'release-notes',
+      repoUrl: 'git@github.com:acme/agents.git', defaultRef: 'v1.2.3',
+      tags: ['v1.2.3', 'v1.2.0'],
+      versions: [{ ref: 'v1.2.3', commit: 'a4d9e72', date: '2026-10-02' }, { ref: 'v1.2.0', commit: '7c1b8e4', date: '2026-09-19' }],
+      validationProjectId: 'val-rn-2026q4', testProjectId: 'test-rn-2026q4',
+      primaryMetricKey: 'resolved_rate', attributionSkill: 'harness-trace-review', enabled: false,
+      members: [{ kind: 'agent', objectName: 'release-notes', subDir: 'agents/release-notes' }] },
   ],
   'ws-agent': [
-    { id: 't-ba', kind: 'skill', objectName: 'browser-agent', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/browser-agent', defaultRef: 'v0.9.4', tags: ['v0.9.4', 'v0.9.1'], validationProjectId: 'val-ba-2026q4', testProjectId: 'test-ba-2026q4', primaryMetricKey: 'resolved_rate', enabled: true },
-    { id: 't-wf', kind: 'skill', objectName: 'workflow', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/workflow', defaultRef: 'v1.1.0', tags: ['v1.1.0', 'v1.0.5'], validationProjectId: 'val-wf-2026q4', testProjectId: 'test-wf-2026q4', primaryMetricKey: 'resolved_rate', enabled: true },
-    { id: 't-cr2', kind: 'skill', objectName: 'code-review', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/code-review', defaultRef: 'v1.8.0', tags: ['v1.8.0'], validationProjectId: 'val-cr-2026q4', testProjectId: 'test-cr-2026q4', primaryMetricKey: 'resolved_rate', enabled: false },
+    { id: 'g-agent-skills', name: 'agent-skills', kind: 'group', objectName: 'agent-skills',
+      repoUrl: 'https://github.com/acme/agent-skills.git', defaultRef: 'v1.1.0',
+      tags: ['v1.1.0', 'v1.0.5', 'v0.9.4'],
+      validationProjectId: 'val-wa-2026q4', testProjectId: 'test-wa-2026q4',
+      primaryMetricKey: 'resolved_rate', attributionSkill: 'attribute-badcases', enabled: true,
+      members: [
+        { kind: 'skill', objectName: 'browser-agent', subDir: 'skills/browser-agent' },
+        { kind: 'skill', objectName: 'workflow', subDir: 'skills/workflow' },
+      ] },
+    { id: 'g-cr', name: 'code-review', kind: 'group', objectName: 'code-review',
+      repoUrl: 'https://github.com/acme/agent-skills.git', defaultRef: 'v1.8.0',
+      tags: ['v1.8.0'],
+      validationProjectId: 'val-cr-2026q4', testProjectId: 'test-cr-2026q4',
+      primaryMetricKey: 'resolved_rate', attributionSkill: 'attribute-badcases', enabled: false,
+      members: [{ kind: 'skill', objectName: 'code-review', subDir: 'skills/code-review' }] },
   ],
   'ws-research': [
-    { id: 't-dr3', kind: 'skill', objectName: 'deep-research', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/deep-research', defaultRef: 'v2.4.0', tags: ['v2.4.0', 'v2.3.1'], validationProjectId: 'val-dr-2026q3', testProjectId: 'test-dr-2026q3', primaryMetricKey: 'resolved_rate', enabled: true },
-    { id: 't-ex3', kind: 'agent', objectName: 'Explore', repoUrl: 'git@github.com:acme/agents.git', subDir: 'agents/Explore', defaultRef: 'v1.5.0', tags: ['v1.5.0'], validationProjectId: 'val-ex-2026q3', testProjectId: 'test-ex-2026q3', primaryMetricKey: 'resolved_rate', enabled: true },
+    { id: 'g-research', name: 'agent-skills', kind: 'group', objectName: 'agent-skills',
+      repoUrl: 'https://github.com/acme/agent-skills.git', defaultRef: 'v2.4.0',
+      tags: ['v2.4.0', 'v2.3.1'],
+      validationProjectId: 'val-dr-2026q3', testProjectId: 'test-dr-2026q3',
+      primaryMetricKey: 'resolved_rate', attributionSkill: 'attribute-badcases', enabled: true,
+      members: [{ kind: 'skill', objectName: 'deep-research', subDir: 'skills/deep-research' }] },
+    { id: 'g-explore', name: 'agents', kind: 'group', objectName: 'agents',
+      repoUrl: 'git@github.com:acme/agents.git', defaultRef: 'v1.5.0',
+      tags: ['v1.5.0'],
+      validationProjectId: 'val-ex-2026q3', testProjectId: 'test-ex-2026q3',
+      primaryMetricKey: 'resolved_rate', attributionSkill: 'attribute-badcases', enabled: true,
+      members: [{ kind: 'agent', objectName: 'Explore', subDir: 'agents/Explore' }] },
   ],
 };
+function evGroupMembers(t) {
+  return (t && t.members && t.members.length) ? t.members : [{ kind: t.kind, objectName: t.objectName, subDir: t.subDir }];
+}
+function evGroupName(t) { return t.name || evGroupMembers(t).map(m => m.objectName).join('、'); }
+function evGroupHas(t, objectName) { return evGroupMembers(t).some(m => m.objectName === objectName); }
+function evGroupMember(t, objectName) { return evGroupMembers(t).find(m => m.objectName === objectName) || null; }
+function evGroupOfObject(objectName) { return (EV_TARGETS[evCurrentWs()] || []).find(t => evGroupHas(t, objectName)) || null; }
+/* 概览统计仍按“对象”展开：一个成员一行，挂在所属配置下。 */
+function evTargetViews() {
+  return (EV_TARGETS[V2.wsId] || []).filter(t => t.enabled !== false).flatMap(t =>
+    evGroupMembers(t).map(m => ({
+      id: t.id + ':' + m.objectName, groupId: t.id, group: t,
+      kind: m.kind, objectName: m.objectName, subDir: m.subDir,
+      defaultRef: t.defaultRef, tags: t.tags, versions: t.versions,
+      validationProjectId: t.validationProjectId, testProjectId: t.testProjectId,
+      primaryMetricKey: t.primaryMetricKey, attributionSkill: t.attributionSkill,
+      enabled: t.enabled !== false,
+    })));
+}
 
 const EV_PATCH = {
   deser: { file: 'skills/deep-research/SKILL.md', lines: ['@@ -42,6 +42,13 @@ ## 检索结果处理', ' 读取检索索引返回的分块后，直接使用其 content 字段。', '+### 反序列化校验（新增）', '+- 检索工具返回的 JSON 必须先经 safeParse 做 schema 校验；', '+- 校验失败时回退到原始文本分块，并在报告中标注「未结构化」；', '+- 禁止对未校验字段直接做属性访问。', ' ## 报告撰写'] },
@@ -5069,7 +5185,7 @@ const EV_FINAL_TEMPLATE = {
 function evMakeRun(cfg) {
   const run = {
     id: cfg.id, workspace: cfg.workspace, title: cfg.title,
-    target: cfg.target, window: cfg.window, createdAt: cfg.createdAt || '2026-11-10 09:10',
+    target: cfg.target, targets: cfg.targets || [{ kind: cfg.target.kind, name: cfg.target.name }], window: cfg.window, createdAt: cfg.createdAt || '2026-11-10 09:10',
     policy: cfg.policy || 'default', policyRules: cfg.policyRules || null,
     cache: cfg.cache !== false, progress: cfg.progress ?? 0,
     final: { ...EV_FINAL_TEMPLATE, bestVersion: cfg.target.version + '-best' },
@@ -5077,14 +5193,24 @@ function evMakeRun(cfg) {
     preparing: cfg.preparing === true,
     failed: cfg.failed === true,
   };
-  const cfgTarget = (EV_TARGETS[cfg.workspace] || []).find(t => t.objectName === cfg.target.name && t.kind === cfg.target.kind);
-  run.attributionSkill = cfg.attributionSkill || cfgTarget?.attributionSkill || (cfgTarget?.attributionInline ? '历史内联提示词' : 'attribute-badcases');
+  // 一条配置含多个成员：run 快照自己的成员；旧 run 没有快照时只有它自己的那个对象；
+  // 历史 run 的对象可能已不在任何配置里，此时 groupId 为空、标题回退到对象名。
+  const cfgGroup = (EV_TARGETS[cfg.workspace] || []).find(t => evGroupHas(t, cfg.target.name)) || null;
+  run.groupId = cfgGroup ? cfgGroup.id : null;
+  run.targets = cfg.targets || [{ kind: cfg.target.kind, name: cfg.target.name }];
+  run.attributionSkill = cfg.attributionSkill || cfgGroup?.attributionSkill || (cfgGroup?.attributionInline ? '历史内联提示词' : 'attribute-badcases');
+  const subDirOf = (name) => {
+    const m = cfgGroup ? evGroupMember(cfgGroup, name) : null;
+    return m?.subDir || `skills/${name}`;
+  };
   run.worktree = {
     branch: `evo/${cfg.id}`,
     baseRef: cfg.target.version,
     baseCommit: cfg.preparing ? null : '9f3c2a1',
-    repoUrl: cfgTarget?.repoUrl || 'https://github.com/acme/agent-skills.git',
-    subDir: cfgTarget?.subDir || `skills/${cfg.target.name}`,
+    repoUrl: cfgGroup?.repoUrl || 'https://github.com/acme/agent-skills.git',
+    subDir: subDirOf(cfg.target.name),
+    // 改动范围：每个成员一个目录；单对象 run 退化为今天的单目录。
+    subDirs: run.targets.map(m => subDirOf(m.name)),
     pushStatus: cfg.preparing ? 'pending' : 'succeeded',
     pushedAt: cfg.preparing ? null : (cfg.createdAt || '2026-11-10 09:10'),
     evalStatus: cfg.preparing ? 'pending' : (cfg.progress === 8 ? 'completed' : 'evaluating'),
@@ -5143,8 +5269,9 @@ const EV_RUNS = [
     window: ['2026-11-12', '2026-11-19'], createdAt: '2026-11-19 23:03', progress: 0, cache: true, preparing: true,
   }),
   evMakeRun({
-    id: 'EV-20261109-01', workspace: 'ws-harness', title: 'deep-research v2.4.0 自进化',
+    id: 'EV-20261109-01', workspace: 'ws-harness', title: 'agent-skills 2 个对象 v2.4.0 自进化',
     target: { kind: 'skill', name: 'deep-research', version: 'v2.4.0' },
+    targets: [{ kind: 'skill', name: 'deep-research' }, { kind: 'skill', name: 'code-review' }],
     window: ['2026-10-12', '2026-11-09'], createdAt: '2026-11-09 21:40', progress: 4, cache: true,
   }),
   evMakeRun({
@@ -5256,6 +5383,23 @@ function evRoute() {
 }
 window.addEventListener('hashchange', () => { if (window.V2 && window.V2.page === 'evo') evRoute(); });
 
+/* 一条配置含多个成员：chip 逐个列成员，不再区分主对象。 */
+function evTargetChips(run) {
+  return evRunMembers(run).map(m => `<span class="chip kind">${m.kind}:${evEsc(m.name)}</span>`).join(' ');
+}
+function evRunGroup(run) { return (EV_TARGETS[run.workspace] || []).find(t => t.id === run.groupId) || null; }
+function evRunGroupName(run) {
+  const g = evRunGroup(run);
+  return g ? evGroupName(g) : `${run.target.kind}:${run.target.name}`;
+}
+function evTargetLabel(run) { return `${evRunGroupName(run)}（${evRunMembers(run).length} 个对象）`; }
+/* 改动范围：每个成员目录一个 glob，与后端 patch_source._allowed_paths 一致。 */
+function evAllowedPaths(run) {
+  const dirs = (run.worktree && run.worktree.subDirs) || [(run.worktree && run.worktree.subDir)];
+  const list = [...new Set(dirs.filter(Boolean))];
+  return list.length ? list : ['**'];
+}
+
 function evRunCard(run) {
   const total = evTotal(run), pct = Math.min(100, Math.round(run.progress / total * 100));
   const accepted = run.clusters.filter((c, i) => evRoundDone(run, i) && c.accepted).length;
@@ -5274,7 +5418,8 @@ function evRunCard(run) {
   return `<div class="card run-card" data-action="ev-open-run" data-id="${run.id}">
     <div class="r1"><span class="title">${evEsc(run.title)}</span>${evStatusBadge(run)}<span class="time">${run.createdAt}</span>${evControlActions(run)}</div>
     <div class="r2">
-      <span class="chip kind">${run.target.kind}:${evEsc(run.target.name)}@${run.target.version}</span>
+      <span class="chip kind">${evEsc(evRunGroupName(run))}@${run.target.version}</span>
+      ${evRunMembers(run).length > 1 ? `<span class="v2-badge">${evRunMembers(run).length} 个对象</span>` : ''}
       <span class="mono" style="font-size:11px">${run.window[0]} ~ ${run.window[1]}</span>
       <span class="v2-badge">${evEsc((WORKSPACES.find(w => w.id === run.workspace) || {}).name || run.workspace)}</span>
       <span class="chip">${run.policy === 'default' ? '默认潜在策略' : '自定义潜在策略'}</span>
@@ -5326,7 +5471,7 @@ function evInfoPanel(run) {
   return `<div class="card panel">
     <div class="sec-title">目标与输入 <span class="sub">时间段内当前空间上报的 bad case 是本次进化的候选集</span></div>
     <div class="kv-grid">
-      <div class="kv"><div class="k">进化对象</div><div class="v"><span class="chip kind">${run.target.kind}:${evEsc(run.target.name)}</span></div></div>
+      <div class="kv"><div class="k">进化对象 · ${evEsc(evRunGroupName(run))}</div><div class="v">${evTargetChips(run)}</div></div>
       <div class="kv"><div class="k">版本</div><div class="v mono">${run.target.version}</div></div>
       <div class="kv"><div class="k">时间段（bad case 上报）</div><div class="v mono" style="font-size:12px">${run.window[0]} ~ ${run.window[1]}</div></div>
       <div class="kv"><div class="k">工作空间</div><div class="v">${evEsc((WORKSPACES.find(w => w.id === run.workspace) || {}).name || run.workspace)}</div></div>
@@ -5357,7 +5502,7 @@ function evWorkspaceDetail(run) {
       <div class="kv"><div class="k">run 分支</div><div class="v">${branch}</div></div>
       <div class="kv"><div class="k">基线 ref / commit</div><div class="v mono">${evEsc(w.baseRef || '—')} / ${evEsc(w.baseCommit || '—')}</div></div>
       <div class="kv"><div class="k">仓库</div><div class="v mono" style="word-break:break-all">${evEsc(w.repoUrl || '—')}</div></div>
-      <div class="kv"><div class="k">子目录</div><div class="v mono">${evEsc(w.subDir || '—')}</div></div>
+      <div class="kv"><div class="k">${evRunMembers(run).length > 1 ? '改动范围' : '子目录'}</div><div class="v mono">${evAllowedPaths(run).map(d => `${evEsc(d)}/**`).join('<br>')}</div></div>
       <div class="kv"><div class="k">推送状态</div><div class="v mono">${w.pushStatus === 'succeeded' ? '已推送' : w.pushStatus === 'pending' ? '待推送' : evEsc(w.pushStatus || '—')}</div></div>
       <div class="kv"><div class="k">推送时间</div><div class="v mono">${evEsc(w.pushedAt || '尚未推送')}</div></div>
       <div class="kv"><div class="k">评测状态</div><div class="v mono">${evEsc(w.evalStatus || '—')}</div></div>
@@ -5378,14 +5523,25 @@ function evStepper(run, sel) {
 
 function evStepScope(run) {
   const m = evDisplayModel(run);
+  const members = evRunMembers(run);
+  const group = evRunGroup(run);
+  const subDirOf = (name) => {
+    const mm = group ? evGroupMember(group, name) : null;
+    return mm?.subDir || '—';
+  };
+  const memberRows = `<tr><th>成员与子目录</th><td colspan="3">${members.map(mm => `<div class="scope-member"><span class="chip kind">${mm.kind}:${evEsc(mm.name)}</span><span class="mono">${evEsc(subDirOf(mm.name))}</span></div>`).join('')}</td></tr>`;
+  const allowed = evAllowedPaths(run).map(d => `${d}/**`).join('、');
   return `<div class="card panel">
-    <div class="sec-title">第 1 步 · 选择范围 <span class="sub">进化对象 + 版本 + bad case 时间段</span></div>
+    <div class="sec-title">第 1 步 · 选择范围 <span class="sub">进化对象（一条配置含多个成员） + 版本 + bad case 时间段</span></div>
     <table class="rep"><tbody>
-      <tr><th style="width:160px">进化对象</th><td><span class="chip kind">${run.target.kind}:${evEsc(run.target.name)}</span></td><th style="width:100px">版本</th><td class="mono">${run.target.version}</td></tr>
+      <tr><th style="width:160px">进化对象</th><td><b>${evEsc(evRunGroupName(run))}</b><span class="v2-note" style="margin-left:8px">${evEsc((group || {}).repoUrl || '')}</span></td><th style="width:100px">版本</th><td class="mono">${run.target.version}<span class="v2-note" style="margin-left:8px">全部成员共用</span></td></tr>
+      ${memberRows}
+      <tr><th>测试工程</th><td colspan="3" class="mono">验证集 ${evEsc((group || {}).validationProjectId || '—')} · 测试集 ${evEsc((group || {}).testProjectId || '—')} · 主指标 ${evEsc((group || {}).primaryMetricKey || '—')}<span class="v2-note" style="margin-left:8px">成员共用一套；一次评测提交全部成员资产</span></td></tr>
       <tr><th>bad case 时间段</th><td class="mono">${run.window[0]} ~ ${run.window[1]}</td><th>工作空间</th><td>${evEsc((WORKSPACES.find(w => w.id === run.workspace) || {}).name || run.workspace)}</td></tr>
-      <tr><th>潜在策略</th><td>${run.policy === 'default' ? '默认：对象自身 self 上报 或 触发点在对象之后' : '自定义：' + evEsc(JSON.stringify(run.policyRules || {}))}</td><th>缓存归因</th><td>${run.cache ? '复用最近一次成功归因' : '不复用，全部重新归因'}</td></tr>
+      <tr><th>潜在策略</th><td>${run.policy === 'default' ? '默认：任一成员自身 self 上报 或 触发点在对象之后' : '自定义：' + evEsc(JSON.stringify(run.policyRules || {}))}</td><th>缓存归因</th><td>${run.cache ? '复用最近一次成功归因' : '不复用，全部重新归因'}</td></tr>
+      <tr><th>改动范围</th><td colspan="3" class="mono">${evEsc(allowed)}<span class="v2-note" style="margin-left:8px">agent-edit 只允许改这些目录；每个成员目录都会单独冻结定义并提交评测资产</span></td></tr>
     </tbody></table>
-    <p class="v2-note" style="margin-top:10px">先找出时间段内当前空间上报过 bad case 的 Session，共 <b>${m.sessions.length}</b> 个；再判断 ${evEsc(run.target.name)}@${run.target.version} 是否出现在这些 Session 中。</p>
+    <p class="v2-note" style="margin-top:10px">先找出时间段内当前空间上报过 bad case 的 Session，共 <b>${m.sessions.length}</b> 个；再判断 ${members.map(x => evEsc(x.name)).join('、')} 中任一对象是否出现在这些 Session 中（已关联 ${m.sessions.filter(a => a.appeared).length} 个）。</p>
     ${run.preparing ? '<p class="v2-note" style="margin-top:10px">运行已受理，正在准备筛选与聚类；统计将在准备完成后出现。</p>' : ''}
   </div>`;
 }
@@ -5729,86 +5885,27 @@ function evRenderDetail(id) {
 }
 
 function evRenderTargets() {
-  const rows = (EV_TARGETS[evCurrentWs()] || []).map(t => `<tr>
-    <td><span class="chip kind">${evEsc(t.kind)}</span><div class="target-name">${evEsc(t.objectName)}</div></td>
-    <td><div class="target-repo">${evEsc(t.repoUrl)}</div><div class="target-dir">${evEsc(t.subDir)}</div></td>
-    <td><div class="target-ref">${evEsc(t.defaultRef)}</div></td>
-    <td class="project-ids">
-      <div class="project-id-row"><span class="project-id-label">验证集</span><span class="project-id-value">${evEsc(t.validationProjectId || '未填写')}</span></div>
-      <div class="project-id-row"><span class="project-id-label">测试集</span><span class="project-id-value">${evEsc(t.testProjectId || '未填写')}</span></div>
-      <div class="project-id-row"><span class="project-id-label">主指标</span><span class="project-id-value">${evEsc(t.primaryMetricKey || '未填写')}</span></div>
-    </td>
-    <td><span class="enabled-pill ${t.enabled ? '' : 'off'}">${t.enabled ? '已启用' : '已停用'}</span></td>
-    <td class="actions">${evCanEdit() ? `<button class="btn sm" data-action="ev-target-edit" data-id="${t.id}">编辑</button>` : ''}</td>
-  </tr>`).join('');
+  const rows = (EV_TARGETS[evCurrentWs()] || []).map(t => {
+    const members = evGroupMembers(t);
+    return `<tr>
+      <td><div class="target-name">${evEsc(evGroupName(t))}</div><div class="target-members">${members.map(m => `<div class="target-member"><span class="chip kind">${m.kind}:${evEsc(m.objectName)}</span><span class="mono faint">${evEsc(m.subDir)}</span></div>`).join('')}</div></td>
+      <td><div class="target-repo">${evEsc(t.repoUrl)}</div></td>
+      <td><div class="target-ref">${evEsc(t.defaultRef)}</div></td>
+      <td class="project-ids">
+        <div class="project-id-row"><span class="project-id-label">验证集</span><span class="project-id-value">${evEsc(t.validationProjectId || '未填写')}</span></div>
+        <div class="project-id-row"><span class="project-id-label">测试集</span><span class="project-id-value">${evEsc(t.testProjectId || '未填写')}</span></div>
+        <div class="project-id-row"><span class="project-id-label">主指标</span><span class="project-id-value">${evEsc(t.primaryMetricKey || '未填写')}</span></div>
+      </td>
+      <td><span class="enabled-pill ${t.enabled ? '' : 'off'}">${t.enabled ? '已启用' : '已停用'}</span></td>
+      <td class="actions">${evCanEdit() ? `<button class="btn sm" data-action="ev-target-edit" data-id="${t.id}">编辑</button>` : ''}</td>
+    </tr>`;
+  }).join('');
   evApp.innerHTML = `<div class="wrap">
     <a class="back" href="#/runs">← 返回自进化列表</a>
     <div class="page-head" style="margin-top:8px"><h1>进化对象配置</h1><span class="chip kind">${evEsc((WORKSPACES.find(w => w.id === evCurrentWs()) || {}).name || '')}</span><span class="spacer"></span>${evCanEdit() ? `<button class="btn primary" data-action="ev-target-create">＋ 新增配置</button>` : ''}</div>
-    <p class="page-note">配置只属于当前工作空间；skill / agent 的仓库、子目录、基线与测试工程。tag 建议来自已保存配置的仓库。</p>
-    <div class="targets-panel"><table class="targets"><thead><tr><th>对象</th><th>仓库 / 子目录</th><th>基线</th><th>测试工程</th><th>状态</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="waiting">当前空间暂无配置</td></tr>'}</tbody></table></div>
+    <p class="page-note">一条配置 = 一个进化对象，可含同一仓库里的多个 skill / agent；成员共享仓库、基线、测试工程与主指标，但各自的定义与 bad case 分别冻结和关联。新增 / 编辑复用总览页的表单。</p>
+    <div class="targets-panel"><table class="targets"><thead><tr><th>进化对象 / 成员</th><th>仓库</th><th>基线</th><th>测试工程</th><th>状态</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="waiting">当前空间暂无配置</td></tr>'}</tbody></table></div>
   </div>`;
-  evRenderTargetDialog();
-}
-
-function evOpenTargetDialog(t) {
-  EV_STATE.targetDialog = {
-    mode: t ? 'edit' : 'create', id: t?.id || 't-' + Date.now().toString(36),
-    form: {
-      kind: t?.kind || 'skill', objectName: t?.objectName || '', repoUrl: t?.repoUrl || '', subDir: t?.subDir || '',
-      defaultRef: t?.defaultRef || '', validationProjectId: t?.validationProjectId || '', testProjectId: t?.testProjectId || '',
-      primaryMetricKey: t?.primaryMetricKey || '',
-      enabled: t?.enabled ?? true, tags: t?.tags || [],
-    },
-    error: '',
-  };
-  evRenderTargetDialog();
-}
-function evSyncTargetForm() {
-  const d = EV_STATE.targetDialog; if (!d) return;
-  ['objectName', 'repoUrl', 'subDir', 'defaultRef', 'validationProjectId', 'testProjectId', 'primaryMetricKey'].forEach(k => {
-    const el = document.querySelector(`[data-ev-target-field="${k}"]`);
-    if (el) d.form[k] = el.value;
-  });
-  const en = document.querySelector('[data-ev-target-field="enabled"]');
-  if (en) d.form.enabled = !!en.checked;
-}
-function evRenderTargetDialog() {
-  if (!EV_STATE.targetDialog) { evModal.innerHTML = ''; return; }
-  const d = EV_STATE.targetDialog, f = d.form;
-  evModal.innerHTML = `<div class="evov" data-action="ev-target-close-bg">
-    <div class="modal"><div class="modal-head"><h2>${d.mode === 'create' ? '新增进化对象' : '编辑进化对象'}</h2><button class="x" data-action="ev-target-close">✕</button></div>
-      <div class="modal-body">
-        ${d.error ? `<div class="form-error">${evEsc(d.error)}</div>` : ''}
-        <div class="target-form-grid">
-          <div class="f-row"><div class="f-label">对象类型</div><div class="kind-options">
-            <button type="button" class="kind-choice ${f.kind === 'skill' ? 'active' : ''}" data-action="ev-target-kind" data-kind="skill">Skill</button>
-            <button type="button" class="kind-choice ${f.kind === 'agent' ? 'active' : ''}" data-action="ev-target-kind" data-kind="agent">Agent</button>
-          </div></div>
-          <div class="f-row"><div class="f-label">对象名称</div><input class="inp" data-ev-target-field="objectName" value="${evEsc(f.objectName)}" placeholder="如 deep-research"></div>
-          <div class="f-row span-2"><div class="f-label">仓库地址</div><input class="inp" data-ev-target-field="repoUrl" value="${evEsc(f.repoUrl)}" placeholder="https://… 或 git@…"></div>
-          <div class="f-row"><div class="f-label">子目录</div><input class="inp" data-ev-target-field="subDir" value="${evEsc(f.subDir)}" placeholder="如 skills/deep-research"></div>
-          <div class="f-row"><div class="f-label">基线分支或标签</div><input class="inp" data-ev-target-field="defaultRef" value="${evEsc(f.defaultRef)}" placeholder="main / v2.4.0"><div class="field-note">可填写分支或 tag；保存后作为启动向导的默认版本，向导中也可改填 commit id。</div></div>
-          <div class="f-row"><div class="f-label">验证集测试工程 ID <span class="req">*</span></div><input class="inp" data-ev-target-field="validationProjectId" value="${evEsc(f.validationProjectId)}"></div>
-          <div class="f-row"><div class="f-label">测试集测试工程 ID <span class="req">*</span></div><input class="inp" data-ev-target-field="testProjectId" value="${evEsc(f.testProjectId)}"></div>
-          <div class="f-row span-2"><div class="f-label">主指标 key <span class="req">*</span></div><input class="inp" data-ev-target-field="primaryMetricKey" value="${evEsc(f.primaryMetricKey)}" placeholder="如 resolved_rate"><div class="field-note">平台 results 中用于逐轮比较与终评的主指标 metric_key。</div></div>
-          <div class="f-row span-2"><div class="f-label">启用</div><div class="switch-row"><label class="proto-switch"><input type="checkbox" data-ev-target-field="enabled" ${f.enabled ? 'checked' : ''}><span class="proto-switch-track"></span></label><span>${f.enabled ? '进入启动向导候选' : '保留配置但不进入向导'}</span></div></div>
-        </div>
-      </div>
-      <div class="modal-foot"><button class="btn" data-action="ev-target-close">取消</button><button class="btn primary" data-action="ev-target-save">${d.mode === 'create' ? '新增配置' : '保存配置'}</button></div>
-    </div></div>`;
-}
-function evSaveTarget() {
-  evSyncTargetForm();
-  const d = EV_STATE.targetDialog, f = d.form;
-  for (const [k, label] of [['objectName', '对象名称'], ['repoUrl', '仓库地址'], ['subDir', '子目录'], ['defaultRef', '基线'], ['validationProjectId', '验证集测试工程 ID'], ['testProjectId', '测试集测试工程 ID'], ['primaryMetricKey', '主指标 key']]) {
-    if (!String(f[k] || '').trim()) { d.error = `请填写${label}。`; return evRenderTargetDialog(); }
-  }
-  const list = EV_TARGETS[evCurrentWs()];
-  const saved = { id: d.id, kind: f.kind, objectName: f.objectName.trim(), repoUrl: f.repoUrl.trim(), subDir: f.subDir.trim(), defaultRef: f.defaultRef.trim(), validationProjectId: f.validationProjectId.trim(), testProjectId: f.testProjectId.trim(), primaryMetricKey: f.primaryMetricKey.trim(), enabled: f.enabled, tags: f.tags || [] };
-  const idx = list.findIndex(t => t.id === saved.id);
-  if (idx >= 0) list[idx] = saved; else list.push(saved);
-  EV_STATE.targetDialog = null;
-  evRenderTargets();
 }
 
 /* ── 启动向导 ── */
@@ -5816,12 +5913,13 @@ function evWizardOpen(caseId) {
   if (window.V2 && window.V2.canManage && !window.V2.canManage()) { if (window.V2) window.V2.toast && window.V2.toast('当前角色不能启动自进化'); return; }
   const targets = evTargetsOfWs();
   const c = caseId ? caseById(caseId) : null;
-  const preferred = c ? targets.find(t => t.objectName === c.objectName) : null;
+  // 从 bad case 启动：反查 case 属于哪条配置（成员命中）。
+  const preferred = c ? targets.find(t => evGroupHas(t, c.objectName)) : null;
   const first = preferred || targets[0];
   const from = c ? String(c.createdAt).slice(0, 10) : '2026-10-01';
   const to = c ? String(c.createdAt).slice(0, 10) : '2026-11-09';
   EV_STATE.wz = {
-    step: 1, kind: first?.kind || 'skill', name: first?.objectName || '', version: first?.defaultRef || first?.tags?.[0] || '',
+    step: 1, groupId: first?.id || '', version: first?.defaultRef || first?.tags?.[0] || '',
     versionOpen: false,
     from, to, policy: 'default', includeSelf: true, includeAfter: true, sameObject: false,
     cache: true, attributionSkill: first?.attributionSkill || (first?.attributionInline ? '历史内联提示词' : 'attribute-badcases'),
@@ -5829,8 +5927,43 @@ function evWizardOpen(caseId) {
   };
   evRenderWizard();
 }
-function evWzTargets() { return (EV_TARGETS[evCurrentWs()] || []).filter(t => t.enabled && t.kind === EV_STATE.wz.kind); }
-function evWzTarget() { return evWzTargets().find(t => t.objectName === EV_STATE.wz.name) || evWzTargets()[0]; }
+/* 向导候选 = 已启用的进化对象配置（一条配置含多个成员）。 */
+function evWzTargets() { return (EV_TARGETS[evCurrentWs()] || []).filter(t => t.enabled); }
+function evWzTarget() { return evWzTargets().find(t => t.id === EV_STATE.wz.groupId) || evWzTargets()[0]; }
+function evWzMembers() { const g = evWzTarget(); return g ? evGroupMembers(g) : []; }
+function evWzShortRepo(url) { return String(url || '').replace(/^[a-z]+:\/\//, '').replace(/^[^@/]+@/, '').replace(/\.git$/, ''); }
+/* 换配置：版本、归因 Skill、分页一起回到新配置的默认值。 */
+function evWzSelectGroup(id) {
+  const wz = EV_STATE.wz; if (!wz) return;
+  evWzClearBusy();
+  const g = evWzTargets().find(t => t.id === id);
+  if (!g) return;
+  wz.groupId = g.id;
+  wz.version = g.defaultRef || g.tags?.[0] || '';
+  wz.attributionSkill = g.attributionSkill || (g.attributionInline ? '历史内联提示词' : 'attribute-badcases');
+  delete wz.errors.version; delete wz.errors.name;
+  wz.versionOpen = false; wz.assocPage = 1; wz.casePage = 1;
+  evRenderWizard();
+}
+/* 成员只读展示：配置里已经定好，启动时整条一起进化，不再逐次勾选。 */
+function evWzMemberPanel() {
+  const g = evWzTarget();
+  const wz = EV_STATE.wz;
+  const err = wz.errors || {};
+  if (!g) return '';
+  const members = evGroupMembers(g);
+  return `<div class="wz-group-picker">
+    <select class="inp" id="ev-wz-group" aria-label="进化对象">${evWzTargets().map(t => `<option value="${t.id}" ${t.id === g.id ? 'selected' : ''}>${evEsc(evGroupName(t))} · ${evGroupMembers(t).length} 个对象</option>`).join('')}</select>
+    <div class="wz-group-members">${members.map(m => `<div class="wz-member static"><span class="chip kind">${m.kind}:${evEsc(m.objectName)}</span><span class="mono sub">${evEsc(m.subDir || '—')}</span></div>`).join('')}</div>
+  </div>${err.name ? `<div class="field-error">${evEsc(err.name)}</div>` : ''}`;
+}
+function evWzSummary() {
+  const g = evWzTarget();
+  if (!g) return '';
+  const members = evGroupMembers(g);
+  const dirs = members.map(m => `${m.subDir || '—'}/**`).join('、');
+  return `<div class="wz-summary multi"><b>${evEsc(evGroupName(g))}</b> · ${members.length} 个对象 · 改动范围 <span class="mono">${evEsc(dirs)}</span><br><span class="v2-note">共享测试工程：验证集 ${evEsc(g.validationProjectId || '—')} · 测试集 ${evEsc(g.testProjectId || '—')} · 主指标 ${evEsc(g.primaryMetricKey || '—')}。Session 只要出现任一成员就关联；任一成员的 self 上报都算 self；评测一次提交全部成员资产。</span></div>`;
+}
 const EV_WZ_RANGE_PRESETS = [
   { id: '7', label: '近 7 天' },
   { id: '30', label: '近 30 天' },
@@ -5896,10 +6029,11 @@ function evVersionRefError(value) {
 }
 function evWzRun() {
   const t = evWzTarget();
-  if (!t) return { workspace: evCurrentWs(), target: { kind: 'skill', name: '—', version: '—' }, window: [EV_STATE.wz.from, EV_STATE.wz.to], policy: EV_STATE.wz.policy, policyRules: {}, cache: EV_STATE.wz.cache };
+  if (!t) return { workspace: evCurrentWs(), groupId: null, target: { kind: 'group', name: '—', version: '—' }, targets: [], window: [EV_STATE.wz.from, EV_STATE.wz.to], policy: EV_STATE.wz.policy, policyRules: {}, cache: EV_STATE.wz.cache };
   return {
-    id: 'EV-' + Date.now().toString(36), workspace: evCurrentWs(),
-    target: { kind: t.kind, name: t.objectName, version: EV_STATE.wz.version },
+    id: 'EV-' + Date.now().toString(36), workspace: evCurrentWs(), groupId: t.id,
+    target: { kind: 'group', name: evGroupName(t), version: EV_STATE.wz.version },
+    targets: evGroupMembers(t).map(m => ({ kind: m.kind, name: m.objectName })),
     window: [EV_STATE.wz.from, EV_STATE.wz.to], policy: EV_STATE.wz.policy,
     policyRules: { includeSelf: EV_STATE.wz.includeSelf, includeAfter: EV_STATE.wz.includeAfter, sameObject: EV_STATE.wz.sameObject },
     cache: EV_STATE.wz.cache,
@@ -6016,12 +6150,17 @@ function evRenderWizard() {
   if (!targets.length) {
     evWizardHost().innerHTML = `<div class="evov" data-action="ev-wz-close-bg"><div class="modal" style="width:560px">
       <div class="modal-head"><h2>启动自进化</h2><button class="x" data-action="ev-wz-close">✕</button></div>
-      <div class="modal-body"><div class="wz-empty"><div><div class="wz-empty-icon">∅</div><h3>当前空间还没有启用的进化对象</h3><p>请先在「进化对象配置」中新增 skill / agent，并确认已启用，再回到这里启动自进化。</p><button class="btn primary" data-action="ev-wz-targets">前往配置 →</button></div></div></div>
+      <div class="modal-body"><div class="wz-empty"><div><div class="wz-empty-icon">∅</div><h3>当前空间还没有启用的进化对象</h3><p>请先在「进化对象配置」中新增配置（含成员与测试工程），并确认已启用，再回到这里启动自进化。</p><button class="btn primary" data-action="ev-wz-targets">前往配置 →</button></div></div></div>
       <div class="modal-foot"><button class="btn" data-action="ev-wz-close">取消</button></div>
     </div></div>`;
     return;
   }
-  if (targets.length && !targets.some(t => t.objectName === wz.name)) { wz.name = targets[0].objectName; wz.version = targets[0].defaultRef || targets[0].tags?.[0] || ''; wz.versionOpen = false; }
+  // 配置被删或停用时回退到第一个可用配置，版本与归因 Skill 跟着新配置的默认值。
+  if (!targets.some(t => t.id === wz.groupId)) {
+    wz.groupId = targets[0].id;
+    wz.version = targets[0].defaultRef || targets[0].tags?.[0] || '';
+    wz.versionOpen = false;
+  }
   const t = evWzTarget();
   const versionOptions = evWzVersionOptions();
   const { run, m } = evWizardModel();
@@ -6035,7 +6174,7 @@ function evRenderWizard() {
   const fieldErr = k => err[k] ? `<div class="field-error">${evEsc(err[k])}</div>` : '';
   const cond = `<div class="wz-condstrip">
     <span class="v2-badge">${evEsc((WORKSPACES.find(w => w.id === evCurrentWs()) || {}).name || '')}</span>
-    <span class="chip kind">${wz.kind}:${evEsc(wz.name)}@${evEsc(wz.version)}</span>
+    <span class="chip kind">${evTargetLabel(run)}@${evEsc(wz.version)}</span>
     <span class="chip mono">${wz.from} ~ ${wz.to}</span>
     <span class="v2-badge ${wz.policy === 'default' ? 'ok' : ''}">${wz.policy === 'default' ? '默认潜在策略' : '自定义潜在策略'}</span>
     ${wz.cache ? '<span class="v2-badge">复用缓存</span>' : '<span class="v2-badge warn">不复用缓存</span>'}
@@ -6047,10 +6186,9 @@ function evRenderWizard() {
   if (wz.step === 1) {
     body = `
       <div class="f-row"><div class="f-label">工作空间</div><div class="f-inline"><span class="v2-badge">${evEsc((WORKSPACES.find(w => w.id === evCurrentWs()) || {}).name || '')}</span><span class="v2-note">启动后只处理该空间上报的 bad case</span></div></div>
-      <div class="f-row"><div class="f-label">进化对象 <span class="req">*</span></div>
-        <div class="f-inline wz-controls">
-          <div class="seg"><button class="${wz.kind === 'skill' ? 'active' : ''}" data-action="ev-wz-kind" data-v="skill">skill</button><button class="${wz.kind === 'agent' ? 'active' : ''}" data-action="ev-wz-kind" data-v="agent">agent</button></div>
-          <div class="wz-field"><select class="inp" id="ev-wz-name"><option value="" ${wz.name ? '' : 'selected'}>选择对象</option>${targets.map(x => `<option ${x.objectName === wz.name ? 'selected' : ''}>${evEsc(x.objectName)}</option>`).join('')}</select>${fieldErr('name')}</div>
+      <div class="f-row"><div class="f-label">进化对象 <span class="req">*</span><span class="f-hint">选一条配置；它含同一仓库里的多个成员，整条一起进化</span></div>
+        ${evWzMemberPanel()}
+        <div class="f-inline wz-controls" style="margin-top:12px">
           <span class="wz-inline-label">版本</span>
           <div class="wz-field">
             <div class="wz-version-combo">
@@ -6073,7 +6211,8 @@ function evRenderWizard() {
             ${err.version ? `<div class="field-error" id="ev-wz-version-error">${evEsc(err.version)}</div>` : ''}
           </div>
         </div>
-        <div class="wz-note">版本可输入 tag、分支名或 commit id；下拉仅为建议。启动前用 git 校验 ref 是否存在（原型用示例 ref 模拟）。只列出当前空间已启用的进化对象；点击 <button class="cfg-link" data-action="ev-wz-targets">配置页</button> 调整。</div>
+        ${evWzSummary()}
+        <div class="wz-note">版本可输入 tag、分支名或 commit id；下拉为该配置仓库的 tag 建议，全部成员共用这一个版本。启动前用 git 校验 ref 是否存在（原型用示例 ref 模拟）。只列出当前空间已启用的配置；点击 <button class="cfg-link" data-action="ev-wz-targets">配置页</button> 调整。</div>
       </div>
       <div class="f-row"><div class="f-label">bad case 时间段 <span class="req">*</span></div>
         <div class="wz-range-row">
@@ -6107,16 +6246,16 @@ function evRenderWizard() {
     const page = Math.min(Math.max(1, wz.assocPage || 1), pages);
     wz.assocPage = page;
     const slice = assoc.slice((page - 1) * pageSize, page * pageSize);
-    const rows = slice.map(a => `<tr><td><b>${evEsc(a.sess.short)}</b><span class="cell-sub mono">${a.sid}</span></td><td><span class="v2-badge ok">已出现</span></td><td class="mono">L${a.line}</td><td class="mono">${a.cases.length}</td></tr>`).join('');
+    const rows = slice.map(a => `<tr><td><b>${evEsc(a.sess.short)}</b><span class="cell-sub mono">${a.sid}</span></td><td><span class="v2-badge ok">已出现</span></td><td>${(a.hitMembers || []).map(mm => `<span class="chip kind">${mm.kind}:${evEsc(mm.name)}</span>`).join(' ')}</td><td class="mono">L${a.line}</td><td class="mono">${a.cases.length}</td></tr>`).join('');
     body = `${cond}
-      <div class="wz-section-title">第 2 步 · Session 关联 <span>先判断对象版本出现在哪些 Session，只有出现的 Session 才进入下一步</span></div>
+      <div class="wz-section-title">第 2 步 · Session 关联 <span>先判断所选对象版本出现在哪些 Session，只有出现的 Session 才进入下一步${evRunMembers(run).length > 1 ? '；任一成员出现即关联' : ''}</span></div>
       <div class="wz-stats">
         <span class="st"><b>${m.sessions.length}</b><span>时间段内 Session</span></span>
         <span class="st"><b>${m.sessions.filter(a => a.appeared).length}</b><span>对象出现 · 已关联</span></span>
         <span class="st"><b>${m.sessions.filter(a => !a.appeared).length}</b><span>未出现 · 跳过</span></span>
         <span class="st"><b>${m.cases.length}</b><span>时间段内 bad case</span></span>
       </div>
-      <table class="rep"><thead><tr><th>Session</th><th>对象出现</th><th>对象触发点</th><th>bad case</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="waiting">没有对象出现过的 Session</td></tr>'}</tbody></table>
+      <table class="rep"><thead><tr><th>Session</th><th>对象出现</th><th>命中对象</th><th>对象触发点</th><th>bad case</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="waiting">没有对象出现过的 Session</td></tr>'}</tbody></table>
       <div class="pager">
         <button class="btn" data-action="ev-wz-page" data-target="assoc" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button>
         <span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${assoc.length}</b> 个关联 Session</span>
@@ -6131,12 +6270,12 @@ function evRenderWizard() {
     const slice = m.potentialRows.slice((page - 1) * pageSize, page * pageSize);
     const rows = slice.map(r => `<tr><td>${evCaseLink(r.c)}<span class="cell-sub">${evEsc(r.c.title)}</span></td><td><span class="v2-badge">${evEsc(r.c.objectName)}</span></td><td>${evCaseType(r.c)}</td><td class="mono">L${r.c.triggerLine}</td><td><b>${evEsc(r.a.sess.short)}</b><span class="cell-sub mono">${r.a.sid}</span></td></tr>`).join('');
     body = `${cond}
-      <div class="wz-section-title">第 3 步 · 潜在 bad case <span>默认策略：对象自身 self 上报 或 触发点在对象触发点之后</span></div>
+      <div class="wz-section-title">第 3 步 · 潜在 bad case <span>默认策略：任一成员自身 self 上报 或 触发点在成员触发点之后</span></div>
       <div class="wz-stats">
         <span class="st"><b>${m.sessions.filter(a => a.appeared).length}</b><span>关联 Session</span></span>
         <span class="st"><b>${m.cases.length}</b><span>时间段内 bad case</span></span>
         <span class="st accent"><b>${m.potentialRows.length}</b><span>潜在 bad case</span></span>
-        <span class="st"><b>${m.potentialRows.filter(r => r.c.type === 'self' && r.c.objectName === run.target.name).length}</b><span>self 命中</span></span>
+        <span class="st"><b>${m.potentialRows.filter(r => r.c.type === 'self' && evIsMember(run, r.c.objectName)).length}</b><span>self 命中</span></span>
       </div>
       <table class="rep"><thead><tr><th>bad case</th><th>object_name</th><th>类型</th><th>触发点</th><th>来源 Session</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="waiting">当前策略没有命中潜在 bad case；可返回调整时间段或策略。</td></tr>'}</tbody></table>
       <div class="pager">
@@ -6154,8 +6293,8 @@ function evRenderWizard() {
     const selectedSkill = wz.attributionSkill || t?.attributionSkill || (t?.attributionInline ? '__legacy__' : 'attribute-badcases');
     const legacyOption = t?.attributionInline && !t.attributionSkill ? '<option value="__legacy__" selected>历史内联提示词（只读）</option>' : '';
     body = `${cond}
-      <div class="wz-section-title">第 4 步 · 归因预览与启动 <span>确认缓存策略后启动；归因结果会写回该对象版本</span></div>
-      <div class="cache-option"><div><b>复用缓存归因</b><div class="v2-note" style="margin-top:2px">如果该对象版本已经对某个潜在 bad case 做过归因，直接复用最近一次成功结果。</div></div><label class="switch"><input type="checkbox" ${wz.cache ? 'checked' : ''} data-action="ev-wz-cache"><span class="slider"></span></label></div>
+      <div class="wz-section-title">第 4 步 · 归因预览与启动 <span>确认缓存策略后启动；归因结果会写回成员各自的对象版本</span></div>
+      <div class="cache-option"><div><b>复用缓存归因</b><div class="v2-note" style="margin-top:2px">如果某个成员版本已经对某个潜在 bad case 做过归因，直接复用最近一次成功结果。</div></div><label class="switch"><input type="checkbox" ${wz.cache ? 'checked' : ''} data-action="ev-wz-cache"><span class="slider"></span></label></div>
       <div class="preview-stats">
         <div class="preview-stat"><strong>${m.potentialRows.length}</strong><span>潜在 bad case</span></div>
         <div class="preview-stat"><strong>${wz.cache ? reports.length : 0}</strong><span>复用缓存</span></div>
@@ -6193,7 +6332,7 @@ function evRenderWizard() {
 function evSyncWz() {
   const wz = EV_STATE.wz; if (!wz) return;
   const g = id => document.getElementById(id);
-  if (g('ev-wz-name')) wz.name = g('ev-wz-name').value;
+  if (g('ev-wz-group')) wz.groupId = g('ev-wz-group').value;
   if (g('ev-wz-version')) wz.version = g('ev-wz-version').value;
   if (g('ev-wz-from')) wz.from = g('ev-wz-from').value;
   if (g('ev-wz-to')) wz.to = g('ev-wz-to').value;
@@ -6202,7 +6341,7 @@ function evValidateWz() {
   evSyncWz();
   const wz = EV_STATE.wz;
   wz.errors = {};
-  if (!wz.name) wz.errors.name = '请选择进化对象';
+  if (!wz.groupId) wz.errors.name = '请选择进化对象';
   const versionError = evVersionRefError(wz.version);
   if (versionError) wz.errors.version = versionError;
   else if (!evWzRefExists(wz.version)) wz.errors.version = 'git 校验失败：仓库中不存在该 tag、分支或 commit';
@@ -6249,7 +6388,6 @@ document.addEventListener('click', e => {
   else if (a === 'ev-wz-targets') { evWzClearBusy(); evWizardHost().innerHTML = ''; location.hash = '#/targets'; if (window.V2 && window.V2.page !== 'evo') window.V2.setPage('evo'); else evRoute(); }
   else if (a === 'ev-wz-close') { evWzClearBusy(); evWizardHost().innerHTML = ''; }
   else if (a === 'ev-wz-close-bg') { if (e.target === el) { evWzClearBusy(); evWizardHost().innerHTML = ''; } }
-  else if (a === 'ev-wz-kind') { evWzClearBusy(); evSyncWz(); const wz = EV_STATE.wz; wz.kind = el.dataset.v; const t = evWzTargets()[0]; wz.name = t?.objectName || ''; wz.version = t?.defaultRef || t?.tags?.[0] || ''; wz.attributionSkill = t?.attributionSkill || (t?.attributionInline ? '历史内联提示词' : 'attribute-badcases'); delete wz.errors.version; wz.versionOpen = false; wz.assocPage = 1; wz.casePage = 1; evRenderWizard(); }
   else if (a === 'ev-wz-version-toggle') { evWzClearBusy(); evSyncWz(); EV_STATE.wz.versionOpen = !EV_STATE.wz.versionOpen; evRenderWizard(); }
   else if (a === 'ev-wz-version-pick') { evWzClearBusy(); evSyncWz(); EV_STATE.wz.version = el.dataset.v; EV_STATE.wz.versionOpen = false; delete EV_STATE.wz.errors.version; evRenderWizard(); }
   else if (a === 'ev-wz-range') {
@@ -6295,8 +6433,9 @@ document.addEventListener('click', e => {
     }
     const run = evMakeRun({
       id: 'EV-' + Date.now().toString(36), workspace: evCurrentWs(),
-      title: `${t.objectName} ${EV_STATE.wz.version} 自进化`,
-      target: { kind: t.kind, name: t.objectName, version: EV_STATE.wz.version },
+      title: `${evGroupName(t)} ${EV_STATE.wz.version} 自进化`,
+      target: { kind: 'group', name: evGroupName(t), version: EV_STATE.wz.version },
+      targets: evGroupMembers(t).map(m => ({ kind: m.kind, name: m.objectName })),
       window: [EV_STATE.wz.from, EV_STATE.wz.to], policy: EV_STATE.wz.policy,
       policyRules: { includeSelf: EV_STATE.wz.includeSelf, includeAfter: EV_STATE.wz.includeAfter, sameObject: EV_STATE.wz.sameObject },
       cache: EV_STATE.wz.cache, attributionSkill: EV_STATE.wz.attributionSkill || t.attributionSkill || (t.attributionInline ? '历史内联提示词' : 'attribute-badcases'),
@@ -6308,21 +6447,16 @@ document.addEventListener('click', e => {
     if (window.V2 && window.V2.page !== 'evo') window.V2.setPage('evo');
     else if (window.evRoute) window.evRoute();
   }
-  else if (a === 'ev-target-create') evOpenTargetDialog(null);
-  else if (a === 'ev-target-edit') evOpenTargetDialog((EV_TARGETS[evCurrentWs()] || []).find(t => t.id === el.dataset.id));
-  else if (a === 'ev-target-close') { EV_STATE.targetDialog = null; evRenderTargetDialog(); }
-  else if (a === 'ev-target-close-bg') { if (e.target === el) { EV_STATE.targetDialog = null; evRenderTargetDialog(); } }
-  else if (a === 'ev-target-kind') { evSyncTargetForm(); EV_STATE.targetDialog.form.kind = el.dataset.kind; evRenderTargetDialog(); }
-  else if (a === 'ev-target-save') evSaveTarget();
+  else if (a === 'ev-target-create') window.__v2TargetModal?.(null);
+  else if (a === 'ev-target-edit') window.__v2TargetModal?.(el.dataset.id);
 });
 document.addEventListener('change', e => {
   if (!EV_STATE.wz) return;
-  if (e.target.id === 'ev-wz-name') { evWzClearBusy(); evSyncWz(); const t = evWzTarget(); EV_STATE.wz.version = t?.defaultRef || t?.tags?.[0] || ''; EV_STATE.wz.attributionSkill = t?.attributionSkill || (t?.attributionInline ? '历史内联提示词' : 'attribute-badcases'); delete EV_STATE.wz.errors.version; EV_STATE.wz.versionOpen = false; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
+  if (e.target.id === 'ev-wz-group') { evWzSelectGroup(e.target.value); }
   else if (e.target.id === 'ev-wz-version') { if (EV_STATE.wz.busy) { evWzClearBusy(); evRenderWizard(); } evSyncWz(); }
   else if (e.target.id === 'ev-wz-from' || e.target.id === 'ev-wz-to') { evWzClearBusy(); evSyncWz(); evWzSyncRangePresetButtons(); }
 });
 document.addEventListener('input', e => {
-  if (EV_STATE.targetDialog && e.target.dataset.evTargetField) evSyncTargetForm();
   if (e.target.id === 'ev-wz-version' && EV_STATE.wz) {
     evSyncWz();
     if (EV_STATE.wz.busy) {
@@ -6742,15 +6876,19 @@ function v2OverviewTabs() {
   </div>`;
 }
 function v2Targets() { return (EV_TARGETS[V2.wsId] || []).filter(t => t.enabled !== false); }
+function v2DisabledTargets() { return (EV_TARGETS[V2.wsId] || []).filter(t => t.enabled === false); }
 function v2TargetVersion(t) { return t.defaultRef || (t.tags || [])[0] || '—'; }
+function v2TargetMemberChips(t) { return evGroupMembers(t).map(m => `<span class="chip kind">${m.kind}:${v2Esc(m.objectName)}</span>`).join(' '); }
 function v2TargetStatusCounts(rows) {
   return rows.reduce((a, r) => { a[r.status] = (a[r.status] || 0) + 1; return a; }, { isTarget: 0, notTarget: 0, unanalyzed: 0 });
 }
 function v2TargetSet(t, from, to) {
   const version = v2TargetVersion(t);
+  const members = evGroupMembers(t);
   const fake = {
     id: 'OV-' + t.id, workspace: V2.wsId,
-    target: { kind: t.kind, name: t.objectName, version },
+    target: { kind: 'group', name: evGroupName(t), version },
+    targets: members.map(m => ({ kind: m.kind, name: m.objectName })),
     window: [from, to], policy: 'default', cache: true,
   };
   let m;
@@ -6758,10 +6896,10 @@ function v2TargetSet(t, from, to) {
   const rows = (m.potentialRows || []).map(r => {
     // 归因结论以 bad case 现有的归因记录为准，避免列表里的报告 ID 指向不存在的归因
     const attrs = (window.attributionsFor ? window.attributionsFor(r.c) : []) || [];
-    const match = attrs.find(a => a.objectName === t.objectName) || null;
+    const match = attrs.find(a => a.objectName === r.c.objectName) || null;
     const unanalyzed = !match;
     const status = unanalyzed ? 'unanalyzed' : (match.conclusion === 'not-object' ? 'notTarget' : 'isTarget');
-    return { ...r, target: t, targetId: t.id, version, status, source: r.c.objectName, reportId: match ? match.id : null };
+    return { ...r, target: t, targetId: t.id, version, status, source: r.c.objectName, member: r.c.objectName, reportId: match ? match.id : null };
   });
   return {
     target: t, version,
@@ -6879,7 +7017,7 @@ function v2TargetDetailCard() {
     ${head}
     <div class="td-toolbar">
       <div class="ov-filter-group"><span class="ov-filter-label">进化对象</span>
-        <span class="td-ctl"><select class="inp" data-v2-td-target>${d.targets.map(t => `<option value="${t.id}" ${t.id === td.targetId ? 'selected' : ''}>${v2Esc(t.objectName)} · ${v2Esc(t.kind)}</option>`).join('')}</select></span>
+        <span class="td-ctl"><select class="inp" data-v2-td-target>${d.targets.map(t => `<option value="${t.id}" ${t.id === td.targetId ? 'selected' : ''}>${v2Esc(evGroupName(t))}（${evGroupMembers(t).length} 个对象）</option>`).join('')}</select></span>
       </div>
       <span class="ov-filter-sep"></span>
       <div class="ov-filter-group"><span class="ov-filter-label">版本</span>
@@ -7130,15 +7268,38 @@ function v2RenderTargetsOverview() {
     </div>`;
   }).join('');
   const evolvableOf = d => d.counts.isTarget + d.counts.unanalyzed;
-  const sideSorted = [...all].sort((a, b) => evolvableOf(b) - evolvableOf(a) || b.potential - a.potential || a.target.objectName.localeCompare(b.target.objectName, 'zh'));
+  const sideSorted = [...all].sort((a, b) => evolvableOf(b) - evolvableOf(a) || b.potential - a.potential || evGroupName(a.target).localeCompare(evGroupName(b.target), 'zh'));
+  const disabledTargets = [...v2DisabledTargets()].sort((a, b) => evGroupName(a).localeCompare(evGroupName(b), 'zh'));
+  disabledTargets.forEach(t => {
+    selected.delete(t.id);
+    if (V2.targetOv.listTarget === t.id) V2.targetOv.listTarget = '';
+  });
+  const sideRows = [
+    ...sideSorted.map(d => ({ kind: 'enabled', data: d })),
+    ...disabledTargets.map(t => ({ kind: 'disabled', data: t })),
+  ];
   const tPageSize = 5;
-  const tPages = Math.max(1, Math.ceil(sideSorted.length / tPageSize));
+  const tPages = Math.max(1, Math.ceil(sideRows.length / tPageSize));
   const tPage = Math.min(Math.max(1, V2.targetOv.targetPage || 1), tPages);
   V2.targetOv.targetPage = tPage;
-  const targetSide = sideSorted.slice((tPage - 1) * tPageSize, tPage * tPageSize).map(d => {
+  const targetSide = sideRows.slice((tPage - 1) * tPageSize, tPage * tPageSize).map((row, index, visibleRows) => {
+    if (row.kind === 'disabled') {
+      const t = row.data;
+      const firstInGroup = index === 0 || visibleRows[index - 1].kind !== 'disabled';
+      const divider = firstInGroup ? '<div class="tg-side-group">已停用对象 · 仅展示，不参与统计</div>' : '';
+      const skillName = v2Esc(t.attributionSkill || (t.attributionInline ? '历史内联提示词' : 'attribute-badcases'));
+      return `${divider}<div class="tg-side-item is-disabled" title="${v2Esc(evGroupName(t))} · 已停用 · 不参与统计">
+        <div class="tg-side-top"><div class="tg-target-title"><b>${v2Esc(evGroupName(t))}</b><span class="mono">@${v2Esc(v2TargetVersion(t))}</span><span class="v2-badge">${evGroupMembers(t).length} 个对象</span><span class="v2-badge off">已停用</span></div><div class="tg-target-actions"><button class="btn sm enable" data-v2-tg-enable="${t.id}">启用</button><button class="btn sm" data-v2-tg-edit="${t.id}">编辑</button><button class="btn sm danger" data-v2-tg-remove="${t.id}">移除</button></div></div>
+        <div class="tg-side-members">${v2TargetMemberChips(t)}</div>
+        <div class="tg-side-meta">归因 Skill · ${skillName}</div>
+        <div class="tg-side-note">保留配置；重新启用后才进入筛选、图表与其它统计。</div>
+      </div>`;
+    }
+    const d = row.data;
     const t = d.target, c = d.counts;
-    return `<div class="tg-side-item ${selected.has(t.id) ? 'selected' : ''}" title="${v2Esc(t.objectName)} · 潜在 ${d.potential} · 是 ${c.isTarget} / 非 ${c.notTarget} / 未 ${c.unanalyzed}">
-      <div class="tg-side-top"><div class="tg-target-title"><span class="chip kind">${v2Esc(t.kind)}</span><b>${v2Esc(t.objectName)}</b><span class="mono">@${v2Esc(d.version)}</span></div><div class="tg-target-actions"><button class="btn sm" data-v2-tg-edit="${t.id}">编辑</button><button class="btn sm danger" data-v2-tg-remove="${t.id}">移除</button></div></div>
+    return `<div class="tg-side-item ${selected.has(t.id) ? 'selected' : ''}" title="${v2Esc(evGroupName(t))} · 潜在 ${d.potential} · 是 ${c.isTarget} / 非 ${c.notTarget} / 未 ${c.unanalyzed}">
+      <div class="tg-side-top"><div class="tg-target-title"><b>${v2Esc(evGroupName(t))}</b><span class="mono">@${v2Esc(d.version)}</span><span class="v2-badge">${evGroupMembers(t).length} 个对象</span></div><div class="tg-target-actions"><button class="btn sm" data-v2-tg-edit="${t.id}">编辑</button><button class="btn sm danger" data-v2-tg-remove="${t.id}">移除</button></div></div>
+      <div class="tg-side-members">${v2TargetMemberChips(t)}</div>
       <div class="tg-side-meta"><span><b>${d.assoc}</b> 关联 Session</span><span><b>${d.potential}</b> 潜在 bad case</span></div>
       <div class="tg-side-meta">归因 Skill · ${v2Esc(t.attributionSkill || (t.attributionInline ? "历史内联提示词" : "attribute-badcases"))}</div>
       <div class="tg-side-evolvable">可进化潜在 bad case 数量 <b>${evolvableOf(d)}</b><span>（是问题 ${c.isTarget}；未分析 ${c.unanalyzed}）</span></div>
@@ -7148,7 +7309,7 @@ function v2RenderTargetsOverview() {
   const targetDistRows = activeSets.map(d => {
     const c = d.counts, total = d.potential || 1;
     return `<div class="ov-obj-row tg-source-obj">
-      <span class="ov-obj-name" title="${v2Esc(d.target.objectName)}">${v2Esc(d.target.objectName)}</span>
+      <span class="ov-obj-name" title="${v2Esc(evGroupName(d.target))}">${v2Esc(evGroupName(d.target))}</span>
       <span class="ov-obj-bar"><span class="tg-source-fill" style="width:${d.potential / maxTargetPotential * 100}%"><span class="tg-r-is" style="width:${c.isTarget / total * 100}%"></span><span class="tg-r-not" style="width:${c.notTarget / total * 100}%"></span><span class="tg-r-un" style="width:${c.unanalyzed / total * 100}%"></span></span></span>
       <span class="ov-obj-num"><b>${d.potential}</b> · 是 ${c.isTarget} / 非 ${c.notTarget} / 未 ${c.unanalyzed}</span>
     </div>`;
@@ -7158,8 +7319,8 @@ function v2RenderTargetsOverview() {
     const withPotential = new Set(d.rows.map(r => r.a.sid)).size;
     const onlyAssoc = Math.max(0, d.assoc - withPotential);
     const ratio = d.assoc ? Math.min(100, withPotential / d.assoc * 100) : 0;
-    return `<div class="ov-obj-row tg-source-obj" title="${v2Esc(d.target.objectName)} · ${d.assoc} 关联 Session · ${withPotential} 个含潜在 bad case / ${onlyAssoc} 个仅关联">
-      <span class="ov-obj-name">${v2Esc(d.target.objectName)}</span>
+    return `<div class="ov-obj-row tg-source-obj" title="${v2Esc(evGroupName(d.target))} · ${d.assoc} 关联 Session · ${withPotential} 个含潜在 bad case / ${onlyAssoc} 个仅关联">
+      <span class="ov-obj-name">${v2Esc(evGroupName(d.target))}</span>
       <span class="ov-obj-bar"><span class="tg-source-fill" style="width:${d.assoc / maxTargetAssoc * 100}%"><span class="tg-r-sess-with" style="width:${ratio}%"></span><span class="tg-r-sess-only" style="width:${100 - ratio}%"></span></span></span>
       <span class="ov-obj-num"><b>${d.assoc}</b> · 含潜在 ${withPotential} / 仅关联 ${onlyAssoc}</span>
     </div>`;
@@ -7176,15 +7337,15 @@ function v2RenderTargetsOverview() {
   const page = Math.min(Math.max(1, tf.page || 1), pages); tf.page = page;
   const listRows = lrows.slice((page - 1) * pageSize, page * pageSize).map(r => `<tr>
     <td>${evCaseLink(r.c)}<span class="ov-case-title" style="display:block">${v2Esc(r.c.title)}</span></td>
-    <td><span class="chip kind">${v2Esc(r.target.objectName)}@${v2Esc(r.version)}</span></td>
+    <td><span class="chip kind">${v2Esc(evGroupName(r.target))}</span><span class="v2-badge" style="margin-left:6px">${v2Esc(r.member || r.c.objectName)}</span></td>
     <td><span class="chip">${v2Esc(r.source)}</span></td>
     <td>${v2TargetStatusBadge(r.status)}</td>
     <td class="mono">${r.c.clock}</td>
     <td class="mono" title="${r.a.sid}">${r.a.sid.slice(0, 13)}…</td>
-    <td>${r.reportId ? `<a class="idlink" href="${caseDeepLink(r.c.id, 'attr', null, r.target.objectName)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${r.reportId}</a>` : '<span class="v2-note">—</span>'}</td>
+    <td>${r.reportId ? `<a class="idlink" href="${caseDeepLink(r.c.id, 'attr', null, r.member || r.c.objectName)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${r.reportId}</a>` : '<span class="v2-note">—</span>'}</td>
     <td class="tg-desc">${r.reportId ? `<span title="${v2Esc(r.c.detail || r.c.title)}">${v2Esc(r.c.detail || r.c.title)}</span>` : '<span class="v2-note">—</span>'}</td>
   </tr>`).join('');
-  const targetOpts = all.map(d => `<option value="${d.target.id}" ${tf.listTarget === d.target.id ? 'selected' : ''}>${v2Esc(d.target.objectName)}</option>`).join('');
+  const targetOpts = all.map(d => `<option value="${d.target.id}" ${tf.listTarget === d.target.id ? 'selected' : ''}>${v2Esc(evGroupName(d.target))}</option>`).join('');
   const sourceOpts = [...new Set(rows.map(r => r.source))].sort().map(x => `<option ${tf.listSource === x ? 'selected' : ''}>${v2Esc(x)}</option>`).join('');
   host.innerHTML = `<div class="page-head-v2">
     <div>
@@ -7224,7 +7385,7 @@ function v2RenderTargetsOverview() {
     <span class="ov-filter-sep"></span>
     <div class="ov-filter-group"><span class="ov-filter-label">进化对象</span>
       <details class="ov-multi"><summary>${selected.size ? `已选 ${selected.size} 个进化对象` : '全部进化对象'}<span class="caret">⌄</span></summary>
-        <div class="ov-multi-menu">${all.map(d => `<label><input type="checkbox" value="${d.target.id}" ${selected.has(d.target.id) ? 'checked' : ''} data-v2-tg-target> ${v2Esc(d.target.objectName)}</label>`).join('')}<div class="om-foot"><span>不选 = 全部对象</span><button data-v2-tg-clear>清空</button></div></div>
+        <div class="ov-multi-menu">${all.map(d => `<label><input type="checkbox" value="${d.target.id}" ${selected.has(d.target.id) ? 'checked' : ''} data-v2-tg-target> ${v2Esc(evGroupName(d.target))}（${evGroupMembers(d.target).length}）</label>`).join('')}<div class="om-foot"><span>不选 = 全部配置</span><button data-v2-tg-clear>清空</button></div></div>
       </details>
     </div>
   </div>
@@ -7247,9 +7408,9 @@ function v2RenderTargetsOverview() {
       </div>
     </div>
     <div class="card ov-side tg-side">
-      <div class="tg-side-head"><div><h3>进化对象</h3><span class="v2-note">按可进化潜在 bad case 排序</span></div><button class="btn sm" data-v2-tg-add>+ 新增</button></div>
+      <div class="tg-side-head"><div><h3>进化对象</h3><span class="v2-note">按可进化潜在 bad case 排序 · 停用对象置灰仅展示</span></div><button class="btn sm" data-v2-tg-add>+ 新增</button></div>
       <div class="tg-side-list">${targetSide || '<div class="waiting">当前空间还没有进化对象，先新增一个。</div>'}</div>
-      <div class="v2-pager"><span class="info">共 ${all.length} 个 · 第 ${tPage} / ${tPages} 页</span><button data-v2-tg-side-page="${tPage - 1}" ${tPage <= 1 ? 'disabled' : ''}>← 上一页</button><button data-v2-tg-side-page="${tPage + 1}" ${tPage >= tPages ? 'disabled' : ''}>下一页 →</button></div>
+      <div class="v2-pager"><span class="info">共 ${sideRows.length} 个${disabledTargets.length ? ` · ${disabledTargets.length} 个已停用` : ''} · 第 ${tPage} / ${tPages} 页</span><button data-v2-tg-side-page="${tPage - 1}" ${tPage <= 1 ? 'disabled' : ''}>← 上一页</button><button data-v2-tg-side-page="${tPage + 1}" ${tPage >= tPages ? 'disabled' : ''}>下一页 →</button></div>
     </div>
   </div>
   ${v2TargetDetailCard()}
@@ -7285,6 +7446,7 @@ function v2OpenCase(caseId) {
   try { history.replaceState(null, '', location.pathname + `?page=session&view=errors&ws=${V2.wsId}&sid=${c.sessionId}&case=${c.id}&dtab=desc`); } catch (e) {}
 }
 window.__v2OpenCase = v2OpenCase;
+window.__v2TargetModal = v2TargetModal;
 
 /* ── 空间管理 ── */
 function v2AdminNav() {
@@ -7378,7 +7540,7 @@ function v2AdminSkills() {
     <section class="skill-detail">
       <h3>${v2Esc(effective.name)}</h3><p class="v2-note">SKILL.md 原文</p>
       <div class="skill-detail-grid">
-        <div><h4>已绑定进化对象</h4><p>${v2BoundTargets(effective.name).map(t => v2Esc(t.objectName)).join("、") || "暂无绑定对象"}</p></div>
+        <div><h4>已绑定进化对象</h4><p>${v2BoundTargets(effective.name).map(t => `${v2Esc(evGroupName(t))}（${evGroupMembers(t).map(m => v2Esc(m.objectName)).join('、')}）`).join("；") || "暂无绑定对象"}</p></div>
         <div><h4>目录结构</h4><pre class="codebox" tabindex="0">${v2Esc(effective.name)}/SKILL.md</pre></div>
       </div>
       <h4>SKILL.md</h4><pre class="codebox" tabindex="0">${v2Esc(effective.prompt)}</pre>
@@ -7681,50 +7843,117 @@ function v2MemberModal() {
     <div class="modal-foot"><button class="btn" data-v2-close>取消</button><button class="btn primary" data-v2-save-member>添加成员</button></div>
   </div></div>`);
 }
+/* 一条配置 = 一个进化对象：共享块放仓库 / 基线 / 测试工程 / 主指标 / 归因 Skill；
+   成员行只填类型 + 名称 + 子目录。保存仍是一条配置。 */
+function v2TargetMemberRow(kind, name, subDir) {
+  return `<div class="tg-member" data-v2-tg-member>
+    <select class="inp tgm-kind" aria-label="类型"><option value="skill" ${kind === 'skill' ? 'selected' : ''}>skill</option><option value="agent" ${kind === 'agent' ? 'selected' : ''}>agent</option></select>
+    <input class="inp tgm-name" value="${v2Esc(name)}" placeholder="成员名称，如 code-review" aria-label="成员名称">
+    <input class="inp tgm-subdir mono" value="${v2Esc(subDir)}" placeholder="子目录，如 skills/code-review" aria-label="子目录" data-auto="${subDir ? '0' : '1'}">
+    <button type="button" class="x tgm-remove" data-v2-tg-member-remove title="移除这个成员" aria-label="移除这个成员">✕</button>
+  </div>`;
+}
 function v2TargetModal(id) {
   const list = EV_TARGETS[V2.wsId] || [];
   const t = id ? list.find(x => x.id === id) : null;
   if (id && !t) return;
-  v2Modal(`<div class="evov" data-v2-close-bg><div class="modal" style="width:560px">
+  const legacy = Boolean(t?.attributionInline && !t.attributionSkill);
+  const members = t ? evGroupMembers(t) : [{ kind: 'skill', objectName: '', subDir: '' }];
+  v2Modal(`<div class="evov" data-v2-close-bg><div class="modal tg-modal">
     <div class="modal-head"><h2>${t ? '编辑进化对象' : '新增进化对象'}</h2><button class="x" data-v2-close>✕</button></div>
     <div class="modal-body">
-      <div class="f-row"><div class="f-label">对象名称 <span class="req">*</span></div><input class="inp" id="v2TgName" value="${t ? v2Esc(t.objectName) : ''}" placeholder="例如：code-review" style="width:100%"></div>
-      <div class="f-row"><div class="f-label">类型</div><select class="inp" id="v2TgKind" style="width:100%"><option value="skill" ${t && t.kind === 'skill' ? 'selected' : ''}>skill</option><option value="agent" ${t && t.kind === 'agent' ? 'selected' : ''}>agent</option></select></div>
-      <div class="f-row"><div class="f-label">默认版本 <span class="req">*</span></div><input class="inp" id="v2TgVersion" value="${t ? v2Esc(t.defaultRef || '') : ''}" placeholder="例如：v1.8.0" style="width:180px"></div>
-      <div class="f-row"><div class="f-label">仓库地址</div><input class="inp" id="v2TgRepo" value="${t ? v2Esc(t.repoUrl || '') : ''}" placeholder="https://github.com/acme/agent-skills.git" style="width:100%"></div>
-      <div class="f-row"><div class="f-label">子目录</div><input class="inp" id="v2TgSubdir" value="${t ? v2Esc(t.subDir || '') : ''}" placeholder="skills/code-review" style="width:100%"></div>
-      <label class="f-row">归因 Skill <select class="inp" id="v2TgSkill">${t?.attributionInline && !t.attributionSkill ? '<option value="__legacy__" selected>历史内联提示词（只读）</option>' : ''}${v2SkillOptions(t?.attributionInline && !t.attributionSkill ? '__legacy__' : (t?.attributionSkill || 'attribute-badcases'))}</select></label>
-      <div class="notice">保存绑定后，后台会逐条分析当前与该对象关联的 Badcase。</div>
+      <div class="tg-shared">
+        <div class="f-row"><div class="f-label">仓库地址 <span class="req">*</span></div><input class="inp" id="v2TgRepo" value="${t ? v2Esc(t.repoUrl || '') : ''}" placeholder="https://github.com/acme/agent-skills.git"></div>
+        <div class="tg-shared-row">
+          <div class="f-row"><div class="f-label">基线分支或标签 <span class="req">*</span></div><input class="inp" id="v2TgVersion" value="${t ? v2Esc(t.defaultRef || '') : ''}" placeholder="main / v2.4.0"></div>
+          <label class="f-row">归因 Skill <select class="inp" id="v2TgSkill">${legacy ? '<option value="__legacy__" selected>历史内联提示词（只读）</option>' : ''}${v2SkillOptions(legacy ? '__legacy__' : (t?.attributionSkill || 'attribute-badcases'))}</select></label>
+        </div>
+        <div class="tg-shared-row">
+          <div class="f-row"><div class="f-label">验证集测试工程 ID <span class="req">*</span></div><input class="inp" id="v2TgVal" value="${t ? v2Esc(t.validationProjectId || '') : ''}" placeholder="如 val-skills-2026q4"></div>
+          <div class="f-row"><div class="f-label">测试集测试工程 ID <span class="req">*</span></div><input class="inp" id="v2TgTest" value="${t ? v2Esc(t.testProjectId || '') : ''}" placeholder="如 test-skills-2026q4"></div>
+        </div>
+        <div class="tg-shared-row">
+          <div class="f-row"><div class="f-label">主指标 key <span class="req">*</span></div><input class="inp" id="v2TgMetric" value="${t ? v2Esc(t.primaryMetricKey || '') : ''}" placeholder="如 resolved_rate"></div>
+        </div>
+      </div>
+      <div class="f-row tg-members-row"><div class="f-label">成员 <span class="req">*</span><span class="f-hint">同一仓库里的 skill / agent；成员共享上面的仓库、基线、测试工程与主指标，但各自冻结定义、各自关联 bad case</span></div>
+        <div class="tg-members" id="v2TgMembers">${members.map(m => v2TargetMemberRow(m.kind, m.objectName, m.subDir)).join('')}</div>
+        <button type="button" class="btn sm tg-member-add" data-v2-tg-member-add>+ 再加一个成员</button>
+      </div>
+      <div class="notice">保存后，后台会为<b>每个成员</b>关联当前已上报的 bad case；启动自进化时整条配置一起进化，评测把全部成员目录作为资产一次提交。</div>
     </div>
-    <div class="modal-foot"><button class="btn" data-v2-close>取消</button><button class="btn primary" data-v2-tg-save="${t ? t.id : ''}">${t ? '保存' : '新增对象'}</button></div>
+    <div class="modal-foot"><button class="btn" data-v2-close>取消</button><button class="btn primary" data-v2-tg-save="${t ? t.id : ''}">${t ? '保存' : '新增进化对象'}</button></div>
   </div></div>`);
 }
 function v2SaveTarget(id) {
-  const name = (document.getElementById('v2TgName')?.value || '').trim();
-  const skillValue = document.getElementById('v2TgSkill').value;
+  const value = (elemId) => (document.getElementById(elemId)?.value || '').trim();
+  const repoUrl = value('v2TgRepo');
+  const version = value('v2TgVersion');
+  const validationProjectId = value('v2TgVal');
+  const testProjectId = value('v2TgTest');
+  const primaryMetricKey = value('v2TgMetric');
+  const skillValue = document.getElementById('v2TgSkill')?.value;
   const keepLegacyInline = skillValue === '__legacy__';
-  const attributionSkill = keepLegacyInline ? null : skillValue;
-  const kind = document.getElementById('v2TgKind')?.value || 'skill';
-  const version = (document.getElementById('v2TgVersion')?.value || '').trim() || 'v1.0.0';
-  const repoUrl = (document.getElementById('v2TgRepo')?.value || '').trim();
-  const subDir = (document.getElementById('v2TgSubdir')?.value || '').trim();
-  if (!name) { v2Toast('请填写对象名称'); return; }
+  // 启用 / 停用不在配置表单里切换（#628）：新建默认启用，编辑保留原状态；
+  // 停用配置在总览的"已停用"分组里用「启用」按钮恢复。
+  const enabled = id ? ((EV_TARGETS[V2.wsId] || []).find(x => x.id === id)?.enabled !== false) : true;
+  const fail = (message) => { v2Toast(message); };
+  if (!repoUrl) return fail('请填写仓库地址');
+  if (!version) return fail('请填写基线分支或标签');
+  if (!validationProjectId) return fail('请填写验证集测试工程 ID');
+  if (!testProjectId) return fail('请填写测试集测试工程 ID');
+  if (!primaryMetricKey) return fail('请填写主指标 key');
+  const rows = [...document.querySelectorAll('#v2TgMembers [data-v2-tg-member]')].map(row => ({
+    kind: row.querySelector('.tgm-kind')?.value || 'skill',
+    objectName: (row.querySelector('.tgm-name')?.value || '').trim(),
+    subDir: (row.querySelector('.tgm-subdir')?.value || '').trim(),
+  }));
+  if (!rows.length) return fail('至少配置一个成员');
+  const seen = new Set();
+  for (const r of rows) {
+    if (!r.objectName) return fail('请填写每个成员的名称');
+    if (!r.subDir) return fail(`请填写 ${r.objectName} 的子目录`);
+    const key = r.kind + ':' + r.objectName;
+    if (seen.has(key)) return fail(`成员重复：${r.objectName}`);
+    seen.add(key);
+  }
+  // 同一成员只能属于一条配置：否则它的 bad case 会同时进两条进化对象，归属歧义。
+  const others = (EV_TARGETS[V2.wsId] || []).filter(g => g.id !== id);
+  for (const r of rows) {
+    if (others.some(g => evGroupMembers(g).some(m => m.kind === r.kind && m.objectName === r.objectName))) {
+      return fail(`${r.objectName} 已在另一条配置里`);
+    }
+  }
   const list = EV_TARGETS[V2.wsId] || (EV_TARGETS[V2.wsId] = []);
-  if (list.some(x => x.id !== id && x.kind === kind && x.objectName === name)) { v2Toast('同类型下已存在同名对象'); return; }
+  const name = repoUrl.replace(/^[a-z]+:\/\//, '').replace(/^[^@/]+@/, '').replace(/\.git$/, '').split('/').pop() || 'repo';
+  const base = { repoUrl, defaultRef: version, tags: [version], validationProjectId, testProjectId, primaryMetricKey, enabled };
   if (id) {
-    const t = list.find(x => x.id === id);
-    if (!t) return;
-    Object.assign(t, { kind, objectName: name, defaultRef: version, tags: [version], repoUrl, subDir });
-    if (keepLegacyInline) { delete t.attributionSkill; t.attributionInline = true; }
-    else { t.attributionSkill = attributionSkill; delete t.attributionInline; }
+    const g = list.find(x => x.id === id);
+    if (!g) return;
+    Object.assign(g, base, { members: rows });
+    if (keepLegacyInline) { delete g.attributionSkill; g.attributionInline = true; }
+    else { g.attributionSkill = skillValue; delete g.attributionInline; }
+    v2Toast('进化对象已更新');
   } else {
-    const tid = 't-' + Date.now().toString(36);
-    list.push({ id: tid, kind, attributionSkill, objectName: name, defaultRef: version, tags: [version], repoUrl, subDir, enabled: true, validationProjectId: 'val-' + tid, testProjectId: 'test-' + tid });
+    const gid = 'g-' + Date.now().toString(36);
+    list.push({
+      id: gid, name, kind: 'group', objectName: name, ...base, members: rows,
+      ...(keepLegacyInline ? { attributionInline: true } : { attributionSkill: skillValue }),
+    });
+    v2Toast(`已新增进化对象（${rows.length} 个成员）`);
   }
   v2CloseModal();
   V2.targetOv.page = 1;
   v2RenderOverview();
-  v2Toast(id ? '进化对象已更新' : '已新增进化对象');
+}
+function v2EnableTarget(id) {
+  const list = EV_TARGETS[V2.wsId] || [];
+  const t = list.find(x => x.id === id);
+  if (!t || t.enabled !== false) return;
+  t.enabled = true;
+  V2.targetOv.targetPage = 1;
+  v2RenderOverview();
+  v2Toast(`已启用 ${evGroupName(t)}`);
 }
 function v2RemoveTarget(id) {
   const list = EV_TARGETS[V2.wsId] || [];
@@ -7735,7 +7964,7 @@ function v2RemoveTarget(id) {
   if (V2.targetOv.listTarget === id) V2.targetOv.listTarget = '';
   V2.targetOv.page = 1;
   v2RenderOverview();
-  v2Toast(`已移除 ${t.objectName}`);
+  v2Toast(`已移除 ${evGroupName(t)}`);
 }
 
 function v2SaveWorkspace(id) {
@@ -7787,7 +8016,7 @@ function v2SetMemberRole(uid, role) {
 
 /* ── 事件 ── */
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member],[data-v2-label-add],[data-v2-label-remove],[data-v2-label-save]');
+  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-enable],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-tg-member-add],[data-v2-tg-member-remove],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member],[data-v2-label-add],[data-v2-label-remove],[data-v2-label-save]');
   if (!el) return;
   const ds = el.dataset;
   if (ds.v2LoginUser) { V2.loginChoice = ds.v2LoginUser; v2RenderLogin(); return; }
@@ -7815,16 +8044,27 @@ document.addEventListener('click', e => {
   }
   if (ds.v2OvGrain) { V2.overview.grain = ds.v2OvGrain; V2.targetOv.page = 1; v2RenderOverview(); return; }
   if (ds.v2TgAdd !== undefined) { v2TargetModal(null); return; }
+  if (ds.v2TgEnable) { v2EnableTarget(ds.v2TgEnable); return; }
   if (ds.v2TgEdit) { v2TargetModal(ds.v2TgEdit); return; }
   if (ds.v2TgRemove) { v2RemoveTarget(ds.v2TgRemove); return; }
   if (ds.v2TgMetric) { const k = ds.v2TgMetric; if (V2.targetOv.metrics.has(k)) V2.targetOv.metrics.delete(k); else V2.targetOv.metrics.add(k); v2RenderOverview(); return; }
   if (ds.v2TgClear !== undefined) { V2.targetOv.targets.clear(); V2.targetOv.page = 1; v2RenderOverview(); return; }
   if (ds.v2TgPage) { V2.targetOv.page = Math.max(1, +ds.v2TgPage); v2RenderOverview(); return; }
   if (ds.v2TdLimit) { V2.targetDetail.limit = ds.v2TdLimit === 'all' ? 'all' : Number(ds.v2TdLimit) || 5; V2.targetDetail.menuOpen = true; v2RenderOverview(); return; }
-  if (ds.v2TdConfig !== undefined) { V2.setPage('evo'); location.hash = '#/targets'; return; }
+  if (ds.v2TdConfig !== undefined) { V2.setPage('overview'); V2.overview.tab = 'targets'; v2RenderOverview(); return; }
   if (ds.v2TgSidePage) { V2.targetOv.targetPage = Math.max(1, +ds.v2TgSidePage); v2RenderOverview(); return; }
   if (ds.v2TgReset !== undefined) { V2.targetOv.listFrom = ''; V2.targetOv.listTo = ''; V2.targetOv.listTarget = ''; V2.targetOv.listSource = ''; V2.targetOv.listStatus = 'all'; V2.targetOv.page = 1; v2RenderOverview(); return; }
   if (ds.v2TgSave !== undefined) { v2SaveTarget(ds.v2TgSave || null); return; }
+  if (ds.v2TgMemberAdd !== undefined) {
+    document.getElementById('v2TgMembers')?.insertAdjacentHTML('beforeend', v2TargetMemberRow('skill', '', ''));
+    document.querySelector('#v2TgMembers [data-v2-tg-member]:last-of-type .tgm-name')?.focus();
+    return;
+  }
+  if (ds.v2TgMemberRemove !== undefined) {
+    const box = document.getElementById('v2TgMembers');
+    if (box && box.querySelectorAll('[data-v2-tg-member]').length > 1) el.closest('[data-v2-tg-member]')?.remove();
+    return;
+  }
   if (ds.v2OvClear !== undefined) { V2.overview.objects.clear(); v2RenderOverview(); return; }
   if (ds.v2OvRemove) { V2.overview.objects.delete(ds.v2OvRemove); v2RenderOverview(); return; }
   if (ds.v2OvPage) { V2.overview.page = Math.max(1, +ds.v2OvPage); v2RenderOverview(); return; }
@@ -7944,6 +8184,16 @@ document.addEventListener('change', e => {
 });
 document.addEventListener('input', e => {
   if (e.target.id === 'v2LabelInput') v2LabelState().input = e.target.value;
+  // 成员行：对象名称变化时，子目录仍为自动值就跟着补 skills/<name> 或 agents/<Name>。
+  if (e.target.classList.contains('tgm-name')) {
+    const sub = e.target.closest('[data-v2-tg-member]')?.querySelector('.tgm-subdir');
+    if (sub && sub.dataset.auto === '1') {
+      const kind = e.target.closest('[data-v2-tg-member]')?.querySelector('.tgm-kind')?.value || 'skill';
+      const n = e.target.value.trim();
+      sub.value = n ? (kind === 'agent' ? `agents/${n}` : `skills/${n}`) : '';
+    }
+  }
+  if (e.target.classList.contains('tgm-subdir')) e.target.dataset.auto = e.target.value.trim() ? '0' : '1';
 });
 document.addEventListener('click', e => {
   if (e.target.id === 'loginBtn') { v2LoginAs(V2.loginChoice); return; }

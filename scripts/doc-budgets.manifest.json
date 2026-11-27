@@ -13,7 +13,7 @@
   "docs/development.md": 760,
   "docs/deployment.md": 2050,
   "docs/git-proxy.md": 1650,
-  "docs/git-workspace.md": 1000,
+  "docs/git-workspace.md": 1200,
   "docs/claude-code.md": 520,
   "docs/metrics.md": 350,
   "docs/review.md": 780,
@@ -50,5 +50,6 @@
   ".agents/flow/milestones/m24-milestone.md": 500,
   ".agents/flow/milestones/bugfix-milestone.md": 500,
   ".agents/flow/milestones/m25-milestone.md": 500,
-  ".agents/flow/milestones/m27-milestone.md": 500
+  ".agents/flow/milestones/m27-milestone.md": 500,
+  ".agents/flow/milestones/m28-milestone.md": 500
 }

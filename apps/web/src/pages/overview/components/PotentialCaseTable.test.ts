@@ -3,6 +3,7 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
+import type { TargetOverviewItemView } from "../../../api/overview";
 import PotentialCaseTable from "./PotentialCaseTable.vue";
 
 const item = {
@@ -102,6 +103,37 @@ describe("PotentialCaseTable", () => {
         caseTo: "",
       },
     ]);
+  });
+
+  it("labels the case column as 成员 when a configuration exposes multi members", () => {
+    const targetOptions: TargetOverviewItemView[] = [
+      {
+        targetId: "target-1",
+        objectType: "skill",
+        objectName: "synthetic-review",
+        versions: ["main"],
+        sessions: 0,
+        potential: 0,
+        attributed: 0,
+        nonTarget: 0,
+        unanalyzed: 0,
+        evolvable: 0,
+        members: [
+          { objectType: "skill", objectName: "synthetic-review", subDir: "skills/synthetic-review" },
+          { objectType: "skill", objectName: "review-helper", subDir: "skills/review-helper" },
+        ],
+      },
+    ];
+    const wrapper = mount(PotentialCaseTable, {
+      props: { wid: "ws-1", items: [item], total: 1, filters, targetOptions },
+    });
+
+    const headers = wrapper.findAll("thead th").map((header) => header.text());
+    expect(headers).toContain("成员");
+    expect(headers).not.toContain("进化对象");
+    expect(wrapper.get("[data-member-column='true']").text()).toContain(
+      "synthetic-review@synthetic-1",
+    );
   });
 
   it("pages a non-empty result and explains an empty workspace", async () => {

@@ -147,6 +147,7 @@ from app.third_party_api.bad_case_sync_source import (
     BadCaseSyncSourceFactory,
     BaseBadCaseSyncSource,
 )
+from app.third_party_api.git.cache import sweep_cache_roots
 from app.third_party_api.git.content import SubprocessGitContent
 from app.third_party_api.git.provider import GitPushProviderFactory
 from app.third_party_api.git.proxy import GitProxyController, ProxyAwareGitRunner
@@ -376,7 +377,10 @@ def create_app(
     attribution_repository = AttributionRepository(resolved_database)
     potential_preview = PotentialPreviewService(
         evolution_targets,
-        PotentialMatcher(potential_repository),
+        PotentialMatcher(
+            potential_repository,
+            agent_match_by_name=resolved_settings.agent_match_by_name,
+        ),
         resolver,
         reports=attribution_repository,
         rule_skills=attribution_skills,
@@ -385,12 +389,16 @@ def create_app(
     probe_query_repository = ProbeQueryRepository(resolved_database)
     evolution_runs = EvolutionRunService(evolution_repository, run_event_store)
     run_candidate_repository = EvolutionRunCandidateRepository(resolved_database)
-    potential_matcher = PotentialMatcher(potential_repository)
+    potential_matcher = PotentialMatcher(
+        potential_repository,
+        agent_match_by_name=resolved_settings.agent_match_by_name,
+    )
     target_overview = TargetOverviewService(
         target_repository,
         TargetOverviewRepository(resolved_database),
         potential_matcher,
         resolver,
+        agent_match_by_name=resolved_settings.agent_match_by_name,
     )
     local_attribution = LocalAttribution(
         resolved_settings,
@@ -608,6 +616,14 @@ def create_app(
             )
             phase = "identity-seed"
             await identity.seed_admin_if_empty()
+            phase = "git-cache-sweep"
+            # Derived git caches are rebuilt on demand; clearing interrupted
+            # states before job recovery keeps a killed fetch from blocking a
+            # resumed run forever.
+            sweep_cache_roots(
+                resolved_settings.data_dir / "target-content",
+                resolved_settings.data_dir / "repos",
+            )
             phase = "job-recovery"
             await jobs.recover()
             phase = "sync-scheduler"
