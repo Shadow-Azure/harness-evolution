@@ -70,7 +70,7 @@ There are three write paths: third-party script upsert (`script`), upstream pull
 |---|---|---|---|---|
 | A. Application-level zstd compression | About 3–5x, to be measured | Yes | Migration and backfill; compression/decompression CPU; still grows linearly | Do first |
 | B. Object-storage tiering (claim check) | Primary DB keeps only metadata and a hot window, about 90%+ | Yes | New OSS dependency, network read latency, object lifecycle and backup/restore | Recommended second phase |
-| C. Reference-only, re-download on demand | Close to 100% | Only `http_api`, and only while upstream is available | `script` cannot re-download; upstream retention, availability, and immutability are not guaranteed; batch replay becomes many network calls | Not the main design; recovery only |
+| C. Reference-only, re-download on demand | Close to 100% | Only `http_api`, and only while upstream is available | `script` cannot re-download; upstream retention, availability, and immutability are not guaranteed; batch replay becomes many network calls | Recovery only by default; see C+ when upstream guarantees archival |
 | D. MySQL native page compression | Usually lower than A | Yes | MySQL 8.0 only supports page-level Zlib/LZ4, needs sparse files and hole punching, applies to the whole table and indexes, little tuning room | Not the main design |
 | E. Separate archive database or cold table | Partial | Yes | Another database to operate; no cost advantage over object storage; more complex query path | Not recommended |
 
@@ -110,6 +110,27 @@ This is the direction first raised: keep no payload, only `(runtime_key, root_se
 4. Replay: after a parser upgrade, the scheduler lists all pending roots; it re-downloads per root with bounded concurrency (for example, 4) and retries; N roots means N upstream requests, and any failure affects only that root.
 5. Failure: upstream returns 404/410 or retention has expired; the row remains but the payload is permanently unavailable. The read path returns a stable "source expired" diagnosis and never fakes empty content; recovery depends on upstream providing it again or an earlier backup.
 
+**If upstream can guarantee archival (C+)**
+
+"Guaranteed archival" must become verifiable terms, not a verbal promise:
+
+- Retention and deletion: cover at least this service's evidence and replay window; notify before expiry, support legal hold, and audit tenant deletion.
+- Immutable versions: the same `session_id` is retrievable by version; the same version is byte-stable and `content_hash` does not drift; new events create a new version and never overwrite an old one.
+- Availability and SLA: the read API has explicit availability, an error budget, and maintenance windows; during failures this service can distinguish "upstream unavailable" from "the raw text does not exist".
+- Batch export and quota: parser upgrades need export by time window or tenant, not N per-root `fetch` calls; publish QPS, concurrency, and size limits.
+- Permissions and audit: this service reads only its own tenant; upstream records access audits; credentials are least-privilege and rotatable.
+- Cost and exit: request and egress pricing is predictable; a full raw-text export is possible when the contract ends.
+
+If all these hold, C+ can move `http_api` raw payloads entirely out of this service; the primary database keeps only identity, version, hash, and `line_count`; reads fetch by `(session_id, version)` and verify, with no object storage. C+ can then be the main design for `http_api`, not just recovery.
+
+Even then, three things do not disappear automatically:
+
+1. `script` rows have no upstream and must keep A/B (compression or object storage); unless every writer switches to `http_api`, C+ covers only part of the table.
+2. Replay still needs batch capability: without batch export, a parser upgrade turns N roots into N re-downloads; upstream must export by time window or tenant, or this service must keep a compact replayable copy (which returns to A/B).
+3. Read availability and audit depend on upstream: when upstream is down, evidence is unreadable; if "history must remain readable while upstream is down" is required, C+ does not hold, and adding a cache returns to a second copy.
+
+**Conclusion**: if upstream guarantees in writing "retention + immutable versions + availability + batch export + audit and exit", and every source uses `http_api`, C+ can be the main design ahead of object storage; otherwise A → B remains the recommendation, and C/C+ is recovery only. If only some sources are guaranteed, use a hybrid: C+ for `http_api` and A/B for `script`.
+
 ### Option D. MySQL native page compression
 
 MySQL 8.0 `COMPRESSION` is InnoDB page-level compression supporting Zlib/LZ4, requires sparse file and hole-punching support, and applies to whole tables and indexes; it is not column-level compression and cannot target only `payload`. It can reduce disk use, but the ratio, filesystem support, and buffer-pool impact are not controllable, and it does not compose with object-storage tiering. It can be evaluated as a stopgap, not as the recommended main design.
@@ -120,7 +141,7 @@ Moving historical payloads to another database or a cold table relieves the prim
 
 ## Implementation
 
-The recommendation is A → B in two phases; C is only an optional recovery path for B; D/E are not adopted. The following is the design for the recommended option. After the choice is confirmed, move this issue to in-progress and split implementation.
+The recommendation is A → B in two phases; C is recovery-only by default. If upstream guarantees archival in writing and covers all sources, evaluate C+ as the main design. D/E are not adopted. The following is the design for the recommended option. After the choice is confirmed, move this issue to in-progress and split implementation.
 
 ### Phase 1: payload compression
 
