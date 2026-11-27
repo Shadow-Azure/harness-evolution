@@ -6037,6 +6037,29 @@ export interface components {
             version: string;
         };
         /**
+         * TargetOverviewDisabledItem
+         * @description Read-only identity of one disabled target kept out of every statistic.
+         *
+         *     The side list renders these rows greyed out and offers enable/edit/remove,
+         *     but ``items``, ``summary``, trend, distributions and the potential-case list
+         *     stay on the enabled-only projection.
+         */
+        TargetOverviewDisabledItem: {
+            /** Attributionskillname */
+            attributionSkillName?: string | null;
+            /** Defaultref */
+            defaultRef: string;
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent" | "knowledge";
+            /** Targetid */
+            targetId: string;
+        };
+        /**
          * TargetOverviewItem
          * @description One target's potential cases and their three-state attribution split.
          *
@@ -6087,6 +6110,11 @@ export interface components {
          * @description One target page plus the workspace-wide summary.
          */
         TargetOverviewListResponse: {
+            /**
+             * Disabled
+             * @description Every disabled target of the workspace, ordered by object name; never included in summary, items or total.
+             */
+            disabled?: components["schemas"]["TargetOverviewDisabledItem"][];
             /** Items */
             items: components["schemas"]["TargetOverviewItem"][];
             /** Page */
