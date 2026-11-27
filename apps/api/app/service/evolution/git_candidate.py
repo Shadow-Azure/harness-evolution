@@ -8,7 +8,7 @@ import asyncio
 import html
 import logging
 import re
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -150,6 +150,118 @@ def build_accepted_message(
         ),
     )
     return "\n\n".join((subject, *sections, "---\n" + trailers))
+
+
+def build_no_acceptance_message(
+    run: EvolutionRunRecord,
+    rounds: Sequence[EvolutionRoundRecord],
+    *,
+    init_score: float,
+    best_score: float,
+    direction: str,
+    metrics: Sequence[Mapping[str, Any]],
+) -> str:
+    """Build the empty result commit that closes a run without accepted rounds.
+
+    The message records the facts known before the held-out test-set final is
+    submitted: the no-acceptance verdict, the validation scores and per-round
+    decisions. The test-set baseline/final comparison lands in
+    ``evolution_finals`` once both evaluations complete.
+    """
+    subject = _bounded_subject(f"{_commit_scope(run)}: 记录无接纳轮次的终评结论")
+    target = f"{_safe_single_line(run.target_name)}@{_safe_single_line(run.target_version)}"
+    decisions = "\n".join(_round_decision_lines(rounds)) or "- 本次运行没有可记录的轮次。"
+    metric_lines = "\n".join(_metric_lines(metrics)) or "- 暂无可记录的指标。"
+    baseline = run.base_commit or ""
+    sections = [
+        (
+            "## 结论\n\n"
+            "本次运行没有接纳任何候选轮次，被进化的 skill 与初始版本保持一致。"
+            "测试集基线与测试集终评在终评环节提交，两者的对比写入 evolution_finals。"
+        ),
+        (
+            "## 分数（验证集）\n\n"
+            f"- 初始分数：{init_score:.1f}\n"
+            f"- 候选最佳分：{best_score:.1f}\n"
+            f"- 指标方向：{_safe_single_line(direction)}"
+        ),
+        f"## 指标\n\n{metric_lines}",
+        f"## 各轮决策\n\n{decisions}",
+        (
+            "## 追溯\n\n"
+            f"- 自进化运行：{run.id}\n"
+            f"- 目标：{target}\n"
+            f"- 基线：`{baseline}`（{_safe_single_line(run.base_ref or run.target_version)}）"
+        ),
+    ]
+    trailers = "\n".join(
+        (
+            f"Harness-Run-Id: {run.id}",
+            (
+                "Harness-Verdict: no-acceptance "
+                f"(verdict=false, validation {init_score:.1f} vs {best_score:.1f})"
+            ),
+            f"Harness-Validation-Init-Score: {init_score:.1f}",
+            f"Harness-Validation-Best-Score: {best_score:.1f}",
+            f"Harness-Metric-Direction: {direction}",
+            "Harness-Decision-Rule: no-accepted-rounds",
+            f"Harness-Base-Commit: {baseline}",
+        ),
+    )
+    return "\n\n".join((subject, *sections, "---\n" + trailers))
+
+
+def _round_decision_lines(rounds: Sequence[EvolutionRoundRecord]) -> list[str]:
+    """Render one human-readable decision line per terminal round."""
+    lines: list[str] = []
+    for round_ in rounds:
+        current, candidate = _eval_scores(round_.eval_result)
+        label = {
+            "accepted": "已接纳",
+            "rejected": "已拒绝",
+            "skipped": "已跳过",
+            "failed": "已失败",
+        }.get(round_.status, round_.status)
+        if current is None or candidate is None:
+            lines.append(f"- 第 {round_.seq} 轮：{label}（无评测分数）")
+            continue
+        lines.append(
+            f"- 第 {round_.seq} 轮：{label}；候选分 {candidate:.1f} vs 基线 "
+            f"{current:.1f}（{candidate - current:+.1f}）",
+        )
+    return lines
+
+
+def _metric_lines(metrics: Sequence[Mapping[str, Any]]) -> list[str]:
+    """Render the persisted final metric rows without reinterpreting them."""
+    lines: list[str] = []
+    for metric in metrics:
+        name = metric.get("name")
+        init = metric.get("init")
+        best = metric.get("best")
+        if (
+            isinstance(name, str)
+            and isinstance(init, (int, float))
+            and isinstance(best, (int, float))
+        ):
+            lines.append(f"- {name}: {float(init):.1f} → {float(best):.1f}")
+    return lines
+
+
+def _eval_scores(payload: Mapping[str, Any] | None) -> tuple[float | None, float | None]:
+    """Read the baseline and candidate scores from one persisted round result."""
+    if payload is None:
+        return None, None
+    current = payload.get("currentScore")
+    candidate = payload.get("candidateScore")
+    if (
+        isinstance(current, bool)
+        or not isinstance(current, (int, float))
+        or isinstance(candidate, bool)
+        or not isinstance(candidate, (int, float))
+    ):
+        return None, None
+    return float(current), float(candidate)
 
 
 def extract_trailer(message: str, name: str) -> str | None:

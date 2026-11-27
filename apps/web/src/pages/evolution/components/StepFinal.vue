@@ -106,8 +106,8 @@ const degraded = computed(() => props.step.payload.degraded === true);
         }}</span>
         <span class="desc">
           best skill <b class="mono">{{ step.payload.bestVersion ?? "—" }}</b>
-          测试集得分 <b class="mono">{{ score(step.payload.bestScore) }}</b>
-          vs 初始 <b class="mono">{{ score(step.payload.initScore) }}</b>
+          测试集终评得分 <b class="mono">{{ score(step.payload.bestScore) }}</b>
+          vs 测试集基线（初始版本） <b class="mono">{{ score(step.payload.initScore) }}</b>
           <template v-if="step.payload.bestScore !== null && step.payload.initScore !== null">
             （{{ deltaLabel(step.payload.bestScore - step.payload.initScore) }}）
           </template>
@@ -154,7 +154,7 @@ const degraded = computed(() => props.step.payload.degraded === true);
 
       <section class="cb-sec">
         <p class="cb-label">
-          测试集对比（best vs 初始）
+          测试集对比（测试集终评 best vs 测试集基线初始版本）
         </p>
         <div
           v-if="metrics.length"
@@ -164,8 +164,8 @@ const degraded = computed(() => props.step.payload.degraded === true);
             <thead>
               <tr>
                 <th>指标</th>
-                <th>初始 {{ targetVersion }}</th>
-                <th>best</th>
+                <th>测试集基线 {{ targetVersion }}</th>
+                <th>测试集终评</th>
                 <th>Δ</th>
               </tr>
             </thead>
@@ -200,7 +200,7 @@ const degraded = computed(() => props.step.payload.degraded === true);
       v-else
       class="waiting"
     >
-      等待全部迭代完成后，在测试集上评测 best skill 与初始 skill。
+      等待全部迭代完成后，在测试集上分别评测测试集基线（初始版本）与测试集终评（best skill）。
     </p>
   </article>
 </template>
