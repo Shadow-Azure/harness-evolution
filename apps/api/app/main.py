@@ -147,6 +147,7 @@ from app.third_party_api.bad_case_sync_source import (
     BadCaseSyncSourceFactory,
     BaseBadCaseSyncSource,
 )
+from app.third_party_api.git.cache import sweep_cache_roots
 from app.third_party_api.git.content import SubprocessGitContent
 from app.third_party_api.git.provider import GitPushProviderFactory
 from app.third_party_api.git.proxy import GitProxyController, ProxyAwareGitRunner
@@ -615,6 +616,14 @@ def create_app(
             )
             phase = "identity-seed"
             await identity.seed_admin_if_empty()
+            phase = "git-cache-sweep"
+            # Derived git caches are rebuilt on demand; clearing interrupted
+            # states before job recovery keeps a killed fetch from blocking a
+            # resumed run forever.
+            sweep_cache_roots(
+                resolved_settings.data_dir / "target-content",
+                resolved_settings.data_dir / "repos",
+            )
             phase = "job-recovery"
             await jobs.recover()
             phase = "sync-scheduler"
