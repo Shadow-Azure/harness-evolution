@@ -1,17 +1,17 @@
 # Multiple skills or agents in one repository as one evolution target
 
-English | [中文](m28-01-multi-member-evolution-target.md)
+English | [中文](bugfix-68-multi-member-evolution-target.md)
 
 ```yaml flow
 kind: issue
-id: m28-01
-milestone: m28
+id: bugfix-68
+milestone: bugfix
 depends:
   - m5-02
   - m10-02
   - m12-03
-priority: P1
-status: ready
+priority: P2
+status: done
 scope:
   - apps/api/alembic/**
   - apps/api/app/db/**

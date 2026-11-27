@@ -2,14 +2,15 @@
 
 English | [中文](git-workspace.md)
 
-During prepare, an evolution run builds a local bare cache for the target ref and clones an isolated workspace from it. Proxy operations are documented in [Git egress proxy](git-proxy.en.md).
+During prepare, an evolution run builds a local bare cache for the target ref and clones an isolated workspace from it. Target-content reads (`target-content`) and run preparation (`repos`) share one set of cache ownership and self-healing rules. Proxy operations are documented in [Git egress proxy](git-proxy.en.md).
 
 ## Cache and clone
 
-- The cache path is `HE_DATA_DIR/repos/<target>/<sha256(ref)[:16]>/` and is keyed by target and normalized ref; one in-process lock serializes each path.
+- The cache path is `HE_DATA_DIR/repos/<target>/<sha256(ref)[:16]>/` and is keyed by target and normalized ref; an in-process lock plus a cross-process `flock` under the cache root's `.locks/` serializes each path. Target-content reads (`target-content`) share the same ownership rules.
 - Tag / branch: run `git init --bare` and then `git fetch --no-tags origin <ref>`, keep that ref's full history, and write the resolved commit to `refs/heads/harness-target` for patches, commits, ancestry checks, and the local clone.
 - Full commit: run `git fetch --depth 1 --no-tags origin <sha>` and write `refs/heads/harness-target` as well.
-- `--mirror` is never used. The cache is rebuilt when its origin differs from the current `repo_url`; a failed refresh keeps complete objects, while a failed first build removes the partial directory so a retry starts clean.
+- `--mirror` is never used. A `.state.json` file next to each cache directory records the clone/fetch lifecycle: `incomplete` before, `complete` after success. A cache is deleted and rebuilt when it is `incomplete`, structurally broken, has a different origin, or contains a leftover git lock such as `shallow.lock`; only the matched single ref is affected. A failed refresh keeps a complete cache and restores `complete`; after a `SIGKILL`, the next read rebuilds. A marker-less legacy cache is adopted by writing `complete` when it has no lock and a usable structure.
+- While the `flock` is held, git locks inside the cache are removed before a fetch; when git still reports a lock conflict, the lock is cleaned and the fetch retried once, and only a second failure is reported as `cache_stale_lock` (content reads) or a retryable fetch failure (workspace). Before job recovery, startup sweeps both cache roots: it deletes `incomplete` and locked legacy caches and removes leftover locks.
 - The workspace is `HE_DATA_DIR/workspaces/<runId>`: run `git clone --no-checkout` from the cache, `remote set-url origin <repo_url>`, then create `evo/<date>-<runId>`. When the remote already has the run branch, fetch it explicitly before `switch --track`; before a push, fetch that branch when the remote commit is missing locally, then run `merge-base --is-ancestor`.
 
 ## Push
@@ -30,6 +31,8 @@ During prepare, an evolution run builds a local bare cache for the target ref an
 ## Observability
 
 The `workspace_prepared` event payload records `ref`, `cacheHit`, `cloneSeconds`, `proxyState` (disabled / closed / open), and at most 20 `gitOperations` entries; `gitOperationsTruncated=true` marks truncation. Each entry has operation, viaProxy, proxy states before/after, fallbackReason, durationMs, exitCode, and targetHost.
+
+A lock conflict that survives one retry emits a structured `git.cache.stale_lock` log (cacheKey, repoHost, refHash); a startup sweep that deletes or cleans anything emits `git.cache.sweep`. Neither contains credentials or full stderr.
 
 Every git subprocess also emits one structured `git.proxy.operation` log line with runId, jobId, and stage; a local cache clone makes no network request and records viaProxy=false. a proxy probe is operation=probe with runId=null. A proxy-layer failure retried directly records viaProxy=false and a fallbackReason such as proxy_connect / 407 / tunnel / timeout, with other proxy-layer errors classified as proxy_error. Logs and events contain only the host name, never full URLs, credentials, stderr, or proxy configuration.
 

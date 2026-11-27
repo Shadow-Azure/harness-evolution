@@ -21,6 +21,20 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from app.third_party_api.git.cache import (
+    CacheState,
+    cache_flock,
+    clean_git_locks,
+    has_git_locks,
+    is_lock_conflict,
+    log_stale_lock,
+    mark_complete,
+    mark_incomplete,
+    matches,
+    read_state,
+    remove_state,
+)
+
 type ContentFailureReason = str
 
 _FULL_COMMIT = re.compile(r"[0-9a-f]{40}")
@@ -119,10 +133,18 @@ class SubprocessGitContent:
         # Concurrent overview requests may resolve the same ref at once; serialize
         # the whole read so one clone/refresh cannot remove the cache a sibling
         # request is about to read.
-        async with self._cache_lock(repo_path):
+        async with self._cache_lock(repo_path), cache_flock(self.cache_root, repo_path):
             commit = await self._ensure_commit(repo_path, repo_url, checked_ref)
             result = await self._git(repo_path, ("git", "show", f"{commit}:{relative}"))
+            if result.returncode != 0 and is_lock_conflict(result.stderr):
+                # A lazy blob fetch can create the same shallow lock; the held
+                # flock proves no other service operation owns it.
+                clean_git_locks(repo_path)
+                result = await self._git(repo_path, ("git", "show", f"{commit}:{relative}"))
         if result.returncode != 0:
+            if is_lock_conflict(result.stderr):
+                log_stale_lock(self.cache_root, repo_path, repo_url=repo_url, ref=checked_ref)
+                raise GitContentUnavailable("cache_stale_lock")
             raise GitContentUnavailable(_show_failure(result.stderr))
         return result.stdout, commit
 
@@ -143,40 +165,108 @@ class SubprocessGitContent:
 
     async def _ensure_commit(self, repo_path: Path, repo_url: str, ref: str) -> str:
         """Fetch only ``ref`` when needed and return the commit it resolves to."""
-        if _FULL_COMMIT.fullmatch(ref):
-            if not self._usable(repo_path):
-                await self._init_bare(repo_path, repo_url)
-            if await self._commit_present(repo_path, ref):
-                return ref
-            result = await self._git(
-                repo_path,
-                (
-                    "git",
-                    "fetch",
-                    "--depth",
-                    "1",
-                    "--filter=blob:none",
-                    "--no-tags",
-                    "origin",
-                    ref,
-                ),
-            )
-            if result.returncode != 0:
-                raise GitContentUnavailable(_fetch_failure(result.stderr))
-            commit = await self._resolve_commit(repo_path, "FETCH_HEAD")
-            if commit is None:
-                raise GitContentUnavailable("ref_not_found")
+        full_commit = _FULL_COMMIT.fullmatch(ref) is not None
+        state = read_state(repo_path)
+        if self._reusable(repo_path, repo_url, ref, state):
+            previous = await self._current_commit(repo_path, ref, full_commit)
+            # The kernel flock proves no other service git process owns a lock
+            # inside this cache, so leftovers from a killed fetch are stale.
+            clean_git_locks(repo_path)
+            mark_incomplete(repo_path, repo_url=repo_url, ref=ref)
+            try:
+                commit = await self._refresh(repo_path, repo_url, ref, full_commit)
+            except asyncio.CancelledError:
+                # The killed git process group cannot clean its lock; the
+                # incomplete marker plus one rebuild is the recovery path.
+                clean_git_locks(repo_path)
+                raise
+            except GitContentUnavailable:
+                if has_git_locks(repo_path):
+                    # An interrupted fetch may have left a partial object
+                    # store; do not restore complete and let the next read
+                    # rebuild instead.
+                    clean_git_locks(repo_path)
+                    raise
+                # A graceful git failure leaves the previous objects intact;
+                # keep the completed cache reusable instead of rebuilding it.
+                mark_complete(repo_path, repo_url=repo_url, ref=ref, commit=previous)
+                raise
+            mark_complete(repo_path, repo_url=repo_url, ref=ref, commit=commit)
             return commit
 
-        if not self._usable(repo_path):
-            await self._clone_ref(repo_path, repo_url, ref)
-            commit = await self._resolve_commit(repo_path, "HEAD")
+        self._discard(repo_path)
+        mark_incomplete(repo_path, repo_url=repo_url, ref=ref)
+        try:
+            if full_commit:
+                await self._init_bare(repo_path, repo_url)
+                commit = await self._refresh(repo_path, repo_url, ref, full_commit)
+            else:
+                await self._clone_ref(repo_path, repo_url, ref)
+                resolved = await self._resolve_commit(repo_path, "HEAD")
+                if resolved is None:
+                    raise GitContentUnavailable("ref_not_found")
+                commit = resolved
+        except GitContentUnavailable:
+            self._discard(repo_path)
+            raise
+        mark_complete(repo_path, repo_url=repo_url, ref=ref, commit=commit)
+        return commit
+
+    async def _refresh(
+        self,
+        repo_path: Path,
+        repo_url: str,
+        ref: str,
+        full_commit: bool,
+    ) -> str:
+        """Refresh a reusable cache and return the commit now stored for ``ref``."""
+        if full_commit:
+            if await self._commit_present(repo_path, ref):
+                return ref
+            result = await self._fetch_with_lock_retry(repo_path, ref)
+            if result.returncode != 0:
+                raise _fetch_unavailable(
+                    result, self.cache_root, repo_path, repo_url=repo_url, ref=ref
+                )
+            commit = await self._resolve_commit(repo_path, "FETCH_HEAD")
         else:
-            await self._fetch_ref(repo_path, ref)
+            await self._fetch_ref(repo_path, repo_url, ref)
             commit = await self._resolve_commit(repo_path, "FETCH_HEAD")
         if commit is None:
             raise GitContentUnavailable("ref_not_found")
         return commit
+
+    async def _current_commit(
+        self,
+        repo_path: Path,
+        ref: str,
+        full_commit: bool,
+    ) -> str | None:
+        """Return the commit a reusable cache currently stores, when known."""
+        if full_commit:
+            return ref if await self._commit_present(repo_path, ref) else None
+        return await self._resolve_commit(repo_path, "HEAD")
+
+    def _reusable(
+        self,
+        repo_path: Path,
+        repo_url: str,
+        ref: str,
+        state: CacheState | None,
+    ) -> bool:
+        """Return whether a cache may be refreshed instead of rebuilt."""
+        if not self._usable(repo_path):
+            return False
+        if state is not None:
+            return matches(state, repo_url=repo_url, ref=ref)
+        # Legacy cache from before lifecycle markers: adopt it only when no git
+        # lock proves that its last clone or fetch was interrupted.
+        return not has_git_locks(repo_path)
+
+    def _discard(self, repo_path: Path) -> None:
+        """Delete a cache directory and its lifecycle marker."""
+        self._safe_remove(repo_path)
+        remove_state(repo_path)
 
     def _usable(self, repo_path: Path) -> bool:
         """Return whether an existing cache directory is a usable repository."""
@@ -234,27 +324,57 @@ class SubprocessGitContent:
                 self._safe_remove(repo_path)
                 raise GitContentUnavailable("repo_unreachable")
 
-    async def _fetch_ref(self, repo_path: Path, ref: str) -> None:
+    async def _fetch_ref(self, repo_path: Path, repo_url: str, ref: str) -> None:
         """Refresh exactly one tag or branch in an existing shallow cache."""
         for candidate in _ref_candidates(ref):
-            result = await self._git(
-                repo_path,
-                (
-                    "git",
-                    "fetch",
-                    "--depth",
-                    "1",
-                    "--filter=blob:none",
-                    "--no-tags",
-                    "origin",
-                    candidate,
-                ),
-            )
+            result = await self._fetch_with_lock_retry(repo_path, candidate)
             if result.returncode == 0:
                 return
             if not _missing_ref(result.stderr):
-                raise GitContentUnavailable("repo_unreachable")
+                raise _fetch_unavailable(
+                    result,
+                    self.cache_root,
+                    repo_path,
+                    repo_url=repo_url,
+                    ref=ref,
+                )
         raise GitContentUnavailable("ref_not_found")
+
+    async def _fetch_with_lock_retry(
+        self,
+        repo_path: Path,
+        source: str,
+    ) -> GitProcessResult:
+        """Fetch one source and retry once after cleaning a stale git lock."""
+        result = await self._git(
+            repo_path,
+            (
+                "git",
+                "fetch",
+                "--depth",
+                "1",
+                "--filter=blob:none",
+                "--no-tags",
+                "origin",
+                source,
+            ),
+        )
+        if result.returncode == 0 or not is_lock_conflict(result.stderr):
+            return result
+        clean_git_locks(repo_path)
+        return await self._git(
+            repo_path,
+            (
+                "git",
+                "fetch",
+                "--depth",
+                "1",
+                "--filter=blob:none",
+                "--no-tags",
+                "origin",
+                source,
+            ),
+        )
 
     async def _commit_present(self, repo_path: Path, commit: str) -> bool:
         """Return whether a full commit id is already present locally."""
@@ -334,13 +454,32 @@ def _missing_ref(stderr: str) -> bool:
 
 def _fetch_failure(stderr: str) -> ContentFailureReason:
     """Classify a failed clone or fetch without exposing raw diagnostics."""
+    if is_lock_conflict(stderr):
+        return "cache_stale_lock"
     if _missing_ref(stderr):
         return "ref_not_found"
     return "repo_unreachable"
 
 
+def _fetch_unavailable(
+    result: GitProcessResult,
+    cache_root: Path,
+    repo_path: Path,
+    *,
+    repo_url: str,
+    ref: str,
+) -> GitContentUnavailable:
+    """Classify a fetch failure and log stale locks without exposing output."""
+    reason = _fetch_failure(result.stderr)
+    if reason == "cache_stale_lock":
+        log_stale_lock(cache_root, repo_path, repo_url=repo_url, ref=ref)
+    return GitContentUnavailable(reason)
+
+
 def _show_failure(stderr: str) -> ContentFailureReason:
     """Classify a failed ``git show`` including a lazy blob fetch failure."""
+    if is_lock_conflict(stderr):
+        return "cache_stale_lock"
     diagnostic = stderr.lower()
     if any(marker in diagnostic for marker in _MISSING_FILE_MARKERS):
         return "file_not_found"
