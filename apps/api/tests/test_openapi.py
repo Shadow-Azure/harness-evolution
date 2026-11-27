@@ -120,6 +120,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/workspaces/{wid}/attribution-skill-packages/{packageId}",
         "/api/workspaces/{wid}/attribution-skill-packages/{packageId}/download",
         "/api/workspaces/{wid}/bad-case-labels",
+        "/api/workspaces/{wid}/bad-case-labels/suggestions",
         "/api/workspaces/{wid}/bad-cases",
         "/api/workspaces/{wid}/sessions",
         "/api/workspaces/{wid}/sessions/{sessionId}",
