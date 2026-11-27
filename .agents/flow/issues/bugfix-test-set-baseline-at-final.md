@@ -46,7 +46,8 @@ github:
 ### 诉求
 
 - 运行启动与迭代过程中不提交任何测试集评测；测试集只在全部轮次终态后的终评环节出现。
-- 终评环节同时提交两项测试集评测：初始版本（`base_commit`）的测试集基线，以及最终迭代后的 skill（最后一个已接纳轮的 commit，没有接纳轮时回退 `base_commit`）的测试集终评。
+- 终评环节同时提交两项测试集评测：初始版本（`base_commit`）的测试集基线，以及最终迭代后的 skill（最后一个已接纳轮的 commit）的测试集终评；没有接纳轮时**不回退** `base_commit`，而是新增一个记录本次运行结果的 commit 作为终评对象。
+- 无接纳轮的结果 commit 记录 run 的终态结论（verdict、初始与终评分、指标与各轮决策），带 `Harness-Run-Id` 与明确的无接纳 verdict trailer；它不改变被进化的 skill 文件，可以是空提交或只新增 `.harness-evolution/` 下的结果文件。
 - 两项测试集评测可以并行在途；两者都完成后才写 `evolution_finals`，`init_score`、`best_score` 与 `verdict` 的语义保持不变。
 - 旧 run 或重试场景：已经完成的测试集基线直接复用，不重复提交；缺失时在终评环节补交。
 
@@ -76,14 +77,15 @@ run start / advance
 turns ...
 finalize (all turns terminal)
   ├─ test_baseline (base_commit)      ─┐
-  └─ test_final   (final accepted)    ─┴─ wait both → evolution_finals
+  └─ test_final   (accepted / result commit)    ─┴─ wait both → evolution_finals
 ```
 
 - `EvolutionEvalSubmitter`：
   - 启动入口只提交验证集基线（如 `submit_validation_baseline`），不再提交 `test_baseline`。
   - 新增终评入口（如 `submit_test_evaluations`），一次提交 `test_baseline` 与 `test_final`，复用 `ensure_run_evaluation` 的幂等逻辑。
 - `EvolutionAdvanceService.handle`：只提交验证集基线，不再触发 `test_baseline`。
-- `EvolutionFinalizeService.handle`：所有轮次终态后先确保验证集基线（旧 run 兼容），再提交测试集基线与测试集终评；任一未完成时返回未完成，不写 `evolution_finals`。
+- `EvolutionFinalizeService.handle`：所有轮次终态后先确保验证集基线（旧 run 兼容）；有已接纳轮时 `test_final` 使用最后一个已接纳 commit，没有已接纳轮时先新建并推送结果 commit（见下），再提交测试集基线与 `test_final`；任一未完成时返回未完成，不写 `evolution_finals`。
+- 无接纳轮结果 commit：在 run 分支上生成一个记录运行终态的 commit（空提交或仅 `.harness-evolution/` 结果文件），消息含 `Harness-Run-Id`、`Harness-Verdict: no-acceptance` 与 verdict、分数、指标及各轮决策；它不修改 skill 文件，因此评测对象与 `base_commit` 不同；重试复用同一个 commit，不重复生成；该 commit 必须在提交 `test_final` 前可被平台读取（先推送 run 分支或该 commit）。
 - `EvolutionEvalPoller`：
   - 终评 follow-up 的重新入队条件从只看 `test_final` 改为同时检查 `test_baseline` 与 `test_final`；两者都 completed 才入队 finalize。
   - 轮询路径继续按 `kind` 更新对应行；失败仍走 `blocked(stage=eval)`。
@@ -97,15 +99,16 @@ finalize (all turns terminal)
 - 运行在终评前被取消或失败：不提交测试集评测。
 - 测试集模板不可用或提交失败：在终评阶段进入 `blocked(stage=eval)`，错误信息区分 `test_baseline` 与 `test_final`；第 1 轮与已完成的迭代不受影响。
 - 不改变 `validation_baseline` 的提交时机、门控逻辑与候选接纳规则。
-- 不改变 `test_baseline` 与 `test_final` 的 commit 选择：前者 `base_commit`，后者最后一个已接纳轮（无则 `base_commit`）。
+- 不改变 `test_baseline` 的 commit 选择（`base_commit`）；`test_final` 有接纳轮时仍用最后一个已接纳 commit，无接纳轮时改用结果 commit，不再回退 `base_commit`。
 
 ## 实施步骤
 
 1. 拆分提交入口：启动只提交验证集基线；新增终评阶段的测试集双评测提交。
 2. 调整 `advance`、`finalize` 与 poller 的入队与等待条件，确保两个测试集评测都完成才写终评。
-3. 更新 `retry` 与失败、事件文案；确认旧 run 与已完成评测的幂等复用。
-4. 更新前端终评步骤的状态与文案（如需要），保持 `initScore` 与 `bestScore` 字段不变。
-5. 同步修订设计文档、Agent Note 与测试：删除「启动并行提交测试集基线」的断言，新增「终评前不出现 testProjectId」「终评并行提交两条」「两者完成才写 finals」的覆盖。
+3. 实现无接纳轮的结果 commit：生成、幂等复用、先推送再提交 `test_final`；确认它不修改 skill 文件。
+4. 更新 `retry` 与失败、事件文案；确认旧 run 与已完成评测的幂等复用。
+5. 更新前端终评步骤的状态与文案（如需要），保持 `initScore` 与 `bestScore` 字段不变。
+6. 同步修订设计文档、Agent Note 与测试：删除「启动并行提交测试集基线」与「无接纳回退 base_commit」的断言，新增「终评前不出现 testProjectId」「终评并行提交两条」「无接纳生成结果 commit 并作为终评对象」「两者完成才写 finals」的覆盖。
 
 ## 依赖与交付边界
 
@@ -126,7 +129,8 @@ pnpm verify:docs
 - 数据：`bugfix-63-real-eval` 的运行级评测测试、`m5-11-evolution-recovery` 的完整占位循环、fake 与真实 gateway 桩。
 - 预期：
   - 启动与迭代阶段没有任何 `testProjectId` 的提交；测试集模板的 launch 次数为 0。
-  - 全部轮次终态后，终评阶段对 `base_commit` 与最终 commit 各提交一次测试集评测，两者可以并发在途。
+  - 全部轮次终态后，终评阶段对 `base_commit` 与最终 commit 各提交一次测试集评测；有已接纳轮时最终 commit 是最后一个已接纳 commit，无接纳轮时是新增的结果 commit，两者可以并发在途。
+  - 无接纳轮运行生成且只生成一个结果 commit，`test_final` 的对象是该 commit 而不是 `base_commit`；结果 commit 记录 verdict、分数、指标与各轮决策，且不修改 skill 文件；重试不重复生成。
   - 两者都 completed 后才写 `evolution_finals`；`init_score`、`best_score` 与 `verdict` 与现状一致。
   - 模拟测试集基线失败时运行进入 `blocked(stage=eval)`，第 1 轮与已验证轮次不受影响；`/retry` 只重提失败项。
   - 旧 run 已有 completed 的 `test_baseline` 时不重复提交。
@@ -134,9 +138,9 @@ pnpm verify:docs
 ## 验收标准
 
 - 启动与迭代路径不再提交 `test_baseline`；测试集模板在终评前零调用。
-- 终评环节同时存在 `test_baseline` 与 `test_final` 两条评测，commit 分别为 `base_commit` 与最终 commit；两者完成后才写终评。
+- 终评环节同时存在 `test_baseline` 与 `test_final` 两条评测，commit 分别为 `base_commit` 与最终 commit（有接纳轮时为最后一个已接纳 commit，无接纳轮时为结果 commit）；两者完成后才写终评。
 - `evolution_finals` 的 `init_score`、`best_score` 与 `verdict` 口径不变，前端终评步骤能区分两条评测。
-- 旧 run、失败重试、无接纳轮（基线 commit 与终评 commit 相同）三条路径均有测试覆盖。
+- 旧 run、失败重试、无接纳轮（生成结果 commit，终评对象不等于 `base_commit`）三条路径均有测试覆盖。
 - 相关测试、流程、文档与双语配对门禁通过。
 
 ## 门禁与 CI

@@ -46,7 +46,8 @@ The test set is the independent final acceptance after every problem has been it
 ### Requirements
 
 - No test-set evaluation is submitted during startup or iteration; the test set first appears in the final stage after every turn is terminal.
-- The final stage submits both test-set evaluations together: the test-set baseline for the initial version (`base_commit`) and the test-set final for the evolved skill (the last accepted turn commit, or `base_commit` when no turn was accepted).
+- The final stage submits both test-set evaluations together: the test-set baseline for the initial version (`base_commit`) and the test-set final for the evolved skill (the last accepted turn commit); when no turn was accepted, **do not fall back** to `base_commit` — create a new commit recording the run result and use it as the test-final target.
+- The no-acceptance result commit records the run's terminal outcome (verdict, initial and final scores, metrics, and per-turn decisions), carries `Harness-Run-Id` and an explicit no-acceptance verdict trailer, does not change the evolved skill files, and may be an empty commit or add only a result file under `.harness-evolution/`.
 - Both test-set evaluations may be in flight in parallel; only after both complete is `evolution_finals` written, with unchanged `init_score`, `best_score`, and `verdict` semantics.
 - Legacy runs and retries reuse a completed test-set baseline instead of submitting it again; a missing baseline is submitted during the final stage.
 
@@ -76,14 +77,15 @@ run start / advance
 turns ...
 finalize (all turns terminal)
   ├─ test_baseline (base_commit)      ─┐
-  └─ test_final   (final accepted)    ─┴─ wait both → evolution_finals
+  └─ test_final   (accepted / result commit)    ─┴─ wait both → evolution_finals
 ```
 
 - `EvolutionEvalSubmitter`:
   - The startup entry submits only the validation baseline (for example `submit_validation_baseline`) and no longer submits `test_baseline`.
   - A new final-stage entry (for example `submit_test_evaluations`) submits `test_baseline` and `test_final` together, reusing the idempotent `ensure_run_evaluation` logic.
 - `EvolutionAdvanceService.handle`: submits only the validation baseline and no longer triggers `test_baseline`.
-- `EvolutionFinalizeService.handle`: after all turns are terminal, ensures the validation baseline (legacy-run compatibility), then submits the test-set baseline and the test-set final; if either is incomplete it returns unfinished and does not write `evolution_finals`.
+- `EvolutionFinalizeService.handle`: after all turns are terminal, ensures the validation baseline (legacy-run compatibility); when a turn was accepted it uses the last accepted commit for `test_final`; when no turn was accepted it first creates and pushes a result commit (below), then submits the test-set baseline and `test_final`; if either is incomplete it returns unfinished and does not write `evolution_finals`.
+- No-acceptance result commit: create a commit on the run branch that records the run's terminal outcome (an empty commit or one that adds only a `.harness-evolution/` result file), with `Harness-Run-Id`, `Harness-Verdict: no-acceptance`, and the verdict, scores, metrics, and per-turn decisions in the message. It must not change skill files, so its tree differs from the accepted-skill path while the evaluated skill remains the initial version; retries reuse the same commit instead of creating another; the commit must be readable by the platform before `test_final` is submitted (push the run branch or the commit first).
 - `EvolutionEvalPoller`:
   - The finalize follow-up re-enqueue condition checks both `test_baseline` and `test_final` instead of only `test_final`; finalize is enqueued only after both complete.
   - The polling path continues to update the row matching each `kind`; failures still go to `blocked(stage=eval)`.
@@ -97,15 +99,16 @@ finalize (all turns terminal)
 - A run cancelled or failed before finalization submits no test-set evaluation.
 - If the test-set template is unavailable or a submission fails, the final stage enters `blocked(stage=eval)` with an error that distinguishes `test_baseline` from `test_final`; turn 1 and completed iterations are unaffected.
 - Do not change the `validation_baseline` submission timing, gate logic, or candidate acceptance rules.
-- Do not change the commit selection for `test_baseline` and `test_final`: the former uses `base_commit`, the latter the last accepted turn (or `base_commit` when none).
+- Do not change `test_baseline` commit selection (`base_commit`); `test_final` still uses the last accepted commit when a turn was accepted, and switches to the result commit when no turn was accepted instead of falling back to `base_commit`.
 
 ## Implementation steps
 
 1. Split the submission entry points: startup submits only the validation baseline; add the two test-set submissions for the final stage.
 2. Adjust `advance`, `finalize`, and the poller enqueue/wait conditions so the final row is written only after both test-set evaluations complete.
-3. Update `retry`, failure, and event copy; confirm idempotent reuse for legacy runs and completed evaluations.
-4. Update the frontend final-step status and copy if needed, keeping the `initScore` and `bestScore` fields unchanged.
-5. Update design docs, the Agent Note, and tests: remove the "both baselines at startup" assertion and add coverage for "no testProjectId before finalization", "two test-set submissions in parallel at finalization", and "both must complete before finals are written".
+3. Implement the no-acceptance result commit: creation, idempotent reuse, and pushing it before submitting `test_final`; confirm it does not change skill files.
+4. Update `retry`, failure, and event copy; confirm idempotent reuse for legacy runs and completed evaluations.
+5. Update the frontend final-step status and copy if needed, keeping the `initScore` and `bestScore` fields unchanged.
+6. Update design docs, the Agent Note, and tests: remove the "both baselines at startup" and "no acceptance falls back to base_commit" assertions and add coverage for "no testProjectId before finalization", "two test-set submissions in parallel at finalization", "no-acceptance creates a result commit used as the final target", and "both must complete before finals are written".
 
 ## Dependencies and boundary
 
@@ -126,7 +129,8 @@ pnpm verify:docs
 - Data: the run-level evaluation tests in `bugfix-63-real-eval`, the full placeholder loop in `m5-11-evolution-recovery`, and the fake and real gateway stubs.
 - Expected:
   - No `testProjectId` submission occurs during startup or iteration; the test-set template launch count is 0.
-  - After all turns are terminal, the final stage submits one test-set evaluation for `base_commit` and one for the final commit, and both may be in flight in parallel.
+  - After all turns are terminal, the final stage submits one test-set evaluation for `base_commit` and one for the final commit; with an accepted turn the final commit is the last accepted one, without an accepted turn it is the new result commit, and both may be in flight in parallel.
+  - A no-acceptance run creates exactly one result commit and `test_final` targets it rather than `base_commit`; the result commit records verdict, scores, metrics, and per-turn decisions without changing skill files; retries do not create duplicates.
   - `evolution_finals` is written only after both complete; `init_score`, `best_score`, and `verdict` match current behavior.
   - A simulated test-set baseline failure moves the run to `blocked(stage=eval)` without affecting turn 1 or validated turns; `/retry` resubmits only the failed item.
   - A legacy run with a completed `test_baseline` is not resubmitted.
@@ -134,9 +138,9 @@ pnpm verify:docs
 ## Acceptance
 
 - The startup and iteration paths no longer submit `test_baseline`; the test-set template is never called before finalization.
-- The final stage has both `test_baseline` and `test_final`, on `base_commit` and the final commit respectively, and writes finals only after both complete.
+- The final stage has both `test_baseline` and `test_final`, on `base_commit` and the final commit respectively (the last accepted commit, or the result commit when no turn was accepted), and writes finals only after both complete.
 - `evolution_finals` keeps the same `init_score`, `best_score`, and `verdict` semantics, and the frontend final step can distinguish the two evaluations.
-- Legacy runs, failed retries, and runs with no accepted turn (baseline commit equals final commit) are covered by tests.
+- Legacy runs, failed retries, and runs with no accepted turn (the result commit is created and the final target is not `base_commit`) are covered by tests.
 - The relevant tests, flow, docs, and bilingual pairing gates pass.
 
 ## Gates and CI
