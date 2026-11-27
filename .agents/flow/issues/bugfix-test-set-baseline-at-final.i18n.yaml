@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-test-set-baseline-at-final.md
-bugfix-test-set-baseline-at-final.md: 8be3ceb28596f7821da58109ba1932b6b3506c7f
-bugfix-test-set-baseline-at-final.en.md: 9b290c34d4cede511f4dc3f8c611c345bf858e0d
+bugfix-test-set-baseline-at-final.md: c14a918c6b557966b3d41cf49d3c4120bb1126cf
+bugfix-test-set-baseline-at-final.en.md: 8e3bbf23af8f3266c19fe0831d442a6163109ec3
