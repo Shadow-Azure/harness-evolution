@@ -8,7 +8,7 @@ id: bugfix-71
 milestone: bugfix
 depends: []
 priority: P2
-status: ready
+status: in-progress
 scope:
   - apps/api/**
   - apps/web/**

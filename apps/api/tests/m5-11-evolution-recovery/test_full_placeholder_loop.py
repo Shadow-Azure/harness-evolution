@@ -21,7 +21,7 @@ import pytest_asyncio
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from pydantic import SecretStr
-from sqlalchemy import insert, text
+from sqlalchemy import insert, text, update
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
@@ -35,6 +35,7 @@ from app.db.models.evolution import (
     ClusterWrite,
     EvolutionRunRecord,
     ProbeClusterRecord,
+    evolution_rounds,
 )
 from app.db.models.jobs import JobRunRecord
 from app.service.events import EventBus
@@ -540,8 +541,9 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
         ),
     }
 
-    # Run-level baselines start before round 1 and gate its decision.
-    await submitter.submit_baselines(run)
+    # Only the validation baseline starts before round 1; the test set waits
+    # until the finalize stage.
+    await submitter.submit_validation_baseline(run)
 
     # Round 1: publish, evaluate, accept through real git.
     round_accept = await repository.get_round(ROUND_ACCEPT)
@@ -710,6 +712,172 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
     assert len(final_events) == 1
     assert final_events[0].payload is not None
     assert final_events[0].payload["pushStatus"] == "succeeded"
+
+
+async def test_no_acceptance_run_uses_one_result_commit_as_the_test_target(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+    database: Database,
+) -> None:
+    """A run with no accepted turn creates one empty result commit for test_final."""
+    bare, _seed, base_commit = remote_repo
+    repository = EvolutionRepository(database)
+    workspaces = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+        push_enabled=True,
+    )
+    run, clusters = await _prepare_full_run(
+        database,
+        repository,
+        workspaces,
+        repo_url=str(bare),
+        base_commit=base_commit,
+    )
+    async with database.transaction() as session:
+        await session.execute(
+            update(evolution_rounds)
+            .where(evolution_rounds.c.id == ROUND_ACCEPT)
+            .values(status="skipped", accepted=False, finished_at=NOW),
+        )
+    await repository.advance_unit(run.id, expected=5, target=6, cluster_count=2)
+    clock = NOW
+
+    def now() -> datetime:
+        """Return the mutable deterministic clock shared by all services."""
+        return clock
+
+    gateways = RoundGateway(
+        {
+            ROUND_REJECT: FakeEvalGateway(
+                EvalGatewayConfig.from_mapping(
+                    {
+                        "status": "completed",
+                        "currentScore": 80.0,
+                        "candidateScore": 70.0,
+                        "primaryMetricKey": "resolved_rate",
+                    },
+                ),
+            ),
+        },
+        FakeEvalGateway(
+            EvalGatewayConfig.from_mapping(
+                {
+                    "status": "completed",
+                    "currentScore": 80.0,
+                    "candidateScore": 90.0,
+                    "primaryMetricKey": "resolved_rate",
+                },
+            ),
+        ),
+    )
+    candidates = EvolutionCandidateService(
+        repository,
+        workspaces,
+        events=None,
+        push_interval_seconds=0,
+        sleep=_no_sleep,
+        now=now,
+    )
+    submitter = EvolutionEvalSubmitter(
+        repository,
+        lambda _run: gateways,
+        events=None,
+        now=now,
+        poll_interval=timedelta(minutes=5),
+    )
+    poller = EvolutionEvalPoller(
+        repository,
+        lambda _run: gateways,
+        JobCapture(),
+        events=None,
+        now=now,
+        poll_interval=timedelta(minutes=5),
+        timeout=timedelta(hours=2),
+    )
+    apply_service = EvolutionApplyService(
+        repository,
+        candidates,
+        ProbeReader(),
+        events=None,
+        now=now,
+    )
+    finalize_service = EvolutionFinalizeService(
+        repository,
+        workspaces,
+        events=None,
+        eval_submitter=submitter,
+        now=now,
+    )
+    await submitter.submit_validation_baseline(run)
+
+    round_reject = await repository.get_round(ROUND_REJECT)
+    assert round_reject is not None
+    trace = CandidateTrace(
+        cluster_id=clusters[1].probe_cluster_id,
+        cluster_title=clusters[1].probe_cluster_description,
+        probes=("probe-2",),
+        bad_cases=("case-probe-2",),
+        analysis="lower candidate score is rejected",
+    )
+    published = await candidates.publish(
+        run,
+        round_reject,
+        trace,
+        job_id="job-no-accept-publish",
+    )
+    await submitter.submit(run, published)
+    clock = NOW + timedelta(minutes=6)
+    assert await poller.run_once() >= 1
+
+    rejected = await apply_service.handle(
+        _job(
+            "evolution_apply",
+            job_id="job-no-accept-apply",
+            run_id=RUN_ID,
+            payload={"evolutionRoundId": ROUND_REJECT},
+        ),
+    )
+    assert rejected["accepted"] is False
+
+    pending = await finalize_service.handle(
+        _job("evolution_finalize", job_id="job-no-accept-final", run_id=RUN_ID),
+    )
+    assert pending["finalized"] is False
+    with_result = await repository.get_run(RUN_ID)
+    assert with_result is not None and with_result.result_commit is not None
+    result_commit = with_result.result_commit
+    assert result_commit != base_commit
+    assert _git(bare, "rev-parse", f"refs/heads/{BRANCH}") == result_commit
+    assert _git(bare, "diff", "--name-only", base_commit, result_commit) == ""
+    message = _git(bare, "log", "-1", "--format=%B", result_commit)
+    assert f"Harness-Run-Id: {RUN_ID}" in message
+    assert "Harness-Verdict: no-acceptance " in message
+    test_final = await repository.get_run_evaluation(RUN_ID, "test_final")
+    assert test_final is not None
+    assert test_final.eval_external_id == f"fake:{RUN_ID}:test_final:{result_commit}"
+
+    replay = await finalize_service.handle(
+        _job("evolution_finalize", job_id="job-no-accept-replay", run_id=RUN_ID),
+    )
+    assert replay["finalized"] is False
+    replayed = await repository.get_run(RUN_ID)
+    assert replayed is not None and replayed.result_commit == result_commit
+
+    clock = NOW + timedelta(minutes=12)
+    assert await poller.run_once() >= 2
+    finalized = await finalize_service.handle(
+        _job("evolution_finalize", job_id="job-no-accept-done", run_id=RUN_ID),
+    )
+    assert finalized["finalized"] is True
+    final = await repository.get_final(RUN_ID)
+    completed = await repository.get_run(RUN_ID)
+    assert final is not None and completed is not None
+    assert completed.status == "completed"
+    assert completed.result_commit == result_commit
+    assert final.verdict is False
+    assert final.init_score == 80.0
+    assert final.best_score == 90.0
 
 
 async def test_eval_result_null_backfill_rewrites_legacy_json_text(

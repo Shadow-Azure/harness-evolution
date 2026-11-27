@@ -606,6 +606,78 @@ async def test_terminal_followup_recovers_when_lifecycle_submit_fails(
     assert [item.kind for item in jobs.items] == ["evolution_finalize"]
 
 
+async def test_poller_waits_for_both_test_evaluations_before_finalize(
+    state: tuple[Database, EvolutionRepository],
+) -> None:
+    """A test-set evaluation still in flight suppresses the finalize follow-up."""
+    database, repository = state
+    async with database.transaction() as session:
+        await session.execute(
+            update(evolution_rounds)
+            .where(evolution_rounds.c.id == "round-apply")
+            .values(status="accepted", accepted=True, finished_at=NOW),
+        )
+        await session.execute(
+            update(evolution_runs)
+            .where(evolution_runs.c.id == "run-apply")
+            .values(progress_unit=6),
+        )
+    jobs = JobCapture()
+    poller = EvolutionEvalPoller(
+        repository,
+        lambda _run: (_ for _ in ()).throw(AssertionError("gateway must not run")),
+        jobs,
+        events=None,
+        now=lambda: NOW,
+    )
+
+    baseline = await repository.ensure_run_evaluation("run-apply", "test_baseline")
+    await _complete_test_evaluation(repository, baseline, score=80.0)
+    final = await repository.ensure_run_evaluation("run-apply", "test_final")
+    final = await repository.mark_run_eval_submitted(
+        final.id,
+        external_id="eval-final-running",
+        started_at=NOW,
+        next_poll_at=NOW + timedelta(hours=1),
+    )
+
+    assert await poller.run_once() == 0
+    assert jobs.items == []
+
+    await _complete_test_evaluation(repository, final, score=90.0)
+
+    assert await poller.run_once() == 1
+    assert [item.kind for item in jobs.items] == ["evolution_finalize"]
+
+
+async def _complete_test_evaluation(
+    repository: EvolutionRepository,
+    evaluation: Any,
+    *,
+    score: float,
+) -> None:
+    """Finish one run-level evaluation directly without a gateway round-trip."""
+    if evaluation.eval_external_id is None:
+        await repository.mark_run_eval_submitted(
+            evaluation.id,
+            external_id=f"eval-{evaluation.kind}",
+            started_at=NOW,
+            next_poll_at=NOW + timedelta(hours=1),
+        )
+    changed = await repository.save_run_eval_result(
+        evaluation.id,
+        result={
+            "candidateScore": score,
+            "primaryMetricKey": "score",
+            "direction": "higher_is_better",
+            "metrics": [],
+        },
+        score=score,
+        finished_at=NOW,
+    )
+    assert changed is True
+
+
 def test_decision_text_uses_numeric_score_direction() -> None:
     """External verdict stays authoritative without making the score prose lie."""
     accepted_lower = EvalResult(

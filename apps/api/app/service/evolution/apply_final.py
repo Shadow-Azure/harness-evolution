@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, NoReturn, Protocol
 
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.probe_query import ProbeHitRow
@@ -31,6 +31,7 @@ from app.service.evolution.events import EvolutionRunEventService
 from app.service.evolution.git_candidate import (
     CandidateTrace,
     EvolutionCandidateService,
+    build_no_acceptance_message,
 )
 from app.service.evolution.git_failures import classify_git_failure
 from app.third_party_api.git.workspace import (
@@ -217,16 +218,13 @@ class EvolutionApplyService:
 
 
 class RunEvalFinalizer(Protocol):
-    """Submit the held-out test-set evaluation that closes one run."""
+    """Submit the held-out test-set evaluations that close one run."""
 
-    async def submit_baselines(self, run: EvolutionRunRecord) -> None:
-        """Ensure both run-level baselines exist."""
+    async def submit_validation_baseline(self, run: EvolutionRunRecord) -> None:
+        """Ensure the validation baseline exists for legacy runs."""
 
-    async def submit_test_final(
-        self,
-        run: EvolutionRunRecord,
-    ) -> EvolutionEvaluationRecord:
-        """Submit the test-set final exactly once and return its durable row."""
+    async def submit_test_evaluations(self, run: EvolutionRunRecord) -> None:
+        """Submit the test-set baseline and final together exactly once."""
 
 
 class EvolutionFinalizeService:
@@ -290,14 +288,21 @@ class EvolutionFinalizeService:
             }
         retry_attempts = _job_retry_attempts(job)
         if self._eval_submitter is not None:
-            await self._eval_submitter.submit_baselines(run)
-            test_final = await self._eval_submitter.submit_test_final(run)
-            if test_final.eval_status != "completed":
+            await self._eval_submitter.submit_validation_baseline(run)
+            if not any(round_.accepted for round_ in rounds):
+                # A legacy no-acceptance run may already have a test final in
+                # flight or completed on base_commit; keep that target instead
+                # of adding an unused result commit to the run branch.
+                existing_final = await self._runs.get_run_evaluation(run.id, "test_final")
+                if existing_final is None or existing_final.eval_external_id is None:
+                    run = await self._ensure_result_commit(run, rounds, retry_attempts)
+            await self._eval_submitter.submit_test_evaluations(run)
+            if not await self._test_evaluations_completed(run.id):
                 return {
                     "runId": run.id,
                     "status": run.status,
                     "finalized": False,
-                    "reason": "test-set final evaluation is pending",
+                    "reason": "test-set evaluations are pending",
                 }
         await checkpoint(self._runs, run.id)
         try:
@@ -306,52 +311,18 @@ class EvolutionFinalizeService:
             )
             prepared = _prepared_workspace(run)
         except Exception as exc:
-            message = sanitize_message(str(exc), limit=2_000)
-            await self._runs.mark_blocked(
-                run.id,
-                stage="push",
-                message=message,
-                error_stage="final",
-                next_retry_at=None,
-                retry_attempts=retry_attempts,
-            )
-            raise RunBlocked(
-                message,
-                stage="push",
-                error_stage="final",
-                next_retry_at=None,
-                retry_attempts=retry_attempts,
-                retryable=False,
-            ) from None
+            await self._raise_final_failure(run, exc, retry_attempts)
         await checkpoint(self._runs, run.id)
         try:
             await self._workspaces.publish_run_branch(
                 prepared,
                 run,
                 expected_run_id=run.id,
-                require_trailer=any(round_.accepted for round_ in rounds),
+                require_trailer=any(round_.accepted for round_ in rounds)
+                or run.result_commit is not None,
             )
         except GitOperationError as exc:
-            disposition = classify_git_failure(exc)
-            message = sanitize_message(str(exc), limit=2_000)
-            retry_at = next_retry_at(self._now(), retry_attempts) if exc.retryable else None
-            await self._runs.mark_blocked(
-                run.id,
-                stage="push",
-                message=message,
-                error_stage=disposition.error_stage,
-                next_retry_at=retry_at,
-                retry_attempts=retry_attempts,
-            )
-            raise RunBlocked(
-                message,
-                stage="push",
-                error_stage=disposition.error_stage,
-                next_retry_at=retry_at,
-                retry_attempts=retry_attempts,
-                retryable=exc.retryable,
-                detail=exc.detail,
-            ) from None
+            await self._raise_push_failure(run, exc, retry_attempts)
         push_status = "succeeded" if self._workspaces.push_enabled else "skipped"
         completed = await self._runs.complete_run(
             run.id,
@@ -395,6 +366,103 @@ class EvolutionFinalizeService:
         ):
             return _final_values(run, rounds)
         return _test_final_values(run, rounds, baseline, test_final)
+
+    async def _ensure_result_commit(
+        self,
+        run: EvolutionRunRecord,
+        rounds: Sequence[EvolutionRoundRecord],
+        retry_attempts: int,
+    ) -> EvolutionRunRecord:
+        """Create and persist the no-acceptance result commit exactly once.
+
+        The empty commit changes no skill file, records the pre-test terminal
+        facts, and is pushed before the test-set final is submitted so the
+        evaluation platform can read it.
+        """
+        if run.result_commit:
+            return run
+        try:
+            prepared = _prepared_workspace(run)
+            init_score, best_score, direction, metrics = _no_acceptance_facts(run, rounds)
+            message = build_no_acceptance_message(
+                run,
+                rounds,
+                init_score=init_score,
+                best_score=best_score,
+                direction=direction,
+                metrics=metrics,
+            )
+            commit = await self._workspaces.ensure_result_commit(
+                prepared,
+                run_id=run.id,
+                message=message,
+            )
+            return await self._runs.record_result_commit(run.id, commit)
+        except GitOperationError as exc:
+            await self._raise_push_failure(run, exc, retry_attempts)
+        except Exception as exc:
+            await self._raise_final_failure(run, exc, retry_attempts)
+
+    async def _test_evaluations_completed(self, run_id: str) -> bool:
+        """Return whether both held-out test-set evaluations finished."""
+        for kind in ("test_baseline", "test_final"):
+            evaluation = await self._runs.get_run_evaluation(run_id, kind)
+            if evaluation is None or evaluation.eval_status != "completed":
+                return False
+        return True
+
+    async def _raise_push_failure(
+        self,
+        run: EvolutionRunRecord,
+        exc: GitOperationError,
+        retry_attempts: int,
+    ) -> NoReturn:
+        """Persist one push failure with its retry classification and raise."""
+        disposition = classify_git_failure(exc)
+        message = sanitize_message(str(exc), limit=2_000)
+        retry_at = next_retry_at(self._now(), retry_attempts) if exc.retryable else None
+        await self._runs.mark_blocked(
+            run.id,
+            stage="push",
+            message=message,
+            error_stage=disposition.error_stage,
+            next_retry_at=retry_at,
+            retry_attempts=retry_attempts,
+        )
+        raise RunBlocked(
+            message,
+            stage="push",
+            error_stage=disposition.error_stage,
+            next_retry_at=retry_at,
+            retry_attempts=retry_attempts,
+            retryable=exc.retryable,
+            detail=exc.detail,
+        ) from None
+
+    async def _raise_final_failure(
+        self,
+        run: EvolutionRunRecord,
+        exc: Exception,
+        retry_attempts: int,
+    ) -> NoReturn:
+        """Persist one non-git finalization failure and raise the stable error."""
+        message = sanitize_message(str(exc), limit=2_000)
+        await self._runs.mark_blocked(
+            run.id,
+            stage="push",
+            message=message,
+            error_stage="final",
+            next_retry_at=None,
+            retry_attempts=retry_attempts,
+        )
+        raise RunBlocked(
+            message,
+            stage="push",
+            error_stage="final",
+            next_retry_at=None,
+            retry_attempts=retry_attempts,
+            retryable=False,
+        ) from None
 
     async def _record(
         self,
@@ -453,6 +521,53 @@ def _measurement_result(payload: Mapping[str, Any] | None) -> EvalResult | None:
         metrics=measurement.metrics,
         direction=measurement.direction,
     )
+
+
+def _no_acceptance_facts(
+    run: EvolutionRunRecord,
+    rounds: Sequence[EvolutionRoundRecord],
+) -> tuple[float, float, str, list[dict[str, Any]]]:
+    """Summarize the validation scores recorded before the test-set final."""
+    evaluated: list[tuple[float, float]] = []
+    direction = "higher_is_better"
+    for round_ in rounds:
+        payload = round_.eval_result
+        if payload is None:
+            continue
+        current = payload.get("currentScore")
+        candidate = payload.get("candidateScore")
+        if (
+            isinstance(current, bool)
+            or not isinstance(current, (int, float))
+            or isinstance(candidate, bool)
+            or not isinstance(candidate, (int, float))
+        ):
+            continue
+        if not evaluated:
+            stored = payload.get("direction")
+            if stored in {"higher_is_better", "lower_is_better"}:
+                direction = stored
+        evaluated.append((float(current), float(candidate)))
+    init_score = evaluated[0][0] if evaluated else 0.0
+    candidates = [candidate for _current, candidate in evaluated]
+    best_score = (
+        max((init_score, *candidates))
+        if direction == "higher_is_better"
+        else min((init_score, *candidates))
+    )
+    metric_key = run.eval_config.get("primaryMetricKey")
+    name = metric_key.strip() if isinstance(metric_key, str) and metric_key.strip() else "score"
+    metrics = [
+        {
+            "name": name,
+            "init": init_score,
+            "best": best_score,
+            "delta": best_score - init_score,
+            "unit": "",
+            "direction": direction,
+        },
+    ]
+    return init_score, best_score, direction, metrics
 
 
 def _final_values(
