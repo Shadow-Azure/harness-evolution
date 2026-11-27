@@ -67,16 +67,27 @@ github:
 
 外部契约已核对：评测平台 `ai-eval-platform@main d5231fe` 的 `asset_override.asset_paths` 是 `list[str]`、无数量上限、整字段替换、一次 launch 共用一个 commit、任一路径缺失整单 422；因此测试工程与主指标由成员共享，与平台"一次 launch 一个模板"一致。
 
-### 原型方案截图
+### 原型与实现截图
 
-截图只在本地保留，不随仓库分发（`.gitignore` 已忽略全部图片格式）。目标态的四个页面：
+截图由 release [evidence-issue-640](https://github.com/Shadow-Azure/harness-evolution/releases/tag/evidence-issue-640) 托管，不进仓库；点击图面可看原图。
 
-- **配置**：共享块（仓库 / 基线 / 验证集与测试集工程 ID / 主指标 / 归因 Skill）+ 可增删的成员行。
-- **启动向导**：单选一条配置，成员只读列出，版本与测试工程共用。
-- **run 详情**：配置名 + 成员 chip + 共享测试工程 + 改动范围。
-- **工作区**：改动范围列出每个成员目录的 glob。
+生产实现的上线前后对照：
 
-复现：本地打开 `plans/ui-prototype-v2/harness-evolution.html`（`?u=admin&page=overview&tab=targets`、`?demo=wizard1`、`?demo=run`），或运行 `capture.mjs before|after` 重新生成前后截图；修改前对照与说明见 [18 §6.5](../../../plans/fullstack-design/18-multi-member-evolution-target.md#65-原型截图)。
+| 页面 | 修改前 | 修改后 |
+|---|---|---|
+| 配置弹窗 | ![修改前：单对象配置](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/before-target-dialog.png) | ![修改后：共享块 + 成员行](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/after-target-dialog.png) |
+| 配置列表 | ![修改前：单对象一行](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/before-targets-table.png) | ![修改后：配置 + 成员](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/after-targets-table.png) |
+
+原型（V2 原型页）的目标态前后对照：
+
+| 页面 | 修改前 | 修改后 |
+|---|---|---|
+| 配置弹窗 | ![修改前：单对象表单](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/before-target-form.png) | ![修改后：共享块 + 成员行](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/after-target-form.png) |
+| 启动向导第 1 步 | ![修改前：单对象下拉](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/before-wizard-step1.png) | ![修改后：单选配置 + 只读成员](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/after-wizard-step1.png) |
+| run 详情第 1 步 | ![修改前：单对象](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/before-run-scope.png) | ![修改后：成员 + 共享测试工程 + 改动范围](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/after-run-scope.png) |
+| 工作区折叠 | ![修改前：子目录](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/before-run-workspace.png) | ![修改后：改动范围](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/after-run-workspace.png) |
+
+四个目标态页面的文字说明：**配置**为共享块（仓库 / 基线 / 验证集与测试集工程 ID / 主指标 / 归因 Skill）+ 可增删的成员行；**启动向导**单选一条配置，成员只读列出，版本与测试工程共用；**run 详情**展示配置名、成员 chip、共享测试工程与改动范围；**工作区**改动范围列出每个成员目录的 glob。复现：本地打开 `plans/ui-prototype-v2/harness-evolution.html`（`?u=admin&page=overview&tab=targets`、`?demo=wizard1`、`?demo=run`），或运行 `capture.mjs before|after`；详细说明见 [18 §6.5](../../../plans/fullstack-design/18-multi-member-evolution-target.md#65-原型截图)。
 
 ## 目标
 

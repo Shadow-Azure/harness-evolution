@@ -69,14 +69,25 @@ The external contract is verified: in `ai-eval-platform@main d5231fe`, `asset_ov
 
 ### Prototype screenshots
 
-Screenshots are kept locally only and are not distributed with the repository (`.gitignore` ignores every image format). The four target-state pages:
+Screenshots are hosted by the release [evidence-issue-640](https://github.com/Shadow-Azure/harness-evolution/releases/tag/evidence-issue-640) and are not committed to the repository; click an image for the original.
 
-- **Configuration**: a shared block (repository / baseline / validation and test project IDs / primary metric / attribution Skill) plus editable member rows.
-- **Launch wizard**: one configuration is selected, members are read-only, and the version plus test projects are shared.
-- **Run detail**: the configuration name, member chips, shared test projects, and the change scope.
-- **Workspace**: the change scope lists one glob per member directory.
+The shipped implementation, before and after:
 
-Reproduce locally by opening `plans/ui-prototype-v2/harness-evolution.html` (`?u=admin&page=overview&tab=targets`, `?demo=wizard1`, `?demo=run`) or by running `capture.mjs before|after`; the before state and the explanation are in [18 §6.5](../../../plans/fullstack-design/18-multi-member-evolution-target.md#65-原型截图).
+| Screen | Before | After |
+|---|---|---|
+| Configuration dialog | ![Before: single-object form](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/before-target-dialog.png) | ![After: shared block plus member rows](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/after-target-dialog.png) |
+| Configuration list | ![Before: one row per object](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/before-targets-table.png) | ![After: configuration plus members](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/after-targets-table.png) |
+
+The prototype (V2 prototype page), before and after:
+
+| Screen | Before | After |
+|---|---|---|
+| Configuration dialog | ![Before: single-object form](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/before-target-form.png) | ![After: shared block plus member rows](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/after-target-form.png) |
+| Launch wizard step 1 | ![Before: single-object dropdown](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/before-wizard-step1.png) | ![After: single configuration with read-only members](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/after-wizard-step1.png) |
+| Run detail step 1 | ![Before: single object](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/before-run-scope.png) | ![After: members, shared test projects, change scope](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/after-run-scope.png) |
+| Workspace collapse | ![Before: sub-directory](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/before-run-workspace.png) | ![After: change scope](https://github.com/Shadow-Azure/harness-evolution/releases/download/evidence-issue-640/after-run-workspace.png) |
+
+The four target-state pages in words: **Configuration** is a shared block (repository / baseline / validation and test project IDs / primary metric / attribution Skill) plus editable member rows; the **launch wizard** selects one configuration with read-only members and shared version and test projects; **run detail** shows the configuration name, member chips, shared test projects, and the change scope; the **workspace** change scope lists one glob per member directory. Reproduce by opening `plans/ui-prototype-v2/harness-evolution.html` (`?u=admin&page=overview&tab=targets`, `?demo=wizard1`, `?demo=run`) or running `capture.mjs before|after`; the details are in [18 §6.5](../../../plans/fullstack-design/18-multi-member-evolution-target.md#65-原型截图).
 
 ## Goals
 

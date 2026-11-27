@@ -253,7 +253,7 @@ evolution_run_targets
 
 ### 6.5 原型截图
 
-截图只在本地保留，不随仓库分发（`.gitignore` 已忽略全部图片格式）。四个目标态页面：
+截图由 release [evidence-issue-640](https://github.com/Shadow-Azure/harness-evolution/releases/tag/evidence-issue-640) 托管，不随仓库分发（`.gitignore` 已忽略全部图片格式）。四个目标态页面：
 
 - **配置弹窗**：共享块（仓库 / 基线 / 验证集与测试集工程 ID / 主指标 / 归因 Skill）+ 可增删的成员行。
 - **向导第 1 步**：单选一条配置，成员只读列出，版本与测试工程共用。
@@ -286,4 +286,4 @@ evolution_run_targets
 
 - 原型：`plans/ui-prototype-v2/harness-evolution.html`（`?u=admin&page=overview&tab=targets`、`?demo=wizard1`、`?demo=run`）。
 - 取证脚本：`plans/ui-prototype-v2/evidence/multi-object-target/capture.mjs`；内联脚本 `embed.py`。
-- 截图只在本地保留（不进仓库）；评审以本地原型与重新生成的截图为准。
+- 截图上传到 release `evidence-issue-640`（不进仓库）；评审以原型与 release 截图为准，本地可用 `capture.mjs` 重新生成。
