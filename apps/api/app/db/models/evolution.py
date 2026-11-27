@@ -167,6 +167,7 @@ evolution_run_targets = Table(
     Column("target_version", String(96), nullable=False),
     Column("target_revision", String(96), nullable=True),
     Column("sub_dir", String(512), nullable=False),
+    Column("match_by_name", Boolean, nullable=False, server_default=false()),
     Column("base_commit", String(40), nullable=True),
     UniqueConstraint("run_id", "seq", name="uq_evolution_run_targets_run_seq"),
     UniqueConstraint(
@@ -407,6 +408,7 @@ class EvolutionRunTargetRecord:
     target_config_id: str | None = None
     member_id: str | None = None
     base_commit: str | None = None
+    match_by_name: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -847,6 +849,7 @@ def record_from_evolution_run_target(
         target_config_id=_optional_text(row.get("target_config_id")),
         member_id=_optional_text(row.get("member_id")),
         base_commit=_optional_text(row.get("base_commit")),
+        match_by_name=bool(row.get("match_by_name", False)),
     )
 
 

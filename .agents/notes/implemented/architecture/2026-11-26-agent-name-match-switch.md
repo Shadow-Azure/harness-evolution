@@ -4,6 +4,8 @@ Status: implemented
 
 [English](2026-11-26-agent-name-match-switch.en.md) | 中文
 
+> 本决策的部署级开关已被 [成员级名称匹配](2026-11-27-member-name-match-switch.md) 取代；本记录保留当时的取舍。
+
 ## Problem
 
 agent 进化对象以 `digest:<sha256(normalize_definition_body(body))>` 作为版本身份；总览版本行按事件 `object_revision`/`definition_hash` 过滤。正文在版本、轨迹快照或运行时注入之间变化时，同名 agent 会被拆成多行：配置 ref 对应的版本行按 hash 过滤后为 0 个 Session，而同一名称的轨迹明明存在。向导与启动本来就按「对象类型 + 名称」关联，总览却按 hash，两个口径不一致。直接改成名称匹配会牺牲同名不同正文的版本精确性，也与「未知不猜名称」的既有决策冲突。
