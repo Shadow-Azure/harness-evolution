@@ -135,7 +135,7 @@ git -C cache fetch --depth 1 --no-tags origin refs/heads/main   # recovers
 ## 独立验证
 
 ```sh
-pnpm test:api -- tests/bugfix-68-stale-shallow-lock
+pnpm test:api -- tests/bugfix-69-stale-shallow-lock
 pnpm test:api -- tests/m19-01-git-single-ref
 pnpm test:api -- tests/m24-01-git-single-ref-workspace
 pnpm verify:docs
@@ -159,7 +159,7 @@ pnpm verify:flow
 
 ## 门禁与 CI
 
-- `pnpm test:api`（新增 bugfix-68 测试与 m19、m24 回归）、`pnpm verify:docs`（中英配对与链接）、`pnpm verify:flow`（本 issue 的三件套与状态）。
+- `pnpm test:api`（新增 bugfix-69 测试与 m19、m24 回归）、`pnpm verify:docs`（中英配对与链接）、`pnpm verify:flow`（本 issue 的三件套与状态）。
 - 涉及 `third_party_api/git` 的失败分类与日志改动需同步单测；不新增契约字段时不引入契约变更。
 - CI 必须执行新增测试；真实 SIGKILL 用例只使用本地文件 remote 与临时目录，不访问外网、不依赖生产数据。
 

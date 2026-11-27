@@ -135,7 +135,7 @@ git -C cache fetch --depth 1 --no-tags origin refs/heads/main   # recovers
 ## Verification
 
 ```sh
-pnpm test:api -- tests/bugfix-68-stale-shallow-lock
+pnpm test:api -- tests/bugfix-69-stale-shallow-lock
 pnpm test:api -- tests/m19-01-git-single-ref
 pnpm test:api -- tests/m24-01-git-single-ref-workspace
 pnpm verify:docs
@@ -159,7 +159,7 @@ pnpm verify:flow
 
 ## Gates and CI
 
-- `pnpm test:api` (new bugfix-68 tests plus m19 and m24 regressions), `pnpm verify:docs` (bilingual pairing and links), and `pnpm verify:flow` (the issue triplet and status).
+- `pnpm test:api` (new bugfix-69 tests plus m19 and m24 regressions), `pnpm verify:docs` (bilingual pairing and links), and `pnpm verify:flow` (the issue triplet and status).
 - Failure-classification and logging changes in `third_party_api/git` need matching unit tests; without new contract fields there is no contract change.
 - CI must run the new tests; real SIGKILL cases use only a local file remote and a temporary directory, with no external network and no production data.
 
