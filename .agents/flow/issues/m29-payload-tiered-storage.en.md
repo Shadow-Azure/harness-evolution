@@ -84,7 +84,31 @@ Use the claim check pattern: upload the payload object to object storage and kee
 
 ### Option C. Reference-only re-download
 
-This is the direction first raised: keep no payload, only `(runtime_key, root_session_id, agent_id)` and the upstream address, and download on low-frequency access. It only works for `http_api` rows; `script` rows are written directly by third-party scripts and have no upstream to call. Even for `http_api`, the upstream contract is a client contract defined by this service, not a long-term archive promise from upstream; retention, availability, and immutability are not under this service's control. A parser upgrade triggers a batch replay and turns one database scan into many HTTP requests, with 404/410, 429, timeout, and content-drift failures. It fits "recover a missing object", not "the only copy".
+This is the direction first raised: keep no payload, only `(runtime_key, root_session_id, agent_id)` and the upstream address, and download on low-frequency access. It turns "what to store" into "how to fetch" and saves the most primary-database space under ideal conditions.
+
+**Advantages**
+
+- Maximum primary-DB reduction: the row keeps only identity, hash, `source_type`, and a little metadata; payload bytes drop to zero, with no object-storage bucket, lifecycle, or extra backup.
+- Reuses the existing re-download entry: `HttpTrajectorySource.fetch(session_id)` already exists, and pull and bad-case sync share the same contract; no new storage service.
+- One copy and clear ownership: upstream keeps the raw trace; this service does not carry a second large-text copy, encryption, backup, or deletion, and retention belongs to upstream.
+- Enough for "recent sessions only": if the product only revisits recent sessions and upstream retention covers that window, C's read path is acceptable.
+
+**Disadvantages and risks**
+
+- Incomplete coverage: only `source_type = http_api`; `script` rows written by third-party scripts have no upstream address and still need the primary database or object storage. C cannot be the whole-table design.
+- Upstream is not an archive: the contract is a client contract defined by this service, not a long-term retention promise; 404/410, retention expiry, or tenant deletion can make the raw text permanently unavailable. Normalized tables remain, but evidence and parser-upgrade replay lose their source.
+- Content can drift: a re-download may bring new events or a truncated history; when `content_hash` differs, rejecting fails replay and accepting rewrites existing normalized results, so a version or conflict policy is required.
+- Expensive replay: a parser upgrade triggers a large pending batch; C turns one database scan into N upstream requests. 429s, timeouts, concurrency limits, and partial failures make replay slow and non-deterministic.
+- Read latency and availability: every cold read or attribution needs a network GET; an upstream outage directly makes evidence unavailable. Adding a cache returns to a "second copy", which conflicts with C's space-saving goal.
+- Security and audit: payload leaves this service's storage; access control, redaction boundaries, deletion audit, and compliance retention depend more on upstream, and this service can less easily prove "what the evidence was at that time".
+
+**Example flow (an `http_api` root S with a main agent and one subagent)**
+
+1. Write: bad-case sync calls `fetch(S)`, gets the main and subagent JSONL, computes `H_main` and `H_sub`, and writes only identity, `content_hash`, `line_count`, and `source_type=http_api` to `trajectory_payloads`; no payload is stored.
+2. Read: normalization or attribution finds the row by `(claude-code, S, main)`; `load_payload` finds no local payload and calls `fetch(S)` for the whole package.
+3. Verify: compute SHA-256 for the main and subagent payloads; normalize only when each matches its row hash. If the subagent is missing or the hash differs, isolate that root, keep the normalized data, and record a diagnosis.
+4. Replay: after a parser upgrade, the scheduler lists all pending roots; it re-downloads per root with bounded concurrency (for example, 4) and retries; N roots means N upstream requests, and any failure affects only that root.
+5. Failure: upstream returns 404/410 or retention has expired; the row remains but the payload is permanently unavailable. The read path returns a stable "source expired" diagnosis and never fakes empty content; recovery depends on upstream providing it again or an earlier backup.
 
 ### Option D. MySQL native page compression
 

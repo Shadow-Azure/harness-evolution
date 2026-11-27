@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m29-payload-tiered-storage.md
-m29-payload-tiered-storage.md: 83c5c94b3a8eb7a540f7e4e0f5c311273dbd6940
-m29-payload-tiered-storage.en.md: f4b826e1e6005ad1cbdf6804a8727132b0c4871b
+m29-payload-tiered-storage.md: b7add3e3c0ce6d9672752d7c808b611c7f04dd6a
+m29-payload-tiered-storage.en.md: 7f1c8dadbedf17e6600c2b6103dadab7f311aebe
