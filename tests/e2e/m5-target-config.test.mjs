@@ -610,7 +610,7 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
         };
       })()`,
     );
-    assert.ok(Math.abs(dialogLayout.width - 720) <= 1, JSON.stringify(dialogLayout));
+    assert.ok(Math.abs(dialogLayout.width - 760) <= 1, JSON.stringify(dialogLayout));
     assert.equal(dialogLayout.radius, "14px", JSON.stringify(dialogLayout));
     assert.equal(dialogLayout.headPadding, "14px 18px", JSON.stringify(dialogLayout));
     assert.equal(dialogLayout.bodyPadding, "18px");

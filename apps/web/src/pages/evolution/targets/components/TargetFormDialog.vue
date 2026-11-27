@@ -428,7 +428,7 @@ watch(
     :show-close="!submitting"
     :teleported="false"
     :title="title"
-    width="min(720px, calc(100vw - 32px))"
+    width="min(760px, calc(100vw - 32px))"
     @close="close"
   >
     <form
@@ -438,210 +438,216 @@ watch(
       @submit.prevent="submit"
     >
       <ElForm label-position="top">
-        <ElFormItem label="归因 Skill">
-          <select
-            v-model="form.attributionPackageId"
-            aria-label="归因 Skill"
-            :disabled="packagesLoading"
-            class="skill-select"
-          >
-            <option
-              v-if="unboundLabel"
-              :value="null"
-            >
-              {{ unboundLabel }}
-            </option>
-            <option
-              v-if="!packages.length"
-              value="default-attribute-badcases"
-            >
-              attribute-badcases
-            </option>
-            <option
-              v-for="item in packages"
-              :key="item.id"
-              :value="item.id"
-            >
-              {{ item.skillName }}
-            </option>
-          </select>
-          <p
-            v-if="form.attributionPackageId && runtimeEnabled !== undefined"
-            class="field-help"
-          >
-            {{ runtimeEnabled ? "保存绑定后，后台将分析当前与该对象关联的 Badcase。" : "归因运行时不可用。绑定会保存，运行时恢复并重启后开始后台归因。" }}
-          </p>
-        </ElFormItem>
         <details v-if="target?.definition">
           <summary>查看已保存的对象原文</summary>
           <p>{{ target.definition.path }} · {{ target.definition.commit }}</p>
           <pre class="definition-preview">{{ target.definition.preview }}</pre>
         </details>
-        <ElFormItem label="仓库地址">
-          <ElInput
-            v-model="form.repoUrl"
-            :aria-describedby="fieldDescribedBy('repoUrl')"
-            :aria-invalid="fieldAriaInvalid('repoUrl')"
-            maxlength="1024"
-            name="repoUrl"
-            placeholder="https://git.example.com/agent-skills.git"
-            @input="onFieldInput('repoUrl', $event)"
-          />
-          <p class="field-help">
-            仅填写无凭据的 HTTPS 或 SSH 地址，不要写入 token。
-          </p>
-          <p
-            v-if="hasFieldError('repoUrl')"
-            id="target-repoUrl-error"
-            class="field-error"
-          >
-            {{ fieldMessage("repoUrl") }}
-            <span
-              v-if="fieldSuggestion('repoUrl')"
-              class="field-suggestion"
-            >{{ fieldSuggestion("repoUrl") }}</span>
-          </p>
-        </ElFormItem>
-
-        <ElFormItem label="基线分支或标签">
-          <ElAutocomplete
-            ref="versionAutocomplete"
-            :aria-describedby="fieldDescribedBy('defaultRef')"
-            :aria-invalid="fieldAriaInvalid('defaultRef')"
-            autocomplete="off"
-            class="target-version-select"
-            data-testid="target-version-select"
-            :debounce="0"
-            :fetch-suggestions="fetchVersionSuggestions"
-            :model-value="form.defaultRef"
-            name="defaultRef"
-            placeholder="main / v2.0.0"
-            show-arrow
-            trigger-on-focus
-            @update:model-value="updateDefaultRef"
-          >
-            <template #suffix>
-              <button
-                aria-label="展开标签建议"
-                class="version-suggestion-toggle"
-                type="button"
-                @click.stop="openVersionSuggestions"
-                @mousedown.prevent
-              >
-                <span
-                  aria-hidden="true"
-                  class="version-suggestion-toggle-chevron"
-                />
-              </button>
-            </template>
-          </ElAutocomplete>
-          <p class="field-help">
-            {{ versionHelp }}
-          </p>
-          <p
-            v-if="hasFieldError('defaultRef')"
-            id="target-defaultRef-error"
-            class="field-error"
-          >
-            {{ fieldMessage("defaultRef") }}
-            <span
-              v-if="fieldSuggestion('defaultRef')"
-              class="field-suggestion"
-            >{{ fieldSuggestion("defaultRef") }}</span>
-          </p>
-        </ElFormItem>
-
-        <div class="form-grid">
-          <ElFormItem
-            label="验证集测试工程 ID"
-            required
-          >
+        <div class="target-shared-block">
+          <ElFormItem label="仓库地址">
             <ElInput
-              v-model="form.validationProjectId"
-              :aria-describedby="fieldDescribedBy('validationProjectId')"
-              :aria-invalid="fieldAriaInvalid('validationProjectId')"
-              maxlength="128"
-              name="validationProjectId"
-              placeholder="如 val-2026-q3"
-              @input="onFieldInput('validationProjectId', $event)"
+              v-model="form.repoUrl"
+              :aria-describedby="fieldDescribedBy('repoUrl')"
+              :aria-invalid="fieldAriaInvalid('repoUrl')"
+              maxlength="1024"
+              name="repoUrl"
+              placeholder="https://git.example.com/agent-skills.git"
+              @input="onFieldInput('repoUrl', $event)"
             />
+            <p class="field-help">
+              仅填写无凭据的 HTTPS 或 SSH 地址，不要写入 token。
+            </p>
             <p
-              v-if="hasFieldError('validationProjectId')"
-              id="target-validationProjectId-error"
+              v-if="hasFieldError('repoUrl')"
+              id="target-repoUrl-error"
               class="field-error"
             >
-              {{ fieldMessage("validationProjectId") }}
+              {{ fieldMessage("repoUrl") }}
               <span
-                v-if="fieldSuggestion('validationProjectId')"
+                v-if="fieldSuggestion('repoUrl')"
                 class="field-suggestion"
-              >{{ fieldSuggestion("validationProjectId") }}</span>
+              >{{ fieldSuggestion("repoUrl") }}</span>
             </p>
           </ElFormItem>
 
+          <div class="target-shared-row">
+            <ElFormItem label="基线分支或标签">
+              <ElAutocomplete
+                ref="versionAutocomplete"
+                :aria-describedby="fieldDescribedBy('defaultRef')"
+                :aria-invalid="fieldAriaInvalid('defaultRef')"
+                autocomplete="off"
+                class="target-version-select"
+                data-testid="target-version-select"
+                :debounce="0"
+                :fetch-suggestions="fetchVersionSuggestions"
+                :model-value="form.defaultRef"
+                name="defaultRef"
+                placeholder="main / v2.0.0"
+                show-arrow
+                trigger-on-focus
+                @update:model-value="updateDefaultRef"
+              >
+                <template #suffix>
+                  <button
+                    aria-label="展开标签建议"
+                    class="version-suggestion-toggle"
+                    type="button"
+                    @click.stop="openVersionSuggestions"
+                    @mousedown.prevent
+                  >
+                    <span
+                      aria-hidden="true"
+                      class="version-suggestion-toggle-chevron"
+                    />
+                  </button>
+                </template>
+              </ElAutocomplete>
+              <p class="field-help">
+                {{ versionHelp }}
+              </p>
+              <p
+                v-if="hasFieldError('defaultRef')"
+                id="target-defaultRef-error"
+                class="field-error"
+              >
+                {{ fieldMessage("defaultRef") }}
+                <span
+                  v-if="fieldSuggestion('defaultRef')"
+                  class="field-suggestion"
+                >{{ fieldSuggestion("defaultRef") }}</span>
+              </p>
+            </ElFormItem>
+
+            <ElFormItem label="归因 Skill">
+              <select
+                v-model="form.attributionPackageId"
+                aria-label="归因 Skill"
+                :disabled="packagesLoading"
+                class="skill-select"
+              >
+                <option
+                  v-if="unboundLabel"
+                  :value="null"
+                >
+                  {{ unboundLabel }}
+                </option>
+                <option
+                  v-if="!packages.length"
+                  value="default-attribute-badcases"
+                >
+                  attribute-badcases
+                </option>
+                <option
+                  v-for="item in packages"
+                  :key="item.id"
+                  :value="item.id"
+                >
+                  {{ item.skillName }}
+                </option>
+              </select>
+              <p
+                v-if="form.attributionPackageId && runtimeEnabled !== undefined"
+                class="field-help"
+              >
+                {{ runtimeEnabled ? "保存绑定后，后台将分析当前与该配置成员关联的 Badcase。" : "归因运行时不可用。绑定会保存，运行时恢复并重启后开始后台归因。" }}<span v-if="form.attributionPackageId">保存绑定时从指定版本读取每个成员的目录定义并保存原文快照。</span>
+              </p>
+            </ElFormItem>
+          </div>
+
+          <div class="target-shared-row">
+            <ElFormItem
+              label="验证集测试工程 ID"
+              required
+            >
+              <ElInput
+                v-model="form.validationProjectId"
+                :aria-describedby="fieldDescribedBy('validationProjectId')"
+                :aria-invalid="fieldAriaInvalid('validationProjectId')"
+                maxlength="128"
+                name="validationProjectId"
+                placeholder="如 val-2026-q3"
+                @input="onFieldInput('validationProjectId', $event)"
+              />
+              <p
+                v-if="hasFieldError('validationProjectId')"
+                id="target-validationProjectId-error"
+                class="field-error"
+              >
+                {{ fieldMessage("validationProjectId") }}
+                <span
+                  v-if="fieldSuggestion('validationProjectId')"
+                  class="field-suggestion"
+                >{{ fieldSuggestion("validationProjectId") }}</span>
+              </p>
+            </ElFormItem>
+
+            <ElFormItem
+              label="测试集测试工程 ID"
+              required
+            >
+              <ElInput
+                v-model="form.testProjectId"
+                :aria-describedby="fieldDescribedBy('testProjectId')"
+                :aria-invalid="fieldAriaInvalid('testProjectId')"
+                maxlength="128"
+                name="testProjectId"
+                placeholder="如 test-2026-q3"
+                @input="onFieldInput('testProjectId', $event)"
+              />
+              <p
+                v-if="hasFieldError('testProjectId')"
+                id="target-testProjectId-error"
+                class="field-error"
+              >
+                {{ fieldMessage("testProjectId") }}
+                <span
+                  v-if="fieldSuggestion('testProjectId')"
+                  class="field-suggestion"
+                >{{ fieldSuggestion("testProjectId") }}</span>
+              </p>
+            </ElFormItem>
+          </div>
+
+          <p class="field-help project-id-help">
+            验证集与测试集分别对应外部测试平台的测试工程 ID；只保存标识，不在此处校验工程是否存在。
+          </p>
+
           <ElFormItem
-            label="测试集测试工程 ID"
+            label="主指标 key"
             required
           >
             <ElInput
-              v-model="form.testProjectId"
-              :aria-describedby="fieldDescribedBy('testProjectId')"
-              :aria-invalid="fieldAriaInvalid('testProjectId')"
+              v-model="form.primaryMetricKey"
+              :aria-describedby="fieldDescribedBy('primaryMetricKey')"
+              :aria-invalid="fieldAriaInvalid('primaryMetricKey')"
               maxlength="128"
-              name="testProjectId"
-              placeholder="如 test-2026-q3"
-              @input="onFieldInput('testProjectId', $event)"
+              name="primaryMetricKey"
+              placeholder="如 resolved_rate"
+              @input="onFieldInput('primaryMetricKey', $event)"
             />
+            <p class="field-help">
+              对比验证集与测试集时使用的平台指标 metric_key；按平台给出的方向比较，候选必须严格更优才接纳。
+            </p>
             <p
-              v-if="hasFieldError('testProjectId')"
-              id="target-testProjectId-error"
+              v-if="hasFieldError('primaryMetricKey')"
+              id="target-primaryMetricKey-error"
               class="field-error"
             >
-              {{ fieldMessage("testProjectId") }}
+              {{ fieldMessage("primaryMetricKey") }}
               <span
-                v-if="fieldSuggestion('testProjectId')"
+                v-if="fieldSuggestion('primaryMetricKey')"
                 class="field-suggestion"
-              >{{ fieldSuggestion("testProjectId") }}</span>
+              >{{ fieldSuggestion("primaryMetricKey") }}</span>
             </p>
           </ElFormItem>
         </div>
 
-        <p class="field-help project-id-help">
-          验证集与测试集分别对应外部测试平台的测试工程 ID；只保存标识，不在此处校验工程是否存在。
-        </p>
-
-        <ElFormItem
-          label="主指标 key"
-          required
-        >
-          <ElInput
-            v-model="form.primaryMetricKey"
-            :aria-describedby="fieldDescribedBy('primaryMetricKey')"
-            :aria-invalid="fieldAriaInvalid('primaryMetricKey')"
-            maxlength="128"
-            name="primaryMetricKey"
-            placeholder="如 resolved_rate"
-            @input="onFieldInput('primaryMetricKey', $event)"
-          />
-          <p class="field-help">
-            对比验证集与测试集时使用的平台指标 metric_key；按平台给出的方向比较，候选必须严格更优才接纳。
-          </p>
-          <p
-            v-if="hasFieldError('primaryMetricKey')"
-            id="target-primaryMetricKey-error"
-            class="field-error"
-          >
-            {{ fieldMessage("primaryMetricKey") }}
-            <span
-              v-if="fieldSuggestion('primaryMetricKey')"
-              class="field-suggestion"
-            >{{ fieldSuggestion("primaryMetricKey") }}</span>
-          </p>
-        </ElFormItem>
-
-        <ElFormItem
-          label="成员"
-          required
-        >
+        <ElFormItem required>
+          <template #label>
+            <span class="member-label">成员</span>
+            <span class="member-label-hint">同一仓库里的 skill / agent；成员共享上面的仓库、基线、测试工程与主指标，但各自冻结定义、分别关联 bad case。</span>
+          </template>
           <div class="member-list">
             <div
               v-for="(member, index) in members"
@@ -746,8 +752,8 @@ watch(
           >
             再加一个成员
           </button>
-          <p class="field-help">
-            同一仓库里的 skill / agent；成员共享上面的仓库、基线、测试工程与主指标，但各自冻结定义、分别关联 bad case。<span v-if="form.attributionPackageId">保存绑定时从指定版本读取每个成员的目录定义并保存原文快照。</span>
+          <p class="member-notice">
+            保存后，后台会为<b>每个成员</b>关联当前已上报的 bad case；启动自进化时整条配置一起进化，评测把全部成员目录作为资产一次提交。
           </p>
         </ElFormItem>
       </ElForm>
@@ -842,10 +848,43 @@ watch(
   gap: 12px;
 }
 
-.form-grid {
+.target-shared-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-  gap: 12px;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 0 14px;
+  align-items: start;
+}
+
+.target-shared-block {
+  padding: 12px 14px 2px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel);
+}
+
+.member-label {
+  display: block;
+}
+
+.member-label-hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.member-notice {
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.6;
 }
 
 .member-list {
@@ -1050,7 +1089,7 @@ watch(
 }
 
 @media (max-width: 640px) {
-  .form-grid {
+  .target-shared-row {
     grid-template-columns: 1fr;
     gap: 0;
   }

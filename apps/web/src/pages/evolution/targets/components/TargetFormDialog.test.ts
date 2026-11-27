@@ -90,7 +90,7 @@ describe("TargetFormDialog", () => {
     const wrapper = await mountDialog();
 
     expect(wrapper.findComponent(ElDialog).props("width")).toBe(
-      "min(720px, calc(100vw - 32px))",
+      "min(760px, calc(100vw - 32px))",
     );
     expect(wrapper.find(".target-dialog-head").exists()).toBe(true);
     expect(wrapper.find(".target-dialog-body form").exists()).toBe(true);
