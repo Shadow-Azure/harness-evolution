@@ -32,6 +32,7 @@ milestones:
   - m25
   - m27
   - m28
+  - m29
   - bugfix
 ```
 
@@ -67,6 +68,7 @@ Harness Evolution connects traceable Claude Code sessions, reported problems, an
 - **m25 Session-scoped parser and trace selection**: can_parse selection and subclass session links.
 - **m27 Project introduction and README showcase**: rewrite the README around a capability map, one key screenshot and quick start, paired in Chinese and English while keeping the demo-data boundary.
 - **m28 Multi-member evolution target in one repository**: one configuration holds several skills or agents from the same repository, sharing the repository, baseline, test projects, and primary metric; each member freezes its own definition and associates its own bad cases, and one run evolves the whole set.
+- **m29 Trace payload tiered storage**: compress `trajectory_payloads.payload`, move low-frequency payloads to object storage, keep reads and replay, and use re-download only for recovery.
 
 ## Delivery rules
 

@@ -32,6 +32,7 @@ milestones:
   - m25
   - m27
   - m28
+  - m29
   - bugfix
 ```
 
@@ -67,6 +68,7 @@ Harness Evolution 用可回链的 Claude Code 轨迹、外部问题与归因数�
 - **m25 会话级 parser 与轨迹选型**：can_parse 选型、子类会话链接。
 - **m27 项目介绍与 README 展示**：以能力地图、关键截图和快速开始重写 README，中英成对并保持演示数据边界。
 - **m28 同仓多成员进化对象**：一条配置含同一仓库的多个 skill / agent，共享仓库、基线、测试工程与主指标；成员各自冻结定义、各自关联 bad case，一次 run 整组进化。
+- **m29 轨迹原始负载分层存储**：压缩 `trajectory_payloads.payload`，低频 payload 转对象存储；保留回读与重放，回源只作恢复。
 
 ## 实施规则
 
