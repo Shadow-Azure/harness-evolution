@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-overview-bad-case-paging-scroll.md
-bugfix-overview-bad-case-paging-scroll.md: 594eea9a5b2140fa2e88519a3b6ada2d29f46682
-bugfix-overview-bad-case-paging-scroll.en.md: 17968c1fc6e3ac7ff2386802a63f760f9cdacfb5
+bugfix-overview-bad-case-paging-scroll.md: af003c0256ea8d4f48f7d1f7d162c946332c8228
+bugfix-overview-bad-case-paging-scroll.en.md: 729ed2e16719f99b41a542f5b3fbd360039fa7fe

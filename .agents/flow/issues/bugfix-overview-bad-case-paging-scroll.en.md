@@ -4,7 +4,7 @@ English | [中文](bugfix-overview-bad-case-paging-scroll.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-76
+id: bugfix-78
 milestone: bugfix
 depends: []
 priority: P2
