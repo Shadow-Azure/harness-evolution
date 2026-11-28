@@ -29,6 +29,8 @@ Status: implemented
 
 ## Consequences
 
+文件报告采用基于 Session、选定对象身份与版本、bad case ID 的确定性摘要，供冻结的写入脚本复核。读取端使用库内完整的 `probe_id`，以便历史复合 ID 仍能定位到原报告。
+
 - m11-02 可以直接按 case 分页取归因并用 `at` 恢复详情；列表与详情共用同一 `probe_id`。
 - `attributionCount` 仍是查询时聚合，不随缓存命中或复用次数变化；关联行数只影响分页 `total`。
 - 历史行没有对象版本时，详情明确给出 `versionState=unknown` 与 `ATTRIBUTION_VERSION_UNKNOWN`，客户端不能把它描述成版本精确命中。

@@ -123,7 +123,7 @@ async def _seed(data_dir: Path, case_id: str, session_id: str) -> int:
                     updated_at=datetime(2026, 10, 20, 9, 6, tzinfo=SHANGHAI),
                 ),
                 _row(
-                    "probe-m11-02-0003",
+                    f"{session_id}*project-knowledge-context-review*{case_id}",
                     session_id=session_id,
                     probe_type="knowledge",
                     probe_object="project-knowledge",

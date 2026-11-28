@@ -30,7 +30,7 @@ class AttributionItem(IdentityModel):
     to ``objectVersion`` when they are absent.
     """
 
-    attribution_id: str = Field(max_length=64)
+    attribution_id: str
     bad_case_id: str = Field(max_length=64)
     object_type: AttributionObjectType
     object_name: str = Field(min_length=1, max_length=128)

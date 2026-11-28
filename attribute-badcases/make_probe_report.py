@@ -13,6 +13,7 @@ returns non-zero on validation failure.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -140,8 +141,20 @@ def build_report(
     if detail_description is not None and detail_description:
         from_bad_case["detail_description"] = detail_description
 
+    identity = json.dumps(
+        [
+            session_id,
+            selected_target.get("type"),
+            selected_target["name"],
+            selected_target.get("version"),
+            selected_target.get("revision"),
+            bad_case_id,
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
     report: dict[str, Any] = {
-        "probe_id": f"{session_id}*{selected_target['name']}*{bad_case_id}",
+        "probe_id": hashlib.sha256(identity.encode("utf-8")).hexdigest(),
         "selected_target": selected_target,
         "conclusion": conclusion,
         "root_cause": root_cause,

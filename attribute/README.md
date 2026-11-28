@@ -71,6 +71,6 @@ JOIN bad_case_analysis AS a ON a.probe_id = p.probe_id
 WHERE p.probe_id = :probe_id;
 ```
 
-查询参数 `:probe_id` 取平台数据库的报告 ID。脚本在 `probe_report.json` 中生成的 `probe_id` 由 Session、归因对象和 Badcase 组成，同一条 Badcase 重算时可能重复。
+查询用库内报告 ID，平台新建记录用 ULID。文件 `probe_id` 按输入复算为 64 字符 SHA-256。
 
 `sourceHash` 是脱敏提示词 UTF-8 字节的 SHA-256。`evidenceHash` 对三个证据文件的“文件名 → 字节 SHA-256”映射做规范 JSON 哈希；`inputHash` 对五个运行时输入的“文件名 → 实际文本”映射做规范 JSON 哈希。历史报告继续可读，启用归档前的报告可能没有对应的输入清单。备份和清理时请按工作空间保留数据库与这些共享快照，删除仍被清单引用的快照会导致重试校验失败。

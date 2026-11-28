@@ -29,6 +29,7 @@ const secret = "m11-02-signing-secret-with-sufficient-length";
 const ws = "/workspaces/ws-default";
 const sessionId = "10000000-0000-4000-8000-000000000001";
 const caseId = "badcase-synthetic-0001";
+const contextProbeId = `${sessionId}*project-knowledge-context-review*${caseId}`;
 let api;
 let web;
 let dataDir;
@@ -277,14 +278,14 @@ test("m11-02 multi-attribution error detail folds groups, pages by two and resto
     assert.equal(folded.count, "4");
     assert.deepEqual(
       folded.items.map((item) => item.id),
-      ["probe-m11-02-0003", "probe-m11-02-0002"],
+      [contextProbeId, "probe-m11-02-0002"],
     );
     assert.match(folded.items[0].text, /project-knowledge/);
     assert.match(folded.items[0].text, /可归因/);
     assert.match(folded.items[1].text, /非该对象问题/);
     assert.equal(
       folded.items[0].href,
-      `${ws}/sessions/${sessionId}/errors?case=${caseId}&tab=attr&at=probe-m11-02-0003`,
+      `${ws}/sessions/${sessionId}/errors?case=${caseId}&tab=attr&at=${contextProbeId}`,
     );
     assert.match(folded.pager, /1 \/ 2/);
     assert.match(folded.filter, /有归因 2/);
@@ -351,7 +352,7 @@ test("m11-02 multi-attribution error detail folds groups, pages by two and resto
 
     await clientNavigate(
       page,
-      `${ws}/sessions/${sessionId}/errors?case=${caseId}&tab=attr&at=probe-m11-02-0003`,
+      `${ws}/sessions/${sessionId}/errors?case=${caseId}&tab=attr&at=${contextProbeId}`,
     );
     await waitForDocument(
       page.session,

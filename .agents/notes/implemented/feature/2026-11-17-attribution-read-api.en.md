@@ -29,6 +29,8 @@ A bad case can link several `probe_reports` rows through `bad_case_analysis`, bu
 
 ## Consequences
 
+The file writer derives a deterministic digest from the Session, selected target identity and version, and bad case ID so the frozen writer can reproduce it. Reads use the complete stored `probe_id` to resolve historical composite IDs to their original reports.
+
 - m11-02 can page a case's attributions and restore detail from `at`; list and detail share one `probe_id`.
 - `attributionCount` stays a query-time aggregate and does not change with cache hits or reuse; link rows only affect the page `total`.
 - Historical rows without an object version explicitly return `versionState=unknown` plus `ATTRIBUTION_VERSION_UNKNOWN`; clients must not claim an exact revision hit.

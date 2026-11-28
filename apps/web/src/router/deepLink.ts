@@ -49,9 +49,10 @@ export type BadCaseSessionResolution =
 const SESSION_ID_MAX = 36;
 const AGENT_ID_MAX = 64;
 const BAD_CASE_ID_MAX = 64;
-const ATTRIBUTION_ID_MAX = 64;
 const OBJECT_NAME_MAX = 128;
 const SAFE_ID = /^[A-Za-z0-9_.:@-]+$/;
+// Older Skill reports embed the target name between the Session and bad case IDs.
+const LEGACY_REPORT_ID = /^[A-Za-z0-9_.:@-]+\*.+\*[A-Za-z0-9_.:@-]+$/u;
 
 function hasControlCharacter(value: string): boolean {
   for (const character of value) {
@@ -108,6 +109,11 @@ function validQueryId(
       !hasControlCharacter(value) &&
       SAFE_ID.test(value),
   );
+}
+
+function validAttributionId(value: string): boolean {
+  return !hasControlCharacter(value) &&
+    (SAFE_ID.test(value) || LEGACY_REPORT_ID.test(value));
 }
 
 function validQueryText(
@@ -196,8 +202,7 @@ export function parseSessionDeepLink(
     attributionValue = queryString(query, "at");
     if (
       !attributionValue.ok ||
-      (attributionValue.value !== null &&
-        !validQueryId(attributionValue.value, ATTRIBUTION_ID_MAX))
+      (attributionValue.value !== null && !validAttributionId(attributionValue.value))
     ) {
       return invalid("at", "链接中的归因无效");
     }

@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from hashlib import sha256
 from pathlib import Path
 
 import httpx
@@ -35,10 +36,12 @@ CASE = "m11-case-main"
 CASE_EMPTY = "m11-case-empty"
 CASE_CROSS = "m11-case-cross"
 CASE_OTHER_WS = "m11-case-other-workspace"
-PROBE_OLD = "m11-probe-old"
+# Imported reports can share a long prefix and differ only at the end.
+PROBE_PREFIX = SESSION + "*部门/review-" + "ab" * 64 + "*"
+PROBE_OLD = PROBE_PREFIX + "case-old"
 PROBE_TWIN = "m11-probe-twin"
 PROBE_COORD = "m11-probe-coord"
-PROBE_NEW = "m11-probe-new"
+PROBE_NEW = PROBE_PREFIX + "case-new"
 PROBE_CROSS = "m11-probe-cross"
 PROBE_OTHER_WS = "m11-probe-other-workspace"
 RUN_ID = "m11-run-attribution"
@@ -92,7 +95,7 @@ def _probe(
         "probe_analysis": f"{probe_id} reasoning",
         "policy_version": "v1",
         "attribution_engine": attribution_engine,
-        "cache_key": (probe_id + "-cache-key").ljust(64, "0")[:64],
+        "cache_key": sha256(probe_id.encode()).hexdigest(),
         "report_schema_version": None,
         "report_payload": None,
         "execution_manifest": None,

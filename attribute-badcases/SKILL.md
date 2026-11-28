@@ -315,7 +315,7 @@ user-invocable: true
 
 ```
 {
-  "probe_id": "session-id*code-review*case-id",
+  "probe_id": "4d57e65545def3c419685a827c3c64964667e903be4c75259e5d384ca8fb05ae",
   "selected_target": {"name": "code-review", "type": "skill", "version": "v1", "revision": "tag:v1"},
   "conclusion": "attributed",
   "root_cause": "检视规则忽略已存在的上游参数约束，产生误报",
@@ -364,7 +364,7 @@ python3 .claude/skills/attribute-badcases/make_probe_report.py \
 
 脚本按以下规则生成报告：
 
-- 脚本从输入生成 `{session_id}*{selected_target.name}*{bad_case_id}`、`selected_target` 和 `from_bad_cases`。
+- 脚本将 Session ID、选定对象的类型、名称、版本、revision 和 bad case ID 编码为 JSON 数组，取 SHA-256 的 64 字符小写十六进制值作为 `probe_id`。相同输入可复算出相同 ID，原始对象和上报信息保存在 `selected_target` 与 `from_bad_cases`。
 - 有可核对的轨迹坐标时，用 `--evidence-ref` 逐个传入；缺证时在分析中说明。
 - 如能定位到具体根因对象，可补充 `--probe_object`、`--probe_type` 与 `--object-version`。
 - `--attribute-type` 表达问题性质。正向归因需要已知类别；其他结论可记录已知的外部错误类别，也可用 `unknown`。
