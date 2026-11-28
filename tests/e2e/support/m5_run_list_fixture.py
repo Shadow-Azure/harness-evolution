@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -147,6 +148,11 @@ async def main() -> None:
                 delete(bad_cases).where(bad_cases.c.bad_case_id.in_(case_ids)),
             )
             await session.execute(
+                delete(probe_cluster_probes).where(
+                    probe_cluster_probes.c.probe_id.in_(probe_ids),
+                ),
+            )
+            await session.execute(
                 delete(probe_reports).where(probe_reports.c.probe_id.in_(probe_ids)),
             )
             await session.execute(
@@ -237,7 +243,15 @@ async def main() -> None:
                     progress_unit=7,
                 ),
             ]
-            await session.execute(insert(evolution_runs), rows)
+            running_count = int(os.environ.get("M5_RUN_LIST_RUNNING", "3"))
+            history_count = int(os.environ.get("M5_RUN_LIST_HISTORY", "5"))
+            terminal = {"completed", "failed", "interrupted"}
+            running_rows = [row for row in rows if row["status"] not in terminal]
+            history_rows = [row for row in rows if row["status"] in terminal]
+            rows = running_rows[:running_count] + history_rows[:history_count]
+            selected_ids = {row["id"] for row in rows}
+            if rows:
+                await session.execute(insert(evolution_runs), rows)
 
             cluster_rows: list[dict[str, Any]] = []
             cluster_probe_rows: list[dict[str, Any]] = []
@@ -495,13 +509,14 @@ async def main() -> None:
                                 ),
                             },
                         )
-            await session.execute(insert(source_records), source_rows)
-            await session.execute(insert(session_families), session_rows)
-            await session.execute(insert(agents), agent_rows)
-            await session.execute(insert(bad_cases), case_rows)
-            await session.execute(insert(probe_reports), probe_rows)
-            await session.execute(insert(bad_case_analysis), analysis_rows)
-            await session.execute(insert(probe_clusters), cluster_rows)
+            if source_rows:
+                await session.execute(insert(source_records), source_rows)
+                await session.execute(insert(session_families), session_rows)
+                await session.execute(insert(agents), agent_rows)
+                await session.execute(insert(bad_cases), case_rows)
+                await session.execute(insert(probe_reports), probe_rows)
+                await session.execute(insert(bad_case_analysis), analysis_rows)
+                await session.execute(insert(probe_clusters), cluster_rows)
             if cluster_probe_rows:
                 await session.execute(
                     insert(probe_cluster_probes),
@@ -543,35 +558,35 @@ async def main() -> None:
                     insert(evolution_rounds),
                     normalized_rounds,
                 )
-            await session.execute(
-                insert(evolution_finals),
-                [
-                    {
-                        "run_id": "run-completed-effective",
-                        "best_version": "v2.0.1-best",
-                        "verdict": True,
-                        "best_score": 88.9,
-                        "init_score": 84.3,
-                        "metrics": [
-                            {
-                                "name": "任务完成率",
-                                "init": 78,
-                                "best": 84,
-                                "delta": 6,
-                                "unit": "%",
-                            },
-                        ],
-                    },
-                    {
-                        "run_id": "run-completed-no-benefit",
-                        "best_version": "v2.0.0",
-                        "verdict": False,
-                        "best_score": 80.1,
-                        "init_score": 80.1,
-                        "metrics": [],
-                    },
-                ],
-            )
+            finals = [
+                {
+                    "run_id": "run-completed-effective",
+                    "best_version": "v2.0.1-best",
+                    "verdict": True,
+                    "best_score": 88.9,
+                    "init_score": 84.3,
+                    "metrics": [
+                        {
+                            "name": "任务完成率",
+                            "init": 78,
+                            "best": 84,
+                            "delta": 6,
+                            "unit": "%",
+                        },
+                    ],
+                },
+                {
+                    "run_id": "run-completed-no-benefit",
+                    "best_version": "v2.0.0",
+                    "verdict": False,
+                    "best_score": 80.1,
+                    "init_score": 80.1,
+                    "metrics": [],
+                },
+            ]
+            finals = [row for row in finals if row["run_id"] in selected_ids]
+            if finals:
+                await session.execute(insert(evolution_finals), finals)
             event_rows: list[dict[str, Any]] = []
             for seq in range(1, 106):
                 is_error = seq == 75
@@ -662,7 +677,11 @@ async def main() -> None:
                     },
                 ],
             )
-            await session.execute(insert(evolution_run_events), event_rows)
+            event_rows = [
+                row for row in event_rows if row["run_id"] in selected_ids
+            ]
+            if event_rows:
+                await session.execute(insert(evolution_run_events), event_rows)
         await backfill_legacy_associations(database)
     finally:
         await database.dispose()
