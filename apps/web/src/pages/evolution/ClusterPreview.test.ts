@@ -488,8 +488,9 @@ describe("cluster preview page", () => {
 
     expect(wrapper.get("[data-testid='cluster-status']").text()).toContain("已暂停");
     expect(wrapper.get("[data-testid='cluster-status-detail']").text()).toContain(
-      "进度已保留",
+      "第 2/5 步 · 关联 Session 中…",
     );
+    expect(wrapper.get(".control-note").text()).toContain("已暂停");
     expect(wrapper.get(".control-button").text()).toContain("继续执行");
     wrapper.unmount();
   });

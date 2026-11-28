@@ -138,8 +138,11 @@ const incompleteMessage = computed(() => {
 const statusDetail = computed(() => {
   const value = run.value;
   if (!value) return "";
-  if (value.controlState === "paused") return "进度已保留，继续后从原检查点恢复。";
-  if (value.controlState === "pause_requested") return "等待当前操作结束后暂停。";
+  if (value.controlState === "paused" || value.controlState === "pause_requested") {
+    // RunControl already explains the pause state next to the badge; this area
+    // keeps the real progress so the same sentence is not repeated here.
+    return value.progress.stageLabel;
+  }
   if (
     value.status === "failed" ||
     value.status === "blocked" ||
@@ -334,6 +337,7 @@ function backToList(): void {
       </p>
 
       <div
+        v-if="statusDetail"
         class="status-area"
         :class="`is-${statusTone}`"
         :role="statusTone === 'failed' || statusTone === 'blocked' ? 'alert' : 'status'"
