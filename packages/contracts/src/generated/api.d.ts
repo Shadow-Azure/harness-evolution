@@ -4364,7 +4364,7 @@ export interface components {
              * Displaystate
              * @enum {string}
              */
-            displayState: "analyzed_issue_model" | "analyzed_issue_prompt" | "analyzed_issue_error";
+            displayState: "analyzed_issue_model" | "analyzed_issue_prompt" | "analyzed_issue_error" | "analyzed_issue_flow" | "analyzed_issue_context";
             /** Probeid */
             probeId: string | null;
             result: components["schemas"]["IssueAnalysisResult"];

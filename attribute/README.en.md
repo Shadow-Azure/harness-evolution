@@ -71,6 +71,6 @@ JOIN bad_case_analysis AS a ON a.probe_id = p.probe_id
 WHERE p.probe_id = :probe_id;
 ```
 
-Bind `:probe_id` to the platform database report ID. The writer builds the `probe_id` inside `probe_report.json` from the Session, attributed object and Badcase. Recomputing a case can produce the same writer ID.
+Query by the stored report ID. New platform rows use ULIDs. The file writer reproduces its 64-character SHA-256 `probe_id` from the same inputs.
 
 `sourceHash` is the SHA-256 digest of the redacted prompt’s UTF-8 bytes. `evidenceHash` hashes the canonical JSON mapping of each of the three evidence filenames to its byte digest. `inputHash` hashes the canonical JSON mapping of the five runtime filenames to their exact text. Older reports remain readable and may predate input manifests. When backing up or pruning data, keep the workspace database records and their referenced snapshots together. Removing a referenced snapshot causes retry verification to fail.

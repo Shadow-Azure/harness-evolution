@@ -209,7 +209,6 @@
             "type": "string"
           },
           "attributionId": {
-            "maxLength": 64,
             "title": "Attributionid",
             "type": "string"
           },
@@ -565,7 +564,6 @@
         "description": "One object/revision-scoped attribution shown in the error-detail list.\n\n``attributionId`` is the stable deep-link id and maps ``probe_reports.probe_id``;\n``runId`` prefers the last run that reused the conclusion so a deep link\nopens the run that produced the currently displayed row. ``objectRef`` and\n``objectCommit`` are display-only evidence from that run; clients fall back\nto ``objectVersion`` when they are absent.",
         "properties": {
           "attributionId": {
-            "maxLength": 64,
             "title": "Attributionid",
             "type": "string"
           },
@@ -5515,7 +5513,9 @@
             "enum": [
               "analyzed_issue_model",
               "analyzed_issue_prompt",
-              "analyzed_issue_error"
+              "analyzed_issue_error",
+              "analyzed_issue_flow",
+              "analyzed_issue_context"
             ],
             "title": "Displaystate",
             "type": "string"
@@ -14840,7 +14840,6 @@
             "name": "probeId",
             "required": true,
             "schema": {
-              "maxLength": 64,
               "minLength": 1,
               "title": "Probeid",
               "type": "string"
@@ -16972,7 +16971,6 @@
             "name": "attributionId",
             "required": true,
             "schema": {
-              "maxLength": 64,
               "minLength": 1,
               "title": "Attributionid",
               "type": "string"

@@ -42,7 +42,20 @@ describe("PotentialCaseTable", () => {
       "/workspaces/ws-1/sessions/session-1/errors?case=badcase-1&tab=attr&at=probe-1",
     );
     expect(wrapper.text()).toContain("已分析 · 是该对象问题");
-    expect(wrapper.text()).toContain("prompt");
+  });
+
+  it.each([
+    ["model", "模型问题"],
+    ["prompt", "提示词问题"],
+    ["error", "错误"],
+    ["flow", "流程"],
+    ["context", "上下文"],
+    [null, "—"],
+  ] as const)("renders the category cell for %s", (category, label) => {
+    const wrapper = mount(PotentialCaseTable, {
+      props: { wid: "ws-1", items: [{ ...item, category }], total: 1, filters },
+    });
+    expect(wrapper.get("tbody td:last-child").text()).toBe(label);
   });
 
   it("emits every filter change and resets to the open filters", async () => {

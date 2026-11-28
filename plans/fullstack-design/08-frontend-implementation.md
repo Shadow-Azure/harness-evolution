@@ -795,6 +795,8 @@ RunDetail.vue
 
 **单一 schema**：`run.steps` 恒为七步，`steps[].key` 由后端给定，前端按 key 渲染，不推算回退。
 
+**页面纵向布局**：详情页根节点承担页级滚动（`height: 100%` + `overflow-y: auto`），并设置 `align-content: start`，让页头、横幅、信息卡与步骤内容按自身高度从顶部排列；低内容状态不把剩余高度分配给网格轨道，剩余空白留在内容下方。
+
 **V2 七步的展示要点**：
 
 | step | 展示 |
@@ -862,14 +864,14 @@ RunLogPanel.vue
 
 ## 11. 仅聚类页（`pages/evolution/ClusterPreview.vue`）
 
-- 页面先处理 `preparing`：显示“正在关联 Session / 筛选潜在 / 生成归因 / 聚类”（V2 的 `cluster_only` 也执行 0–4 步，见 [07 §5.11](07-backend-implementation.md)），轮询 `GET /runs/{rid}` 到 `status=completed`，再拉 `steps/clusters`。
-- 顶部 banner："仅聚类分析：未执行 patch 生成与评测迭代" + 「以这批问题启动自进化 →」。
+- 页面先处理 `preparing`：状态徽标与单一状态区展示 `progress.stageLabel`（准备态为真实的五步流程文案，见 [07 §5.11](07-backend-implementation.md)），轮询 `GET /runs/{rid}` 到 `status=completed`，再拉 `steps/clusters`；不再额外渲染重复的准备提示卡。
+- 顶部模式说明是紧凑的中性信息条："仅聚类分析：未执行 patch 生成与评测迭代" + 「以这批问题启动自进化 →」，不使用大面积警告卡。
 - 输入概况：关联 Session / 潜在 bad case / 聚类数。
 - 聚类列表：每簇展示分类、来源 bad case 数、严重程度，簇内来源 bad case 表（可展开，ID 可深链错误详情）。簇标题由 `steps/clusters` 的 `description` 单行截断生成，描述是对成员归因结论的根因归纳；降级时为 `{type} 类问题 · {N} 条归因（聚类降级）`，两者都不再取第一个成员 bad case 标题。
 - 来源 bad case 的深链由页面并行读取 `steps/attribution` 得到 `badCaseId → sessionId` 映射后拼出 `/workspaces/{wid}/sessions/{sid}/errors?case={badCaseId}&tab=attr`；不在 `steps/clusters` 契约里新增 session 字段。
 - 数据来自 `mode=cluster_only` 的 run（`GET /runs/{rid}/steps/clusters`）；「启动自进化」用同一条件再创建 `mode=full` 的 run（同样 202）。
-- 状态口径由后端给：`cluster_only` 的可见进度是 5 步，完成态 `progress.stageLabel` 为「第 5/5 步 · 聚类完成」，不出现迭代轮次；页面用中文状态徽标，不直接渲染 `completed` 等原始枚举。
-- 页面根节点按运行详情的约定承担页级滚动（`height` + `overflow-y: auto`），内容长时可以滚到最后一个簇；簇卡直接复用运行详情第 5 步的 `StepClusters`。
+- 状态口径由后端给：`cluster_only` 的可见进度是 5 步，完成态 `progress.stageLabel` 为「第 5/5 步 · 聚类完成」，不出现迭代轮次；页面用中文状态徽标，不直接渲染 `completed` 等原始枚举。失败、阻塞、中断的原因并入同一状态区，不另起重复标题。
+- 页面根节点按运行详情的约定承担页级滚动（`height` + `overflow-y: auto`），并设置 `align-content: start`：内容按自身高度从顶部排列，剩余空白留在内容下方，内容长时可以滚到最后一个簇；簇卡直接复用运行详情第 5 步的 `StepClusters`。长对象名在标题区换行，并可通过 `title` 查看完整值。
 
 ## 12. 样式与视觉实现
 

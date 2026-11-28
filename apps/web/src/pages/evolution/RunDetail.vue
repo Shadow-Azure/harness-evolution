@@ -24,6 +24,7 @@ import { useEvolutionTargets } from "../../composables/useEvolutionTargets";
 import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import { workspacePath } from "../../router/workspace";
 import { useAuthStore } from "../../stores/auth";
+import { attributionCategory } from "../../utils/attributionCategory";
 import { canManageWorkspace } from "../../utils/workspaceDisplay";
 import RunControl from "./components/RunControl.vue";
 import RunStepContent from "./components/RunStepContent.vue";
@@ -391,11 +392,11 @@ const distribution = computed(() => {
   const stats = reportCounts.value?.byCategory ?? run.value?.stats.byCategory;
   if (!stats) return [];
   const items = [
-    { key: "error", label: "错误", value: stats.error, color: "var(--red)" },
-    { key: "prompt", label: "prompt", value: stats.prompt, color: "var(--orange)" },
-    { key: "flow", label: "流程", value: stats.flow ?? 0, color: "var(--blue)" },
-    { key: "context", label: "上下文", value: stats.context ?? 0, color: "var(--green)" },
-    { key: "model", label: "模型", value: stats.model, color: "var(--purple)" },
+    { key: "error", label: attributionCategory("error"), value: stats.error, color: "var(--red)" },
+    { key: "prompt", label: attributionCategory("prompt"), value: stats.prompt, color: "var(--orange)" },
+    { key: "flow", label: attributionCategory("flow"), value: stats.flow ?? 0, color: "var(--blue)" },
+    { key: "context", label: attributionCategory("context"), value: stats.context ?? 0, color: "var(--green)" },
+    { key: "model", label: attributionCategory("model"), value: stats.model, color: "var(--purple)" },
   ];
   if (reportCounts.value) {
     items.push({
@@ -1078,6 +1079,7 @@ function clearMissingClusterFocus(): void {
   height: 100%;
   padding: 20px max(24px, calc((100% - 1720px) / 2 + 24px)) 64px;
   overflow-y: auto;
+  align-content: start;
 }
 
 .back {

@@ -11,12 +11,10 @@ describe("bad-case display", () => {
     ["unanalyzed", "未分析", "neutral"],
     ["analyzed_nonissue", "非问题", "green"],
     ["analyzed_issue_model", "是问题-模型问题", "purple"],
-    [
-      "analyzed_issue_prompt",
-      "是问题-prompt缺失某些提示词",
-      "orange",
-    ],
+    ["analyzed_issue_prompt", "是问题-提示词问题", "orange"],
     ["analyzed_issue_error", "是问题-错误", "red"],
+    ["analyzed_issue_flow", "是问题-流程", "blue"],
+    ["analyzed_issue_context", "是问题-上下文", "green"],
   ] as const)(
     "maps %s to the prototype label and tone",
     (displayState, label, tone) => {

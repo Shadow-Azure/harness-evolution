@@ -111,11 +111,11 @@ describe("BadCaseList", () => {
     expect(wrapper.text()).toContain("未分析");
     expect(wrapper.text()).toContain("非问题");
     expect(wrapper.text()).toContain("是问题-模型问题");
-    expect(wrapper.text()).toContain("是问题-prompt缺失某些提示词");
+    expect(wrapper.text()).toContain("是问题-提示词问题");
     expect(wrapper.text()).toContain("是问题-错误");
     expect(wrapper.get(".state-chip.purple").text()).toBe("是问题-模型问题");
     expect(wrapper.get(".state-chip.orange").text()).toBe(
-      "是问题-prompt缺失某些提示词",
+      "是问题-提示词问题",
     );
     expect(wrapper.get(".state-chip.red").text()).toBe("是问题-错误");
 

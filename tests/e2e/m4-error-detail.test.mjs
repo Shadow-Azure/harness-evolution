@@ -461,7 +461,7 @@ test("m4 error detail restores five states, folded attributions, tabs, unfiltere
       {
         error: "错误",
         model: "模型问题",
-        prompt: "prompt缺失某些提示词",
+        prompt: "提示词问题",
       }[selectedAttribution.category],
     ]);
     assert.match(attribution.text, /归因结论说明/);

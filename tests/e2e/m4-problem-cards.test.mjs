@@ -199,7 +199,7 @@ test("m4 problem cards match the prototype and link list and canvas", async () =
     };
     const statesBySession = {
       [sessions.prompt]: [
-        "是问题-prompt缺失某些提示词",
+        "是问题-提示词问题",
         "是问题-模型问题",
       ],
       [sessions.nonissue]: ["非问题"],
