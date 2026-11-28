@@ -60,7 +60,7 @@ const potentialPreview: PotentialPreviewResult = {
     badCases: 5,
     potential: 2,
     byReason: {
-      selfReport: 1,
+      selfReport: 1, customSource: 0,
       afterObject: 1,
       both: 0,
       orderUnknown: 1,
@@ -821,7 +821,16 @@ describe("launch wizard", { timeout: 30000 }, () => {
       await wrapper.get("[data-testid='wizard-cache']").setValue(false);
       await flushPromises();
     }
-    expect(wrapper.find("select[aria-label='本次重算使用的归因 Skill']").exists()).toBe(false);
+    const selector = wrapper.find("select[aria-label='本次重算使用的归因 Skill']");
+    expect(selector.exists()).toBe(!cacheEnabled);
+    if (!cacheEnabled) {
+      expect(selector.find("option:checked").text()).toBe("内置归因规则");
+      expect(selector.attributes("disabled")).toBeUndefined();
+      await selector.setValue("default-attribute-badcases");
+      expect(wrapper.get("[data-testid='wizard-start']").attributes("disabled")).toBeDefined();
+      expect(wrapper.text()).toContain("所选 Skill 需要可用的归因运行时");
+      await selector.setValue("");
+    }
     const start = wrapper.get("[data-testid='wizard-start']");
     expect(start.attributes("disabled")).toBeUndefined();
     await start.trigger("click");

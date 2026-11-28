@@ -373,6 +373,7 @@ async def test_preview_overview_and_run_share_one_potential_count(
     assert preview_body["summary"]["byReason"] == {
         "selfReport": 1,
         "afterObject": 2,
+        "customSource": 0,
         "both": 0,
         "policyExcluded": 1,
         "orderUnknown": 0,
@@ -388,6 +389,54 @@ async def test_preview_overview_and_run_share_one_potential_count(
     assert run.stats["potential"] == POTENTIAL
     assert len(included) == POTENTIAL
     assert preview_body["total"] == overview_body["items"][0]["potential"] == len(included)
+
+
+async def test_custom_sources_share_ids_and_preserve_run_evidence(
+    consistency: Consistency, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    api = consistency.api
+    # Admit a real run, then dispatch prepare after the target policy has changed.
+    monkeypatch.setattr(api.app.state.jobs, "schedule", lambda _job_id: None)
+    headers = consistency.identities["space_admin"].headers
+    base = f"/api/workspaces/{WORKSPACE_A}"
+    rule = {"kind": "skill", "name": "other-skill", "types": ["discovery"], "relation": "any"}
+    policy = {"mode": "custom", "rules": [rule]}
+    endpoint = f"{base}/evolution/targets/{TARGET_A}/candidate-policy"
+    saved = await api.client.put(endpoint, headers=headers, json=policy)
+    assert saved.status_code == 200, saved.text
+    expected = {CASE_AFTER, CASE_EXCLUDED}
+    preview = await api.client.post(_preview_path(), headers=headers, json=_preview_body())
+    overview = await api.client.get(
+        f"{base}/overview/targets/cases", headers=headers, params={**WINDOW, "targets": TARGET_A}
+    )
+    for response in [preview, overview]:
+        assert response.status_code == 200, response.text
+        assert {item["badCaseId"] for item in response.json()["items"]} == expected
+    launch = await api.client.post(
+        f"{base}/evolution/cluster-previews",
+        headers=headers,
+        json={**_preview_body(), "mode": "cluster_only", "cacheEnabled": False},
+    )
+    assert launch.status_code == 202, launch.text
+    run_id = launch.json()["runId"]
+    cleared = await api.client.put(endpoint, headers=headers, json={"mode": "default", "rules": []})
+    assert cleared.status_code == 200
+    engine = NonTargetEngine(CASE_NON_TARGET)
+    await _prepare(api, run_id, engine)
+    assert set(engine.calls) == expected
+    candidates = await EvolutionRunCandidateRepository(api.database).list(run_id)
+    included = {c.bad_case_id: c for c in candidates if c.included}
+    assert set(included) == expected
+    for candidate in included.values():
+        assert candidate.included_reason == "custom_source"
+        assert candidate.source_evidence is not None
+        assert candidate.source_evidence["kind"] == "skill"
+        assert candidate.source_evidence["name"] == rule["name"]
+        assert candidate.source_evidence["type"] == "discovery"
+        assert candidate.source_evidence["matches"][0]["relation"] == "any"
+    run = await EvolutionRepository(api.database).get_run(run_id)
+    assert run is not None and run.potential_policy is not None
+    assert run.potential_policy["candidatePolicy"] == policy
 
 
 async def test_cache_reuse_equals_potential_and_non_target_stays_out_of_clusters(

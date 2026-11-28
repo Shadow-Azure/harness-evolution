@@ -342,6 +342,7 @@ async def test_potential_preview_paginates_included_rows_and_reports_reasons(
         "byReason": {
             "selfReport": 6,
             "afterObject": 0,
+            "customSource": 0,
             "both": 0,
             "policyExcluded": 2,
             "orderUnknown": 0,

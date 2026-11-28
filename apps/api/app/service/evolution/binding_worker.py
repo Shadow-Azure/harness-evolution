@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-from dataclasses import replace
 from datetime import datetime, timedelta
 
 from app.db.crud.attributions import AttributionRepository
@@ -15,11 +14,13 @@ from app.service.evolution.attribution import (
     AttributionTarget,
     BindingBatch,
 )
+from app.service.evolution.candidate_policy import CandidatePolicy
 from app.service.evolution.local_attribution import ENGINE, LocalAttribution
 from app.service.evolution.potential import (
     MatchCondition,
     MatchTarget,
     PotentialMatcher,
+    latest_candidate_reports,
     resolve_policy,
 )
 from app.service.evolution.target_content import GitDefinitionRef, TargetVersionResolver
@@ -100,6 +101,8 @@ class BindingWorker:
         ):
             return False
         snapshot = dict(target.attribution_snapshot or {})
+        if target.candidate_policy:
+            snapshot["candidatePolicy"] = target.candidate_policy
         definition = snapshot.get("definition")
         if "skill" not in snapshot:
             skill = await self.runtime.resolve_bound_skill(target)
@@ -178,31 +181,16 @@ class BindingWorker:
             datetime(1970, 1, 1, tzinfo=SHANGHAI),
             claim.cutoff,
             targets=targets,
+            candidate_policy=CandidatePolicy.model_validate(target.candidate_policy or {}),
         )
         association = await self.matcher.associated_sessions(condition)
         if association.pending:
             await self.acquisition.trigger("target_binding")
         match = await self.matcher.potential_cases(condition, association, resolve_policy(None))
-        completed: dict[str, tuple[str, str, str]] = {}
-        for member, item in zip(members, member_snapshots, strict=True):
-            target_cases = tuple(
-                case.bad_case_id
-                for case in match.cases
-                if case.object_type == member.object_type and case.object_name == member.object_name
-            ) or (tuple(case.bad_case_id for case in match.cases) if member is members[0] else ())
-            if not target_cases:
-                continue
-            completed.update(
-                await self.reports.latest_reports(
-                    workspace,
-                    member.object_type,
-                    member.object_name,
-                    str(item["revision"]),
-                    target_cases,
-                    generation=claim.generation,
-                ),
-            )
-        pending = [replace(c, included=True) for c in match.cases if c.bad_case_id not in completed]
+        completed = await latest_candidate_reports(
+            self.reports, condition, match.included, generation=claim.generation
+        )
+        pending = [c for c in match.included if c.bad_case_id not in completed]
         if not pending:
             return association.pending > 0
         batch = BindingBatch(
@@ -219,6 +207,7 @@ class BindingWorker:
             snapshot["skill"],
             snapshot["skillRevision"],
             snapshot["hash"],
+            candidate_policy=condition.candidate_policy,
             definition=GitDefinitionRef(definition["key"], definition["commit"], definition["path"])
             if definition
             else None,

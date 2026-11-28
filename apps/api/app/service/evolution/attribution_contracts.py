@@ -6,10 +6,11 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
+from app.service.evolution.candidate_policy import CandidatePolicy
 from app.service.identity.schemas import IdentityModel
 
 REPORT_SCHEMA_VERSION: Literal["probe-report/v2"] = "probe-report/v2"
@@ -89,6 +90,8 @@ class AttributionExecutionManifest(IdentityModel):
     workspace_id: str = Field(min_length=1, max_length=36)
     bad_case_id: str = Field(min_length=1, max_length=64)
     target: AttributionTargetRef
+    candidate_policy: CandidatePolicy | None = None
+    source_matches: list[dict[str, object]] | None = None
     policy_version: str = Field(min_length=1, max_length=16)
     engine: str = Field(min_length=1, max_length=64)
     skill: AttributionSkillRevision
@@ -99,7 +102,14 @@ class AttributionExecutionManifest(IdentityModel):
     @property
     def content_hash(self) -> str:
         """Return the canonical cache identity for this exact manifest."""
-        return canonical_json_hash(self.model_dump(mode="json", by_alias=True))
+        return canonical_json_hash(self.snapshot())
+
+    def snapshot(self) -> dict[str, Any]:
+        """Keep the historical manifest shape and hash for the default policy."""
+        omitted = {
+            key for key in ("candidate_policy", "source_matches") if getattr(self, key) is None
+        }
+        return self.model_dump(mode="json", by_alias=True, exclude=omitted)
 
 
 def canonical_json_hash(value: object) -> str:
@@ -168,6 +178,8 @@ def default_execution_manifest(
     skill_content_hash: str | None = None,
     prepared_context_snapshot_hash: str | None = None,
     model_fingerprint: str = NO_MODEL_FINGERPRINT,
+    candidate_policy: CandidatePolicy | None = None,
+    source_matches: Sequence[dict[str, object]] = (),
 ) -> AttributionExecutionManifest:
     """Build a manifest from candidate coordinates and a frozen Skill snapshot."""
     skill = (
@@ -188,6 +200,8 @@ def default_execution_manifest(
             object_version=target_version,
         ),
         policy_version=policy_version,
+        candidate_policy=candidate_policy if candidate_policy and candidate_policy.rules else None,
+        source_matches=list(source_matches) or None,
         engine=engine,
         skill=skill,
         model_config_fingerprint=model_fingerprint,

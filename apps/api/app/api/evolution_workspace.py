@@ -1,5 +1,6 @@
 """Workspace-scoped evolution targets, runs, steps, events, and catalogs."""
 
+from datetime import date
 from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Path, Query, Request, Security, status
@@ -7,12 +8,22 @@ from fastapi import APIRouter, Depends, Path, Query, Request, Security, status
 from app.api.deps import require_workspace_role
 from app.api.evolution_launch import LAUNCH_RESPONSES
 from app.api.security import BEARER_AUTH
+from app.db.crud.candidate_sources import CandidateSourcesRepository
+from app.db.crud.evolution_targets import EvolutionTargetRepository
+from app.db.crud.potential import window_day_boundaries
 from app.errors import AppError, ErrorCode, ErrorResponse
 from app.service.catalogs import CatalogModels, CatalogService, CatalogTargets
 from app.service.evolution.attribution_jobs import (
     AttributionJobList,
     AttributionJobService,
     AttributionJobView,
+)
+from app.service.evolution.candidate_policy import (
+    CandidatePolicy,
+    ReportType,
+    SourceCount,
+    SourceKind,
+    SourceReportPage,
 )
 from app.service.evolution.control import EvolutionControlService, EvolutionRunControl
 from app.service.evolution.events import (
@@ -29,6 +40,7 @@ from app.service.evolution.potential import (
     PotentialPreviewService,
     SessionPreviewResult,
     SessionsPreviewRequest,
+    resolve_window,
 )
 from app.service.evolution.probe_query import ProbeQueryRequest, RunAccepted
 from app.service.evolution.retry import (
@@ -191,6 +203,65 @@ async def create_target(
         workspace_id=wid,
         created_by=_principal_id(request),
     )
+
+
+@router.put("/targets/{targetId}/candidate-policy", dependencies=[Security(BEARER_AUTH)])
+async def save_candidate_policy(
+    request: Request,
+    wid: WorkspaceId,
+    targetId: TargetId,
+    body: CandidatePolicy,
+    access: AdminAccess,
+) -> CandidatePolicy:
+    """Update only source rules under the target lock, preserving concurrent metadata edits."""
+    saved = await EvolutionTargetRepository(request.app.state.database).save_policy(
+        wid, targetId, body.model_dump()
+    )
+    return CandidatePolicy.model_validate(saved)
+
+
+@router.get("/candidate-sources", dependencies=[Security(BEARER_AUTH)])
+async def candidate_sources(
+    request: Request,
+    wid: WorkspaceId,
+    access: ViewerAccess,
+    start: Annotated[date | None, Query(alias="from")] = None,
+    end: Annotated[date | None, Query(alias="to")] = None,
+) -> list[SourceCount]:
+    window = window_day_boundaries(*resolve_window(start, end))
+    rows = await CandidateSourcesRepository(request.app.state.database).counts(wid, *window)
+    return [SourceCount.model_validate(row) for row in rows]
+
+
+@router.get("/candidate-source-reports", dependencies=[Security(BEARER_AUTH)])
+async def source_reports(
+    request: Request,
+    wid: WorkspaceId,
+    access: ViewerAccess,
+    kind: SourceKind,
+    name: Annotated[str, Query(min_length=1, max_length=128)],
+    types: Annotated[list[ReportType], Query(min_length=1, max_length=2)],
+    labels: Annotated[list[str] | None, Query()] = None,
+    unlabelled: bool = False,
+    filter_type: Annotated[ReportType | None, Query(alias="filterType")] = None,
+    start: Annotated[date | None, Query(alias="from")] = None,
+    end: Annotated[date | None, Query(alias="to")] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+) -> SourceReportPage:
+    window = window_day_boundaries(*resolve_window(start, end))
+    result = await CandidateSourcesRepository(request.app.state.database).reports(
+        wid,
+        *window,
+        kind=kind,
+        name=name,
+        types=types,
+        labels=labels or [],
+        unlabelled=unlabelled,
+        filter_type=filter_type,
+        page=page,
+        page_size=20,
+    )
+    return SourceReportPage.model_validate(result)
 
 
 @router.put(
@@ -620,6 +691,7 @@ async def resume_run(
 
 @catalog_router.get(
     "/targets",
+    response_model_exclude_none=True,
     dependencies=[Security(BEARER_AUTH)],
     responses={
         401: {"model": ErrorResponse, "description": "Authentication is required"},

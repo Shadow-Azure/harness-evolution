@@ -473,6 +473,16 @@
             "title": "Badcaseid",
             "type": "string"
           },
+          "candidatePolicy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CandidatePolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "contextSnapshotHash": {
             "maxLength": 128,
             "minLength": 1,
@@ -511,6 +521,21 @@
           },
           "skill": {
             "$ref": "#/components/schemas/app__service__evolution__attribution_contracts__AttributionSkillRevision"
+          },
+          "sourceMatches": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcematches"
           },
           "target": {
             "$ref": "#/components/schemas/AttributionTargetRef"
@@ -2550,10 +2575,44 @@
         "title": "Body_upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post",
         "type": "object"
       },
+      "CandidatePolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "default",
+            "enum": [
+              "default",
+              "combined",
+              "custom"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRule"
+            },
+            "title": "Rules",
+            "type": "array"
+          }
+        },
+        "title": "CandidatePolicy",
+        "type": "object"
+      },
       "CatalogConfig": {
         "additionalProperties": false,
         "description": "One enabled configuration with all of its members.",
         "properties": {
+          "candidatePolicy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CandidatePolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "defaultRef": {
             "title": "Defaultref",
             "type": "string"
@@ -2668,6 +2727,16 @@
         "additionalProperties": false,
         "description": "One enabled evolution target and its remote versions.",
         "properties": {
+          "candidatePolicy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CandidatePolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "defaultRef": {
             "title": "Defaultref",
             "type": "string"
@@ -4888,6 +4957,16 @@
             ],
             "title": "Attributionskillname"
           },
+          "candidatePolicy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CandidatePolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "defaultRef": {
             "title": "Defaultref",
             "type": "string"
@@ -5122,6 +5201,16 @@
               }
             ],
             "title": "Attributionpackageid"
+          },
+          "candidatePolicy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CandidatePolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "defaultRef": {
             "title": "Defaultref",
@@ -5968,6 +6057,7 @@
           },
           "hitReason": {
             "enum": [
+              "custom_source",
               "self_report",
               "after_object",
               "both",
@@ -6212,6 +6302,12 @@
             "default": 0,
             "minimum": 0.0,
             "title": "Both",
+            "type": "integer"
+          },
+          "customSource": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Customsource",
             "type": "integer"
           },
           "orderUnknown": {
@@ -8251,6 +8347,39 @@
         "title": "SkillResourceDetail",
         "type": "object"
       },
+      "SourceCount": {
+        "additionalProperties": false,
+        "properties": {
+          "discoveryCount": {
+            "title": "Discoverycount",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "skill",
+              "agent"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "selfCount": {
+            "title": "Selfcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "selfCount",
+          "discoveryCount"
+        ],
+        "title": "SourceCount",
+        "type": "object"
+      },
       "SourceListResponse": {
         "additionalProperties": false,
         "description": "Source distribution ordered by total descending, then object name.",
@@ -8267,6 +8396,94 @@
           "items"
         ],
         "title": "SourceListResponse",
+        "type": "object"
+      },
+      "SourceReport": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "reportType": {
+            "enum": [
+              "self",
+              "discovery"
+            ],
+            "title": "Reporttype",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "reportType",
+          "label",
+          "createdAt"
+        ],
+        "title": "SourceReport",
+        "type": "object"
+      },
+      "SourceReportPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourceReport"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "labels": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "sourceTotal": {
+            "title": "Sourcetotal",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "labels",
+          "total",
+          "sourceTotal"
+        ],
+        "title": "SourceReportPage",
         "type": "object"
       },
       "SourceRow": {
@@ -8306,6 +8523,55 @@
           "sessions"
         ],
         "title": "SourceRow",
+        "type": "object"
+      },
+      "SourceRule": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "skill",
+              "agent"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "relation": {
+            "enum": [
+              "any",
+              "before",
+              "after"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "types": {
+            "items": {
+              "enum": [
+                "self",
+                "discovery"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "types",
+          "relation"
+        ],
+        "title": "SourceRule",
         "type": "object"
       },
       "StepAttributionPayload": {
@@ -8894,6 +9160,7 @@
           },
           "hitReason": {
             "enum": [
+              "custom_source",
               "self_report",
               "after_object",
               "both",
@@ -18316,6 +18583,278 @@
         ]
       }
     },
+    "/api/workspaces/{wid}/evolution/candidate-source-reports": {
+      "get": {
+        "operationId": "source_reports_api_workspaces__wid__evolution_candidate_source_reports_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "skill",
+                "agent"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "types",
+            "required": true,
+            "schema": {
+              "items": {
+                "enum": [
+                  "self",
+                  "discovery"
+                ],
+                "type": "string"
+              },
+              "maxItems": 2,
+              "minItems": 1,
+              "title": "Types",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "labels",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Labels"
+            }
+          },
+          {
+            "in": "query",
+            "name": "unlabelled",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Unlabelled",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "filterType",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "self",
+                    "discovery"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Filtertype"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceReportPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Source Reports",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/candidate-sources": {
+      "get": {
+        "operationId": "candidate_sources_api_workspaces__wid__evolution_candidate_sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SourceCount"
+                  },
+                  "title": "Response Candidate Sources Api Workspaces  Wid  Evolution Candidate Sources Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Candidate Sources",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
     "/api/workspaces/{wid}/evolution/cluster-previews": {
       "post": {
         "description": "Admit one cluster-only preview run owned by this workspace.",
@@ -20618,6 +21157,77 @@
         "summary": "Bind Target Attribution Skill",
         "tags": [
           "attribution-skills"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/targets/{targetId}/candidate-policy": {
+      "put": {
+        "description": "Update only source rules under the target lock, preserving concurrent metadata edits.",
+        "operationId": "save_candidate_policy_api_workspaces__wid__evolution_targets__targetId__candidate_policy_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "targetId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Targetid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidatePolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidatePolicy"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Save Candidate Policy",
+        "tags": [
+          "workspace-evolution"
         ]
       }
     },

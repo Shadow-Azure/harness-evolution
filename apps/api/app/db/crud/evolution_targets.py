@@ -9,6 +9,7 @@ from sqlalchemy.engine import CursorResult, RowMapping
 from sqlalchemy.exc import IntegrityError
 
 from app.db.base import Database
+from app.db.crud.candidate_sources import normalize_sources, validate_sources
 from app.db.crud.integrity import is_unique_violation
 from app.db.crud.read_scope import scoped_case_ids
 from app.db.models.domain import (
@@ -66,6 +67,7 @@ class EvolutionTargetRecord:
     attribution_will_retry: bool = False
     attribution_generation: str | None = None
     attribution_snapshot: dict[str, Any] | None = None
+    candidate_policy: dict[str, Any] | None = None
     primary_metric_key: str = ""
     members: tuple[EvolutionTargetMemberRecord, ...] = ()
     match_by_name: bool = False
@@ -174,6 +176,9 @@ def _record(
         validation_project_id=row["validation_project_id"],
         test_project_id=row["test_project_id"],
         primary_metric_key=row["primary_metric_key"],
+        candidate_policy=normalize_sources(row["candidate_policy"])
+        if row["candidate_policy"]
+        else None,
         enabled=bool(row["enabled"]),
         attribution_package_id=row["attribution_package_id"],
         attribution_skill_name=row["attribution_skill_name"],
@@ -444,6 +449,44 @@ class EvolutionTargetRepository:
                 )
             return dict(snapshot)
 
+    async def save_policy(
+        self, workspace: str, target_id: str, policy: dict[str, Any]
+    ) -> dict[str, Any]:
+        policy = normalize_sources(policy)
+        t = evolution_targets.c
+        scope = and_(t.workspace_id == workspace, t.id == target_id)
+        async with self._database.transaction() as session:
+            row = (
+                (await session.execute(select(evolution_targets).where(scope).with_for_update()))
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                raise AppError(
+                    status_code=404,
+                    code=ErrorCode.TARGET_NOT_CONFIGURED,
+                    message="target not found",
+                )
+            previous = row["candidate_policy"]
+            if policy == previous:
+                return policy
+            await validate_sources(session, workspace, policy)
+            values = dict(candidate_policy=policy, updated_at=now_shanghai())
+            if row["attribution_package_id"] and (
+                previous is None or policy != normalize_sources(previous)
+            ):
+                values.update(
+                    await self._binding(
+                        session,
+                        workspace,
+                        row["attribution_package_id"],
+                        row["enabled"],
+                        (row["attribution_snapshot"] or {}).get("definition"),
+                    )
+                )
+            await session.execute(update(evolution_targets).where(scope).values(**values))
+            return policy
+
     async def bind_package(self, workspace: str, target: str, package: str) -> None:
         async with self._database.transaction() as session:
             table = evolution_targets
@@ -483,6 +526,10 @@ class EvolutionTargetRepository:
         first = members[0]
         async with self._database.transaction() as session:
             try:
+                policy = values.get("candidate_policy")
+                if isinstance(policy, dict):
+                    policy = normalize_sources(policy)
+                    await validate_sources(session, workspace_id, policy)
                 package = values.get("attribution_package_id", "default-attribute-badcases")
                 binding = (
                     await self._binding(
@@ -499,6 +546,7 @@ class EvolutionTargetRepository:
                     insert(evolution_targets).values(
                         **binding,
                         id=target_id,
+                        candidate_policy=policy,
                         workspace_id=workspace_id,
                         object_type=first["object_type"],
                         object_name=first["object_name"],
@@ -577,6 +625,15 @@ class EvolutionTargetRepository:
                 )
                 if existing is None:
                     raise LookupError("evolution target not found")
+                policy = values.get("candidate_policy")
+                policy_changed = False
+                if isinstance(policy, dict):
+                    policy = normalize_sources(policy)
+                    previous = existing["candidate_policy"]
+                    policy_changed = previous is None or policy != normalize_sources(previous)
+                    if policy != previous:
+                        await validate_sources(session, existing["workspace_id"], policy)
+                        statement = statement.values(candidate_policy=policy)
                 previous_members = await _load_members(session, [target_id])
                 changed_members = tuple(
                     (
@@ -595,7 +652,8 @@ class EvolutionTargetRepository:
                         attribution_snapshot={"definition": first["definition"]}
                     )
                 if package and (
-                    package != existing["attribution_package_id"]
+                    policy_changed
+                    or package != existing["attribution_package_id"]
                     or changed_members
                     or any(
                         existing[k] != values[k]
