@@ -36,6 +36,7 @@ type SideRow = {
 
 const props = defineProps({
   runtimeUnavailable: Boolean,
+  policyLabels:{type:Object as ()=>Record<string,string>,default:()=>({})},
   items: {
     type: Array as () => TargetOverviewItemView[],
     default: () => [],
@@ -75,6 +76,7 @@ const emit = defineEmits<{
   toggle: [targetId: string];
   create: [];
   enable: [item: EditItem];
+  rules: [item: EditItem];
   edit: [item: EditItem];
   remove: [item: EditItem];
   retry: [];
@@ -284,6 +286,17 @@ function primaryVersion(item: TargetOverviewItem): string {
                 移除
               </button>
             </div>
+            <div class="rule-entry">
+              <span>{{ policyLabels[row.id] }}</span>
+              <button
+                type="button"
+                class="btn"
+                :data-testid="`ov-target-side-rules-${row.id}`"
+                @click="emit('rules', row.item)"
+              >
+                候选规则
+              </button>
+            </div>
           </div>
           <div
             v-else
@@ -330,6 +343,17 @@ function primaryVersion(item: TargetOverviewItem): string {
                 移除
               </button>
             </div>
+            <div class="rule-entry">
+              <span>{{ policyLabels[row.id] }}</span>
+              <button
+                type="button"
+                class="btn"
+                :data-testid="`ov-target-side-rules-${row.id}`"
+                @click="emit('rules', row.item)"
+              >
+                候选规则
+              </button>
+            </div>
           </div>
         </template>
       </div>
@@ -360,6 +384,17 @@ function primaryVersion(item: TargetOverviewItem): string {
 </template>
 
 <style scoped>
+.rule-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-dim);
+}
 .side-card {
   display: flex;
   flex-direction: column;
@@ -427,6 +462,11 @@ function primaryVersion(item: TargetOverviewItem): string {
 .side-item {
   padding: 7px 0;
   border-top: 1px solid var(--border);
+}
+
+.side-item:not(.is-disabled) .actions,
+.side-item:not(.is-disabled) .rule-entry {
+  margin-inline: 6px;
 }
 
 .side-item:first-child {

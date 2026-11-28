@@ -153,6 +153,7 @@ async def test_default_policy_unions_self_report_and_after_object(harness: Harne
     }
     assert reasons_of(match) == {
         "self_report": 1,
+        "custom_source": 0,
         "after_object": 2,
         "both": 0,
         "policy_excluded": 1,

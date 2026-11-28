@@ -266,9 +266,11 @@ describe("target configuration page", () => {
       .setValue("resolved_rate");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
+    await wrapper.get("form").trigger("submit");
     await flushPromises();
 
     expect(submitted).toEqual({
+      candidatePolicy: {mode:"default",rules:[]},
       attributionPackageId: "package-review",
       repoUrl: "https://example.com/skills.git",
       defaultRef: "main",
@@ -323,6 +325,7 @@ describe("target configuration page", () => {
       .setValue("resolved_rate");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
+    await wrapper.get("form").trigger("submit");
     await flushPromises();
 
     expect(wrapper.get("[role='alert']").text()).toContain(
@@ -371,6 +374,7 @@ describe("target configuration page", () => {
       .get('input[name="primaryMetricKey"]')
       .setValue("resolved_rate");
     await flushPromises();
+    await wrapper.get("form").trigger("submit");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
@@ -431,6 +435,7 @@ describe("target configuration page", () => {
       .setValue("resolved_rate");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
+    await wrapper.get("form").trigger("submit");
     await flushPromises();
 
     expect(wrapper.get("[role='alert']").text()).toContain("无法访问仓库");
@@ -481,6 +486,7 @@ describe("target configuration page", () => {
       .setValue("resolved_rate");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
+    await wrapper.get("form").trigger("submit");
     await flushPromises();
 
     expect(wrapper.get("#target-defaultRef-error").text()).toContain(
@@ -530,6 +536,7 @@ describe("target configuration page", () => {
       .setValue("resolved_rate");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
+    await wrapper.get("form").trigger("submit");
     await flushPromises();
 
     expect(wrapper.get("[role='alert']").text()).toContain(
@@ -575,6 +582,7 @@ describe("target configuration page", () => {
       .get('input[name="primaryMetricKey"]')
       .setValue("resolved_rate");
     await flushPromises();
+    await wrapper.get("form").trigger("submit");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
@@ -630,6 +638,9 @@ describe("target configuration page", () => {
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
     expect(wrapper.get("[role='alert']").text()).toContain(
       "该成员已属于另一条配置",
     );
@@ -678,6 +689,7 @@ describe("target configuration page", () => {
       .get('input[name="primaryMetricKey"]')
       .setValue("resolved_rate");
     await flushPromises();
+    await wrapper.get("form").trigger("submit");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
@@ -811,6 +823,7 @@ describe("target configuration page", () => {
       .get('input[name="primaryMetricKey"]')
       .setValue("resolved_rate");
     await flushPromises();
+    await wrapper.get("form").trigger("submit");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 

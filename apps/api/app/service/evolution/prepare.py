@@ -28,6 +28,7 @@ from app.errors import AppError, ErrorCode
 from app.service.evolution.ai_observability import AiAgentCall
 from app.service.evolution.attribution import AttributionRunner, AttributionRunSummary
 from app.service.evolution.attribution_jobs import candidate_snapshot
+from app.service.evolution.candidate_policy import CandidatePolicy
 from app.service.evolution.cluster import (
     ATTRIBUTION_DRAFT_MAX_CHARS,
     ATTRIBUTION_HYBRID_ALGORITHM,
@@ -492,6 +493,11 @@ class EvolutionPrepareService:
             target_version=resolved.target_version,
             target_revision=resolved.target_revision,
             window_start=window_start,
+            candidate_policy=CandidatePolicy.model_validate(
+                (run.potential_policy or {})["candidatePolicy"]
+            )
+            if (run.potential_policy or {}).get("candidatePolicy")
+            else None,
             window_end=window_end,
             targets=tuple(
                 MatchTarget(
@@ -905,6 +911,12 @@ def _candidate_writes(
             order_state=case.order_state,
             included=case.included,
             included_reason=case.hit_reason,
+            source_evidence={
+                "kind": case.source_kind,
+                "name": case.source_name or case.object_name,
+                "type": case.bad_case_type,
+                "matches": list(case.matched_sources),
+            },
             created_at=now,
             object_trigger_agent_id=case.object_trigger.agent_id,
             object_trigger_event_index=case.object_trigger.event_index,
@@ -946,6 +958,7 @@ def _potential_stats(
 ) -> dict[str, Any]:
     """Build the incremental stats snapshot after the potential stage."""
     by_reason = {
+        "custom_source": 0,
         "self_report": 0,
         "after_object": 0,
         "both": 0,
@@ -974,6 +987,7 @@ def _potential_summary(stats: Mapping[str, Any]) -> dict[str, Any]:
         "byReason": {
             key: int(by_reason.get(key, 0))
             for key in (
+                "custom_source",
                 "self_report",
                 "after_object",
                 "both",

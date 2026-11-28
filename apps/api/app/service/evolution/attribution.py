@@ -56,10 +56,10 @@ from app.service.evolution.attribution_executor import (
     AttributionExecutorTarget,
     resolve_attribution_executor,
 )
+from app.service.evolution.candidate_policy import CandidatePolicy, policy_version
 from app.service.evolution.control import PauseAtCheckpoint
 from app.service.evolution.engine.contracts import ConfigError, RunBlocked
 from app.service.evolution.potential import (
-    POLICY_VERSION,
     HitReason,
     OrderState,
     PotentialCase,
@@ -132,6 +132,8 @@ class AttributionInput:
     definition: GitDefinitionRef | None = None
     local_input_hash: str | None = None
     batch_trigger: Literal["target_binding", "evolution_run"] = "evolution_run"
+    candidate_policy: CandidatePolicy | None = None
+    source_matches: tuple[dict[str, object], ...] = ()
     legacy_rule: bool = False
     case_object_name: str | None = None
     case_object_version: str | None = None
@@ -182,6 +184,8 @@ class AttributionInput:
             target_version=self.object_version,
             policy_version=self.policy_version,
             engine=self.attribution_engine,
+            candidate_policy=self.candidate_policy,
+            source_matches=self.source_matches,
             session_id=self.session_id,
             hit_reason=self.hit_reason,
             order_state=self.order_state,
@@ -643,6 +647,7 @@ class BindingBatch:
     attribution_skill_content_hash: str
     definition: GitDefinitionRef | None = None
     targets: tuple[AttributionTarget, ...] = ()
+    candidate_policy: CandidatePolicy | None = None
 
 
 def _batch_targets(run: EvolutionRunRecord | BindingBatch) -> tuple[AttributionTarget, ...]:
@@ -991,7 +996,7 @@ class AttributionRunner:
                         confidence=result.confidence,
                         probe_description=result.reason,
                         probe_analysis=result.reasoning,
-                        policy_version=POLICY_VERSION,
+                        policy_version=item.policy_version,
                         attribution_engine=engine.key,
                         report_schema_version=REPORT_SCHEMA_VERSION,
                         report_payload=report.model_dump(
@@ -1000,7 +1005,7 @@ class AttributionRunner:
                             exclude_none=False,
                             exclude={"source_report"} if result.canonical_report is None else set(),
                         ),
-                        execution_manifest=manifest.model_dump(mode="json", by_alias=True),
+                        execution_manifest=manifest.snapshot(),
                         execution_manifest_hash=manifest.content_hash,
                         legacy_rule=item.legacy_rule,
                         attribution_skill_name=manifest.skill.key,
@@ -1146,7 +1151,16 @@ class AttributionRunner:
             legacy_rule = bool(
                 (run.potential_policy or {}).get("legacyRule", run.attribution_skill_key is None)
             )
+        policy = (
+            run.candidate_policy
+            if isinstance(run, BindingBatch)
+            else CandidatePolicy.model_validate(
+                (run.potential_policy or {}).get("candidatePolicy", {})
+            )
+        )
         return AttributionInput(
+            source_matches=candidate.matched_sources,
+            candidate_policy=policy,
             bad_case_id=candidate.bad_case_id,
             run_id=run.id,
             definition=target.definition if isinstance(run, BindingBatch) else None,
@@ -1156,7 +1170,7 @@ class AttributionRunner:
             probe_type=target.object_type,
             probe_object=target.object_name,
             object_version=object_version,
-            policy_version=POLICY_VERSION,
+            policy_version=policy_version(policy),
             attribution_engine=run.attribution_engine,
             attribution_skill_key=run.attribution_skill_key,
             attribution_skill_revision=(

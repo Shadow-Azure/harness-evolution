@@ -36,6 +36,7 @@ _QUERY_CHUNK = 500
 
 OrderState = Literal["comparable", "unknown"]
 IncludedReason = Literal[
+    "custom_source",
     "self_report",
     "after_object",
     "both",
@@ -45,7 +46,7 @@ IncludedReason = Literal[
 
 ORDER_STATES: frozenset[str] = frozenset({"comparable", "unknown"})
 INCLUDED_REASONS: frozenset[str] = frozenset(
-    {"self_report", "after_object", "both", "policy_excluded", "order_unknown"},
+    {"custom_source", "self_report", "after_object", "both", "policy_excluded", "order_unknown"},
 )
 ANCHOR_SOURCES: frozenset[str] = frozenset(
     {"event", "node", "post_process", "unknown"},
@@ -287,6 +288,7 @@ class CandidateWrite:
     object_trigger_at: datetime | None = None
     case_trigger_agent_id: str | None = None
     case_trigger_event_index: int | None = None
+    source_evidence: dict[str, Any] | None = None
     case_anchor_kind: str | None = None
     case_trigger_at: datetime | None = None
     probe_id: str | None = None
@@ -1189,6 +1191,7 @@ class EvolutionRunCandidateRepository:
             "object_revision": write.object_revision,
             "case_trigger_agent_id": write.case_trigger_agent_id,
             "case_trigger_event_index": write.case_trigger_event_index,
+            "source_evidence": write.source_evidence,
             "case_anchor_kind": write.case_anchor_kind,
             "case_trigger_at": write.case_trigger_at,
             "order_state": write.order_state,

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import type {
+  CandidatePolicy,
   EvolutionTarget,
   EvolutionTargetWrite,
 } from "@harness/contracts";
 import { computed, nextTick, reactive, ref, watch } from "vue";
 
+import CandidateRules from "./CandidateRules.vue";
 import type {
   TargetMemberFieldName,
   TargetServerError,
@@ -18,6 +20,8 @@ import {
 const props = withDefaults(
   defineProps<{
     modelValue: boolean;
+    workspaceId?: string;
+    window?: { from: string; to: string } | null;
     target: EvolutionTarget | null;
     packages?: {id: string; skillName: string}[];
     runtimeEnabled?: boolean;
@@ -29,6 +33,8 @@ const props = withDefaults(
     serverError?: TargetServerError | null;
   }>(),
   {
+    workspaceId: "",
+    window: null,
     packages: () => [],
     runtimeEnabled: undefined,
     packagesLoading: false,
@@ -71,6 +77,9 @@ const form = reactive({
   attributionPackageId: null as string | null,
   enabled: true,
 });
+const step = ref(1);
+const policy = ref<CandidatePolicy>({ mode: "default", rules: [] });
+const policyError = ref("");
 const members = ref<MemberDraft[]>([]);
 const errors = reactive<FormErrors>({});
 const memberErrors = reactive<MemberErrors>({});
@@ -254,6 +263,9 @@ function removeMember(index: number): void {
 }
 
 function resetForm(): void {
+  step.value = 1;
+  policy.value = { mode: "default", rules: [] };
+  policyError.value = "";
   form.attributionPackageId = props.target?.attributionPackageId ?? null;
   if (!props.target && props.runtimeEnabled) form.attributionPackageId = "default-attribute-badcases";
   form.repoUrl = props.target?.repoUrl ?? "";
@@ -377,7 +389,18 @@ function submit(): void {
   ) {
     return;
   }
+  if (!props.target && step.value === 1) {
+    step.value = 2;
+    return;
+  }
+  const candidatePolicy = policy.value.mode === "default" ? { mode: "default" as const, rules: [] } : policy.value;
+  if (!props.target && candidatePolicy.mode !== "default" &&
+      (!candidatePolicy.rules?.length || candidatePolicy.rules.some((rule) => !rule.name || !rule.types.length))) {
+    policyError.value = "请选择来源名称和上报类型。";
+    return;
+  }
   emit("submit", {
+    ...(!props.target && { candidatePolicy }),
     repoUrl,
     defaultRef,
     validationProjectId,
@@ -416,6 +439,7 @@ watch(
   async (value) => {
     serverErrorDismissed.value = false;
     if (!value?.field) return;
+    step.value = 1;
     await nextTick();
     formElement.value
       ?.querySelector<HTMLElement>(`[name="${value.field}"]`)
@@ -427,6 +451,7 @@ watch(
 <template>
   <ElDialog
     class="target-form-dialog"
+    :class="{ 'target-create-dialog': !target }"
     body-class="target-dialog-body"
     footer-class="target-dialog-foot"
     header-class="target-dialog-head"
@@ -434,16 +459,25 @@ watch(
     :show-close="!submitting"
     :teleported="false"
     :title="title"
-    width="min(760px, calc(100vw - 32px))"
+    :width="target ? 'min(760px, calc(100vw - 32px))' : 'min(660px, calc(100vw - 32px))'"
     @close="close"
   >
+    <nav
+      v-if="!target"
+      aria-label="新增进化对象步骤"
+    >
+      <b :aria-current="step === 1 ? 'step' : undefined">① 对象信息</b> → <b :aria-current="step === 2 ? 'step' : undefined">② 候选规则</b>
+    </nav>
     <form
       id="target-form"
       ref="formElement"
       class="target-form"
       @submit.prevent="submit"
     >
-      <ElForm label-position="top">
+      <ElForm
+        v-show="step === 1"
+        label-position="top"
+      >
         <details v-if="target?.definition">
           <summary>查看已保存的对象原文</summary>
           <p>{{ target.definition.path }} · {{ target.definition.commit }}</p>
@@ -476,90 +510,53 @@ watch(
             </p>
           </ElFormItem>
 
-          <div class="target-shared-row">
-            <ElFormItem label="基线分支或标签">
-              <ElAutocomplete
-                ref="versionAutocomplete"
-                :aria-describedby="fieldDescribedBy('defaultRef')"
-                :aria-invalid="fieldAriaInvalid('defaultRef')"
-                autocomplete="off"
-                class="target-version-select"
-                data-testid="target-version-select"
-                :debounce="0"
-                :fetch-suggestions="fetchVersionSuggestions"
-                :model-value="form.defaultRef"
-                name="defaultRef"
-                placeholder="main / v2.0.0"
-                show-arrow
-                trigger-on-focus
-                @update:model-value="updateDefaultRef"
-              >
-                <template #suffix>
-                  <button
-                    aria-label="展开标签建议"
-                    class="version-suggestion-toggle"
-                    type="button"
-                    @click.stop="openVersionSuggestions"
-                    @mousedown.prevent
-                  >
-                    <span
-                      aria-hidden="true"
-                      class="version-suggestion-toggle-chevron"
-                    />
-                  </button>
-                </template>
-              </ElAutocomplete>
-              <p class="field-help">
-                {{ versionHelp }}
-              </p>
-              <p
-                v-if="hasFieldError('defaultRef')"
-                id="target-defaultRef-error"
-                class="field-error"
-              >
-                {{ fieldMessage("defaultRef") }}
-                <span
-                  v-if="fieldSuggestion('defaultRef')"
-                  class="field-suggestion"
-                >{{ fieldSuggestion("defaultRef") }}</span>
-              </p>
-            </ElFormItem>
-
-            <ElFormItem label="归因 Skill">
-              <select
-                v-model="form.attributionPackageId"
-                aria-label="归因 Skill"
-                :disabled="packagesLoading"
-                class="skill-select"
-              >
-                <option
-                  v-if="unboundLabel"
-                  :value="null"
+          <ElFormItem label="基线分支或标签">
+            <ElAutocomplete
+              ref="versionAutocomplete"
+              :aria-describedby="fieldDescribedBy('defaultRef')"
+              :aria-invalid="fieldAriaInvalid('defaultRef')"
+              autocomplete="off"
+              class="target-version-select"
+              data-testid="target-version-select"
+              :debounce="0"
+              :fetch-suggestions="fetchVersionSuggestions"
+              :model-value="form.defaultRef"
+              name="defaultRef"
+              placeholder="main / v2.0.0"
+              show-arrow
+              trigger-on-focus
+              @update:model-value="updateDefaultRef"
+            >
+              <template #suffix>
+                <button
+                  aria-label="展开标签建议"
+                  class="version-suggestion-toggle"
+                  type="button"
+                  @click.stop="openVersionSuggestions"
+                  @mousedown.prevent
                 >
-                  {{ unboundLabel }}
-                </option>
-                <option
-                  v-if="!packages.length"
-                  value="default-attribute-badcases"
-                >
-                  attribute-badcases
-                </option>
-                <option
-                  v-for="item in packages"
-                  :key="item.id"
-                  :value="item.id"
-                >
-                  {{ item.skillName }}
-                </option>
-              </select>
-              <p
-                v-if="form.attributionPackageId && runtimeEnabled !== undefined"
-                class="field-help"
-              >
-                {{ runtimeEnabled ? "保存绑定后，后台将分析当前与该配置成员关联的 Badcase。" : "归因运行时不可用。绑定会保存，运行时恢复并重启后开始后台归因。" }}<span v-if="form.attributionPackageId">保存绑定时从指定版本读取每个成员的目录定义并保存原文快照。</span>
-              </p>
-            </ElFormItem>
-          </div>
+                  <span
+                    aria-hidden="true"
+                    class="version-suggestion-toggle-chevron"
+                  />
+                </button>
+              </template>
+            </ElAutocomplete>
+            <p class="field-help">
+              {{ versionHelp }}
+            </p>
+            <p
+              v-if="hasFieldError('defaultRef')"
+              id="target-defaultRef-error"
+              class="field-error"
+            >
+              {{ fieldMessage("defaultRef") }}
+              <span
+                v-if="fieldSuggestion('defaultRef')"
+                class="field-suggestion"
+              >{{ fieldSuggestion("defaultRef") }}</span>
+            </p>
+          </ElFormItem>
 
           <div class="target-shared-row">
             <ElFormItem
@@ -667,7 +664,7 @@ watch(
                   :aria-describedby="memberDescribedBy(index, 'objectType')"
                   :aria-invalid="memberAriaInvalid(index, 'objectType')"
                   :aria-label="`成员 ${index + 1} 类型`"
-                  class="member-type"
+                  class="member-type evolution-form-select"
                   :name="memberFieldPath(index, 'objectType')"
                   @change="onMemberInput(index, 'objectType', String(member.objectType))"
                 >
@@ -777,6 +774,41 @@ watch(
             保存后，后台会为<b>每个成员</b>关联当前已上报的 bad case；启动自进化时整条配置一起进化，评测把全部成员目录作为资产一次提交。
           </p>
         </ElFormItem>
+
+        <ElFormItem label="归因 Skill">
+          <select
+            v-model="form.attributionPackageId"
+            aria-label="归因 Skill"
+            :disabled="packagesLoading"
+            class="skill-select evolution-form-select"
+          >
+            <option
+              v-if="unboundLabel"
+              :value="null"
+            >
+              {{ unboundLabel }}
+            </option>
+            <option
+              v-if="!packages.length"
+              value="default-attribute-badcases"
+            >
+              attribute-badcases
+            </option>
+            <option
+              v-for="item in packages"
+              :key="item.id"
+              :value="item.id"
+            >
+              {{ item.skillName }}
+            </option>
+          </select>
+          <p
+            v-if="form.attributionPackageId && runtimeEnabled !== undefined"
+            class="field-help"
+          >
+            {{ runtimeEnabled ? "保存绑定后，后台将分析当前与该配置成员关联的 Badcase。" : "归因运行时不可用。绑定会保存，运行时恢复并重启后开始后台归因。" }}<span v-if="form.attributionPackageId">保存绑定时从指定版本读取每个成员的目录定义并保存原文快照。</span>
+          </p>
+        </ElFormItem>
       </ElForm>
 
       <div
@@ -811,6 +843,20 @@ watch(
           <pre v-if="visibleServerError.output">{{ visibleServerError.output }}</pre>
         </details>
       </div>
+      <CandidateRules
+        v-if="step === 2"
+        v-model="policy"
+        :workspace-id="workspaceId ?? ''"
+        :window="window"
+        create
+      />
+      <p
+        v-if="step === 2 && policyError"
+        class="form-validation-error"
+        role="alert"
+      >
+        {{ policyError }}
+      </p>
     </form>
 
     <template #footer>
@@ -822,13 +868,20 @@ watch(
           取消
         </ElButton>
         <ElButton
+          v-if="step === 2"
+          :disabled="submitting"
+          @click="step = 1"
+        >
+          上一步
+        </ElButton>
+        <ElButton
           form="target-form"
           :loading="submitting"
           :disabled="packagesLoading"
           native-type="submit"
           type="primary"
         >
-          {{ target ? "保存修改" : "新增配置" }}
+          {{ target ? "保存修改" : step === 1 ? "下一步" : "保存进化对象" }}
         </ElButton>
       </footer>
     </template>
@@ -836,6 +889,32 @@ watch(
 </template>
 
 <style scoped>
+:global(.el-dialog.target-create-dialog) {
+  height: min(720px, calc(100dvh - 64px));
+  margin: max(32px, calc((100dvh - 720px) / 2)) auto;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+:global(.el-dialog.target-create-dialog .target-dialog-body) {
+  display: flex;
+  flex-direction: column;
+  max-height: none;
+  overflow: hidden;
+}
+.target-create-dialog .target-form {
+  overflow: auto;
+  min-height: 0;
+}
+nav {
+  flex: none;
+  margin: -18px -18px 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-dim);
+}
+nav [aria-current] { color: var(--blue); }
+
 :global(.el-dialog.target-form-dialog) {
   overflow: hidden;
   border-radius: 14px;
@@ -955,18 +1034,6 @@ watch(
 .member-match :deep(.el-switch__core) {
   min-width: 34px;
   height: 18px;
-}
-
-.member-type {
-  width: 100%;
-  height: 32px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-card);
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
 }
 
 .member-remove {

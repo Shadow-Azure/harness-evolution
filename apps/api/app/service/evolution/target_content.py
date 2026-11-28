@@ -14,6 +14,7 @@ from collections.abc import Awaitable
 from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
+from app.db.crud.evolution_targets import EvolutionTargetRecord
 from app.errors import AppError, ErrorCode
 from app.third_party_api.git.content import GitContentUnavailable
 from app.utils.definition import definition_file_hash, definition_hash
@@ -100,6 +101,30 @@ class TargetVersionResolver(Protocol):
     ) -> ResolvedTargetVersion:
         """Return the version and the body-hash revision for a target."""
         ...
+
+
+async def resolve_target_members(
+    resolver: TargetVersionResolver,
+    version: str,
+    config: EvolutionTargetRecord,
+) -> tuple[ResolvedTargetVersion, ...]:
+    """Resolve the shared version into one body-hash revision per member."""
+    resolved: list[ResolvedTargetVersion] = []
+    for member in config.member_objects:
+        item = await resolver.resolve(
+            object_type=member.object_type,
+            repo_url=config.repo_url,
+            sub_dir=member.sub_dir,
+            version=version,
+        )
+        if item.base_commit is None and resolved and resolved[0].base_commit is not None:
+            item = ResolvedTargetVersion(
+                item.target_version,
+                item.target_revision,
+                resolved[0].base_commit,
+            )
+        resolved.append(item)
+    return tuple(resolved)
 
 
 def target_content_unresolved(

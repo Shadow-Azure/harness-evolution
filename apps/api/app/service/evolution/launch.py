@@ -9,7 +9,6 @@ from typing import Any, Literal, Protocol
 from app.db.crud.attributions import AttributionRepository
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.evolution_targets import EvolutionTargetRecord
-from app.db.crud.potential import window_day_boundaries
 from app.errors import AppError, ErrorCode
 from app.service.evolution.attribution import DEFAULT_ATTRIBUTION_ENGINE
 from app.service.evolution.attribution_contracts import is_platform_rule
@@ -18,11 +17,13 @@ from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.events import EvolutionRunEventService
 from app.service.evolution.potential import (
     MatchCondition,
-    MatchTarget,
+    PotentialCase,
     PotentialMatcher,
     ResolvedPolicy,
+    latest_candidate_reports,
     resolve_policy,
     resolve_window,
+    target_match_condition,
 )
 from app.service.evolution.probe_query import (
     ProbeQueryRequest,
@@ -32,6 +33,7 @@ from app.service.evolution.probe_query import (
 from app.service.evolution.target_content import (
     ResolvedTargetVersion,
     TargetVersionResolver,
+    resolve_target_members,
 )
 from app.service.jobs import JobRunner, sanitize_job_payload
 from app.utils.ids import new_id
@@ -170,21 +172,19 @@ class EvolutionLaunchService:
             default_version=config.default_ref,
             workspace_ids=(config.workspace_id,),
         )
-        resolved_members = await self._resolve_members(query.target_version, config)
+        resolved_members = await resolve_target_members(
+            self._resolver, query.target_version, config
+        )
         resolved = resolved_members[0]
-        policy = resolve_policy(body.policy)
-        condition = _match_condition(query, config, resolved_members)
+        policy = resolve_policy(None if config.candidate_policy else body.policy)
+        condition = target_match_condition(
+            query.window_from, query.window_to, config, resolved_members
+        )
         cases = await self._require_potential(condition, policy)
         if (
             self._reports
             and latest_only
-            and not await self._reports.latest_reports(
-                config.workspace_id,
-                config.object_type,
-                config.object_name,
-                resolved.target_revision,
-                cases,
-            )
+            and not await latest_candidate_reports(self._reports, condition, cases)
         ):
             raise AppError(
                 status_code=409,
@@ -233,7 +233,7 @@ class EvolutionLaunchService:
         self,
         condition: MatchCondition,
         policy: Any,
-    ) -> tuple[str, ...]:
+    ) -> tuple[PotentialCase, ...]:
         """Fail the launch before any write when nothing can be attributed.
 
         Args:
@@ -274,7 +274,7 @@ class EvolutionLaunchService:
                 },
             )
 
-        return tuple(case.bad_case_id for case in match.included)
+        return match.included
 
     def _run_values(
         self,
@@ -325,6 +325,7 @@ class EvolutionLaunchService:
             ),
             "potential_policy": {
                 **policy.snapshot(),
+                **({"candidatePolicy": config.candidate_policy} if config.candidate_policy else {}),
                 **({"latestReportsOnly": True} if latest_only else {}),
                 **({"legacyRule": True} if legacy_rule else {}),
                 **(
@@ -402,29 +403,6 @@ class EvolutionLaunchService:
             workspace_ids=workspace_ids,
         )
 
-    async def _resolve_members(
-        self,
-        version: str,
-        config: EvolutionTargetRecord,
-    ) -> tuple[ResolvedTargetVersion, ...]:
-        """Resolve the shared version into one body-hash revision per member."""
-        resolved: list[ResolvedTargetVersion] = []
-        for member in config.member_objects:
-            item = await self._resolver.resolve(
-                object_type=member.object_type,
-                repo_url=config.repo_url,
-                sub_dir=member.sub_dir,
-                version=version,
-            )
-            if item.base_commit is None and resolved and resolved[0].base_commit is not None:
-                item = ResolvedTargetVersion(
-                    item.target_version,
-                    item.target_revision,
-                    resolved[0].base_commit,
-                )
-            resolved.append(item)
-        return tuple(resolved)
-
 
 def _snapshot_eval(
     eval_config: Mapping[str, Any] | None,
@@ -496,35 +474,4 @@ def _attribution_engine(effective_skill: LaunchAttributionSkill | None) -> str:
         code=ErrorCode.ATTRIBUTION_SKILL_INVALID,
         message="the selected attribution Skill executor is not available",
         details={"executorType": effective_skill.executor_type},
-    )
-
-
-def _match_condition(
-    query: Any,
-    config: EvolutionTargetRecord,
-    resolved_members: Sequence[ResolvedTargetVersion],
-) -> MatchCondition:
-    """Build the shared matcher condition from the validated launch request."""
-    start, end = resolve_window(query.window_from, query.window_to)
-    window_start, window_end = window_day_boundaries(start, end)
-    members = config.member_objects
-    first = resolved_members[0]
-    return MatchCondition(
-        workspace_id=config.workspace_id,
-        target_type=members[0].object_type,
-        target_name=members[0].object_name,
-        target_version=first.target_version,
-        target_revision=first.target_revision,
-        window_start=window_start,
-        window_end=window_end,
-        targets=tuple(
-            MatchTarget(
-                object_type=member.object_type,
-                object_name=member.object_name,
-                target_version=item.target_version,
-                target_revision=item.target_revision,
-                match_by_name=member.match_by_name,
-            )
-            for member, item in zip(members, resolved_members, strict=True)
-        ),
     )

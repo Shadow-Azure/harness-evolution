@@ -1401,6 +1401,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{wid}/evolution/candidate-source-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Source Reports */
+        get: operations["source_reports_api_workspaces__wid__evolution_candidate_source_reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/candidate-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Candidate Sources */
+        get: operations["candidate_sources_api_workspaces__wid__evolution_candidate_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{wid}/evolution/cluster-previews": {
         parameters: {
             query?: never;
@@ -1760,6 +1794,26 @@ export interface paths {
          * @description Remove a legacy rule override; agent-mode targets always have an explicit binding.
          */
         delete: operations["unbind_target_attribution_skill_api_workspaces__wid__evolution_targets__targetId__attribution_skill_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/targets/{targetId}/candidate-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Candidate Policy
+         * @description Update only source rules under the target lock, preserving concurrent metadata edits.
+         */
+        put: operations["save_candidate_policy_api_workspaces__wid__evolution_targets__targetId__candidate_policy_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2282,6 +2336,7 @@ export interface components {
         AttributionExecutionManifest: {
             /** Badcaseid */
             badCaseId: string;
+            candidatePolicy?: components["schemas"]["CandidatePolicy"] | null;
             /** Contextsnapshothash */
             contextSnapshotHash: string;
             /** Engine */
@@ -2303,6 +2358,10 @@ export interface components {
             /** Policyversion */
             policyVersion: string;
             skill: components["schemas"]["app__service__evolution__attribution_contracts__AttributionSkillRevision"];
+            /** Sourcematches */
+            sourceMatches?: {
+                [key: string]: unknown;
+            }[] | null;
             target: components["schemas"]["AttributionTargetRef"];
             /** Workspaceid */
             workspaceId: string;
@@ -3157,11 +3216,23 @@ export interface components {
              */
             file: string;
         };
+        /** CandidatePolicy */
+        CandidatePolicy: {
+            /**
+             * Mode
+             * @default default
+             * @enum {string}
+             */
+            mode: "default" | "combined" | "custom";
+            /** Rules */
+            rules?: components["schemas"]["SourceRule"][];
+        };
         /**
          * CatalogConfig
          * @description One enabled configuration with all of its members.
          */
         CatalogConfig: {
+            candidatePolicy?: components["schemas"]["CandidatePolicy"] | null;
             /** Defaultref */
             defaultRef: string;
             /** Id */
@@ -3212,6 +3283,7 @@ export interface components {
          * @description One enabled evolution target and its remote versions.
          */
         CatalogTarget: {
+            candidatePolicy?: components["schemas"]["CandidatePolicy"] | null;
             /** Defaultref */
             defaultRef: string;
             /** Id */
@@ -4085,6 +4157,7 @@ export interface components {
             attributionPackageId?: string | null;
             /** Attributionskillname */
             attributionSkillName?: string | null;
+            candidatePolicy?: components["schemas"]["CandidatePolicy"] | null;
             /** Defaultref */
             defaultRef: string;
             definition?: components["schemas"]["TargetDefinitionPreview"] | null;
@@ -4175,6 +4248,7 @@ export interface components {
         EvolutionTargetWrite: {
             /** Attributionpackageid */
             attributionPackageId?: string | null;
+            candidatePolicy?: components["schemas"]["CandidatePolicy"] | null;
             /** Defaultref */
             defaultRef: string;
             /**
@@ -4512,7 +4586,7 @@ export interface components {
              * Hitreason
              * @enum {string}
              */
-            hitReason: "self_report" | "after_object" | "both" | "policy_excluded" | "order_unknown";
+            hitReason: "custom_source" | "self_report" | "after_object" | "both" | "policy_excluded" | "order_unknown";
             /** Objectname */
             objectName: string;
             /**
@@ -4600,6 +4674,11 @@ export interface components {
              * @default 0
              */
             both: number;
+            /**
+             * Customsource
+             * @default 0
+             */
+            customSource: number;
             /**
              * Orderunknown
              * @default 0
@@ -5376,6 +5455,20 @@ export interface components {
             /** Targets */
             targets: string[];
         };
+        /** SourceCount */
+        SourceCount: {
+            /** Discoverycount */
+            discoveryCount: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "skill" | "agent";
+            /** Name */
+            name: string;
+            /** Selfcount */
+            selfCount: number;
+        };
         /**
          * SourceListResponse
          * @description Source distribution ordered by total descending, then object name.
@@ -5383,6 +5476,36 @@ export interface components {
         SourceListResponse: {
             /** Items */
             items: components["schemas"]["SourceRow"][];
+        };
+        /** SourceReport */
+        SourceReport: {
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string | null;
+            /**
+             * Reporttype
+             * @enum {string}
+             */
+            reportType: "self" | "discovery";
+            /** Title */
+            title: string;
+        };
+        /** SourceReportPage */
+        SourceReportPage: {
+            /** Items */
+            items: components["schemas"]["SourceReport"][];
+            /** Labels */
+            labels: (string | null)[];
+            /** Sourcetotal */
+            sourceTotal: number;
+            /** Total */
+            total: number;
         };
         /**
          * SourceRow
@@ -5399,6 +5522,23 @@ export interface components {
             sessions: number;
             /** Total */
             total: number;
+        };
+        /** SourceRule */
+        SourceRule: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "skill" | "agent";
+            /** Name */
+            name: string;
+            /**
+             * Relation
+             * @enum {string}
+             */
+            relation: "any" | "before" | "after";
+            /** Types */
+            types: ("self" | "discovery")[];
         };
         /**
          * StepAttributionPayload
@@ -5649,7 +5789,7 @@ export interface components {
              * Hitreason
              * @enum {string}
              */
-            hitReason: "self_report" | "after_object" | "both" | "policy_excluded" | "order_unknown";
+            hitReason: "custom_source" | "self_report" | "after_object" | "both" | "policy_excluded" | "order_unknown";
             /** Objectname */
             objectName: string;
             /**
@@ -11466,6 +11606,81 @@ export interface operations {
             };
         };
     };
+    source_reports_api_workspaces__wid__evolution_candidate_source_reports_get: {
+        parameters: {
+            query: {
+                kind: "skill" | "agent";
+                name: string;
+                types: ("self" | "discovery")[];
+                labels?: string[] | null;
+                unlabelled?: boolean;
+                filterType?: ("self" | "discovery") | null;
+                from?: string | null;
+                to?: string | null;
+                page?: number;
+            };
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceReportPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    candidate_sources_api_workspaces__wid__evolution_candidate_sources_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceCount"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_cluster_preview_api_workspaces__wid__evolution_cluster_previews_post: {
         parameters: {
             query?: never;
@@ -12957,6 +13172,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_candidate_policy_api_workspaces__wid__evolution_targets__targetId__candidate_policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                targetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidatePolicy"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidatePolicy"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

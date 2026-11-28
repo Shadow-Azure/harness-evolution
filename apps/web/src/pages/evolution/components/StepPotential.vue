@@ -42,6 +42,7 @@ const reasonItems = computed(() => {
 
 const reasonLabels: Record<StepPotentialRow["hitReason"], string> = {
   self_report: "self 上报",
+  custom_source: "命中来源规则",
   after_object: "触发点在对象后",
   both: "两者命中",
   policy_excluded: "策略排除",

@@ -31,9 +31,12 @@ from app.db.crud.potential import (
 )
 from app.errors import AppError, ErrorCode
 from app.service.evolution.attribution_contracts import default_execution_manifest, is_platform_rule
+from app.service.evolution.candidate_policy import CandidatePolicy, policy_version
 from app.service.evolution.target_content import (
+    ResolvedTargetVersion,
     TargetVersionResolver,
     resolve_legacy_target_version,
+    resolve_target_members,
 )
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.schemas import IdentityModel
@@ -44,6 +47,7 @@ if TYPE_CHECKING:
 
 OrderState = Literal["comparable", "unknown"]
 HitReason = Literal[
+    "custom_source",
     "self_report",
     "after_object",
     "both",
@@ -83,6 +87,7 @@ REVISION_PREFIXES: tuple[str, ...] = ("tag:", "digest:", "provider:")
 """Normalized revision prefixes persisted in `agent_events.object_revision`."""
 
 REASONS: tuple[HitReason, ...] = (
+    "custom_source",
     "self_report",
     "after_object",
     "both",
@@ -292,6 +297,7 @@ class PotentialReasonCounts(IdentityModel):
     """Every closed hit reason, zero-filled for a stable contract."""
 
     self_report: int = Field(default=0, ge=0)
+    custom_source: int = Field(default=0, ge=0)
     after_object: int = Field(default=0, ge=0)
     both: int = Field(default=0, ge=0)
     policy_excluded: int = Field(default=0, ge=0)
@@ -371,6 +377,7 @@ class MatchCondition:
     window_start: datetime
     window_end: datetime
     targets: tuple[MatchTarget, ...] = ()
+    candidate_policy: CandidatePolicy | None = None
 
     @property
     def objects(self) -> tuple[MatchTarget, ...]:
@@ -491,6 +498,9 @@ class PotentialCase:
     anchor_source: AnchorSource = "unknown"
     object_type: str = "skill"
     object_revision: str | None = None
+    matched_sources: tuple[dict[str, object], ...] = ()
+    source_kind: str | None = None
+    source_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -647,12 +657,38 @@ def _window_invalid(reason: str, start: date, end: date) -> AppError:
     )
 
 
-def _target_for_case(condition: MatchCondition, item: PotentialCase) -> MatchTarget:
+def target_for_case(condition: MatchCondition, item: PotentialCase) -> MatchTarget:
     """Return the member identity that owns one evaluated case."""
     for target in condition.objects:
         if target.object_type == item.object_type and target.object_name == item.object_name:
             return target
     return condition.objects[0]
+
+
+async def latest_candidate_reports(
+    reports: AttributionRepository,
+    condition: MatchCondition,
+    candidates: Sequence[PotentialCase],
+    *,
+    generation: str | None = None,
+) -> dict[str, tuple[str, str, str]]:
+    """Look up each included case under the revision of its owning member."""
+    grouped: dict[MatchTarget, list[str]] = {}
+    for candidate in candidates:
+        grouped.setdefault(target_for_case(condition, candidate), []).append(candidate.bad_case_id)
+    found: dict[str, tuple[str, str, str]] = {}
+    for owner, ids in grouped.items():
+        found.update(
+            await reports.latest_reports(
+                condition.workspace_id,
+                owner.object_type,
+                owner.object_name,
+                owner.target_revision,
+                ids,
+                generation=generation,
+            )
+        )
+    return found
 
 
 def _preview_cache_key(
@@ -661,7 +697,7 @@ def _preview_cache_key(
     legacy_rule: bool,
 ) -> str:
     """Build the cache identity of one case under its owning member."""
-    target = _target_for_case(condition, item)
+    target = target_for_case(condition, item)
     if legacy_rule:
         return attribution_cache_key(
             condition.workspace_id,
@@ -669,7 +705,7 @@ def _preview_cache_key(
             target.object_type,
             target.object_name,
             target.target_revision,
-            POLICY_VERSION,
+            policy_version(condition.candidate_policy),
             ATTRIBUTION_ENGINE,
         )
     return default_execution_manifest(
@@ -678,7 +714,9 @@ def _preview_cache_key(
         target_type=target.object_type,
         target_name=target.object_name,
         target_version=target.target_revision,
-        policy_version=POLICY_VERSION,
+        policy_version=policy_version(condition.candidate_policy),
+        candidate_policy=condition.candidate_policy,
+        source_matches=item.matched_sources,
         engine=ATTRIBUTION_ENGINE,
         session_id=item.session_id,
         hit_reason=item.hit_reason,
@@ -764,31 +802,16 @@ class PotentialMatcher:
         for session_id in traced:
             session_events = events_by_session.get(session_id, [])
             if session_events:
-                entry = min(session_events, key=cmp_to_key(_compare_entry_order))
-                entries: list[SessionObjectEntry] = []
-                for entry_key in dict.fromkeys(
-                    (event.object_type, event.object_name) for event in session_events
-                ):
-                    member_events = [
-                        event
-                        for event in session_events
-                        if (event.object_type, event.object_name) == entry_key
-                    ]
-                    if not member_events:
-                        continue
-                    member_entry = min(member_events, key=cmp_to_key(_compare_entry_order))
-                    entries.append(
-                        SessionObjectEntry(
-                            object_type=entry_key[0] or condition.target_type,
-                            object_name=entry_key[1] or condition.target_name,
-                            entry=TriggerPoint(
-                                agent_id=member_entry.agent_id,
-                                event_index=member_entry.event_index,
-                                triggered_at=member_entry.triggered_at,
-                                tree_index=member_entry.tree_index,
-                            ),
-                        ),
+                ordered = sorted(session_events, key=cmp_to_key(_compare_entry_order))
+                entries = tuple(
+                    SessionObjectEntry(
+                        object_type=e.object_type or condition.target_type,
+                        object_name=e.object_name or condition.target_name,
+                        entry=TriggerPoint(e.agent_id, e.event_index, e.triggered_at, e.tree_index),
                     )
+                    for e in ordered
+                )
+                entry = ordered[0]
                 associated.append(
                     AssociatedSession(
                         session_id=session_id,
@@ -800,14 +823,9 @@ class PotentialMatcher:
                             if entry.triggered_at is not None
                             else metas[session_id].started_at
                         ),
-                        object_entry=TriggerPoint(
-                            agent_id=entry.agent_id,
-                            event_index=entry.event_index,
-                            triggered_at=entry.triggered_at,
-                            tree_index=entry.tree_index,
-                        ),
+                        object_entry=entries[0].entry,
                         bad_case_count=case_counts.get(session_id, 0),
-                        object_entries=tuple(entries),
+                        object_entries=entries,
                     ),
                 )
             else:
@@ -868,15 +886,27 @@ class PotentialMatcher:
             if reporter.parent_agent_id is not None:
                 involved.add(reporter.parent_agent_id)
 
+        source_policy = condition.candidate_policy
+        if source_policy is not None:
+            policy = resolve_policy(None)
+        lines = sorted(
+            {
+                c.trigger_line
+                for c in cases
+                if c.trigger_line and source_policy and source_policy.rules
+            }
+        )
         anchor_events = await self._repository.list_anchor_events(
             tuple(sorted(involved)),
             tuple(sorted(skill_names)),
+            **({"trigger_lines": lines} if lines else {}),
         )
         events_by_agent: dict[str, list[AnchorEventRecord]] = {}
         for event in anchor_events:
             events_by_agent.setdefault(event.agent_id, []).append(event)
         entries = {session.session_id: session for session in association.sessions}
         objects = condition.objects
+        targets_by_key = {target.key: target for target in objects}
         target_names = {item.object_name for item in objects}
 
         evaluated: list[PotentialCase] = []
@@ -905,19 +935,65 @@ class PotentialMatcher:
                 same_object=same_object,
                 policy=policy,
             )
-            target = next(
-                (
-                    item
-                    for item in objects
-                    if item.object_name == case.object_name and item.object_type == case.object_type
-                ),
-                None,
-            )
+            target = targets_by_key.get((case.object_type, case.object_name))
+            witness = object_entry
+            evidence: list[dict[str, object]] = []
+            if source_policy and source_policy.rules:
+                anchor, kind = _source_anchor(
+                    case, reporters[case.bad_case_id], events_by_agent, case_trigger, anchor_source
+                )
+                unknown = False
+                keep_default = source_policy.mode == "combined" and verdict.included
+                for index, rule in enumerate(source_policy.rules):
+                    if (rule.kind, rule.name) != (
+                        case.object_type,
+                        case.object_name,
+                    ) or case.bad_case_type not in rule.types:
+                        continue
+                    for occurrence in session.object_entries:
+                        entry = occurrence.entry
+                        order = _source_order(anchor, entry)
+                        if rule.relation != "any" and (anchor is None or order.state == "unknown"):
+                            unknown = True
+                            continue
+                        if rule.relation == "before" and not order.after:
+                            continue
+                        if rule.relation == "after" and not (
+                            anchor and _source_order(entry, anchor).after
+                        ):
+                            continue
+                        if not evidence and not keep_default:
+                            target = targets_by_key[
+                                (occurrence.object_type, occurrence.object_name)
+                            ]
+                            witness, case_trigger, anchor_source, comparison = (
+                                entry,
+                                anchor,
+                                kind,
+                                order,
+                            )
+                        evidence.append(
+                            {
+                                "rule": index + 1,
+                                "targetType": occurrence.object_type,
+                                "targetName": occurrence.object_name,
+                                "relation": rule.relation,
+                                "agentId": entry.agent_id,
+                                "eventIndex": entry.event_index,
+                                "anchorAgentId": anchor.agent_id if anchor else None,
+                                "anchorEventIndex": anchor.event_index if anchor else None,
+                            }
+                        )
+                        break
+                if evidence and not keep_default:
+                    verdict = CaseVerdict("custom_source", True)
+                elif not evidence and source_policy.mode == "custom":
+                    verdict = CaseVerdict("order_unknown" if unknown else "policy_excluded", False)
             evaluated.append(
                 PotentialCase(
                     bad_case_id=case.bad_case_id,
                     session_id=case.session_id,
-                    object_name=case.object_name,
+                    object_name=target.object_name if target else case.object_name,
                     bad_case_type=case.bad_case_type,
                     trigger_at=(
                         case_trigger.triggered_at
@@ -927,10 +1003,13 @@ class PotentialMatcher:
                     hit_reason=verdict.hit_reason,
                     order_state=comparison.state,
                     included=verdict.included,
-                    object_trigger=object_entry,
+                    object_trigger=witness,
+                    matched_sources=tuple(evidence),
+                    source_kind=case.object_type,
+                    source_name=case.object_name,
                     case_trigger=case_trigger,
                     anchor_source=anchor_source,
-                    object_type=case.object_type,
+                    object_type=target.object_type if target else case.object_type,
                     object_revision=(
                         target.target_revision if target is not None else condition.target_revision
                     ),
@@ -1072,6 +1151,7 @@ class PotentialPreviewService:
                 potential=match.potential,
                 by_reason=PotentialReasonCounts(
                     self_report=match.by_reason.get("self_report", 0),
+                    custom_source=match.by_reason.get("custom_source", 0),
                     after_object=match.by_reason.get("after_object", 0),
                     both=match.by_reason.get("both", 0),
                     policy_excluded=match.by_reason.get("policy_excluded", 0),
@@ -1101,13 +1181,7 @@ class PotentialPreviewService:
         if not match.included:
             raise _no_potential_matched()
         if self._reports and config.attribution_package_id:
-            rows = await self._reports.latest_reports(
-                workspace_id,
-                condition.target_type,
-                condition.target_name,
-                condition.target_revision,
-                tuple(case.bad_case_id for case in match.included),
-            )
+            rows = await latest_candidate_reports(self._reports, condition, match.included)
             groups: dict[str, int] = {}
             for _, skill, _ in rows.values():
                 groups[skill] = groups.get(skill, 0) + 1
@@ -1171,12 +1245,6 @@ class PotentialPreviewService:
                 code=ErrorCode.VALIDATION_INVALID,
                 message="target identity is required",
             )
-        body = body.model_copy(
-            update={
-                "target_type": config.object_type,
-                "target_name": config.object_name,
-            },
-        )
         version = (body.target_version or config.default_ref or "").strip()
         if not version:
             raise AppError(
@@ -1194,40 +1262,50 @@ class PotentialPreviewService:
                     "maxLength": MAX_TARGET_VERSION_LENGTH,
                 },
             )
-        target_version, target_revision = await self._resolve_version(body, config, version)
-        start, end = resolve_window(body.window_from, body.window_to)
-        window_start, window_end = window_day_boundaries(start, end)
-        return MatchCondition(
-            workspace_id=workspace_id,
-            target_type=config.object_type,
-            target_name=config.object_name,
-            target_version=target_version,
-            target_revision=target_revision,
-            window_start=window_start,
-            window_end=window_end,
-        ), config
+        resolved = await resolve_target_members(self._resolver, version, config)
+        return target_match_condition(body.window_from, body.window_to, config, resolved), config
 
-    async def _resolve_version(
-        self,
-        body: PreviewCondition,
-        config: EvolutionTargetRecord,
-        version: str,
-    ) -> tuple[str, str]:
-        """Resolve a selected version to its persisted body-hash revision."""
-        resolved = await self._resolver.resolve(
-            object_type=config.object_type,
-            repo_url=config.repo_url,
-            sub_dir=config.sub_dir,
-            version=version,
-        )
-        return resolved.target_version, resolved.target_revision
+
+def target_match_condition(
+    window_from: date | None,
+    window_to: date | None,
+    config: EvolutionTargetRecord,
+    resolved_members: Sequence[ResolvedTargetVersion],
+) -> MatchCondition:
+    """Build the shared matcher condition from the validated launch request."""
+    start, end = resolve_window(window_from, window_to)
+    window_start, window_end = window_day_boundaries(start, end)
+    members = config.member_objects
+    first = resolved_members[0]
+    return MatchCondition(
+        workspace_id=config.workspace_id,
+        target_type=members[0].object_type,
+        target_name=members[0].object_name,
+        target_version=first.target_version,
+        target_revision=first.target_revision,
+        window_start=window_start,
+        window_end=window_end,
+        targets=tuple(
+            MatchTarget(
+                object_type=member.object_type,
+                object_name=member.object_name,
+                target_version=item.target_version,
+                target_revision=item.target_revision,
+                match_by_name=member.match_by_name,
+            )
+            for member, item in zip(members, resolved_members, strict=True)
+        ),
+        candidate_policy=CandidatePolicy.model_validate(config.candidate_policy)
+        if config.candidate_policy
+        else None,
+    )
 
 
 def _potential_item(item: PotentialCase) -> PotentialPreviewItem:
     """Map one included matcher result to the wizard row DTO."""
     return PotentialPreviewItem(
         bad_case_id=item.bad_case_id,
-        object_name=item.object_name,
+        object_name=item.source_name or item.object_name,
         bad_case_type=item.bad_case_type,
         trigger_at=item.trigger_at,
         session_id=item.session_id,
@@ -1315,6 +1393,45 @@ def _resolve_case_trigger(
         ),
         "node",
     )
+
+
+def _source_order(case: TriggerPoint | None, target: TriggerPoint) -> OrderComparison:
+    """Within one agent, ordered events disambiguate invocations sharing a timestamp."""
+    if (
+        case
+        and case.agent_id == target.agent_id
+        and case.event_index is not None
+        and target.event_index is not None
+    ):
+        return OrderComparison("comparable", case.event_index > target.event_index)
+    return compare_triggers(case, target)
+
+
+def _source_anchor(
+    case: WindowCaseRecord,
+    reporter: AgentNodeRecord | None,
+    events: Mapping[str, Sequence[AnchorEventRecord]],
+    fallback: TriggerPoint | None,
+    source: AnchorSource,
+) -> tuple[TriggerPoint | None, AnchorSource]:
+    """Use a real, unambiguous invocation for a directional source rule."""
+    if reporter is None:
+        return None, "unknown"
+    rows = events.get(reporter.id, ())
+    if case.trigger_line is not None:
+        matches = [e for e in rows if e.line_no == case.trigger_line]
+        if len(matches) == 1:
+            event = matches[0]
+            return TriggerPoint(
+                reporter.id, event.event_index, event.triggered_at, reporter.tree_index
+            ), "event"
+        return None, "unknown"
+    if source == "post_process" or (
+        case.object_type == "skill"
+        and sum(e.kind == "skill" and e.name == case.object_name for e in rows) > 1
+    ):
+        return None, "unknown"
+    return fallback, source
 
 
 def _post_process_anchor(

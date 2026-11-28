@@ -632,7 +632,7 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     assert.equal(overview.stat, "3");
     await screenshot(page, "03-lab-overview-cases.png");
 
-    // 5. The target overview includes all reports from the full-session binding batch.
+    // 5. The same two eligible reports feed automatic attribution, the target overview and the wizard.
     await page.session.send("Page.navigate", {
       url: `${baseUrl}${labPath}/overview?tab=targets`,
     });
@@ -645,7 +645,7 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
           targets: stats.querySelector("[data-testid='ov-target-stat-targets']")?.textContent?.trim() ?? null,
           potential: stats.querySelector("[data-testid='ov-target-stat-potential']")?.textContent?.trim() ?? null,
         };
-        return state.targets === "1" && state.potential === "3" ? state : null;
+        return state.targets === "1" && state.potential === "2" ? state : null;
       })()`,
       "target overview summary",
     ).catch(async (error) => {
@@ -653,7 +653,7 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
       throw new Error(`${error.message}: ${JSON.stringify(result.body.summary)}`);
     });
     assert.equal(targets.targets, "1");
-    assert.equal(targets.potential, "3");
+    assert.equal(targets.potential, "2");
     await screenshot(page, "04-lab-overview-targets.png");
 
     // 6. Sessions are scoped to this workspace and Enter search restores them.

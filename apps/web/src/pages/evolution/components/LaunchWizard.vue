@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type {
   AttributionPreviewResult,
+  CandidatePolicy,
   PotentialPolicy,
   PotentialPreviewItem,
   PotentialPreviewResult,
@@ -70,6 +71,7 @@ interface WizardConfig {
   defaultRef: string;
   versions: string[];
   members: WizardMember[];
+  candidatePolicy?: CandidatePolicy | null;
 }
 
 interface PreviewStage {
@@ -92,6 +94,7 @@ const SHORT_ID_MIN_LENGTH = SHORT_ID_HEAD + SHORT_ID_TAIL + 1;
 
 const HIT_REASON_LABELS: Record<string, string> = {
   self_report: "self 上报",
+  custom_source: "命中来源规则",
   after_object: "对象之后",
   both: "两者命中",
   policy_excluded: "策略排除",
@@ -159,8 +162,8 @@ const includeAfterObject = ref(true);
 const sameObjectOnly = ref(false);
 const cacheEnabled = ref(true);
 const library = useAttributionSkillPackages(() => props.wid);
-const overridePackage = ref("");
-watch(() => [props.wid, targetId.value], () => { overridePackage.value = ""; });
+const overridePackage = ref<string | null>(null);
+watch(() => [props.wid, targetId.value], () => { overridePackage.value = null; });
 
 const sessionPreview = ref<SessionPreviewResult | null>(null);
 const sessionEmptySummary = ref<SessionPreviewSummary | null>(null);
@@ -293,12 +296,6 @@ const effectiveSkill = useQuery({
   enabled: computed(() => Boolean(targetId.value)),
   retry: false,
 });
-const selectedPackage = computed({
-  get: () => overridePackage.value || library.packages.data.value?.items.find(
-    item => item.id === effectiveSkill.data.value?.id,
-  )?.id || "",
-  set: (id: string) => { overridePackage.value = id; },
-});
 const focusCase = useQuery({
   queryKey: computed(() =>
     queryKeys.badCase(props.wid, props.focusCaseId ?? "none"),
@@ -309,7 +306,7 @@ const focusCase = useQuery({
 });
 
 function fallbackConfig(
-  target: { id: string; name: string; repoUrl: string; subDir: string; defaultRef: string; versions: string[] },
+  target: { id: string; name: string; repoUrl: string; subDir: string; defaultRef: string; versions: string[]; candidatePolicy?: CandidatePolicy | null },
   objectType: "skill" | "agent",
 ): WizardConfig {
   return {
@@ -318,6 +315,7 @@ function fallbackConfig(
     repoUrl: target.repoUrl,
     defaultRef: target.defaultRef,
     versions: target.versions,
+    candidatePolicy: target.candidatePolicy,
     members: [
       {
         objectType,
@@ -340,6 +338,7 @@ const configOptions = computed<WizardConfig[]>(() => {
       repoUrl: config.repoUrl,
       defaultRef: config.defaultRef,
       versions: config.versions,
+      candidatePolicy: config.candidatePolicy,
       members: config.members.map((member) => ({
         objectType: member.objectType,
         objectName: member.objectName,
@@ -390,6 +389,11 @@ const selectedProject = computed(() => {
     testProjectId: detail.testProjectId,
     primaryMetricKey: detail.primaryMetricKey,
   };
+});
+const savedPolicy = computed(() => selectedConfig.value?.candidatePolicy);
+const policyLabel = computed(() => {
+  if (!savedPolicy.value) return policyPreset.value === "default" ? "默认潜在策略" : "自定义潜在策略";
+  return { default: "默认规则", combined: "默认规则 + 自定义来源", custom: "仅自定义来源" }[savedPolicy.value.mode];
 });
 const versionSuggestions = computed(() => {
   const values: string[] = [];
@@ -489,7 +493,7 @@ watch([policyPreset, sameObjectOnly], () => {
 
 const policyRuleError = computed(
   () =>
-    policyPreset.value === "custom" &&
+    !savedPolicy.value && policyPreset.value === "custom" &&
     !includeSelfReport.value &&
     !includeAfterObject.value,
 );
@@ -652,13 +656,19 @@ const potentialPageCount = computed(() =>
 );
 const agentAvailable = computed(() => attributionPreview.value?.canRecompute === true);
 const usesBoundSkill = computed(() => attributionPreview.value?.usesBoundSkill === true);
+const selectedPackage = computed({
+  get: () => overridePackage.value ?? (agentAvailable.value
+    ? library.packages.data.value?.items.find(item => item.id === effectiveSkill.data.value?.id)?.id ?? ""
+    : ""),
+  set: (id: string) => { overridePackage.value = id; },
+});
 const canRecompute = computed(() => agentAvailable.value || !usesBoundSkill.value);
 const attributionSummary = computed(() => attributionPreview.value?.summary ?? null);
 const canLaunch = computed(() => {
   const summary = attributionSummary.value;
   if (!hasPotential.value || isBusy.value || requestError.value || !summary) return false;
   if (cacheEnabled.value) return usesBoundSkill.value ? (summary.reused ?? 0) > 0 : summary.potential > 0;
-  return agentAvailable.value ? Boolean(selectedPackage.value) : !usesBoundSkill.value;
+  return agentAvailable.value ? Boolean(selectedPackage.value) : !usesBoundSkill.value && !selectedPackage.value;
 });
 const previewTargetRevision = computed<string | null | undefined>(() => {
   const revisions = [
@@ -813,7 +823,7 @@ function condition() {
 
 /** Build the raw policy payload sent to preview and launch endpoints. */
 function currentPolicy(): PotentialPolicy {
-  if (policyPreset.value === "default") {
+  if (savedPolicy.value || policyPreset.value === "default") {
     return { preset: "default" };
   }
   return {
@@ -1262,6 +1272,7 @@ const reasonEntries = computed(() => {
   return (
     [
       ["self_report", summary.byReason.selfReport],
+      ["custom_source", summary.byReason.customSource],
       ["after_object", summary.byReason.afterObject],
       ["both", summary.byReason.both],
       ["order_unknown", summary.byReason.orderUnknown],
@@ -1766,80 +1777,91 @@ const reasonEntries = computed(() => {
                 <div class="f-label">
                   潜在 bad case 策略
                 </div>
-                <div
-                  class="policy"
-                  :class="{ selected: policyPreset === 'default' }"
-                  @click="policyPreset = 'default'"
-                >
-                  <label>
-                    <input
-                      v-model="policyPreset"
-                      type="radio"
-                      name="wizard-policy"
-                      value="default"
-                      data-testid="wizard-policy-default"
-                    >
-                    默认策略
-                  </label>
-                  <p>任一成员自身 <b>self</b> 上报的 bad case，或触发点在成员触发点之后的 bad case。</p>
-                </div>
-                <div
-                  class="policy"
-                  :class="{ selected: policyPreset === 'custom' }"
-                  @click="policyPreset = 'custom'"
-                >
-                  <label>
-                    <input
-                      v-model="policyPreset"
-                      type="radio"
-                      name="wizard-policy"
-                      value="custom"
-                      data-testid="wizard-policy-custom"
-                    >
-                    自定义策略
-                  </label>
-                  <div
-                    v-if="policyPreset === 'custom'"
-                    class="policy-rules"
+                <div v-if="savedPolicy">
+                  <b>{{ policyLabel }}</b>
+                  <p
+                    v-for="(rule,i) in savedPolicy.rules"
+                    :key="i"
                   >
-                    <label class="switch-row">
-                      <input
-                        v-model="includeSelfReport"
-                        type="checkbox"
-                        data-testid="wizard-rule-self"
-                      >
-                      包含对象自身 self 上报
-                    </label>
-                    <label class="switch-row">
-                      <input
-                        v-model="includeAfterObject"
-                        type="checkbox"
-                        data-testid="wizard-rule-after"
-                      >
-                      包含触发点在对象之后
-                    </label>
-                    <label class="switch-row">
-                      <input
-                        v-model="sameObjectOnly"
-                        type="checkbox"
-                        data-testid="wizard-rule-same"
-                      >
-                      仅纳入同 object_name
-                    </label>
-                  </div>
-                  <p v-else>
-                    勾选规则组合成策略；两条匹配规则至少勾选一条。
+                    {{ rule.kind }} · {{ rule.name }} · {{ rule.types.join(" / ") }} · {{ {any:"同 Session",before:"目标先执行",after:"目标后执行"}[rule.relation] }}
                   </p>
                 </div>
-                <p
-                  v-if="policyRuleError"
-                  id="wizard-policy-error"
-                  data-testid="wizard-policy-error"
-                  class="field-error"
-                  role="alert"
-                >
-                  请至少勾选一条潜在匹配规则
-                </p>
+                <template v-else>
+                  <div
+                    class="policy"
+                    :class="{ selected: policyPreset === 'default' }"
+                    @click="policyPreset = 'default'"
+                  >
+                    <label>
+                      <input
+                        v-model="policyPreset"
+                        type="radio"
+                        name="wizard-policy"
+                        value="default"
+                        data-testid="wizard-policy-default"
+                      >
+                      默认策略
+                    </label>
+                    <p>进化对象自身 <b>self</b> 上报的 bad case，或触发点在对象触发点之后的 bad case。</p>
+                  </div>
+                  <div
+                    class="policy"
+                    :class="{ selected: policyPreset === 'custom' }"
+                    @click="policyPreset = 'custom'"
+                  >
+                    <label>
+                      <input
+                        v-model="policyPreset"
+                        type="radio"
+                        name="wizard-policy"
+                        value="custom"
+                        data-testid="wizard-policy-custom"
+                      >
+                      自定义策略
+                    </label>
+                    <div
+                      v-if="policyPreset === 'custom'"
+                      class="policy-rules"
+                    >
+                      <label class="switch-row">
+                        <input
+                          v-model="includeSelfReport"
+                          type="checkbox"
+                          data-testid="wizard-rule-self"
+                        >
+                        包含对象自身 self 上报
+                      </label>
+                      <label class="switch-row">
+                        <input
+                          v-model="includeAfterObject"
+                          type="checkbox"
+                          data-testid="wizard-rule-after"
+                        >
+                        包含触发点在对象之后
+                      </label>
+                      <label class="switch-row">
+                        <input
+                          v-model="sameObjectOnly"
+                          type="checkbox"
+                          data-testid="wizard-rule-same"
+                        >
+                        仅纳入同 object_name
+                      </label>
+                    </div>
+                    <p v-else>
+                      勾选规则组合成策略；两条匹配规则至少勾选一条。
+                    </p>
+                  </div>
+                  <p
+                    v-if="policyRuleError"
+                    id="wizard-policy-error"
+                    data-testid="wizard-policy-error"
+                    class="field-error"
+                    role="alert"
+                  >
+                    请至少勾选一条潜在匹配规则
+                  </p>
+                </template>
               </div>
 
               <div
@@ -1884,7 +1906,7 @@ const reasonEntries = computed(() => {
               <div class="wz-condstrip">
                 <span class="chip kind">{{ selectedConfigLabel }}</span>
                 <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
-                <span class="chip">{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
+                <span class="chip">{{ policyLabel }}</span>
                 <span
                   v-if="previewTargetRevision !== undefined"
                   class="chip revision"
@@ -2015,7 +2037,7 @@ const reasonEntries = computed(() => {
               <div class="wz-condstrip">
                 <span class="chip kind">{{ selectedConfigLabel }}</span>
                 <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
-                <span class="chip">{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
+                <span class="chip">{{ policyLabel }}</span>
                 <span
                   v-if="previewTargetRevision !== undefined"
                   class="chip revision"
@@ -2034,7 +2056,7 @@ const reasonEntries = computed(() => {
 
               <div class="wz-section-title">
                 第 3 步 · 潜在 bad case
-                <span>{{ policyPreset === "default" ? "默认策略：任一成员自身 self 上报 或 触发点在成员触发点之后" : "自定义策略：按第 1 步勾选的规则组合" }}</span>
+                <span>{{ savedPolicy ? policyLabel : policyPreset === "default" ? "默认策略：任一成员自身 self 上报 或 触发点在成员触发点之后" : "自定义策略：按第 1 步勾选的规则组合" }}</span>
               </div>
 
               <div class="wz-stats">
@@ -2171,7 +2193,7 @@ const reasonEntries = computed(() => {
                 <span
                   class="v2-badge"
                   :class="{ ok: policyPreset === 'default' }"
-                >{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
+                >{{ policyLabel }}</span>
                 <span
                   class="v2-badge"
                   :class="{ warn: !cacheEnabled }"
@@ -2261,24 +2283,28 @@ const reasonEntries = computed(() => {
                 <p>尚无报告 {{ attributionSummary?.missing ?? 0 }} 个 Badcase<span v-if="cacheEnabled && usesBoundSkill">，本次跳过</span>。</p>
               </div>
               <label
-                v-if="!cacheEnabled && agentAvailable"
-                class="cache-option"
+                v-if="!cacheEnabled"
+                class="recompute-skill"
               >
                 本次重算使用的归因 Skill
                 <select
                   v-model="selectedPackage"
+                  class="evolution-form-select"
                   aria-label="本次重算使用的归因 Skill"
                 >
                   <option
                     value=""
-                    disabled
-                  >请选择空间内的归因 Skill</option>
+                    :disabled="agentAvailable || usesBoundSkill"
+                  >{{ agentAvailable || usesBoundSkill ? "请选择空间内的归因 Skill" : "内置归因规则" }}</option>
                   <option
                     v-for="item in library.packages.data.value?.items"
                     :key="item.id"
                     :value="item.id"
                   >{{ item.skillName }}</option>
                 </select>
+                <small v-if="!agentAvailable">
+                  {{ selectedPackage || usesBoundSkill ? "所选 Skill 需要可用的归因运行时。" : "当前归因运行时不可用，本次使用内置规则。" }}
+                </small>
               </label>
 
               <p
@@ -3383,6 +3409,12 @@ table.rep.wz-session-table th {
 .pager .btn {
   padding: 3px 12px;
   font-size: 11.5px;
+}
+
+.recompute-skill {
+  display: grid;
+  gap: 5px;
+  color: var(--text-dim);
 }
 
 .cache-option {

@@ -92,7 +92,7 @@ describe("TargetFormDialog", () => {
     const wrapper = await mountDialog();
 
     expect(wrapper.findComponent(ElDialog).props("width")).toBe(
-      "min(760px, calc(100vw - 32px))",
+      "min(660px, calc(100vw - 32px))",
     );
     expect(wrapper.find(".target-dialog-head").exists()).toBe(true);
     expect(wrapper.find(".target-dialog-body form").exists()).toBe(true);
@@ -117,6 +117,7 @@ describe("TargetFormDialog", () => {
     const select = wrapper.get("select[aria-label='归因 Skill']");
     expect(select.get("option:checked").text()).toContain("内置归因规则");
     await wrapper.get("form").trigger("submit");
+    await wrapper.get("form").trigger("submit");
     expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({ attributionPackageId: null });
     await select.setValue("default-attribute-badcases");
     expect(wrapper.text()).toContain("运行时恢复并重启后开始后台归因");
@@ -131,6 +132,7 @@ describe("TargetFormDialog", () => {
     await wrapper.get("form").trigger("submit");
     expect(wrapper.emitted("submit")).toBeUndefined();
     await wrapper.setProps({ runtimeEnabled: true, packagesLoading: false });
+    await wrapper.get("form").trigger("submit");
     await wrapper.get("form").trigger("submit");
     expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
       attributionPackageId: "default-attribute-badcases",
@@ -149,10 +151,12 @@ describe("TargetFormDialog", () => {
     const wrapper = await mountDialog({ runtimeEnabled: true });
     await fillRequired(wrapper);
     await wrapper.get("form").trigger("submit");
+    await wrapper.get("form").trigger("submit");
     await flushPromises();
 
     expect(wrapper.emitted("submit")).toEqual([[
       {
+        candidatePolicy:{mode:"default",rules:[]},
         attributionPackageId: "default-attribute-badcases",
         repoUrl: "https://example.com/skills.git",
         defaultRef: "main",
@@ -188,6 +192,7 @@ describe("TargetFormDialog", () => {
       "  feature/direct-submit  ",
     );
 
+    await wrapper.get("form").trigger("submit");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
@@ -400,6 +405,7 @@ describe("TargetFormDialog", () => {
     expect(wrapper.text()).not.toContain("保留配置但不进入向导");
 
     await wrapper.get("form").trigger("submit");
+    await wrapper.get("form").trigger("submit");
     await flushPromises();
 
     expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
@@ -512,6 +518,9 @@ describe("TargetFormDialog", () => {
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
     expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
       members: [
         {
@@ -527,6 +536,7 @@ describe("TargetFormDialog", () => {
       ],
     });
 
+    await wrapper.findAll("button").find(button => button.text() === "上一步")!.trigger("click");
     await wrapper.get('button[aria-label="移除成员 2"]').trigger("click");
     await flushPromises();
     expect(wrapper.findAll("[data-testid^='target-member-']")).toHaveLength(1);

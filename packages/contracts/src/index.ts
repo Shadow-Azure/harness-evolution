@@ -151,6 +151,15 @@ export type EvolutionRunStats = components["schemas"]["EvolutionRunStats"];
 /** Terminal evaluation summary shown for completed runs. */
 export type EvolutionRunFinal = components["schemas"]["EvolutionRunFinal"];
 
+/** Candidate scope selected for this target across attribution and evolution runs. */
+export type CandidatePolicy = components["schemas"]["CandidatePolicy"];
+/** Reporting identity, report types and required execution order for one candidate source. */
+export type SourceRule = components["schemas"]["SourceRule"];
+/** Workspace reporting source with self and discovery counts for the selected window. */
+export type SourceCount = components["schemas"]["SourceCount"];
+/** One source's filtered report page and its available labels before display filtering. */
+export type SourceReportPage = components["schemas"]["SourceReportPage"];
+
 /** Evolution target configuration accepted by create and update. */
 export type EvolutionTargetWrite = components["schemas"]["EvolutionTargetWrite"];
 

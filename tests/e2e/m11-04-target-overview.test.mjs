@@ -537,6 +537,51 @@ test("m11-04 target overview renders, filters, paginates, and analyses one objec
       "targets tab restores the shared window",
     );
 
+    const rulesEntry = "[data-testid^='ov-target-side-rules-']";
+    const targetId = await evaluate(page, `document.querySelector("${rulesEntry}").dataset.testid.replace("ov-target-side-rules-", "")`);
+    const targetEntry = `[data-testid="ov-target-side-rules-${targetId}"]`;
+    assert.equal(await evaluate(page, `(() => {
+      const card = document.querySelector('[data-testid="ov-target-side-item-${targetId}"]');
+      const edit = card.querySelector('[data-testid="ov-target-side-edit-${targetId}"]');
+      const rule = card.querySelector(".rule-entry");
+      return edit.getBoundingClientRect().bottom <= rule.getBoundingClientRect().top;
+    })()`), true);
+    await click(page, targetEntry);
+    await click(page, ".candidate-layout .editor header button");
+    await click(page, ".candidate-layout .el-select__wrapper");
+    await click(page, ".candidate-source-menu .el-select-dropdown__item");
+    await click(page, ".candidate-layout .types button");
+    await waitForDocument(page.session, 'document.querySelector(".candidate-layout .reports")?.textContent.includes("条上报")', "per-source reports");
+    await click(page, ".candidate-layout .editor header button");
+    await click(page, ".el-dialog__footer .el-button--primary");
+    await waitForDocument(page.session, `(() => {
+      const error = document.querySelector(".el-dialog__footer [role=alert]");
+      if (!error?.textContent.includes("请选择来源名称")) return false;
+      const [red, green, blue] = getComputedStyle(error).color.match(/\\d+/g).map(Number);
+      return red > green && red > blue;
+    })()`, "incomplete source validation in red");
+    await click(page, ".candidate-layout fieldset:last-of-type .el-select__wrapper");
+    await waitForDocument(page.session, `(() => {
+      const input = document.querySelector(".candidate-layout fieldset:last-of-type input[aria-controls]");
+      const menu = document.getElementById(input?.getAttribute("aria-controls"));
+      const option = menu?.querySelector(".el-select-dropdown__item");
+      if (!option || !option.getBoundingClientRect().height) return false;
+      option.click();
+      return true;
+    })()`, "choose the source on the second card");
+    await waitForDocument(page.session, '!document.querySelector(".candidate-layout fieldset:last-of-type .types button").disabled', "second source selected");
+    await click(page, ".el-dialog__footer .el-button--primary");
+    await waitForDocument(page.session, '!document.querySelector(".candidate-layout")', "saved rules");
+    const saved = await apiJson(`/api/workspaces/${workspaceId}/evolution/targets`, authSession.accessToken);
+    const policy = saved.items.find((item) => item.id === targetId).candidatePolicy;
+    assert.equal(policy.mode, "combined");
+    assert.equal(policy.rules.length, 1);
+    assert.ok(policy.rules[0].name);
+    await waitForDocument(page.session, `document.querySelector('${targetEntry}').parentElement.textContent.includes("1 条")`, "unique source count on card");
+    await click(page, targetEntry);
+    await waitForDocument(page.session,
+      `document.querySelector(".candidate-layout .reports header")?.textContent.includes(${JSON.stringify(policy.rules[0].name)})`,
+      "saved source reopens in the report pane");
     assert.deepEqual(violations, []);
   } finally {
     await page.close();
