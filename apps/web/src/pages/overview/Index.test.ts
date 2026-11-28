@@ -1237,6 +1237,63 @@ describe("workspace overview page", () => {
     expect(wrapper.get("[data-testid='ov-pager']").text()).toContain("第 3 / 3 页");
   });
 
+  it("keeps the previous page visible while the next page loads", async () => {
+    mockOverviewApi();
+    let releasePageTwo: () => void = () => {};
+    const pageTwoGate = new Promise<void>((resolve) => {
+      releasePageTwo = resolve;
+    });
+    server.use(
+      http.get("/api/workspaces/:wid/bad-cases", async ({ request }) => {
+        requests.cases.push(request.url);
+        const page = Number(
+          new URL(request.url).searchParams.get("page") ?? "1",
+        );
+        if (page === 2) await pageTwoGate;
+        return HttpResponse.json({
+          items:
+            page === 1
+              ? [caseRow(1), caseRow(2), caseRow(3)]
+              : [caseRow(4), caseRow(5)],
+          total: 10,
+          page,
+          pageSize: 8,
+        });
+      }),
+    );
+
+    const { router, wrapper } = await mountPage();
+    await vi.waitFor(() => {
+      expect(wrapper.findAll("[data-testid='ov-case-row']")).toHaveLength(3);
+    });
+
+    await wrapper.get("[data-testid='ov-page-next']").trigger("click");
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.query.page).toBe("2");
+      expect(
+        wrapper.get("[data-testid='ov-case-list']").attributes("aria-busy"),
+      ).toBe("true");
+    });
+    // The new page is still loading, so the URL's page number changes while
+    // the previous page's rows and the pager stay on screen.
+    expect(wrapper.findAll("[data-testid='ov-case-row']")).toHaveLength(3);
+    expect(wrapper.get("[data-testid='ov-pager']").text()).toContain("第 2 / 2 页");
+    expect(wrapper.get("[data-testid='ov-case-loading-hint']").text()).toContain(
+      "加载中",
+    );
+
+    releasePageTwo();
+    await vi.waitFor(() => {
+      expect(wrapper.findAll("[data-testid='ov-case-row']")).toHaveLength(2);
+      expect(
+        wrapper.get("[data-testid='ov-case-list']").attributes("aria-busy"),
+      ).toBe("false");
+    });
+    expect(wrapper.find("[data-testid='ov-case-loading-hint']").exists()).toBe(
+      false,
+    );
+  });
+
   it("redirects the whole page to the chooser when the workspace is gone", async () => {
     for (const path of [
       "/api/workspaces/:wid/overview/summary",

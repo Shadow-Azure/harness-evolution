@@ -94,6 +94,12 @@ export function useOverviewSources(
 
 /**
  * Query one filtered page of workspace bad cases.
+ *
+ * The list keeps the previous result visible while the next page or filter set
+ * loads, so paging does not unmount the table and collapse the scroll height.
+ * The placeholder is scoped to the workspace: switching spaces must never show
+ * another space's cases.
+ *
  * @param workspaceId Workspace route identifier.
  * @param filters Reactive window, object, type, and page filters.
  * @param enabled Whether the query should run; omitted means always.
@@ -109,6 +115,11 @@ export function useOverviewCases(
       queryKeys.overviewCases(toValue(workspaceId), filters.value),
     ),
     queryFn: () => listOverviewBadCases(toValue(workspaceId), filters.value),
+    placeholderData: (previousData, previousQuery) => {
+      if (!previousData || !previousQuery) return undefined;
+      if (previousQuery.queryKey[1] !== toValue(workspaceId)) return undefined;
+      return previousData;
+    },
     enabled: activeQuery(workspaceId, enabled),
   });
 }
