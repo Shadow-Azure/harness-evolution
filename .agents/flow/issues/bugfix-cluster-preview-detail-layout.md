@@ -8,7 +8,7 @@ id: bugfix-76
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/web/src/pages/evolution/**
   - apps/web/src/styles/**
