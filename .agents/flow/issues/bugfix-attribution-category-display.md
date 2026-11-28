@@ -8,7 +8,7 @@ id: bugfix-77
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - attribute-badcases/SKILL.md
   - attribute-badcases/make_probe_report.py
