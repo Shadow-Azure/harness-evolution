@@ -615,6 +615,59 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
     assert.equal(preparing.tabs.length, 2);
     await screenshot(page, "06-after-preparing.png");
 
+    const measurePreparingGap = async (height, token) => {
+      await page.session.send("Emulation.setDeviceMetricsOverride", {
+        width: 1366,
+        height,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await installCookie(page, await currentLoginCookie());
+      await openRun(page, "run-v2-preparing", `?geometry=${token}`);
+      return await waitForDocument(
+        page.session,
+        `(() => {
+          if (!location.search.includes(${JSON.stringify(token)})) return null;
+          const root = document.querySelector("[data-testid='evolution-run-detail']");
+          const back = root?.querySelector(".back");
+          const head = root?.querySelector(".detail-head");
+          const info = root?.querySelector("[data-testid='run-info-panel']");
+          if (!root || !back || !head || !info) return null;
+          const rootStyle = getComputedStyle(root);
+          return {
+            alignContent: rootStyle.alignContent,
+            overflowY: rootStyle.overflowY,
+            backTop: back.getBoundingClientRect().top,
+            headTop: head.getBoundingClientRect().top,
+            headBottom: head.getBoundingClientRect().bottom,
+            infoTop: info.getBoundingClientRect().top,
+            infoHeight: info.getBoundingClientRect().height,
+            gap: info.getBoundingClientRect().top - head.getBoundingClientRect().bottom,
+            paddingTop: Number.parseFloat(rootStyle.paddingTop),
+            rootTop: root.getBoundingClientRect().top,
+          };
+        })()`,
+        `${token} preparing run detail geometry`,
+      );
+    };
+    const preparingShort = await measurePreparingGap(768, "preparing-1366x768");
+    const preparingTall = await measurePreparingGap(1080, "preparing-1366x1080");
+    assert.equal(preparingShort.alignContent, "start", JSON.stringify(preparingShort));
+    assert.equal(preparingTall.alignContent, "start", JSON.stringify(preparingTall));
+    assert.equal(preparingShort.overflowY, "auto", JSON.stringify(preparingShort));
+    assert.ok(
+      Math.abs(preparingShort.backTop - preparingShort.rootTop - preparingShort.paddingTop) <= 1,
+      `low-content run detail back entry must start at the content box top: ${JSON.stringify(preparingShort)}`,
+    );
+    assert.ok(
+      Math.abs(preparingShort.gap - preparingTall.gap) <= 2,
+      `low-content run detail gap must not follow viewport height: ${JSON.stringify({ preparingShort, preparingTall })}`,
+    );
+    assert.ok(
+      Math.abs(preparingShort.infoHeight - preparingTall.infoHeight) <= 2,
+      `low-content run detail info panel height must not follow viewport height: ${JSON.stringify({ preparingShort, preparingTall })}`,
+    );
+
     await installCookie(page, await currentLoginCookie());
     await openRun(page, "run-v2-completed", "?tab=logs");
     const logs = await waitForDocument(
@@ -904,6 +957,7 @@ test("m10-06 run detail owns the page scroll and keeps the V2 gutter", async () 
             paddingLeft: Number.parseFloat(style.paddingLeft),
             paddingRight: Number.parseFloat(style.paddingRight),
             overflowY: style.overflowY,
+            alignContent: style.alignContent,
             mainOverflow: getComputedStyle(main).overflowY,
             infoLeft: infoRect.left,
             infoRight: infoRect.right,
@@ -914,6 +968,7 @@ test("m10-06 run detail owns the page scroll and keeps the V2 gutter", async () 
         `${viewport.width}x${viewport.height} run detail scroll geometry`,
       );
       assert.equal(geometry.overflowY, "auto", JSON.stringify(geometry));
+      assert.equal(geometry.alignContent, "start", JSON.stringify(geometry));
       assert.equal(geometry.mainOverflow, "hidden", JSON.stringify(geometry));
       assert.ok(
         Math.abs(geometry.rectRight - geometry.innerWidth) <= 1,

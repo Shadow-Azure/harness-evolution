@@ -102,24 +102,61 @@ const statusLabel = computed(() => {
   }
 });
 
-const statusDetail = computed(() => {
-  if (run.value?.controlState === "paused") return "进度已保留，继续后从原检查点恢复。";
-  if (run.value?.controlState === "pause_requested") return "等待当前操作结束后暂停。";
-  if (!run.value) return "";
-  if (run.value.status === "preparing") {
-    return "正在关联 Session / 筛选潜在 bad case / 生成归因 / 聚类…";
+const statusTone = computed(() => {
+  if (run.value?.controlState === "paused" || run.value?.controlState === "pause_requested") {
+    return "paused";
   }
-  if (run.value.status === "running") {
-    return "正在按严重程度聚类与排序问题簇…";
+  switch (run.value?.status) {
+    case "preparing":
+    case "running":
+      return "running";
+    case "blocked":
+      return "blocked";
+    case "completed":
+      return "completed";
+    case "failed":
+    case "interrupted":
+      return "failed";
+    default:
+      return "idle";
   }
-  return run.value.progress.stageLabel;
 });
+
+const statusActive = computed(
+  () =>
+    run.value?.controlState !== "paused" &&
+    (run.value?.status === "preparing" || run.value?.status === "running"),
+);
 
 const incompleteMessage = computed(() => {
   if (run.value?.status === "interrupted") {
     return "运行已中断，聚类结果未产出。";
   }
   return run.value?.error?.message ?? "运行未给出失败原因，请查看执行日志或重试。";
+});
+
+const statusDetail = computed(() => {
+  const value = run.value;
+  if (!value) return "";
+  if (value.controlState === "paused" || value.controlState === "pause_requested") {
+    // RunControl already explains the pause state next to the badge; this area
+    // keeps the real progress so the same sentence is not repeated here.
+    return value.progress.stageLabel;
+  }
+  if (
+    value.status === "failed" ||
+    value.status === "blocked" ||
+    value.status === "interrupted"
+  ) {
+    return incompleteMessage.value;
+  }
+  if (value.status === "preparing") {
+    return value.progress.stageLabel || "正在关联 Session / 筛选潜在 bad case / 生成归因 / 聚类…";
+  }
+  if (value.status === "running") {
+    return value.progress.stageLabel || "正在按严重程度聚类与排序问题簇…";
+  }
+  return value.progress.stageLabel;
 });
 
 const windowLabel = computed(() => {
@@ -159,6 +196,14 @@ const canLaunch = computed(
     rangeCondition.value !== null &&
     !launching.value,
 );
+
+const launchDisabledReason = computed(() => {
+  if (canLaunch.value || launching.value) return "";
+  if (!completed.value) return "聚类完成后可启动完整自进化。";
+  if (rangeCondition.value === null) return "条件快照读取失败，暂时无法启动完整自进化。";
+  return "";
+});
+
 
 /**
  * Create a full run from the completed cluster-only run's selection snapshot.
@@ -246,7 +291,15 @@ function backToList(): void {
     <template v-else-if="run">
       <header class="detail-head">
         <h1>问题聚类结果</h1>
-        <span class="target-chip">{{ targetLabel }}</span>
+        <span
+          class="target-chip"
+          :title="targetLabel"
+        >{{ targetLabel }}</span>
+        <span
+          class="badge"
+          :class="`status-${statusTone}`"
+          data-testid="cluster-status"
+        >{{ statusLabel }}</span>
         <RunControl
           v-if="run.controlState"
           :wid="workspaceId"
@@ -255,17 +308,21 @@ function backToList(): void {
         />
       </header>
 
-      <div class="banner">
+      <div class="mode-note">
         <span>
-          仅聚类分析：展示该对象在所选条件下识别出的问题，<b>未执行</b>
+          仅聚类分析 · 展示该对象在所选条件下识别出的问题，未执行
           patch 生成与评测迭代。
         </span>
-        <span class="spacer" />
+        <span
+          v-if="launchDisabledReason"
+          class="mode-reason"
+        >{{ launchDisabledReason }}</span>
         <button
           class="btn primary"
           type="button"
           data-testid="cluster-launch-full"
           :disabled="!canLaunch"
+          :title="launchDisabledReason || '以这批问题创建完整自进化运行'"
           @click="launchFullRun"
         >
           {{ launching ? "正在启动…" : "以这批问题启动自进化 →" }}
@@ -280,12 +337,17 @@ function backToList(): void {
       </p>
 
       <div
-        class="status-banner"
-        :class="`status-${run.status}`"
-        data-testid="cluster-status"
+        v-if="statusDetail"
+        class="status-area"
+        :class="`is-${statusTone}`"
+        :role="statusTone === 'failed' || statusTone === 'blocked' ? 'alert' : 'status'"
+        data-testid="cluster-status-detail"
       >
-        <span class="badge">{{ statusLabel }}</span>
-        <span>{{ statusDetail }}</span>
+        <span
+          v-if="statusActive"
+          class="pulse"
+        />
+        <span class="status-copy">{{ statusDetail }}</span>
       </div>
 
       <template v-if="completed">
@@ -328,35 +390,6 @@ function backToList(): void {
         />
       </template>
 
-      <section
-        v-else-if="
-          run.status === 'failed' ||
-            run.status === 'blocked' ||
-            run.status === 'interrupted'
-        "
-        class="card panel state-error"
-        role="alert"
-      >
-        <h2 class="sec-title">
-          聚类未完成
-        </h2>
-        <p>{{ incompleteMessage }}</p>
-      </section>
-
-      <section
-        v-else
-        class="card panel preparing"
-        role="status"
-      >
-        <span class="pulse" />
-        <div>
-          <h2 class="sec-title">
-            正在准备聚类结果
-          </h2>
-          <p>正在关联 Session / 筛选潜在 bad case / 生成归因 / 聚类；完成后这里展示问题簇。</p>
-        </div>
-      </section>
-
       <p
         v-if="completed && rangeError"
         class="inline-error"
@@ -393,6 +426,7 @@ function backToList(): void {
   height: 100%;
   padding: 20px max(24px, calc((100% - 1720px) / 2 + 24px)) 64px;
   overflow-y: auto;
+  align-content: start;
 }
 
 .back {
@@ -419,48 +453,66 @@ function backToList(): void {
 .detail-head h1 {
   margin: 0;
   color: var(--text);
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
 }
 
+.detail-head :deep(.run-control) {
+  margin-left: auto;
+}
+
 .target-chip {
+  min-width: 0;
+  max-width: 100%;
   padding: 2px 10px;
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--text-dim);
   font-family: var(--mono);
   font-size: 11px;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
-.banner {
+.mode-note {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 11px 14px;
-  border: 1px solid color-mix(in srgb, var(--orange) 40%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--orange) 8%, transparent);
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
   color: var(--text-dim);
-  font-size: 12.5px;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
-.banner .spacer {
-  flex: 1;
+.mode-note > span:first-child {
+  flex: 1 1 420px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.banner b {
-  color: var(--orange);
+.mode-reason {
+  color: var(--text-faint);
+  font-size: 11.5px;
 }
 
 .btn {
-  padding: 6px 14px;
+  padding: 5px 12px;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   background: var(--bg-card);
   color: var(--text-dim);
-  font-size: 12.5px;
+  font-size: 12px;
   white-space: nowrap;
   cursor: pointer;
+}
+
+.mode-note .btn {
+  margin-left: auto;
 }
 
 .btn:hover:not(:disabled) {
@@ -480,16 +532,38 @@ function backToList(): void {
   opacity: 0.45;
 }
 
-.status-banner {
+.status-area {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 14px;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--bg-card);
   color: var(--text-dim);
-  font-size: 12.5px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.status-copy {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.status-area.is-running {
+  border-color: color-mix(in srgb, var(--blue) 30%, var(--border));
+}
+
+.status-area.is-paused,
+.status-area.is-blocked {
+  border-color: color-mix(in srgb, var(--orange) 35%, var(--border));
+  background: color-mix(in srgb, var(--orange) 5%, var(--bg-card));
+}
+
+.status-area.is-failed {
+  border-color: color-mix(in srgb, var(--red) 35%, var(--border));
+  background: color-mix(in srgb, var(--red) 5%, var(--bg-card));
 }
 
 .badge {
@@ -500,24 +574,23 @@ function backToList(): void {
   font-weight: 600;
 }
 
-.status-preparing .badge,
-.status-running .badge {
+.badge.status-running {
   background: color-mix(in srgb, var(--blue) 13%, transparent);
   color: var(--blue);
 }
 
-.status-completed .badge {
+.badge.status-completed {
   background: color-mix(in srgb, var(--green) 13%, transparent);
   color: var(--green);
 }
 
-.status-blocked .badge {
+.badge.status-paused,
+.badge.status-blocked {
   background: color-mix(in srgb, var(--orange) 13%, transparent);
   color: var(--orange);
 }
 
-.status-failed .badge,
-.status-interrupted .badge {
+.badge.status-failed {
   background: color-mix(in srgb, var(--red) 13%, transparent);
   color: var(--red);
 }
@@ -583,22 +656,6 @@ function backToList(): void {
   font-family: var(--mono);
 }
 
-.preparing {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.preparing .sec-title {
-  margin-bottom: 4px;
-}
-
-.preparing p {
-  margin: 0;
-  color: var(--text-dim);
-  font-size: 12px;
-}
-
 .pulse {
   flex: none;
   width: 9px;
@@ -619,16 +676,6 @@ function backToList(): void {
     opacity: 1;
     transform: scale(1.1);
   }
-}
-
-.state-error {
-  border-color: color-mix(in srgb, var(--red) 40%, transparent);
-}
-
-.state-error p {
-  margin: 0;
-  color: var(--text-dim);
-  font-size: 12.5px;
 }
 
 .inline-error {
@@ -661,13 +708,12 @@ function backToList(): void {
     overflow-y: visible;
   }
 
-  .banner {
+  .mode-note {
     align-items: flex-start;
-    flex-wrap: wrap;
   }
 
-  .banner .spacer {
-    display: none;
+  .mode-note .btn {
+    margin-left: 0;
   }
 }
 </style>
