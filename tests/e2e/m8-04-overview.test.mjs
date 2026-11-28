@@ -1211,3 +1211,341 @@ test("m8-04 defaults quick ranges to day for 7 days and week for 30/90", async (
     await page.close();
   }
 });
+
+/**
+ * Create a workspace with three synthetic bad-case pages for the paging scroll
+ * regression. The shared `dataWorkspaceId` keeps its eleven cases for the other
+ * tests in this file, so this scenario needs its own space.
+ * @returns {Promise<string>} Created workspace id.
+ */
+async function seedPagingWorkspace() {
+  const created = await apiJson("/api/workspaces", adminToken, {
+    method: "POST",
+    body: JSON.stringify({
+      name: "M8-04 三页翻页",
+      mark: "M8PG",
+      quota: 80,
+      spaceAdminIds: [adminId],
+    }),
+  });
+  const credential = await apiJson(
+    `/api/workspaces/${created.id}/credentials`,
+    adminToken,
+    { method: "POST" },
+  );
+  const day = shanghaiDate(0);
+  for (let index = 0; index < 20; index += 1) {
+    const suffix = String(index + 1).padStart(2, "0");
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${created.id}/bad-cases`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${credential.credential}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          badCaseId: `M8-04-PAGE-${suffix}`,
+          sessionId: "10000000-0000-4000-8000-000000000001",
+          badCaseType: index % 2 === 0 ? "self" : "discovery",
+          objectName: index % 2 === 0 ? "m8-04-alpha" : "m8-04-beta",
+          objectType: "agent",
+          objectVersion: "v1",
+          title: `M8-04 翻页案例 ${suffix}`,
+          reason: `m8-04 paging e2e case ${suffix}`,
+          source: "e2e",
+          createdAt: `${day}T09:${suffix}:00+08:00`,
+        }),
+      },
+    );
+    assert.equal(response.status, 201, await response.text());
+  }
+  return created.id;
+}
+
+/**
+ * Read the list scroll position and the loading markers from the live page.
+ * @param {object} page Browser page from createBrowserPage.
+ * @returns {Promise<object>} Snapshot of scroll geometry and list state.
+ */
+async function pagingSnapshot(page) {
+  const result = await page.session.send("Runtime.evaluate", {
+    expression: `(() => {
+      const root = document.querySelector("[data-testid='overview-page']");
+      const list = document.querySelector("[data-testid='ov-case-list']");
+      const pager = document.querySelector("[data-testid='ov-pager']");
+      if (!root || !list) return null;
+      return {
+        scrollTop: Math.round(root.scrollTop),
+        maxScroll: Math.round(root.scrollHeight - root.clientHeight),
+        rows: document.querySelectorAll("[data-testid='ov-case-row']").length,
+        skeleton: Boolean(document.querySelector("[data-testid='ov-case-loading']")),
+        loading: Boolean(document.querySelector("[data-testid='ov-case-loading-hint']")),
+        busy: list.getAttribute("aria-busy"),
+        pager: pager?.textContent?.replace(/\\s+/g, " ").trim() ?? "",
+        marker: window.__m804PagingMarker ?? null,
+        search: location.search,
+      };
+    })()`,
+    returnByValue: true,
+  });
+  return result.result.value;
+}
+
+test("m8-04 overview paging keeps the list position on uncached and cached pages", async () => {
+  const pagingWorkspaceId = await seedPagingWorkspace();
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session, {
+      isExpectedLogEntry: expectedLogEntry,
+    });
+    await installBrowser(page);
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1500,
+      height: 837,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+
+    // Pause the list endpoint so the loading state is observable. A queued
+    // request can be delayed once, and the retry path can be failed once.
+    let delayNextList = 0;
+    let failListAttempts = 0;
+    await page.session.send("Fetch.enable", {
+      patterns: [{ urlPattern: "*bad-cases*", requestStage: "Request" }],
+    });
+    page.session.on("Fetch.requestPaused", async ({ requestId, request }) => {
+      const url = new URL(request.url);
+      if (request.method !== "GET" || !url.pathname.endsWith("/bad-cases")) {
+        await page.session
+          .send("Fetch.continueRequest", { requestId })
+          .catch(() => {});
+        return;
+      }
+      if (failListAttempts > 0) {
+        failListAttempts -= 1;
+        await page.session
+          .send("Fetch.fulfillRequest", {
+            requestId,
+            responseCode: 500,
+            responseHeaders: [
+              { name: "content-type", value: "application/json" },
+            ],
+            body: Buffer.from(
+              JSON.stringify({
+                error: {
+                  code: "INTERNAL",
+                  message: "injected overview list failure",
+                  details: {},
+                },
+              }),
+            ).toString("base64"),
+          })
+          .catch(() => {});
+        return;
+      }
+      const delay = delayNextList;
+      delayNextList = 0;
+      if (delay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+      await page.session
+        .send("Fetch.continueRequest", { requestId })
+        .catch(() => {});
+    });
+
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}/workspaces/${pagingWorkspaceId}/overview`,
+    });
+    await waitForCaseRows(page, 8);
+
+    // Park the list at the bottom, as the reporting person did, and remember a
+    // marker that only survives if the document is never reloaded.
+    const baseline = await waitForDocument(
+      page.session,
+      `(() => {
+        const root = document.querySelector("[data-testid='overview-page']");
+        if (!root) return null;
+        if (document.querySelectorAll("[data-testid='ov-case-row']").length !== 8) return null;
+        root.scrollTop = root.scrollHeight;
+        window.__m804PagingMarker = "kept";
+        return {
+          scrollTop: Math.round(root.scrollTop),
+          maxScroll: Math.round(root.scrollHeight - root.clientHeight),
+        };
+      })()`,
+      "paging baseline at the list bottom",
+    );
+    assert.ok(baseline.scrollTop > 0, "baseline must sit below the page top");
+    assert.equal(baseline.scrollTop, baseline.maxScroll);
+
+    // First request for page 2: the previous rows and the pager must stay on
+    // screen while the delayed request is in flight.
+    delayNextList = 900;
+    await click(page, "[data-testid='ov-page-next']");
+    const during = await waitForDocument(
+      page.session,
+      `(() => {
+        const list = document.querySelector("[data-testid='ov-case-list']");
+        const pager = document.querySelector("[data-testid='ov-pager']");
+        const root = document.querySelector("[data-testid='overview-page']");
+        if (!list || !pager || !root) return null;
+        if (list.getAttribute("aria-busy") !== "true") return null;
+        if (!document.querySelector("[data-testid='ov-case-loading-hint']")) return null;
+        if (document.querySelectorAll("[data-testid='ov-case-row']").length !== 8) return null;
+        const pagerText = pager.textContent.replace(/\\s+/g, " ").trim();
+        if (!pagerText.includes("第 2 / 3 页")) return null;
+        return {
+          scrollTop: Math.round(root.scrollTop),
+          marker: window.__m804PagingMarker ?? null,
+        };
+      })()`,
+      "page 2 loading keeps rows, pager and scroll position",
+    );
+    assert.equal(during.scrollTop, baseline.scrollTop);
+    assert.equal(during.marker, "kept");
+
+    const pageTwo = await waitForDocument(
+      page.session,
+      `(() => {
+        const list = document.querySelector("[data-testid='ov-case-list']");
+        const root = document.querySelector("[data-testid='overview-page']");
+        const pager = document.querySelector("[data-testid='ov-pager']");
+        if (!list || !root || !pager) return null;
+        if (list.getAttribute("aria-busy") === "true") return null;
+        const pagerText = pager.textContent.replace(/\\s+/g, " ").trim();
+        if (!pagerText.includes("第 2 / 3 页")) return null;
+        if (document.querySelectorAll("[data-testid='ov-case-row']").length !== 8) return null;
+        if (new URLSearchParams(location.search).get("page") !== "2") return null;
+        return { scrollTop: Math.round(root.scrollTop), marker: window.__m804PagingMarker ?? null };
+      })()`,
+      "page 2 loaded in place",
+    );
+    assert.equal(pageTwo.scrollTop, baseline.scrollTop);
+    assert.equal(pageTwo.marker, "kept");
+
+    // Cache-hit path: returning to page 1 and paging forward again must also
+    // keep the position, with no skeleton and no document reload.
+    await click(page, "[data-testid='ov-page-prev']");
+    await waitForDocument(
+      page.session,
+      `(() => {
+        const pager = document.querySelector("[data-testid='ov-pager']");
+        if (!pager || !pager.textContent.includes("第 1 / 3 页")) return null;
+        if (document.querySelectorAll("[data-testid='ov-case-row']").length !== 8) return null;
+        return true;
+      })()`,
+      "cached page 1 restored",
+    );
+    const cachedOne = await pagingSnapshot(page);
+    assert.equal(cachedOne.scrollTop, baseline.scrollTop);
+    assert.equal(cachedOne.marker, "kept");
+
+    await click(page, "[data-testid='ov-page-next']");
+    const cachedTwo = await waitForDocument(
+      page.session,
+      `(() => {
+        const pager = document.querySelector("[data-testid='ov-pager']");
+        const list = document.querySelector("[data-testid='ov-case-list']");
+        const root = document.querySelector("[data-testid='overview-page']");
+        if (!pager || !list || !root) return null;
+        if (!pager.textContent.includes("第 2 / 3 页")) return null;
+        if (document.querySelectorAll("[data-testid='ov-case-row']").length !== 8) return null;
+        return {
+          scrollTop: Math.round(root.scrollTop),
+          skeleton: Boolean(document.querySelector("[data-testid='ov-case-loading']")),
+          marker: window.__m804PagingMarker ?? null,
+        };
+      })()`,
+      "cached page 2 restored",
+    );
+    assert.equal(cachedTwo.skeleton, false);
+    assert.equal(cachedTwo.scrollTop, baseline.scrollTop);
+    assert.equal(cachedTwo.marker, "kept");
+
+    // Failure retry: page 3 is still uncached, so inject one 500 and recover
+    // through the block-level retry.
+    // The query client retries 5xx twice, so fail every attempt before the
+    // explicit block-level retry.
+    failListAttempts = 3;
+    await click(page, "[data-testid='ov-page-next']");
+    const failed = await waitForDocument(
+      page.session,
+      `(() => {
+        const error = document.querySelector("[data-testid='ov-case-error']");
+        if (!error) return null;
+        return { text: error.textContent?.trim() ?? "" };
+      })()`,
+      "page 3 list error",
+    );
+    assert.ok(failed.text.includes("INTERNAL"));
+    await click(page, "[data-testid='ov-case-error'] button");
+
+    const lastPage = await waitForDocument(
+      page.session,
+      `(() => {
+        const root = document.querySelector("[data-testid='overview-page']");
+        const pager = document.querySelector("[data-testid='ov-pager']");
+        if (!root || !pager) return null;
+        if (!pager.textContent.includes("第 3 / 3 页")) return null;
+        if (document.querySelectorAll("[data-testid='ov-case-row']").length !== 4) return null;
+        if (new URLSearchParams(location.search).get("page") !== "3") return null;
+        return {
+          scrollTop: Math.round(root.scrollTop),
+          marker: window.__m804PagingMarker ?? null,
+        };
+      })()`,
+      "short last page recovered after retry",
+    );
+    assert.ok(lastPage.scrollTop > 0, "the short last page must not jump to the top");
+    assert.equal(lastPage.marker, "kept");
+
+    // Rapid paging: delay page 2, immediately ask for page 3, and confirm the
+    // late page-2 response cannot replace the page-3 rows.
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}/workspaces/${pagingWorkspaceId}/overview`,
+    });
+    await waitForCaseRows(page, 8);
+    await waitForDocument(
+      page.session,
+      `(() => {
+        const root = document.querySelector("[data-testid='overview-page']");
+        if (!root) return null;
+        root.scrollTop = root.scrollHeight;
+        window.__m804PagingMarker = "kept";
+        return true;
+      })()`,
+      "rapid paging baseline",
+    );
+    delayNextList = 900;
+    await click(page, "[data-testid='ov-page-next']");
+    await waitForSearchParam(page, "page", "2");
+    await click(page, "[data-testid='ov-page-next']");
+    const rapid = await waitForDocument(
+      page.session,
+      `(() => {
+        const pager = document.querySelector("[data-testid='ov-pager']");
+        const root = document.querySelector("[data-testid='overview-page']");
+        if (!pager || !root) return null;
+        if (!pager.textContent.includes("第 3 / 3 页")) return null;
+        if (document.querySelectorAll("[data-testid='ov-case-row']").length !== 4) return null;
+        return {
+          scrollTop: Math.round(root.scrollTop),
+          marker: window.__m804PagingMarker ?? null,
+        };
+      })()`,
+      "rapid paging settles on page 3",
+    );
+    assert.ok(rapid.scrollTop > 0);
+    assert.equal(rapid.marker, "kept");
+    // Wait past the delayed page-2 response: it must stay in its own cache key.
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    const settled = await pagingSnapshot(page);
+    assert.equal(settled.rows, 4);
+    assert.equal(new URLSearchParams(settled.search).get("page"), "3");
+    assert.equal(settled.marker, "kept");
+    assert.deepEqual(violations, []);
+  } finally {
+    await page.close();
+  }
+});

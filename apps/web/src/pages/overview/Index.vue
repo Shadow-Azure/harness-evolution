@@ -567,7 +567,9 @@ watch(
             :filtered="listFiltered"
             :from="state.listFrom"
             :items="caseItems"
-            :loading="casesQuery.isPending.value"
+            :loading="
+              casesQuery.isPending.value || casesQuery.isPlaceholderData.value
+            "
             :object="state.listObject"
             :object-options="objects"
             :page="state.page"
