@@ -4,7 +4,7 @@
 
 ```yaml flow
 kind: issue
-id: bugfix-75
+id: bugfix-77
 milestone: bugfix
 depends: []
 priority: P2
@@ -25,6 +25,7 @@ scope:
   - apps/web/src/utils/**
   - packages/contracts/**
   - tests/e2e/**
+  - .github/workflows/ci.yml
   - .agents/flow/issues/bugfix-attribution-category-display*
   - .agents/notes/implemented/**
 adr: []
@@ -85,7 +86,7 @@ github:
 
 ## 门禁与 CI
 
-`pnpm test:api`、`pnpm test:web`、`pnpm typecheck:web`、`pnpm contract:check`。
+`pnpm test:api`、`pnpm test:web`、`pnpm typecheck:web`、`pnpm contract:check`。浏览器跨栈用例先上报 bad case，再绑定归因 Skill，验证绑定产生的报告可读。共享 CI 为每轮完整的串行浏览器测试预留 20 分钟。
 
 ## 非目标
 

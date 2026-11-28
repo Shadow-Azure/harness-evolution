@@ -524,6 +524,8 @@ before(async () => {
       `[url "file://${originDir}"]\n\tinsteadOf = https://example.invalid/example/skills.git\n`,
   );
 
+  // Binding snapshots the existing cases. Make their writes visible before the worker can claim it.
+  await ingestAll();
   const target = await requireApi(
     `/api/workspaces/${workspaceId}/evolution/targets`,
     {
@@ -549,8 +551,6 @@ before(async () => {
 after(cleanup);
 
 test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessions, error detail, wizard and run", async () => {
-  await ingestAll();
-
   const page = await createBrowserPage();
   const violations = browserViolations(page.session, {
     isExpectedLogEntry: expectedLogEntry,

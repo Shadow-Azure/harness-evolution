@@ -4,7 +4,7 @@ English | [中文](bugfix-attribution-category-display.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-75
+id: bugfix-77
 milestone: bugfix
 depends: []
 priority: P2
@@ -25,6 +25,7 @@ scope:
   - apps/web/src/utils/**
   - packages/contracts/**
   - tests/e2e/**
+  - .github/workflows/ci.yml
   - .agents/flow/issues/bugfix-attribution-category-display*
   - .agents/notes/implemented/**
 adr: []
@@ -85,7 +86,7 @@ Create one attributed report per category. Compare detail `category`, Session li
 
 ## Gates and CI
 
-`pnpm test:api`, `pnpm test:web`, `pnpm typecheck:web` and `pnpm contract:check`.
+`pnpm test:api`, `pnpm test:web`, `pnpm typecheck:web` and `pnpm contract:check`. The cross-stack browser test ingests bad cases before binding the attribution Skill, then verifies that the resulting report is readable. Shared CI allows 20 minutes per complete serial browser run.
 
 ## Non-goals
 

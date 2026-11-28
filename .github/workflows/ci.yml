@@ -177,7 +177,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
@@ -198,11 +198,11 @@ jobs:
       - name: 跨栈集成测试（Web → Vite proxy → FastAPI）
         timeout-minutes: 5
         run: pnpm test:integration
-      - name: 真实浏览器 E2E（M1 shell + M3 Session 浏览器）
-        # The suite's own budget is 15 minutes. Shared runners occasionally
-        # stall a Chrome DevTools handshake; the harness now bounds each CDP
-        # command, and one retry keeps a transient stall from failing the PR.
-        timeout-minutes: 35
+      - name: 真实浏览器 E2E
+        # A slow runner can still be on case 81 after 15 minutes. Allow both full attempts.
+        env:
+          HE_E2E_TIMEOUT_MS: "1200000"
+        timeout-minutes: 42
         run: |
           pnpm test:e2e || {
             echo "::warning::real-browser suite failed or stalled; retrying once"
