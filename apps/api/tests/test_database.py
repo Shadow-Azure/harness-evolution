@@ -534,7 +534,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0036"
+        assert result.scalar_one() == "0038"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -836,7 +836,7 @@ async def test_v2_workspace_foundation_backfills_default_workspace(
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-            assert revision == "0036"
+            assert revision == "0038"
             workspace_rows = (
                 (await session.execute(text("SELECT * FROM workspaces"))).mappings().all()
             )
@@ -1090,7 +1090,7 @@ async def test_bad_case_title_migration_backfills_legacy_rows(tmp_path: Path) ->
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-        assert revision == "0036"
+        assert revision == "0038"
         assert [dict(row) for row in rows] == [
             {
                 "bad_case_id": "legacy-long",
@@ -1316,7 +1316,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0036"
+        assert result.scalar_one() == "0038"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")

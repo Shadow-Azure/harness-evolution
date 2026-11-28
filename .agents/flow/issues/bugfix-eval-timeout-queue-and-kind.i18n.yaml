@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-eval-timeout-queue-and-kind.md
-bugfix-eval-timeout-queue-and-kind.md: fdc581c2c893944ba4fd69e5a6d5df5216cebcf7
-bugfix-eval-timeout-queue-and-kind.en.md: f519312845b4e36dd64d386d194421328bd5453e
+bugfix-eval-timeout-queue-and-kind.md: 69b107c5c38e5e0077a2fab4b3bb8bc14c12f672
+bugfix-eval-timeout-queue-and-kind.en.md: cd8f77c1b600f24695be1e4304157a40651b8e18

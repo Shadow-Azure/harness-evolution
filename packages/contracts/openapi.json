@@ -4315,6 +4315,11 @@
         "additionalProperties": false,
         "description": "Immutable evolution target snapshot shown on one run card.",
         "properties": {
+          "matchByName": {
+            "default": false,
+            "title": "Matchbyname",
+            "type": "boolean"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -5091,6 +5096,11 @@
               }
             ]
           },
+          "matchByName": {
+            "default": false,
+            "title": "Matchbyname",
+            "type": "boolean"
+          },
           "objectName": {
             "title": "Objectname",
             "type": "string"
@@ -5121,6 +5131,11 @@
         "additionalProperties": false,
         "description": "One skill or agent member of a target configuration.",
         "properties": {
+          "matchByName": {
+            "default": false,
+            "title": "Matchbyname",
+            "type": "boolean"
+          },
           "objectName": {
             "title": "Objectname",
             "type": "string"

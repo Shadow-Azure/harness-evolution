@@ -23,3 +23,5 @@ Requiring every source to be a registered target adds repository and version con
 ## Consequences
 
 The overview, wizard and automatic attribution share a candidate matcher. Target creation stores the binding and policy in one transaction. Changing the rules of a bound target creates a binding generation and scans history up to its cutoff. Each launched run freezes its rules and persists the original report identity and matching coordinates for each candidate. Existing reports remain accessible when a policy narrows.
+
+Database upgrades reconcile the mainline schema skipped by either candidate-policy preview, preserving saved rules and each run’s matching evidence.

@@ -17,6 +17,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    false,
     text,
     true,
 )
@@ -582,6 +583,7 @@ evolution_target_members = Table(
     Column("object_type", String(16), nullable=False),
     Column("object_name", String(128), nullable=False),
     Column("sub_dir", String(512), nullable=False),
+    Column("match_by_name", Boolean, nullable=False, server_default=false()),
     Column("definition", JSON, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint(

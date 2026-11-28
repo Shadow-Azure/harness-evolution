@@ -213,10 +213,17 @@ class EvalSubmission:
 
 @dataclass(frozen=True, slots=True)
 class EvalStatus:
-    """One external evaluation status and optional safe message."""
+    """One external evaluation status, optional timing, and safe message.
+
+    ``started_at`` is the platform's execution start when it reports one; a
+    ``None`` value means the caller must fall back to HE's submission time.
+    ``progress_percent`` is observation-only and never changes the verdict.
+    """
 
     status: EvalStatusValue
     message: str | None = None
+    started_at: datetime | None = None
+    progress_percent: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

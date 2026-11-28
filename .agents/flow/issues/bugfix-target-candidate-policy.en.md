@@ -4,7 +4,7 @@ English | [中文](bugfix-target-candidate-policy.md)
 
 ```yaml flow
 kind: issue
-id: bugfix-72
+id: bugfix-74
 milestone: bugfix
 depends: []
 priority: P2

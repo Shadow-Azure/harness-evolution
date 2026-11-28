@@ -21,7 +21,7 @@ from app.db.crud.evolution_targets import (
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.models.domain import evolution_target_members, evolution_targets
-from app.db.models.evolution import evolution_run_targets, evolution_runs
+from app.db.models.evolution import evolution_run_candidates, evolution_run_targets, evolution_runs
 from app.service.evolution.engine.contracts import EvalRequest, EvalTarget
 from app.service.evolution.potential import MatchTarget
 from app.service.evolution.targets import (
@@ -32,6 +32,7 @@ from app.service.evolution.targets import (
 from app.third_party_api.eval_gateway.ai_eval_platform import AiEvalPlatformGateway
 from app.utils.time import now_shanghai
 from tests.m10_02_potential_support import harness as harness
+from tests.m10_02_potential_support import seed_case
 
 
 class _Remote:
@@ -317,11 +318,11 @@ def test_eval_asset_override_covers_every_member() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("candidate_preview", [False, True])
+@pytest.mark.parametrize("preview_stamp", [None, "0035", "0036"])
 async def test_migration_backfills_members_and_run_targets(
-    tmp_path: Path, candidate_preview: bool
+    tmp_path: Path, preview_stamp: str | None
 ) -> None:
-    """Revision 0035 translates legacy single-object rows into member rows."""
+    """Mainline and both candidate previews retain their targets, runs and policies."""
     database = create_database(_settings(tmp_path))
     await database.start()
     try:
@@ -369,9 +370,27 @@ async def test_migration_backfills_members_and_run_targets(
             "mode": "custom",
             "rules": [{"kind": "skill", "name": "source", "relation": "after", "types": ["self"]}],
         }
-        if candidate_preview:
-            # The published preview already stamped 0035 and created the two JSON columns.
+        evidence = {"kind": "skill", "name": "source", "type": "self", "matches": [{"rule": 1}]}
+        if preview_stamp:
+            await seed_case(
+                database,
+                case_id="legacy-case",
+                session_id="legacy-session",
+                workspace_id="ws-default",
+                object_name="source",
+                case_type="self",
+            )
+            if preview_stamp == "0036":
+                # The second preview had official member tables, but no result_commit.
+                await asyncio.to_thread(command.upgrade, alembic_config(database), "0035")
             async with database.transaction() as session:
+                run_columns = (
+                    await session.execute(text("PRAGMA table_info(evolution_runs)"))
+                ).mappings()
+                if "result_commit" in {row["name"] for row in run_columns}:
+                    await session.execute(
+                        text("ALTER TABLE evolution_runs DROP COLUMN result_commit")
+                    )
                 for table, column in (
                     ("evolution_targets", "candidate_policy"),
                     ("evolution_run_candidates", "source_evidence"),
@@ -386,11 +405,37 @@ async def test_migration_backfills_members_and_run_targets(
                     .where(evolution_targets.c.id == "legacy-target")
                     .values(candidate_policy=policy)
                 )
-            await asyncio.to_thread(command.stamp, alembic_config(database), "0035")
+                await session.execute(
+                    evolution_run_candidates.insert().values(
+                        id="legacy-candidate",
+                        run_id="legacy-run",
+                        bad_case_id="legacy-case",
+                        session_id="legacy-session",
+                        workspace_id="ws-default",
+                        order_state="comparable",
+                        included=True,
+                        included_reason="custom_source",
+                        source_evidence=evidence,
+                        created_at=now,
+                    )
+                )
+            await asyncio.to_thread(command.stamp, alembic_config(database), preview_stamp)
         await upgrade_database(database)
 
         async with database.session() as session:
-            if candidate_preview:
+            result_commit = await session.execute(
+                select(evolution_runs.c.result_commit).where(evolution_runs.c.id == "legacy-run")
+            )
+            assert result_commit.scalar_one() is None
+            if preview_stamp:
+                assert (
+                    await session.scalar(
+                        select(evolution_run_candidates.c.source_evidence).where(
+                            evolution_run_candidates.c.id == "legacy-candidate"
+                        )
+                    )
+                    == evidence
+                )
                 assert (
                     await session.scalar(
                         select(evolution_targets.c.candidate_policy).where(
@@ -422,6 +467,8 @@ async def test_migration_backfills_members_and_run_targets(
                 .all()
             )
         assert [row["object_name"] for row in members] == ["deep-research"]
+        assert members[0]["match_by_name"] is False
+        assert run_targets[0]["match_by_name"] is False
         assert members[0]["definition"]["commit"] == "a" * 40
         assert [row["object_name"] for row in run_targets] == ["deep-research"]
     finally:

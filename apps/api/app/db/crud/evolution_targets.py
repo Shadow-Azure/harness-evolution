@@ -42,6 +42,7 @@ class EvolutionTargetMemberRecord:
     object_type: EvolutionObjectType
     object_name: str
     sub_dir: str
+    match_by_name: bool = False
     definition: dict[str, Any] | None = None
 
 
@@ -69,6 +70,7 @@ class EvolutionTargetRecord:
     candidate_policy: dict[str, Any] | None = None
     primary_metric_key: str = ""
     members: tuple[EvolutionTargetMemberRecord, ...] = ()
+    match_by_name: bool = False
 
     @property
     def definition(self) -> dict[str, str] | None:
@@ -143,6 +145,7 @@ def _member_record(row: RowMapping) -> EvolutionTargetMemberRecord:
         object_type=cast(EvolutionObjectType, row["object_type"]),
         object_name=str(row["object_name"]),
         sub_dir=str(row["sub_dir"]),
+        match_by_name=bool(row.get("match_by_name", False)),
         definition=dict(definition) if isinstance(definition, Mapping) else None,
     )
 
@@ -226,6 +229,7 @@ def _member_values(values: Mapping[str, object]) -> tuple[Mapping[str, object], 
             "object_type": values["object_type"],
             "object_name": values["object_name"],
             "sub_dir": values["sub_dir"],
+            "match_by_name": bool(values.get("match_by_name", False)),
             "definition": values.get("definition"),
         },
     )
@@ -248,6 +252,7 @@ def _member_rows(
             "object_type": member["object_type"],
             "object_name": member["object_name"],
             "sub_dir": member["sub_dir"],
+            "match_by_name": bool(member.get("match_by_name", False)),
             "definition": member.get("definition"),
             "created_at": now,
         }
@@ -262,6 +267,7 @@ def _member_signature(values: Mapping[str, object]) -> tuple[tuple[object, ...],
             member["object_type"],
             member["object_name"],
             member["sub_dir"],
+            bool(member.get("match_by_name", False)),
             member.get("definition"),
         )
         for member in _member_values(values)
@@ -630,7 +636,13 @@ class EvolutionTargetRepository:
                         statement = statement.values(candidate_policy=policy)
                 previous_members = await _load_members(session, [target_id])
                 changed_members = tuple(
-                    (member.object_type, member.object_name, member.sub_dir, member.definition)
+                    (
+                        member.object_type,
+                        member.object_name,
+                        member.sub_dir,
+                        member.match_by_name,
+                        member.definition,
+                    )
                     for member in previous_members.get(target_id, ())
                 ) != _member_signature(values)
                 package = values.get("attribution_package_id") or existing["attribution_package_id"]

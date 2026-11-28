@@ -126,7 +126,10 @@ class BindingWorker:
             stored = stored_by_key.get((member.object_type, member.object_name))
             member_definition = member.definition or (definition if member is members[0] else None)
             if stored is not None and stored.get("revision"):
-                member_snapshots.append(dict(stored))
+                member_snapshot = {**stored, "match_by_name": member.match_by_name}
+                if bool(stored.get("match_by_name", False)) != member.match_by_name:
+                    changed = True
+                member_snapshots.append(member_snapshot)
                 continue
             if member_definition and member_definition.get("revision"):
                 version, revision = target.default_ref, str(member_definition["revision"])
@@ -145,6 +148,7 @@ class BindingWorker:
                     "sub_dir": member.sub_dir,
                     "version": version,
                     "revision": revision,
+                    "match_by_name": member.match_by_name,
                     "definition": member_definition,
                 },
             )
@@ -164,6 +168,7 @@ class BindingWorker:
                 object_name=member.object_name,
                 target_version=str(item["version"]),
                 target_revision=str(item["revision"]),
+                match_by_name=member.match_by_name,
             )
             for member, item in zip(members, member_snapshots, strict=True)
         )

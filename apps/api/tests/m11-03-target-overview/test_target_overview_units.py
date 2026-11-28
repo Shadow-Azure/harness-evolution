@@ -10,7 +10,10 @@ from typing import Any, cast
 
 import pytest
 
-from app.db.crud.evolution_targets import EvolutionTargetRecord
+from app.db.crud.evolution_targets import (
+    EvolutionTargetMemberRecord,
+    EvolutionTargetRecord,
+)
 from app.db.crud.overview_targets import AttributionLinkRecord, ObjectVersionRecord
 from app.errors import AppError
 from app.service.evolution.target_content import (
@@ -26,6 +29,7 @@ from app.service.overview.targets import (
     _build_version_labels,
     _category,
     _display_version,
+    _member_target,
     _newest_link_by_case,
     _record_identity,
     _state,
@@ -494,6 +498,7 @@ class _RecordingMatcher:
     def __init__(self) -> None:
         """Start with no calls."""
         self.observed_revisions: list[frozenset[str] | None] = []
+        self.conditions: list[object] = []
 
     async def associated_sessions(
         self,
@@ -501,8 +506,8 @@ class _RecordingMatcher:
         *,
         observed_revisions: frozenset[str] | None = None,
     ) -> object:
-        """Record the filter and return an empty association."""
-        del condition
+        """Record the condition/filter and return an empty association."""
+        self.conditions.append(condition)
         self.observed_revisions.append(observed_revisions)
         return SimpleNamespace(sessions=())
 
@@ -519,15 +524,14 @@ class _DigestResolver:
         return ResolvedTargetVersion(version, f"digest:{version}")
 
 
-async def test_name_mode_does_not_depend_on_the_matcher_flag() -> None:
-    """The folded agent row passes no observed revisions even with a plain matcher."""
+async def test_name_mode_folds_the_member_row_and_flags_the_match_condition() -> None:
+    """A name-matched member owns the single row and passes its switch to the matcher."""
     matcher = _RecordingMatcher()
     service = TargetOverviewService(
         cast(Any, None),
         cast(Any, _NameModeRepository()),
         cast(Any, matcher),
         _DigestResolver(),
-        agent_match_by_name=True,
     )
     target = replace(
         TARGET,
@@ -535,6 +539,7 @@ async def test_name_mode_does_not_depend_on_the_matcher_flag() -> None:
         object_type="agent",
         object_name="Explore",
         default_ref="main",
+        match_by_name=True,
     )
 
     analysis = await service._analyse_target(
@@ -547,4 +552,26 @@ async def test_name_mode_does_not_depend_on_the_matcher_flag() -> None:
     )
 
     assert analysis.versions == ("main",)
-    assert matcher.observed_revisions == [None]
+    assert matcher.observed_revisions == [frozenset({"main", "digest:main"})]
+    condition = matcher.conditions[0]
+    assert condition.targets[0].match_by_name is True  # type: ignore[attr-defined]
+
+
+def test_member_target_carries_its_own_match_switch() -> None:
+    """The aggregate projection narrows the record to the member's switch."""
+    member = EvolutionTargetMemberRecord(
+        id="member-unit",
+        target_id=TARGET.id,
+        workspace_id=TARGET.workspace_id,
+        seq=0,
+        object_type="agent",
+        object_name="Explore",
+        sub_dir="agents/Explore",
+        match_by_name=True,
+    )
+
+    narrowed = _member_target(TARGET, member)
+
+    assert narrowed.match_by_name is True
+    assert narrowed.members == (member,)
+    assert narrowed.object_type == "agent"

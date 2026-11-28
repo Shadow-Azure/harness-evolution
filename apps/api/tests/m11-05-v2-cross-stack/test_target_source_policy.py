@@ -17,7 +17,8 @@ from app.db.migrate import upgrade_database
 from app.db.models.domain import bad_cases, workspace_bad_cases
 from app.errors import AppError
 from app.service.evolution.candidate_policy import CandidatePolicy
-from app.service.evolution.potential import MatchCondition, PotentialMatcher, resolve_policy
+from app.service.evolution.potential import PotentialMatcher, resolve_policy, target_match_condition
+from app.service.evolution.target_content import ResolvedTargetVersion
 from tests.m10_02_potential_support import NOW, seed_case, seed_event, seed_session, seed_workspace
 
 
@@ -129,15 +130,17 @@ async def test_roundtrip_source_policy(tmp_path: Path, mysql: bool) -> None:
             validation_project_id="val",
             test_project_id="test",
             enabled=True,
+            match_by_name=True,
             candidate_policy=policy.model_dump(),
         )
         target = await repo.insert(values)
         assert target.candidate_policy == policy.model_dump()
-        condition = MatchCondition(
-            wid, "skill", "A", "main", "tag:main", start, end, candidate_policy=policy
-        )
+        resolved = (ResolvedTargetVersion("main", "tag:main"),)
+        condition = target_match_condition(start.date(), end.date(), target, resolved)
         matcher = PotentialMatcher(PotentialRepository(db))
-        sessions = await matcher.associated_sessions(condition)
+        sessions = await matcher.associated_sessions(
+            condition, observed_revisions=frozenset({"tag:main"})
+        )
         matched = await matcher.potential_cases(condition, sessions, resolve_policy(None))
         assert [(row.bad_case_id, row.object_trigger.event_index) for row in matched.included] == [
             (key + "1", 2)
@@ -158,9 +161,7 @@ async def test_roundtrip_source_policy(tmp_path: Path, mysql: bool) -> None:
             target.id, {k: v for k, v in values.items() if k != "candidate_policy"}
         )
         assert updated.candidate_policy == saved.candidate_policy
-        condition = MatchCondition(
-            wid, "skill", "A", "main", "tag:main", start, end, candidate_policy=policy
-        )
+        condition = target_match_condition(start.date(), end.date(), updated, resolved)
         assert {
             row.bad_case_id
             for row in (

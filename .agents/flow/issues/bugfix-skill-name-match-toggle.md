@@ -11,9 +11,10 @@ depends:
   - m11-03
   - m11-04
 priority: P2
-status: ready
+status: done
 scope:
   - .agents/**
+  - .github/**
   - .env.example
   - apps/api/alembic/**
   - apps/api/app/api/**
@@ -28,13 +29,15 @@ scope:
   - docs/architecture.md
   - docs/architecture.en.md
   - docs/architecture.i18n.yaml
+  - plans/**
   - plans/fullstack-design/05-api-design.md
   - plans/fullstack-design/06-database-design.md
   - plans/fullstack-design/07-backend-implementation.md
   - plans/fullstack-design/08-frontend-implementation.md
   - plans/ui-prototype-v2/**
   - tests/e2e/**
-adr: []
+adr:
+  - ../../notes/implemented/architecture/2026-11-27-member-name-match-switch.md
 github:
   number: 648
   url: https://github.com/Shadow-Azure/harness-evolution/issues/648
@@ -42,7 +45,7 @@ github:
 
 ## 背景
 
-提出人 2026-11-27 补充诉求：Agent 和 Skill 的匹配都做成「子进化对象编辑框」里的开关，按进化对象成员粒度配置，而不是按 `.env` 部署粒度。原 issue 的两个环境变量方案（`HE_AGENT_MATCH_BY_NAME` / 拟新增的 `HE_SKILL_MATCH_BY_NAME`）作废，本 issue 改为成员级 `matchByName`；本次先修改原型，把原型修改前后的截图放进 issue，不在本 PR 做产品实现。
+提出人 2026-11-27 补充诉求：Agent 和 Skill 的匹配都做成「子进化对象编辑框」里的开关，按进化对象成员粒度配置，而不是按 `.env` 部署粒度。原 issue 的两个环境变量方案（`HE_AGENT_MATCH_BY_NAME` / 拟新增的 `HE_SKILL_MATCH_BY_NAME`）作废，本 issue 改为成员级 `matchByName`；原型修改与 issue 更新已由 #651 合入，本实现 PR 交付数据库、API、匹配器、运行快照与前端开关。
 
 当前匹配链路的关键事实：
 
@@ -63,7 +66,7 @@ github:
 - 删除 `HE_AGENT_MATCH_BY_NAME` 与 `skill_match_by_name` 的配置入口，不再新增环境变量；匹配模式随成员配置持久化，修改后不需要重启 `harness-api`。
 - 报告内容身份、`targetRevision`、原文冻结、运行快照、缓存键与第 4 步统计仍使用 body hash；开关只改「关联与版本行」这层匹配。
 - 更新 V2 原型和设计说明，并在本 issue 放入同一场景、同一视口、同一主题的 before/after 截图。
-- 本 PR 只提交原型、设计说明和 issue 更新；数据库、API、前端与匹配器的产品实现由后续 PR 完成。
+- 原型、设计说明和 issue 更新已由 #651 合入；本实现 PR 交付数据库、API、前端与匹配器。
 
 ## 设计依据
 
@@ -81,7 +84,7 @@ github:
 
 同一 V2 原型、同一页面状态（`?u=admin&ws=ws-harness&page=overview&tab=targets`）、1500×1200 CSS 视口、2× DPR、浅色主题；数据为 `ws-harness` 合成 fixture。场景是新增进化对象弹窗，含一个 skill 成员和一个 agent 成员：基线只有类型/名称/子目录；变更后每个成员行增加「名称匹配」开关，截图示例中 skill 关闭、agent 开启，表示开关按成员独立。
 
-| Before（`main` 原型，无开关） | After（本 PR 原型，成员行开关） |
+| Before（`main` 原型，无开关） | After（#651 原型，成员行开关） |
 | --- | --- |
 | [![Before：成员行只有类型、名称、子目录](https://github.com/Shadow-Azure/harness-evolution/releases/download/skill-name-match-prototype-evidence-20261127/skill-name-match-before.png)](https://github.com/Shadow-Azure/harness-evolution/releases/download/skill-name-match-prototype-evidence-20261127/skill-name-match-before.png) | [![After：skill 关闭、agent 开启名称匹配](https://github.com/Shadow-Azure/harness-evolution/releases/download/skill-name-match-prototype-evidence-20261127/skill-name-match-after.png)](https://github.com/Shadow-Azure/harness-evolution/releases/download/skill-name-match-prototype-evidence-20261127/skill-name-match-after.png) |
 
@@ -89,16 +92,16 @@ github:
 
 ## 实现内容
 
-### 原型与设计（本 PR）
+### 原型与设计（#651 已合入）
 
 - `plans/ui-prototype-v2/harness-evolution.html` 的 `v2TargetMemberRow` 增加 `matchByName` 参数和第 4 列开关；成员行网格改为 `类型 / 名称 / 子目录 / 名称匹配 / 移除`，开关沿用现有 `.switch` 视觉语言并缩小到成员行尺寸。
 - `v2TargetModal` 用成员已有的 `matchByName` 渲染开关；`v2SaveTarget` 把 `matchByName` 写回成员对象；成员提示补充「各自决定是否按名称匹配」。
 - `plans/ui-prototype-v2/design-v2.md §5.3` 记录成员级开关的默认值、开关语义和位置。
-- 本 issue 放入 before/after 截图；本 PR 不提交产品代码、数据库迁移或契约字段。
+- 本 issue 放入 before/after 截图；原型 PR 不提交产品代码、数据库迁移或契约字段。
 
 ### 数据模型与契约
 
-- 新增 Alembic 迁移（`0036_member_match_by_name.py`）：给 `evolution_target_members` 和 `evolution_run_targets` 各加 `match_by_name` 布尔列，`NOT NULL DEFAULT false`；不回填为 true。`evolution_targets` 不增加部署级列。
+- 新增 Alembic 迁移（`0037_member_match_by_name.py`）：给 `evolution_target_members` 和 `evolution_run_targets` 各加 `match_by_name` 布尔列，`NOT NULL DEFAULT false`；不回填为 true。`evolution_targets` 不增加部署级列。
 - 兼容没有成员行的历史目标：`member_objects` 合成成员时 `match_by_name=false`，行为与今天一致。
 - 契约：`EvolutionTargetMemberWrite` 与 `EvolutionTargetMember` 增加 `matchByName: bool = false`；`EvolutionRunTarget` 快照增加同一字段；运行 `pnpm contract:generate` 更新 OpenAPI 与生成类型。
 - 持久化：`EvolutionTargetMemberRecord`、`EvolutionRunTargetRecord`、repository 的 member load/write、`_member_rows`、run target 写入读取都带上该字段；创建/更新时保留每个成员自己的值。
@@ -128,7 +131,7 @@ github:
 
 ## 实施步骤
 
-1. 原型与设计（本 PR）：改成员行开关、保存/回显、`design-v2.md §5.3`，在 issue 放入 before/after 截图；不提交产品实现。
+1. 原型与设计（#651 已合入）：改成员行开关、保存/回显、`design-v2.md §5.3`，在 issue 放入 before/after 截图；不提交产品实现。
 2. 数据与契约：新增成员/运行快照的 `match_by_name` 迁移，更新 `EvolutionTargetMemberWrite/Read`、`EvolutionRunTarget` 和生成契约；补迁移与契约测试。
 3. 持久化：members repository、目标创建/更新、run target 快照读写带上字段；补 repository/service 单测。
 4. 匹配层：`MatchTarget.match_by_name`、`MatchCondition.targets`、matcher 的逐成员过滤；删除全局开关和 `main.py` 接线；补 skill/agent/混合成员/ knowledge 的匹配器单测。
@@ -140,15 +143,15 @@ github:
 ## 依赖与交付边界
 
 - 依赖：m13-01（body hash 身份）、m11-03（总览 API）、m11-04（总览 UI）；三者均已 done。同仓多成员配置已由 m28-01 的成员模型承载，本 issue 只加成员字段，不改成员模型。
-- 本 PR 交付边界：V2 原型、`design-v2.md`、本 issue 的正文与截图；不交付数据库迁移、API、前端表单、匹配器或 env 清理。
-- 后续实现交付边界：成员表/运行快照各一个布尔列、契约字段、成员表单开关、按成员的匹配分支；不改报告内容身份、`targetRevision`、缓存键、第 4 步统计、事件采集和解析算法。
+- 原型 PR（#651）交付边界：V2 原型、`design-v2.md`、本 issue 的正文与截图；不交付数据库迁移、API、前端表单、匹配器或 env 清理。
+- 本实现 PR 交付边界：成员表/运行快照各一个布尔列、契约字段、成员表单开关、按成员的匹配分支；不改报告内容身份、`targetRevision`、缓存键、第 4 步统计、事件采集和解析算法。
 - 名称匹配只在开关开启时生效；关闭时保持现有 body hash 口径。向导/启动当前 presence 关联的默认行为不在本 issue 改变。
 - 不自动把历史数据回填为 true；需要名称匹配的成员由用户在新表单里显式开启。
 - 本 issue 的 `adr` 在实现 PR 中回填新 Agent Note；原型 PR 不新增决策记录。
 
 ## 独立验证
 
-本 PR（原型与 issue）：
+原型 PR（#651，已合入）：
 
 ```sh
 pnpm verify:flow
@@ -162,7 +165,7 @@ pnpm verify:docs
 - issue：正文已从 env 方案改为成员级 `matchByName`，包含数据/契约/匹配/前端/清理/验收；无残留「新增 `HE_SKILL_MATCH_BY_NAME`」表述。
 - 流程与文档：`pnpm verify:flow`、`pnpm verify:flow -- --diff origin/main`、`pnpm lint:docs`、`pnpm verify:docs` 全绿。
 
-后续实现（在实现 PR 执行）：
+本实现 PR：
 
 ```sh
 pnpm test:api -- tests/bugfix-skill-name-match tests/m10-02-potential-matcher tests/m11-03-target-overview
@@ -186,7 +189,7 @@ pnpm verify:docs
 
 1. 原型成员行出现「名称匹配」开关，skill/agent 各自独立，默认关闭；knowledge 不显示；本 issue 有同一场景、同一视口、同一主题的 before/after 截图。
 2. Issue 已改为成员级 `matchByName` 方案，明确删除 `HE_AGENT_MATCH_BY_NAME`、不再新增 `HE_SKILL_MATCH_BY_NAME`，并写明 env 迁移与默认 false 的影响。
-3. 本 PR 不包含产品实现；CI（docs-flow、flow-online 及其它 lane）通过。
+3. 原型 PR 不包含产品实现（#651 已满足）；实现 PR 通过全部门禁。
 4. 实现后：成员表与 run 快照持久化 `matchByName`，API 契约/生成类型同步；旧数据默认 false，合成成员 false。
 5. 实现后：开关关闭的成员保持 body hash 匹配；开启的成员在总览与关联匹配中按名称，单行版本、历史报告别名与计数不归零；同配置其他成员不受影响。
 6. 实现后：run 快照保留创建时开关；配置后改只影响后续匹配，不重写历史报告与 `targetRevision`。
@@ -196,15 +199,15 @@ pnpm verify:docs
 
 ## 门禁与 CI
 
-- 本 PR：`pnpm verify:flow`、`pnpm verify:flow -- --diff origin/main`、`pnpm lint:docs`、`pnpm verify:docs`；CI 的 docs-flow、flow-online 及其它 lane 全绿；不跑产品 API/Web 测试（无产品代码）。
+- 原型 PR（#651）：`pnpm verify:flow`、`pnpm verify:flow -- --diff origin/main`、`pnpm lint:docs`、`pnpm verify:docs`；CI 的 docs-flow、flow-online 及其它 lane 全绿；不跑产品 API/Web 测试（无产品代码）。
 - 实现 PR：API `pnpm lint:api`、`pnpm typecheck:api`、聚焦 `pnpm test:api -- tests/bugfix-skill-name-match tests/m10-02-potential-matcher tests/m11-03-target-overview`；Web `pnpm lint:web`、`pnpm typecheck:web`、`pnpm test:web`；契约 `pnpm contract:generate` / `pnpm contract:check`；迁移与 DB 测试；E2E 目标配置用例。
-- 流程：提交与 PR 标题含 `(#N)`；本 issue 为 ready，实现 PR 前改为 in-progress；`pnpm verify:flow` 与 `pnpm verify:flow -- --diff origin/main` 通过。
-- UI 可见变化：实现 PR 必须附同一 fixture、同一视口、同一主题的成员开关关闭/开启 before/after 截图；本 PR 的原型截图只作为设计证据。
+- 流程：提交与 PR 标题含 `(#N)`；本 issue 为 in-progress；`pnpm verify:flow` 与 `pnpm verify:flow -- --diff origin/main` 通过。
+- UI 可见变化：实现 PR 必须附同一 fixture、同一视口、同一主题的成员开关关闭/开启 before/after 截图；#651 的原型截图只作为设计证据。
 - Agent Note：实现 PR 新增成员级开关决策记录并回填 `adr`；不把运行日志、生产 Session 或凭据写入仓库。
 
 ## 非目标
 
-- 不在本 PR 实现数据库迁移、API、前端或匹配器；本 PR 只改原型、设计说明和 issue。
+- 原型 PR 不实现数据库迁移、API、前端或匹配器；本实现 PR 交付产品实现。
 - 不保留或新增任何 `.env` 匹配开关；不做部署级默认值、环境变量兜底或自动回填。
 - 不把报告内容身份、`targetRevision`、缓存键、原文冻结或第 4 步统计从 body hash 改成名称。
 - 不改变向导/启动当前 presence 关联的默认行为；如后续要统一三处口径，另开 issue。

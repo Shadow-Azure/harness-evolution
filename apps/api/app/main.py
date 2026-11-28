@@ -375,12 +375,10 @@ def create_app(
     )
     potential_repository = PotentialRepository(resolved_database)
     attribution_repository = AttributionRepository(resolved_database)
+    potential_matcher = PotentialMatcher(potential_repository)
     potential_preview = PotentialPreviewService(
         evolution_targets,
-        PotentialMatcher(
-            potential_repository,
-            agent_match_by_name=resolved_settings.agent_match_by_name,
-        ),
+        potential_matcher,
         resolver,
         reports=attribution_repository,
         rule_skills=attribution_skills,
@@ -389,16 +387,11 @@ def create_app(
     probe_query_repository = ProbeQueryRepository(resolved_database)
     evolution_runs = EvolutionRunService(evolution_repository, run_event_store)
     run_candidate_repository = EvolutionRunCandidateRepository(resolved_database)
-    potential_matcher = PotentialMatcher(
-        potential_repository,
-        agent_match_by_name=resolved_settings.agent_match_by_name,
-    )
     target_overview = TargetOverviewService(
         target_repository,
         TargetOverviewRepository(resolved_database),
         potential_matcher,
         resolver,
-        agent_match_by_name=resolved_settings.agent_match_by_name,
     )
     local_attribution = LocalAttribution(
         resolved_settings,
@@ -532,6 +525,8 @@ def create_app(
         scan_interval=timedelta(seconds=resolved_settings.eval_scan_seconds),
         poll_interval=timedelta(seconds=resolved_settings.eval_poll_seconds),
         timeout=timedelta(seconds=resolved_settings.eval_timeout_seconds),
+        test_timeout=timedelta(seconds=resolved_settings.eval_test_timeout_seconds),
+        queue_timeout=timedelta(seconds=resolved_settings.eval_queue_timeout_seconds),
     )
     evolution_lifecycle = EvolutionJobLifecycle(
         evolution_repository,

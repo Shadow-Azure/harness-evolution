@@ -505,6 +505,7 @@ class EvolutionPrepareService:
                     object_name=item.object_name,
                     target_version=item.target_version,
                     target_revision=item.target_revision or resolved.target_revision,
+                    match_by_name=item.match_by_name,
                 )
                 for item in run.targets
             ),

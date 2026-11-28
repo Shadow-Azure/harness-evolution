@@ -80,10 +80,11 @@ function targetWrite(target: EvolutionTarget): EvolutionTargetWrite {
     primaryMetricKey: target.primaryMetricKey,
     enabled: target.enabled,
     members: targetMembers(target).map(
-      ({ objectType, objectName, subDir }) => ({
+      ({ objectType, objectName, subDir, matchByName }) => ({
         objectType,
         objectName,
         subDir,
+        matchByName,
       }),
     ),
   };

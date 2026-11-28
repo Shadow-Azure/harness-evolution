@@ -5,23 +5,27 @@ from alembic.script import ScriptDirectory
 
 from alembic import op
 
-revision = "0036"
-down_revision = "0035"
+revision = "0038"
+down_revision = "0037"
 
 
 def upgrade() -> None:
     inspector = sa.inspect(op.get_bind())
-    # The published candidate-policy preview also used 0035. Bring its single-member
-    # targets forward with the official 0035 backfill before adding the new columns.
+    # Candidate previews used 0035 and 0036 before those numbers landed on main.
+    # Replay only the schema those stamps skipped, preserving the preview's JSON.
+    scripts = ScriptDirectory.from_config(op.get_context().config)
     if not inspector.has_table("evolution_target_members"):
-        scripts = ScriptDirectory.from_config(op.get_context().config)
-        scripts.get_revision(down_revision).module.upgrade()
-    columns = sa.inspect(op.get_bind()).get_columns("evolution_run_candidates")
+        scripts.get_revision("0035").module.upgrade()
+        scripts.get_revision("0037").module.upgrade()
+    if "result_commit" not in {col["name"] for col in inspector.get_columns("evolution_runs")}:
+        scripts.get_revision("0036").module.upgrade()
+
+    columns = inspector.get_columns("evolution_run_candidates")
     if not any(column["name"] == "source_evidence" for column in columns):
         op.add_column(
             "evolution_run_candidates", sa.Column("source_evidence", sa.JSON(), nullable=True)
         )
-    columns = sa.inspect(op.get_bind()).get_columns("evolution_targets")
+    columns = inspector.get_columns("evolution_targets")
     if not any(column["name"] == "candidate_policy" for column in columns):
         op.add_column("evolution_targets", sa.Column("candidate_policy", sa.JSON(), nullable=True))
 

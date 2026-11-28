@@ -51,6 +51,7 @@ const target: EvolutionTarget = {
       objectType: "skill",
       objectName: "deep-research",
       subDir: "skills/deep-research",
+      matchByName: false,
     },
   ],
 };
@@ -282,6 +283,7 @@ describe("target configuration page", () => {
           objectType: "skill",
           objectName: "deep-research",
           subDir: "skills/deep-research",
+          matchByName: false,
         },
       ],
     });
@@ -840,11 +842,13 @@ describe("target configuration page", () => {
           objectType: "skill",
           objectName: "deep-research",
           subDir: "skills/deep-research",
+          matchByName: false,
         },
         {
           objectType: "agent",
           objectName: "Explore",
           subDir: "agents/explore",
+          matchByName: true,
         },
       ],
     };
@@ -976,6 +980,7 @@ describe("target configuration page", () => {
           objectType: "skill",
           objectName: "deep-research",
           subDir: "skills/deep-research",
+          matchByName: false,
         },
       ],
     });

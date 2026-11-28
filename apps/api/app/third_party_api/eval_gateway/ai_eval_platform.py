@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any, cast
 from urllib.parse import quote
 
@@ -108,8 +109,9 @@ class AiEvalPlatformGateway(BaseEvalGateway):
             raise EvalGatewayError(
                 f"evaluation platform returned an unknown status: {raw!r}",
             )
+        started_at = _started_at(payload)
+        percent = _completion_percent(payload)
         if raw == "partial":
-            percent = _completion_percent(payload)
             if percent is not None and percent < PARTIAL_MIN_COMPLETION_PERCENT:
                 return EvalStatus(
                     status="failed",
@@ -117,16 +119,33 @@ class AiEvalPlatformGateway(BaseEvalGateway):
                         "评测平台部分完成，完成率 "
                         f"{percent}% 低于最低完成率 {PARTIAL_MIN_COMPLETION_PERCENT}%"
                     ),
+                    started_at=started_at,
+                    progress_percent=percent,
                 )
-            return EvalStatus(status="completed")
+            return EvalStatus(
+                status="completed",
+                started_at=started_at,
+                progress_percent=percent,
+            )
         if raw in {"pausing_budget", "paused_budget"}:
             return EvalStatus(
                 status="failed",
                 message="评测平台预算暂停，增加预算后请重试该评测",
+                started_at=started_at,
+                progress_percent=percent,
             )
         if raw == "cancelled":
-            return EvalStatus(status="failed", message="评测平台已取消该评测")
-        return EvalStatus(status=mapped)
+            return EvalStatus(
+                status="failed",
+                message="评测平台已取消该评测",
+                started_at=started_at,
+                progress_percent=percent,
+            )
+        return EvalStatus(
+            status=mapped,
+            started_at=started_at,
+            progress_percent=percent,
+        )
 
     async def get_result(self, eval_id: str) -> EvalMeasurement:
         """Read measurement items and extract the configured primary metric."""
@@ -241,6 +260,25 @@ def _completion_percent(payload: Mapping[str, Any]) -> float | None:
     if isinstance(percent, bool) or not isinstance(percent, (int, float)):
         return None
     return float(percent)
+
+
+def _started_at(payload: Mapping[str, Any]) -> datetime | None:
+    """Read the platform's execution start, tolerating missing or invalid values.
+
+    The platform contract declares ``started_at`` as a timezone-aware ISO-8601
+    timestamp. A missing, naive, or malformed value must not fail the status
+    mapping: the poller falls back to HE's submission time instead.
+    """
+    value = payload.get("started_at")
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed
 
 
 __all__ = [

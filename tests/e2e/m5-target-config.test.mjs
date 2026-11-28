@@ -786,6 +786,12 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
       "input[name='members[1].subDir']",
       "skills/m5-e2e-code-review",
     );
+    await evaluate(
+      page,
+      `document.querySelectorAll(".member-item")[1]
+        ?.querySelector(".member-match .el-switch")
+        ?.click()`,
+    );
     await confirmNewTarget(page, true);
     await waitForDocument(
       page.session,
@@ -819,8 +825,8 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
     assert.equal(created.candidatePolicy.mode,"combined");
     assert.ok(created.candidatePolicy.rules[0].name);
     assert.deepEqual(
-      created.members.map((member) => member.objectName),
-      ["m5-e2e-target", "m5-e2e-code-review"],
+      created.members.map((member) => [member.objectName, member.matchByName]),
+      [["m5-e2e-target", false], ["m5-e2e-code-review", true]],
     );
     assert.equal(created.validationProjectId, "val-m5-e2e");
     assert.equal(created.testProjectId, "test-m5-e2e");
@@ -932,9 +938,16 @@ test("m5 target configuration and attribution-skill binding support admin CRUD a
     assert.equal(
       await evaluate(
         page,
-        `Boolean(document.querySelector(".target-form-dialog .el-switch"))`,
+        `Boolean(document.querySelector(".target-form-dialog .target-shared-block .el-switch"))`,
       ),
       false,
+    );
+    assert.equal(
+      await evaluate(
+        page,
+        `document.querySelectorAll(".target-form-dialog .member-match .el-switch").length`,
+      ),
+      2,
     );
     assert.doesNotMatch(
       await evaluate(

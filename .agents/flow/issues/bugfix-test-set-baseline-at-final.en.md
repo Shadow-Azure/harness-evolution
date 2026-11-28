@@ -8,7 +8,7 @@ id: bugfix-71
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - apps/web/**
@@ -17,6 +17,7 @@ scope:
   - docs/**
   - plans/**
   - .agents/**
+  - .github/**
 adr: []
 github:
   number: 656

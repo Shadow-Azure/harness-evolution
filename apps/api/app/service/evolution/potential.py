@@ -352,6 +352,7 @@ class MatchTarget:
     object_name: str
     target_version: str
     target_revision: str
+    match_by_name: bool = False
 
     @property
     def revision_candidates(self) -> frozenset[str]:
@@ -731,12 +732,9 @@ class PotentialMatcher:
     def __init__(
         self,
         repository: PotentialRepository,
-        *,
-        agent_match_by_name: bool = False,
     ) -> None:
-        """Bind the matcher to its read-only repository and the opt-in name switch."""
+        """Bind the matcher to its read-only repository."""
         self._repository = repository
-        self._agent_match_by_name = agent_match_by_name
 
     async def associated_sessions(
         self, condition: MatchCondition, *, observed_revisions: frozenset[str] | None = None
@@ -773,16 +771,17 @@ class PotentialMatcher:
             traced,
             targets=tuple((item.object_type, item.object_name) for item in objects),
         )
-        name_switch = self._agent_match_by_name
+        name_switch = {item.key for item in objects if item.match_by_name}
+        object_keys = {item.key for item in objects}
         events_by_session: dict[str, list[ObjectEventRecord]] = {}
         for event in events:
             object_key = (
                 event.object_type or condition.target_type,
                 event.object_name or condition.target_name,
             )
-            if object_key not in {(item.object_type, item.object_name) for item in objects}:
+            if object_key not in object_keys:
                 continue
-            ignore_revisions = name_switch and object_key[0] == "agent"
+            ignore_revisions = object_key in name_switch
             if (
                 ignore_revisions
                 or observed_revisions is None
@@ -1292,6 +1291,7 @@ def target_match_condition(
                 object_name=member.object_name,
                 target_version=item.target_version,
                 target_revision=item.target_revision,
+                match_by_name=member.match_by_name,
             )
             for member, item in zip(members, resolved_members, strict=True)
         ),
