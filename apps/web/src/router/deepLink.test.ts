@@ -156,6 +156,28 @@ describe("session deep links", () => {
     });
   });
 
+  it.each([64, 65, 280])("preserves a %i-character report id in the deep link", (length) => {
+    const at = "p".repeat(length);
+    const query = { case: "case-1", tab: "attr", at };
+    expect(parseSessionDeepLink("root-1", query, "error")).toMatchObject({
+      ok: true,
+      state: { attributionId: at },
+      canonicalQuery: query,
+    });
+  });
+
+  it("preserves the object name in a historical Skill report link", () => {
+    const at = "root-1*部门/long review*case-1";
+    const query = { case: "case-1", tab: "attr", at };
+    expect(parseSessionDeepLink("root-1", query, "error")).toMatchObject({
+      ok: true,
+      state: { attributionId: at },
+      canonicalQuery: query,
+    });
+    expect(parseSessionDeepLink("root-1", { ...query, at: "root-1*x\u001f*case-1" }, "error"))
+      .toMatchObject({ ok: false, field: "at" });
+  });
+
   it("drops at and obj when the tab is not the attribution tab", () => {
     expect(
       parseSessionDeepLink(

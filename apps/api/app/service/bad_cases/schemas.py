@@ -11,13 +11,14 @@ BadCaseType = Literal["self", "discovery"]
 BadCaseObjectType = Literal["skill", "agent"]
 AnalysisStatus = Literal["unanalyzed", "analyzed_nonissue", "analyzed_issue"]
 AttributeType = Literal["model", "prompt", "error", "flow", "context"]
-DisplayState = Literal[
-    "unanalyzed",
-    "analyzed_nonissue",
+IssueDisplayState = Literal[
     "analyzed_issue_model",
     "analyzed_issue_prompt",
     "analyzed_issue_error",
+    "analyzed_issue_flow",
+    "analyzed_issue_context",
 ]
+DisplayState = Literal["unanalyzed", "analyzed_nonissue", IssueDisplayState]
 
 
 @dataclass(frozen=True, slots=True)

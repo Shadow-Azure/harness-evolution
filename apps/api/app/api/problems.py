@@ -29,7 +29,7 @@ SessionId = Annotated[str, Path(alias="sessionId", min_length=1, max_length=36)]
 BadCaseId = Annotated[str, Path(alias="badCaseId", min_length=1, max_length=64)]
 AttributionId = Annotated[
     str,
-    Path(alias="attributionId", min_length=1, max_length=64),
+    Path(alias="attributionId", min_length=1),
 ]
 OptionalSessionId = Annotated[
     str | None,
@@ -146,7 +146,7 @@ async def get_bad_case_analysis(
 
 
 @router.get(
-    "/api/probes/{probeId}",
+    "/api/probes/{probeId:path}",
     dependencies=[Security(BEARER_AUTH)],
     responses={
         401: {"model": ErrorResponse, "description": "Authentication is required"},
@@ -156,7 +156,7 @@ async def get_bad_case_analysis(
     },
 )
 async def get_probe(
-    probe_id: Annotated[str, Path(alias="probeId", min_length=1, max_length=64)],
+    probe_id: Annotated[str, Path(alias="probeId", min_length=1)],
     request: Request,
 ) -> ProbeReport:
     """Return one validated root-cause report."""
@@ -240,7 +240,7 @@ async def list_workspace_case_attributions(
 
 
 @workspace_router.get(
-    "/bad-cases/{badCaseId}/attributions/{attributionId}",
+    "/bad-cases/{badCaseId}/attributions/{attributionId:path}",
     dependencies=[Security(BEARER_AUTH)],
     responses={
         401: {"model": ErrorResponse, "description": "Authentication is required"},

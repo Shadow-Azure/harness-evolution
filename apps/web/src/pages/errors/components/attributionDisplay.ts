@@ -27,17 +27,6 @@ const CONCLUSION_PRESENTATION: Record<
   },
 };
 
-const CATEGORY_LABELS: Record<
-  NonNullable<AttributionDetail["category"]>,
-  string
-> = {
-  model: "模型问题",
-  prompt: "prompt缺失某些提示词",
-  error: "错误",
-  flow: "流程",
-  context: "上下文",
-};
-
 const TRIGGER_ORDER_LABELS: Record<
   AttributionDetail["triggerCompare"]["order"],
   string
@@ -57,17 +46,6 @@ export function attributionConclusion(
   conclusion: AttributionItem["conclusion"],
 ): AttributionConclusionPresentation {
   return CONCLUSION_PRESENTATION[conclusion];
-}
-
-/**
- * Resolve the closed attribution category label.
- * @param category Server-owned category, absent for a non-target conclusion.
- * @returns Visible category copy or an explicit unclassified label.
- */
-export function attributionCategory(
-  category: AttributionDetail["category"],
-): string {
-  return category ? CATEGORY_LABELS[category] : "未分类";
 }
 
 /**

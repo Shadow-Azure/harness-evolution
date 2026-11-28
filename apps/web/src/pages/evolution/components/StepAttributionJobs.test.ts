@@ -101,6 +101,38 @@ function failedJob() {
 }
 
 describe("attribution job observability", () => {
+  it("renders all category labels and keeps verdicts with no category distinct", async () => {
+    server.use(http.get(endpoint, () => HttpResponse.json({ items: [] })));
+    const cases = [
+      ["attributed", "model", "模型问题"],
+      ["attributed", "prompt", "提示词问题"],
+      ["attributed", "error", "错误"],
+      ["attributed", "flow", "流程"],
+      ["attributed", "context", "上下文"],
+      ["non_target", null, "非该对象问题"],
+      ["inconclusive", null, "证据不足"],
+      [null, null, "非该对象问题"],
+    ] as const;
+    const rows = cases.map(([conclusion, category], index) => ({
+      conclusion,
+      category,
+      attributionId: `report-${index}`,
+      badCaseId: `case-${index}`,
+      sessionId: "session-1",
+      description: "合成报告",
+      confidence: null,
+      source: "fresh" as const,
+    }));
+    const wrapper = mount(StepAttribution, {
+      props: { wid: workspaceId, run, step: { ...step, payload: { ...step.payload, rows } } },
+      global: { plugins: [[VueQueryPlugin, { queryClient: new QueryClient() }]] },
+    });
+    await flushPromises();
+    expect(wrapper.findAll("tbody .type-chip").map((chip) => chip.text()))
+      .toEqual(cases.map(([, , label]) => label));
+    wrapper.unmount();
+  });
+
   it("renders sanitized metrics and retries only the failed durable job", async () => {
     let retries = 0;
     server.use(

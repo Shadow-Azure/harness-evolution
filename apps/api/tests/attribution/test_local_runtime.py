@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import runpy
 import shutil
 import sys
@@ -551,6 +552,39 @@ def test_writer_target_type_preserves_reported_source(kind: str, expected: str) 
     )
     assert report["probe_type"] == expected
     assert report["from_bad_cases"][0]["type"] == "skill"
+
+
+def test_writer_generates_stable_bounded_ids_for_long_report_inputs() -> None:
+    writer = Settings().attribution_default_skill_path.with_name("make_probe_report.py")
+    build_report = runpy.run_path(str(writer))["build_report"]
+
+    def report_id(name: str, case_id: str, revision: str = "tag:v1") -> str:
+        report = build_report(
+            session_id="10000000-0000-4000-8000-000000000001",
+            selected_target={"type": "skill", "name": name, "version": "v1", "revision": revision},
+            bad_case={"bad_case_id": case_id},
+            conclusion="inconclusive",
+            root_cause="missing trace",
+            evidence_references=[],
+            probe_object=None,
+            object_version=None,
+            attribute_type="unknown",
+            probe_description="not enough evidence",
+            probe_analysis="no trace",
+            probe_type=None,
+            detail_description=None,
+            proposal=None,
+        )
+        return str(report["probe_id"])
+
+    target = "长名称-" + "x" * 100
+    case = "case-" + "y" * 59
+    probe_id = report_id(target, case)
+    assert re.fullmatch(r"[0-9a-f]{64}", probe_id)
+    assert report_id(target, case) == probe_id
+    assert report_id(target, case, "tag:v2") != probe_id
+    assert report_id(target, case[:-1] + "z") != probe_id
+    assert report_id("a*b", "c") != report_id("a", "b*c")
 
 
 def test_frozen_plural_writer_is_validated_before_normalization(tmp_path: Path) -> None:

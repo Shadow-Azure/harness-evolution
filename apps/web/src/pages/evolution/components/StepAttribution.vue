@@ -10,6 +10,7 @@ import { computed, ref } from "vue";
 
 import { formatApiError } from "../../../app/apiError";
 import { useAttributionJobs } from "../../../composables/useAttributionJobs";
+import { attributionCategory } from "../../../utils/attributionCategory";
 import { badCaseDeepLink } from "../../../utils/badCaseId";
 
 const props = defineProps<{
@@ -40,13 +41,8 @@ const targetLabel = computed(
 
 function categoryLabel({ category, conclusion }: StepAttributionRow): string {
   if (conclusion === "inconclusive") return "证据不足";
-  if (conclusion === "non_target") return "非该对象问题";
-  if (category === "flow") return "流程";
-  if (category === "context") return "上下文";
-  if (category === "prompt") return "prompt";
-  if (category === "model") return "模型";
-  if (category === "error") return "错误";
-  return "非该对象问题";
+  if (conclusion === "non_target" || (!conclusion && !category)) return "非该对象问题";
+  return attributionCategory(category);
 }
 
 function categoryClass({ category, conclusion }: StepAttributionRow): string {

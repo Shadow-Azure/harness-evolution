@@ -10,6 +10,7 @@ import ErrorState from "../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
 import type { TargetOverviewItemView } from "../../../api/overview";
 import { workspacePath } from "../../../router/workspace";
+import { attributionCategory } from "../../../utils/attributionCategory";
 import { formatStartedAt } from "../../../utils/sessionDisplay";
 
 const STATE_LABELS: Record<TargetState, string> = {
@@ -383,7 +384,7 @@ function reset(): void {
                 >—</span>
               </td>
               <td class="mono">
-                <span v-if="item.category">{{ item.category }}</span>
+                <span v-if="item.category">{{ attributionCategory(item.category) }}</span>
                 <span
                   v-else
                   class="faint"

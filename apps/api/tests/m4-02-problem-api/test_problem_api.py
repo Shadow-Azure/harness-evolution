@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 import pytest_asyncio
 from pydantic import SecretStr
 from sqlalchemy import update
@@ -13,7 +14,7 @@ from sqlalchemy import update
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.fixtures import run_corpus_seed
-from app.db.models.domain import bad_case_analysis, bad_cases
+from app.db.models.domain import bad_case_analysis, bad_cases, probe_reports
 from app.fixture_corpus import load_fixture_corpus
 from app.main import create_app
 
@@ -255,7 +256,39 @@ async def test_missing_routes_and_remaining_anchor_semantics(problem_api: Any) -
     }
 
 
-async def test_all_five_display_states_are_reachable(problem_api: Any) -> None:
+@pytest.mark.parametrize("link_status", ["analyzed_issue", None], ids=["legacy", "v2"])
+@pytest.mark.parametrize("category", ["model", "prompt", "error", "flow", "context"])
+async def test_report_category_matches_session_badge(
+    problem_api: ProblemApiEnvironment, category: str, link_status: str | None
+) -> None:
+    """One stored report must produce the same category in list and detail responses."""
+    async with problem_api.database.transaction() as session:
+        await session.execute(
+            update(probe_reports)
+            .where(probe_reports.c.probe_id == PROBE_1)
+            .values(attribute_type=category)
+        )
+        await session.execute(
+            update(bad_case_analysis)
+            .where(bad_case_analysis.c.bad_case_id == CASE_1)
+            .values(analysis_status=link_status)
+        )
+    base = "/api/workspaces/ws-default"
+    listing = await problem_api.client.get(
+        f"{base}/sessions/{SESSION_1}/bad-cases", headers=problem_api.authorization
+    )
+    detail = await problem_api.client.get(
+        f"{base}/bad-cases/{CASE_1}/attributions/{PROBE_1}", headers=problem_api.authorization
+    )
+    assert listing.status_code == detail.status_code == 200
+    analysis = next(
+        item["analysis"] for item in listing.json()["items"] if item["badCaseId"] == CASE_1
+    )
+    assert analysis["attributeType"] == detail.json()["category"] == category
+    assert analysis["displayState"] == f"analyzed_issue_{category}"
+
+
+async def test_fixture_display_states_are_reachable(problem_api: Any) -> None:
     """Session routes expose prompt/model/error/nonissue/unanalyzed states."""
     states: list[str] = []
     for session_id in (SESSION_1, SESSION_2, SESSION_3, SESSION_4):

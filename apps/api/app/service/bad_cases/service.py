@@ -25,12 +25,21 @@ from app.service.bad_cases.schemas import (
     BadCaseType,
     DisplayState,
     ExternalReadWarning,
+    IssueDisplayState,
     ProbeReportLookup,
     ProbeReportReadModel,
 )
 from app.service.bad_cases.title import derive_title
 
 logger = logging.getLogger(__name__)
+
+_ISSUE_DISPLAY_STATES: dict[AttributeType, IssueDisplayState] = {
+    "model": "analyzed_issue_model",
+    "prompt": "analyzed_issue_prompt",
+    "error": "analyzed_issue_error",
+    "flow": "analyzed_issue_flow",
+    "context": "analyzed_issue_context",
+}
 
 
 def _safe_text(value: object) -> str | None:
@@ -105,15 +114,6 @@ def _empty_analysis() -> BadCaseAnalysisReadModel:
         result=None,
         display_state="unanalyzed",
     )
-
-
-def _display_state(attribute_type: AttributeType) -> DisplayState:
-    """Map a valid issue attribution type to its prototype display state."""
-    if attribute_type == "model":
-        return "analyzed_issue_model"
-    if attribute_type == "prompt":
-        return "analyzed_issue_prompt"
-    return "analyzed_issue_error"
 
 
 def _validated_analysis_result(
@@ -475,7 +475,7 @@ class BadCaseService:
             probe_id=probe_id,
             attribute_type=attribute_type,
             result=result,
-            display_state=_display_state(attribute_type),
+            display_state=_ISSUE_DISPLAY_STATES[attribute_type],
         )
 
     def _v2_analysis_model(
@@ -543,7 +543,7 @@ class BadCaseService:
             probe_id=probe_id,
             attribute_type=attribute_type,
             result=MappingProxyType({"summary": probe.probe_description}),
-            display_state=_display_state(attribute_type),
+            display_state=_ISSUE_DISPLAY_STATES[attribute_type],
         )
 
     def _probe_model(
