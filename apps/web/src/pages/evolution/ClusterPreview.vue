@@ -336,7 +336,7 @@ function backToList(): void {
       <div
         class="status-area"
         :class="`is-${statusTone}`"
-        :role="statusTone === 'failed' ? 'alert' : 'status'"
+        :role="statusTone === 'failed' || statusTone === 'blocked' ? 'alert' : 'status'"
         data-testid="cluster-status-detail"
       >
         <span
