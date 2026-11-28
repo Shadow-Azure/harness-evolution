@@ -87,6 +87,23 @@ async function currentLoginCookie() {
   return cookie;
 }
 
+async function ensureLoginCookie() {
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "admin", password: finalPassword }),
+  });
+  if (response.status !== 200) {
+    await response.body?.cancel();
+    return await loginCookie();
+  }
+  const cookie = response.headers
+    .get("set-cookie")
+    ?.match(/refresh_token=([^;]+)/)?.[1];
+  assert.ok(cookie);
+  return cookie;
+}
+
 async function installCookie(page, cookie) {
   await page.session.send("Network.enable");
   await page.session.send("Network.setCookie", {
@@ -110,7 +127,7 @@ async function evaluate(page, expression) {
   return result.result.value;
 }
 
-async function seedRuns() {
+async function seedRuns({ running, history } = {}) {
   const child = spawn(
     python,
     [path.join(root, "tests/e2e/support/m5_run_list_fixture.py")],
@@ -122,6 +139,8 @@ async function seedRuns() {
         HE_DB_DIALECT: "sqlite",
         HE_JWT_SECRET: secret,
         PYTHONPATH: apiDir,
+        ...(running === undefined ? {} : { M5_RUN_LIST_RUNNING: String(running) }),
+        ...(history === undefined ? {} : { M5_RUN_LIST_HISTORY: String(history) }),
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -179,6 +198,7 @@ before(async () => {
       ...env,
       HE_DOCS_ENABLED: "false",
       HE_HOST: "127.0.0.1",
+      HE_LOGIN_RATE_LIMIT: "1000",
       HE_PORT: String(apiPort),
       HE_SYNC_INTERVAL_SECONDS: "0",
       PYTHONUNBUFFERED: "1",
@@ -902,6 +922,245 @@ test("m5 evolution list owns page scrolling at constrained viewports", async () 
       mobileBottom.lastTop >= 0 &&
         mobileBottom.lastBottom <= mobileBottom.innerHeight + 1,
       `the last history card must be reachable on mobile: ${JSON.stringify(mobileBottom)}`,
+    );
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+  } finally {
+    await page.session.send("Emulation.clearDeviceMetricsOverride").catch(() => {});
+    await page.close();
+  }
+});
+
+test("m5 evolution run list keeps empty and sparse layouts compact", async () => {
+  const page = await createBrowserPage();
+  const violations = browserViolations(page.session);
+  const snapshotExpression = (token, expected) => `(() => {
+    if (!location.search.includes(${JSON.stringify(token)})) return null;
+    const list = document.querySelector("[data-testid='evolution-run-list']");
+    if (!list) return null;
+    const groups = [...list.querySelectorAll(".run-group")];
+    if (groups.length !== 2) return null;
+    const runningGroup = groups.find((group) =>
+      group.classList.contains("run-group-running"));
+    const historyGroup = groups.find((group) =>
+      group.classList.contains("run-group-history"));
+    if (!runningGroup || !historyGroup) return null;
+    const cardCount = (group) => group.querySelectorAll("[data-run-id]").length;
+    if (cardCount(runningGroup) !== ${expected.running} ||
+        cardCount(historyGroup) !== ${expected.history}) return null;
+    const box = (node) => {
+      if (!node) return null;
+      const rect = node.getBoundingClientRect();
+      return {
+        top: rect.top,
+        bottom: rect.bottom,
+        height: rect.height,
+        left: rect.left,
+        width: rect.width,
+      };
+    };
+    const intro = list.querySelector(".page-intro");
+    const note = intro?.querySelector(".page-note");
+    const noteBottom = note ? note.getBoundingClientRect().bottom
+      : intro?.getBoundingClientRect().bottom;
+    const measureGroup = (group) => {
+      const label = group.querySelector(".group-label");
+      const waiting = group.querySelector(".waiting");
+      const cards = [...group.querySelectorAll("[data-run-id]")];
+      const waitingBox = box(waiting);
+      const firstCardBox = box(cards[0]);
+      const labelBottom = label.getBoundingClientRect().bottom;
+      return {
+        group: box(group),
+        label: box(label),
+        waiting: waitingBox,
+        labelToBody: waitingBox ? waitingBox.top - labelBottom
+          : firstCardBox ? firstCardBox.top - labelBottom : null,
+        cards: cards.length,
+        firstCard: firstCardBox,
+        lastCard: box(cards[cards.length - 1]),
+      };
+    };
+    const style = getComputedStyle(list);
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      list: {
+        ...box(list),
+        scrollHeight: list.scrollHeight,
+        clientHeight: list.clientHeight,
+        scrollWidth: list.scrollWidth,
+        clientWidth: list.clientWidth,
+        overflowY: style.overflowY,
+        paddingTop: Number.parseFloat(style.paddingTop),
+        alignContent: style.alignContent,
+      },
+      document: {
+        scrollHeight: document.scrollingElement.scrollHeight,
+        clientHeight: document.scrollingElement.clientHeight,
+        scrollWidth: document.scrollingElement.scrollWidth,
+        clientWidth: document.scrollingElement.clientWidth,
+      },
+      intro: box(intro),
+      introContentHeight: noteBottom - intro.getBoundingClientRect().top,
+      gapAfterIntro: groups[0].querySelector(".group-label")
+        .getBoundingClientRect().top - noteBottom,
+      groups: [measureGroup(runningGroup), measureGroup(historyGroup)],
+    };
+  })()`;
+  const open = async (combo, viewport) => {
+    const token = `${combo.running}-${combo.history}-${viewport.width}x${viewport.height}`;
+    await installCookie(page, await ensureLoginCookie());
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: viewport.width,
+      height: viewport.height,
+      deviceScaleFactor: 1,
+      mobile: Boolean(viewport.mobile),
+    });
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}/evolution?layout=${token}`,
+    });
+    try {
+      return await waitForDocument(
+        page.session,
+        snapshotExpression(token, combo),
+        `${token} compact layout`,
+      );
+    } catch (error) {
+      const state = await evaluate(
+        page,
+        `({ href: location.href, text: document.body.innerText.slice(0, 240) })`,
+      ).catch(() => null);
+      throw new Error(`${error.message}\n${JSON.stringify(state)}`);
+    }
+  };
+  const assertTopAligned = (snapshot, label, overflowY = "auto") => {
+    assert.equal(snapshot.list.overflowY, overflowY, label);
+    assert.ok(
+      Math.abs(snapshot.intro.top - snapshot.list.top - snapshot.list.paddingTop) <= 1,
+      `${label}: the intro must start at the list padding top: ${JSON.stringify(snapshot.intro)} vs ${JSON.stringify(snapshot.list)}`,
+    );
+    assert.ok(
+      snapshot.gapAfterIntro >= 14 && snapshot.gapAfterIntro <= 30,
+      `${label}: intro-to-group gap must stay fixed, got ${snapshot.gapAfterIntro}`,
+    );
+    assert.equal(
+      snapshot.document.scrollWidth,
+      snapshot.document.clientWidth,
+      `${label}: the document must not overflow horizontally`,
+    );
+  };
+  const assertCompact = (short, tall, label) => {
+    const detail = JSON.stringify({ short, tall });
+    assert.ok(
+      Math.abs(short.introContentHeight - tall.introContentHeight) <= 2,
+      `${label}: intro content height must not follow the viewport: ${detail}`,
+    );
+    assert.ok(
+      Math.abs(short.gapAfterIntro - tall.gapAfterIntro) <= 2,
+      `${label}: intro-to-group gap must not follow the viewport: ${detail}`,
+    );
+    for (const [index, group] of short.groups.entries()) {
+      const other = tall.groups[index];
+      assert.ok(
+        Math.abs(group.group.height - other.group.height) <= 2,
+        `${label}: group ${index} height must not follow the viewport: ${detail}`,
+      );
+      assert.ok(
+        Math.abs(group.labelToBody - other.labelToBody) <= 2,
+        `${label}: group ${index} label-to-body gap must not follow the viewport: ${detail}`,
+      );
+      if (group.waiting) {
+        assert.ok(
+          group.waiting.height <= 70,
+          `${label}: group ${index} empty card must keep its content height: ${group.waiting.height}`,
+        );
+        assert.ok(
+          Math.abs(group.waiting.height - other.waiting.height) <= 2,
+          `${label}: group ${index} empty card must not stretch: ${detail}`,
+        );
+      }
+      if (group.firstCard) {
+        assert.ok(
+          Math.abs(group.firstCard.height - other.firstCard.height) <= 2,
+          `${label}: group ${index} cards must keep their natural height: ${detail}`,
+        );
+      }
+    }
+  };
+  try {
+    const combos = [
+      { running: 0, history: 0 },
+      { running: 0, history: 1 },
+      { running: 1, history: 0 },
+      { running: 1, history: 1 },
+      { running: 3, history: 5 },
+    ];
+    for (const combo of combos) {
+      await seedRuns(combo);
+      const label = `${combo.running}/${combo.history}`;
+      const short = await open(combo, { width: 1366, height: 768 });
+      assertTopAligned(short, `${label} 1366x768`);
+      const tall = await open(combo, { width: 1366, height: 1080 });
+      assertTopAligned(tall, `${label} 1366x1080`);
+      assertCompact(short, tall, `${label} 1366x768 vs 1366x1080`);
+      const wide = await open(combo, { width: 1920, height: 1080 });
+      assertTopAligned(wide, `${label} 1920x1080`);
+      assertCompact(tall, wide, `${label} 1366x1080 vs 1920x1080`);
+      if (combo.running === 3 && combo.history === 5) {
+        const bottom = await evaluate(
+          page,
+          `(() => {
+            const list = document.querySelector("[data-testid='evolution-run-list']");
+            list.scrollTop = list.scrollHeight;
+            const cards = [...document.querySelectorAll(".run-card")];
+            const last = cards[cards.length - 1].getBoundingClientRect();
+            return {
+              scrollTop: list.scrollTop,
+              maxScrollTop: list.scrollHeight - list.clientHeight,
+              lastTop: last.top,
+              lastBottom: last.bottom,
+              innerHeight,
+            };
+          })()`,
+        );
+        assert.ok(bottom.scrollTop > 0, JSON.stringify(bottom));
+        assert.ok(
+          bottom.lastTop >= 0 && bottom.lastBottom <= bottom.innerHeight + 1,
+          `the long list must still scroll to the last card: ${JSON.stringify(bottom)}`,
+        );
+      }
+    }
+    await seedRuns({ running: 0, history: 0 });
+    const emptyMobile = await open(
+      { running: 0, history: 0 },
+      { width: 390, height: 844, mobile: true },
+    );
+    assert.equal(emptyMobile.list.overflowY, "visible");
+    assert.equal(emptyMobile.list.scrollHeight, emptyMobile.list.clientHeight);
+    assertTopAligned(emptyMobile, "0/0 390x844", "visible");
+    await seedRuns({ running: 3, history: 5 });
+    const fullMobile = await open(
+      { running: 3, history: 5 },
+      { width: 390, height: 844, mobile: true },
+    );
+    assert.equal(fullMobile.list.overflowY, "visible");
+    assert.equal(fullMobile.list.scrollHeight, fullMobile.list.clientHeight);
+    assert.ok(
+      fullMobile.document.scrollHeight > fullMobile.document.clientHeight,
+      "the document must own scrolling on mobile",
+    );
+    const mobileBottom = await evaluate(
+      page,
+      `(() => {
+        window.scrollTo(0, document.scrollingElement.scrollHeight);
+        const cards = [...document.querySelectorAll(".run-card")];
+        const last = cards[cards.length - 1].getBoundingClientRect();
+        return { scrollY: window.scrollY, lastBottom: last.bottom, innerHeight };
+      })()`,
+    );
+    assert.ok(mobileBottom.scrollY > 0, JSON.stringify(mobileBottom));
+    assert.ok(
+      mobileBottom.lastBottom <= mobileBottom.innerHeight + 1,
+      `the last card must be reachable on mobile: ${JSON.stringify(mobileBottom)}`,
     );
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
   } finally {

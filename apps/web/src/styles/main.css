@@ -117,7 +117,8 @@ a {
 /* The workspace shell fixes main's height and hides overflow, so the list page
    owns page-level scrolling. The full-width node keeps the scrollbar at the
    window edge; symmetric inline padding preserves the 1080px frame and its
-   1032px content column. */
+   1032px content column. The grid tracks keep their content height instead of
+   stretching to fill the scroller, so an empty or sparse list stays compact. */
 .workspace-main .run-list-page {
   left: 0;
   width: 100%;
@@ -125,6 +126,7 @@ a {
   margin: 0;
   padding: 20px max(24px, calc((100% - 1080px) / 2 + 24px)) 64px;
   overflow-y: auto;
+  align-content: start;
 }
 
 @media (max-width: 640px) {
