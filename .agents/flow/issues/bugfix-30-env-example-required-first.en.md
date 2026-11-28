@@ -8,7 +8,7 @@ id: bugfix-30
 milestone: bugfix
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - .env.example
   - .gitignore
