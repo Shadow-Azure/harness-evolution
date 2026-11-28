@@ -167,6 +167,12 @@ const outOfRange = computed(
   () =>
     props.total > 0 && props.items.length === 0 && props.page > pages.value,
 );
+/**
+ * The skeleton is only for the first load of a list with nothing to show.
+ * Page and filter changes keep the previous rows so the list height, and with
+ * it the overview scroll position, stays stable.
+ */
+const initialLoading = computed(() => props.loading && props.items.length === 0);
 const emptyTitle = computed(() =>
   props.filtered
     ? "当前筛选没有命中 bad case"
@@ -237,6 +243,7 @@ function caseHref(item: BadCaseListItem): string {
   <section
     class="list-card"
     data-testid="ov-case-list"
+    :aria-busy="loading ? 'true' : 'false'"
   >
     <div class="list-head">
       <div class="head-copy">
@@ -327,7 +334,7 @@ function caseHref(item: BadCaseListItem): string {
     </div>
 
     <div
-      v-if="loading"
+      v-if="initialLoading"
       class="table-loading"
       role="status"
       aria-label="正在加载 bad case 列表"
@@ -475,11 +482,16 @@ function caseHref(item: BadCaseListItem): string {
     </div>
 
     <div
-      v-if="!loading && !error && (items.length > 0 || outOfRange)"
+      v-if="!initialLoading && !error && (items.length > 0 || outOfRange)"
       class="pager"
       data-testid="ov-pager"
     >
-      <span class="info">共 {{ total }} 条 · 第 {{ currentPage }} / {{ pages }} 页</span>
+      <span class="info">共 {{ total }} 条 · 第 {{ currentPage }} / {{ pages }} 页<span
+        v-if="loading"
+        class="loading-hint"
+        data-testid="ov-case-loading-hint"
+        role="status"
+      > · 加载中…</span></span>
       <button
         data-testid="ov-page-prev"
         type="button"
@@ -593,6 +605,22 @@ function caseHref(item: BadCaseListItem): string {
   color: var(--text-faint);
   font-family: var(--mono);
   font-size: 10.5px;
+}
+
+.loading-hint {
+  color: var(--blue);
+  font-size: 10.5px;
+}
+
+.loading-hint::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: currentcolor;
+  animation: pulse 0.9s ease-in-out infinite alternate;
 }
 
 .table-wrap {

@@ -241,6 +241,9 @@ describe("overview bad-case table", () => {
   it("renders the loading skeleton and the retryable block error", async () => {
     const loading = mountTable({ loading: true, items: [] });
     expect(loading.find("[data-testid='ov-case-loading']").exists()).toBe(true);
+    expect(
+      loading.get("[data-testid='ov-case-list']").attributes("aria-busy"),
+    ).toBe("true");
 
     const failed = mountTable({
       error: new Error("boom"),
@@ -251,5 +254,24 @@ describe("overview bad-case table", () => {
     expect(failed.text()).toContain("INTERNAL");
     await failed.get("[data-testid='ov-case-error'] button").trigger("click");
     expect(failed.emitted("retry")).toHaveLength(1);
+  });
+
+  it("keeps the previous rows and pager visible while a page loads", async () => {
+    const wrapper = mountTable({
+      loading: true,
+      items: [row(1), row(2)],
+      total: 17,
+      page: 2,
+    });
+
+    expect(wrapper.find("[data-testid='ov-case-loading']").exists()).toBe(false);
+    expect(wrapper.findAll("[data-testid='ov-case-row']")).toHaveLength(2);
+    expect(wrapper.get("[data-testid='ov-pager']").text()).toContain("第 2 / 3 页");
+    expect(wrapper.get("[data-testid='ov-case-loading-hint']").text()).toContain(
+      "加载中",
+    );
+    expect(
+      wrapper.get("[data-testid='ov-case-list']").attributes("aria-busy"),
+    ).toBe("true");
   });
 });
