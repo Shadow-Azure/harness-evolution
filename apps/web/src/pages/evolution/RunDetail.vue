@@ -1079,6 +1079,7 @@ function clearMissingClusterFocus(): void {
   height: 100%;
   padding: 20px max(24px, calc((100% - 1720px) / 2 + 24px)) 64px;
   overflow-y: auto;
+  align-content: start;
 }
 
 .back {
