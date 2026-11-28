@@ -785,9 +785,10 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     const clusterPage = await waitForDocument(
       page.session,
       `(() => {
-        const status = document.querySelector("[data-testid='cluster-status']");
-        if (!status) return null;
-        const statusText = status.textContent || "";
+        const badge = document.querySelector("[data-testid='cluster-status']");
+        const detail = document.querySelector("[data-testid='cluster-status-detail']");
+        if (!badge || !detail) return null;
+        const statusText = (badge.textContent || "") + " " + (detail.textContent || "");
         const cards = [...document.querySelectorAll(".cluster")];
         const text = document.body.textContent || "";
         if (!statusText.includes("聚类完成") || cards.length === 0) return null;
