@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-evolution-run-list-empty-alignment.md
-bugfix-evolution-run-list-empty-alignment.md: 7237434c5f75521d57e8ef0e313bc1c04551d4d3
-bugfix-evolution-run-list-empty-alignment.en.md: e6dd9d9041b738b2f73fded5710110074e03ef2b
+bugfix-evolution-run-list-empty-alignment.md: 3a8e8e9bd12b9b65a33f8407e65577fa89bd6617
+bugfix-evolution-run-list-empty-alignment.en.md: e582e3a51e074d3c2ab45282bd14f806251122b8
