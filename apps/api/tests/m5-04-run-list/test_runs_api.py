@@ -192,6 +192,7 @@ async def test_admin_and_member_read_the_same_grouped_camel_case_payload(
         "version": "v2.0.0",
         "targetRevision": None,
         "subDir": "skills/deep-research",
+        "matchByName": False,
     }
     assert card["targets"] == []
     assert card["progress"] == {

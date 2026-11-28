@@ -1371,6 +1371,7 @@ async def test_multi_member_payload_round_trips_and_reports_member_conflicts(
             "objectType": "skill",
             "objectName": "deep-research",
             "subDir": "skills/deep-research",
+            "matchByName": True,
         },
         {
             "objectType": "skill",
@@ -1389,6 +1390,7 @@ async def test_multi_member_payload_round_trips_and_reports_member_conflicts(
         "skills/deep-research",
         "skills/code-review",
     ]
+    assert [member["matchByName"] for member in body["members"]] == [True, False]
 
     duplicate = _project_payload()
     duplicate["members"] = [
@@ -1412,6 +1414,7 @@ async def test_multi_member_payload_round_trips_and_reports_member_conflicts(
             "objectType": "agent",
             "objectName": "writer",
             "subDir": "agents/writer",
+            "matchByName": True,
         },
     ]
     updated = await target_http.admin.put(
@@ -1420,4 +1423,5 @@ async def test_multi_member_payload_round_trips_and_reports_member_conflicts(
     )
     assert updated.status_code == 200
     assert [member["objectName"] for member in updated.json()["members"]] == ["writer"]
+    assert [member["matchByName"] for member in updated.json()["members"]] == [True]
     assert updated.json()["objectType"] == "agent"

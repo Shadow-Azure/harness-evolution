@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -330,3 +331,44 @@ async def test_5xx_and_transport_errors_are_retryable() -> None:
 
     assert unavailable_exc.value.retryable is True
     assert transport_exc.value.retryable is True
+
+
+async def test_status_exposes_started_at_and_progress() -> None:
+    """The status seam keeps the platform's execution start and percentage."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "status": "running",
+                "started_at": "2026-11-27T04:52:12Z",
+                "progress": {"percent": 37.5},
+            },
+        )
+
+    status = await _gateway(handler).get_status("run-platform-1")
+
+    assert status.status == "running"
+    assert status.started_at == datetime.fromisoformat("2026-11-27T04:52:12+00:00")
+    assert status.progress_percent == 37.5
+
+
+@pytest.mark.parametrize(
+    "started_at",
+    [None, "not-a-timestamp", "2026-11-27T04:52:12"],
+)
+async def test_status_tolerates_an_absent_or_invalid_started_at(
+    started_at: str | None,
+) -> None:
+    """A missing, malformed or naive start time falls back to None."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        payload: dict[str, Any] = {"status": "running"}
+        if started_at is not None:
+            payload["started_at"] = started_at
+        return httpx.Response(200, json=payload)
+
+    status = await _gateway(handler).get_status("run-platform-1")
+
+    assert status.started_at is None
+    assert status.progress_percent is None

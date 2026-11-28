@@ -361,6 +361,7 @@ class EvolutionLaunchService:
                     "target_revision": item.target_revision,
                     "sub_dir": member.sub_dir,
                     "base_commit": item.base_commit or resolved.base_commit,
+                    "match_by_name": member.match_by_name,
                 }
                 for member, item in zip(
                     config.member_objects,
@@ -522,6 +523,7 @@ def _match_condition(
                 object_name=member.object_name,
                 target_version=item.target_version,
                 target_revision=item.target_revision,
+                match_by_name=member.match_by_name,
             )
             for member, item in zip(members, resolved_members, strict=True)
         ),

@@ -5,6 +5,7 @@ export interface TargetMember {
   objectType: "skill" | "agent" | "knowledge";
   objectName: string;
   subDir: string;
+  matchByName: boolean;
 }
 
 /**
@@ -18,10 +19,11 @@ export interface TargetMember {
 export function targetMembers(target: EvolutionTarget | null): TargetMember[] {
   if (!target) return [];
   if (target.members?.length) {
-    return target.members.map(({ objectType, objectName, subDir }) => ({
+    return target.members.map(({ objectType, objectName, subDir, matchByName }) => ({
       objectType,
       objectName,
       subDir,
+      matchByName: matchByName ?? false,
     }));
   }
   if (target.objectName) {
@@ -30,6 +32,7 @@ export function targetMembers(target: EvolutionTarget | null): TargetMember[] {
         objectType: target.objectType ?? "skill",
         objectName: target.objectName,
         subDir: target.subDir ?? "",
+        matchByName: false,
       },
     ];
   }

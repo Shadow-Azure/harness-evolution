@@ -968,7 +968,8 @@ async def eval_poller_loop():
 
 - 轮询间隔 `HE_EVAL_POLL_SECONDS=300`；扫描节奏 30s，只查 `next_poll_at<=now` 的行。
 - `next_poll_at` 落库，进程重启后可继续，不依赖内存 sleep。
-- 超时兜底：网关长时间不返回终态时，按 `eval_started_at + HE_EVAL_TIMEOUT_SECONDS`（默认 2h）判 `timeout`，与网关返回的 `failed/timeout` 走同一条 `blocked(stage=eval)` 路径。
+- 超时兜底按执行时间计费：平台返回 `running` 时以 `started_at` 为执行起点（缺失则回退 `eval_started_at`），验证集基线与逐轮候选用 `HE_EVAL_TIMEOUT_SECONDS`（默认 2h），测试集基线与测试集终评用 `HE_EVAL_TEST_TIMEOUT_SECONDS`（默认 6h）。
+- 排队不消耗执行预算：平台状态为 `queued` 时只检查 `HE_EVAL_QUEUE_TIMEOUT_SECONDS`（默认 6h，从 `eval_started_at` 起算），超时以排队超时阻塞；若下一次轮询已看到 `running` 但回看排队时长仍超上限，同样按排队超时结束。平台状态请求连续可重试失败、无法判断阶段时，也只按排队上限兜底，不把提交时刻当执行起点。`eval_polled` / `eval_timeout` 事件带 `startedAt`、`elapsedSeconds`、`queueSeconds`、`progressPercent`，可直接区分排队与执行。超时与网关返回的 `failed/timeout` 走同一条 `blocked(stage=eval)` 路径。
 - `eval_poller` 只做 DB 读写和外部 HTTP，不执行 git，也不持有 JobRunner 全局锁。
 - 评测失败/超时 → `run.status=blocked`、`blocked_stage=eval`；不自动重新提交，等 `/retry` 或人工处理。
 
@@ -1282,7 +1283,7 @@ class PotentialMatcher:
 - 对象总览复用同一 target resolver，但读页面不得被单个不可达/私有/慢仓库阻塞：各 version 解析并发执行并设置短有界超时；失败版本内部跳过、`byVersion` 计 0，不新增 DTO/UI 字段，回退 tag 不允许。
 - 触发点身份：skill/agent/knowledge 的 `targetRevision` 都是归一化 body hash。skill/agent 的裸 git tag 由 target 内容解析器读取 `repoUrl/subDir/SKILL.md` 或 `repoUrl/subDir/AGENT.md`，按与 parser 相同的 `normalize_definition_body` 计算 `digest:<sha256>`；knowledge 由文档内容归一化或 `defaultRef` digest 给出；已带 `digest:` 原样使用。tag 保留为 `targetVersion`（显示/代码基线），`targetRevision` 写 body hash；内容读取失败返回 `TARGET_CONTENT_UNRESOLVED`，不回退到 `tag:`。`targetRevision` 只用于选定原文、写报告和确定缓存范围，不参与 Session 关联。对象进入点 = 该 Session 内 `kind` 映射 `object_type`（skill/agent/knowledge）且 `name == target_name` 的最早 `agent_events`，不要求事件版本或 revision 命中；缺少调用事件时使用 Agent 节点或 Skill 名作为出现证据。取最早时与比较同口径：双方都有 `triggered_at` 才比时间，否则按 `(tree_index, event_index)`。bad case 触发点 = [06 §7.4](06-database-design.md) 的锚点事件；`anchorKind=post_process` 时 `eventIndex=INT_MAX`、`triggeredAt=bad_case.created_at`（审计/显示），候选记录 `case_anchor_kind=post_process`，比较时直接视为「对象之后」，不依赖 created_at 与对象进入点的时间先后；`anchorKind=unknown`（上报 agent 无法解析）保持 unknown。比较规则见 [06 §7.5](06-database-design.md)；`unknown` 不满足「之后」。
 - target 内容解析：skill/agent 目标按 `(repoUrl, subDir, tag)` 读取 `SKILL.md`/`AGENT.md`/`agent.md`；knowledge 目标按文档 revision 读取文档内容。skill/agent 文件必须先剥掉 YAML frontmatter（`definition_file_hash`），再复用 parser 的 `normalize_definition_body`；knowledge 文件读仍对全文归一化。优先复用 git 缓存做只读 `git show`，或使用受控的只读内容接口；按 `(repoUrl, subDir, ref)` 缓存并设置超时。失败返回 `TARGET_CONTENT_UNRESOLVED`，不回退到 `tag:`。golden fixture（public `superpowers` main `SKILL.md`）证明 resolver 与 parser 都得到 `digest:8e54…`。v6.4.1 整文件 `9080…`、去 frontmatter 后 `580c…`，与 trace 不一致，不能作为 target 版本；target 必须使用 main。当前 target 配置是无凭据公开仓库，私有仓库内容读取不在本轮。knowledge 的 `KnowledgeContentSource` 是注入缝：生产未绑定文档 Provider 时，裸 revision（非 `digest:`/`provider:`）只能返回 `TARGET_CONTENT_UNRESOLVED`；`digest:`/`provider:` 可直接启动，不静默回退。
-- 关联口径：整棵 Session 树中存在所选类型与名称的事件即关联。归因上下文保留每次出现的实测版本；目标版本用于选定原文和缓存。兼容字段 `versionUnresolved` 在新批次为零。`HE_AGENT_MATCH_BY_NAME=true` 时仅 agent 目标忽略 `observed_revisions` 过滤，skill/knowledge 与报告缓存范围不变。
+- 关联口径：整棵 Session 树中存在所选类型与名称的事件即关联。归因上下文保留每次出现的实测版本；目标版本用于选定原文和缓存。兼容字段 `versionUnresolved` 在新批次为零。`MatchCondition.targets` 始终携带每个成员的 `MatchTarget` 与 `match_by_name`：该成员开关为 true 时只忽略它的 `observed_revisions` 过滤，关闭时保留 body hash 过滤；knowledge 与报告缓存范围不变。
 - Session 关联输出五个互不重叠的计数（`reported = associated + versionUnresolved + skipped + pending`）；`pending` 是没有归一化轨迹的根。`badCases` 是关联 Session 内的候选数，`potential` 是纳入数；`byReason` 五键零填充，排除行只进 summary。第 2 步只做关联、不再计算 `potentialCount`。
 - policy 校验：default 携带任一开关、custom 缺任一开关、custom 同时关闭两条规则 → `422 POLICY_INVALID`。policy 语义版本固定 `v1`。绑定包模式的归因预览按最新完成报告读取，不使用 `cache_key`；legacy rule 模式才保留 `rule-v1` 的缓存键计算。
 

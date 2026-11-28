@@ -35,6 +35,7 @@ const target = {
       objectType: "skill" as const,
       objectName: "deep-research",
       subDir: "skills/deep-research",
+      matchByName: false,
     },
   ],
 };
@@ -149,6 +150,7 @@ describe("evolution target API", () => {
           objectType: "agent" as const,
           objectName: "Explore",
           subDir: "agents/explore",
+          matchByName: false,
         },
       ],
     };

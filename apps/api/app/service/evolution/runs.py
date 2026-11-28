@@ -82,6 +82,7 @@ class EvolutionRunTarget(IdentityModel):
         ),
     )
     sub_dir: str = ""
+    match_by_name: bool = False
 
 
 class EvolutionRunWindow(IdentityModel):
@@ -403,6 +404,7 @@ def _card(summary: EvolutionRunSummaryRecord) -> EvolutionRunCard:
             version=run.target_version,
             target_revision=run.target_revision,
             sub_dir=run.sub_dir,
+            match_by_name=run.targets[0].match_by_name if run.targets else False,
         ),
         targets=[
             EvolutionRunTarget(
@@ -411,6 +413,7 @@ def _card(summary: EvolutionRunSummaryRecord) -> EvolutionRunCard:
                 version=item.target_version,
                 target_revision=item.target_revision,
                 sub_dir=item.sub_dir,
+                match_by_name=item.match_by_name,
             )
             for item in run.targets
         ],

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import cast
 
 from app.service.evolution.engine.contracts import (
@@ -52,6 +53,10 @@ class FakeEvalGateway(BaseEvalGateway):
         return EvalStatus(
             status=cast(EvalStatusValue, configured),
             message=str(message) if message is not None else None,
+            started_at=_fake_started_at(self.config.get("startedAt")),
+            progress_percent=_fake_progress_percent(
+                self.config.get("progressPercent"),
+            ),
         )
 
     async def get_result(self, eval_id: str) -> EvalMeasurement:
@@ -107,6 +112,30 @@ class FakeEvalGateway(BaseEvalGateway):
         if not eval_id.startswith("fake:") or len(parts) < 4:
             raise EvalGatewayError("fake evaluation id is invalid")
         return parts[2]
+
+
+def _fake_started_at(value: FrozenValue) -> datetime | None:
+    """Read a test-configured execution start, rejecting malformed values."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise EvalGatewayError("fake evaluation startedAt must be an ISO timestamp")
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        raise EvalGatewayError("fake evaluation startedAt must be an ISO timestamp") from None
+    if parsed.tzinfo is None:
+        raise EvalGatewayError("fake evaluation startedAt must include a timezone")
+    return parsed
+
+
+def _fake_progress_percent(value: FrozenValue) -> float | None:
+    """Read a test-configured progress percentage without inventing one."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise EvalGatewayError("fake evaluation progressPercent must be numeric")
+    return float(value)
 
 
 __all__ = ["FakeEvalGateway"]

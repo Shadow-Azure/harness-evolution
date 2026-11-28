@@ -8,7 +8,7 @@ id: bugfix-72
 milestone: bugfix
 depends: []
 priority: P2
-status: ready
+status: done
 scope:
   - apps/api/app/service/evolution/**
   - apps/api/app/third_party_api/**

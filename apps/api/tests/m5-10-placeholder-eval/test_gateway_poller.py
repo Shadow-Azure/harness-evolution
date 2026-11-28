@@ -1009,3 +1009,34 @@ class _UnusedEvolutionWrites:
 
     async def write_final(self, *args: Any, **kwargs: Any) -> Any:
         raise AssertionError("gateway construction must not write")
+
+
+async def test_fake_gateway_exposes_configured_timing_and_progress() -> None:
+    """Tests can construct a queued-then-running lifecycle from config."""
+    started_at = datetime(2026, 10, 28, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    gateway = FakeEvalGateway(
+        EvalGatewayConfig.from_mapping(
+            {
+                "status": "running",
+                "startedAt": started_at.isoformat(),
+                "progressPercent": 42.5,
+            },
+        ),
+    )
+
+    status = await gateway.get_status("fake:run-eval:round-eval:" + "b" * 40)
+
+    assert status.started_at == started_at
+    assert status.progress_percent == 42.5
+
+
+async def test_fake_gateway_rejects_a_naive_started_at() -> None:
+    """A configured start time must be timezone-aware like the platform."""
+    gateway = FakeEvalGateway(
+        EvalGatewayConfig.from_mapping(
+            {"status": "running", "startedAt": "2026-10-28T10:00:00"},
+        ),
+    )
+
+    with pytest.raises(EvalGatewayError, match="timezone"):
+        await gateway.get_status("fake:run-eval:round-eval:" + "b" * 40)

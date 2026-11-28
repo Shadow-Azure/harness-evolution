@@ -576,7 +576,7 @@ erDiagram
 | `created_by` | `VARCHAR(36)` | NULL | FK → `users.id` |
 | `created_at` / `updated_at` | `DATETIME` | NOT NULL | — |
 
-约束：`UNIQUE(workspace_id, object_type, object_name)`（V2 由全局唯一改含空间）；索引：`INDEX(enabled)`、`INDEX(workspace_id)`、`INDEX(workspace_id, attribution_package_id)`。`HE_AGENT_MATCH_BY_NAME` 不是列：默认关闭，只改变总览对 agent 目标的版本行聚合与关联过滤，报告与缓存仍以 `targetRevision` 为范围。
+约束：`UNIQUE(workspace_id, object_type, object_name)`（V2 由全局唯一改含空间）；索引：`INDEX(enabled)`、`INDEX(workspace_id)`、`INDEX(workspace_id, attribution_package_id)`。成员表 `evolution_target_members` 保存每个成员（`id/target_id/seq/object_type/object_name/sub_dir/match_by_name/definition/created_at`），约束 `UNIQUE(target_id, object_type, object_name)`、`UNIQUE(target_id, seq)`、`UNIQUE(workspace_id, object_type, object_name)`；`match_by_name BOOLEAN NOT NULL DEFAULT false` 只对 skill/agent 成员生效，knowledge 固定 false，仅改变该成员的 Session 关联与总览版本行聚合，报告与缓存仍以 `targetRevision` 为范围。没有成员行的历史目标在读取时合成一个 `match_by_name=false` 的成员。
 
 ### 5.1.1 `attribution_skill_packages` / `attribution_skill_package_bindings` —— 空间 Skill 包
 
@@ -650,6 +650,7 @@ erDiagram
 
 > `repo_url` 指向**被进化对象（skill/agent）所在的 git 仓库**，不是自进化服务代码仓。一次 run 的仓库生命周期：clone 到 `repo_path` 缓存 → 复制到独立 `workspace_path` → checkout `target_version`（解析 `base_commit`）→ 建 `branch_name` → 每轮从 run 分支拉 `candidate_ref`、应用 `patch`、commit、push → 外部评测 → 接纳后 fast-forward run 分支、拒绝删除 candidate ref。仓库记录代码/分支/commit，`evolution_rounds` / `evolution_run_events` 记录过程与评测/接纳结果；后端只做 git 操作，不执行仓库里的脚本，评测由外部 gateway 完成。
 > `repo_url`、`sub_dir`、`push_repo_url` 都是创建 run 时或 prepare 时的快照；`push_repo_url` 由 provider 从 `repo_url` 自动派生，eval 复用，保证 push 与 eval 同一个可 fetch 的仓。target 不新增 push/eval 字段；凭据只来自部署级 env，不落库。`validation_project_id` / `test_project_id` 采用同一快照语义。
+> 多成员 run 在 `evolution_run_targets` 按 `seq` 保存每个成员（`object_type/object_name/target_version/target_revision/sub_dir/match_by_name/base_commit`）；`match_by_name` 冻结创建时的成员开关，历史 run 默认 false，配置后改不回写历史快照。
 
 ### 5.3 `probe_clusters` —— 本次 run 的聚类结果
 
@@ -713,7 +714,7 @@ erDiagram
 | `eval_status` | `VARCHAR(16)` | `pending` / `evaluating` / `completed` / `failed` / `timeout` |
 | `eval_attempts` | `INTEGER` | 提交评测次数 |
 | `eval_next_poll_at` | DATETIME NULL | 下一次轮询评测状态的时间 |
-| `eval_started_at` / `eval_finished_at` | DATETIME NULL | 评测起止 |
+| `eval_started_at` / `eval_finished_at` | DATETIME NULL | 评测提交 / 结束时间；执行预算从平台 `started_at` 起算 |
 | `eval_current` / `eval_candidate` | DOUBLE | 评测分（V1 占位） |
 | `eval_result` | JSON NULL | 评测平台返回的规范化结果 + 原始 payload |
 | `eval_error` | `TEXT` NULL | 评测失败/超时摘要（脱敏） |
@@ -737,7 +738,7 @@ erDiagram
 | `run_id` | `VARCHAR(36)` FK → `evolution_runs.id` ON DELETE CASCADE | 归属 run |
 | `kind` | `VARCHAR(32)` | `validation_baseline` / `test_baseline` / `test_final` |
 | `eval_external_id` / `eval_status` / `eval_attempts` / `eval_next_poll_at` | — | 平台任务 ID、状态、尝试次数与下次轮询时间 |
-| `eval_started_at` / `eval_finished_at` / `eval_paused_seconds` | — | 观察时间与暂停扣除 |
+| `eval_started_at` / `eval_finished_at` / `eval_paused_seconds` | — | 提交与结束时刻；排队/执行预算与暂停扣除 |
 | `eval_score` / `eval_result` / `eval_error` | — | 主指标分数、原始指标项与脱敏错误 |
 | `created_at` | `DATETIME` NOT NULL | — |
 

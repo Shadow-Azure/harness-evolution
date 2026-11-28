@@ -36,6 +36,7 @@ from app.errors import AppError, ErrorCode
 from app.service.evolution.attribution_contracts import REPORT_SCHEMA_VERSION
 from app.service.evolution.potential import (
     MatchCondition,
+    MatchTarget,
     PotentialMatch,
     PotentialMatcher,
     ResolvedPolicy,
@@ -574,14 +575,14 @@ def _build_version_labels(
     return ordered, labels
 
 
-def _agent_name_aliases(
+def _name_match_aliases(
     default_ref: str,
     resolved: ResolvedTargetVersion | None,
     links: Sequence[AttributionLinkRecord],
 ) -> frozenset[str]:
-    """Accept every persisted identity that belongs to one agent's name row.
+    """Accept every persisted identity that belongs to one member's name row.
 
-    Name mode folds an agent's digests into a single configured-ref row. The
+    Name mode folds a member's digests into a single configured-ref row. The
     aliases keep historical report versions readable under that row so folding
     never zeroes the attributed/nonTarget counts.
     """
@@ -665,7 +666,6 @@ class TargetOverviewService:
         matcher: PotentialMatcher,
         resolver: TargetVersionResolver,
         *,
-        agent_match_by_name: bool = False,
         resolve_timeout_seconds: float = OVERVIEW_RESOLVE_TIMEOUT_SECONDS,
         failure_ttl_seconds: float = OVERVIEW_FAILURE_TTL_SECONDS,
     ) -> None:
@@ -674,7 +674,6 @@ class TargetOverviewService:
         self._repository = repository
         self._matcher = matcher
         self._resolver = resolver
-        self._agent_match_by_name = agent_match_by_name
         self._policy: ResolvedPolicy = resolve_policy(None)
         self._resolve_timeout = resolve_timeout_seconds
         self._failure_ttl = failure_ttl_seconds
@@ -1027,7 +1026,7 @@ class TargetOverviewService:
             for link in links
             if link.report_schema_version == REPORT_SCHEMA_VERSION and link.object_version
         }
-        name_matched = self._agent_match_by_name and target.object_type == "agent"
+        name_matched = target.match_by_name
         if name_matched:
             versions, labels, resolved = await self._name_matched_version(
                 target,
@@ -1079,7 +1078,6 @@ class TargetOverviewService:
                     workspace_id=workspace_id,
                     window_start=window_start,
                     window_end=window_end,
-                    match_by_name=name_matched,
                 )
                 sessions.update(item.session_id for item in association.sessions)
                 case_ids.update(item.bad_case_id for item in match.included)
@@ -1112,7 +1110,7 @@ class TargetOverviewService:
         runs: Sequence[TargetRunVersionRecord],
         links: Sequence[AttributionLinkRecord],
     ) -> tuple[tuple[str, ...], dict[str, TargetVersionLabel], list[ResolvedTargetVersion | None]]:
-        """Build the single configured-ref row used for an agent under name mode."""
+        """Build the single configured-ref row used for a name-matched member."""
         version = _known_version(target.default_ref) or target.default_ref
         resolved = await self._resolve_version(target, version)
         revision = resolved.target_revision if resolved is not None else None
@@ -1122,7 +1120,7 @@ class TargetOverviewService:
             digest=digest,
             ref=version,
             commit=_name_match_commit(runs, target.default_ref, revision),
-            aliases=_agent_name_aliases(target.default_ref, resolved, links),
+            aliases=_name_match_aliases(target.default_ref, resolved, links),
         )
         return (version,), {version: label}, [resolved]
 
@@ -1214,13 +1212,11 @@ class TargetOverviewService:
         workspace_id: str,
         window_start: datetime,
         window_end: datetime,
-        match_by_name: bool = False,
     ) -> tuple[SessionAssociation, PotentialMatch]:
         """Run the shared matcher for one already-resolved target version.
 
-        ``match_by_name`` makes the agent name row ignore revision filtering at
-        this call site as well as in the matcher, so a service wired with the
-        switch cannot silently fall back to hash-only association.
+        The condition carries the member's own name-matching switch so the
+        shared matcher, not this call site, owns the revision-filter decision.
         """
         condition = MatchCondition(
             workspace_id=workspace_id,
@@ -1230,10 +1226,19 @@ class TargetOverviewService:
             target_revision=resolved.target_revision,
             window_start=window_start,
             window_end=window_end,
+            targets=(
+                MatchTarget(
+                    object_type=target.object_type,
+                    object_name=target.object_name,
+                    target_version=resolved.target_version,
+                    target_revision=resolved.target_revision,
+                    match_by_name=target.match_by_name,
+                ),
+            ),
         )
         association = await self._matcher.associated_sessions(
             condition,
-            observed_revisions=None if match_by_name else condition.revision_candidates,
+            observed_revisions=condition.revision_candidates,
         )
         match = await self._matcher.potential_cases(condition, association, self._policy)
         return association, match
@@ -1283,6 +1288,7 @@ def _member_target(
         sub_dir=member.sub_dir,
         attribution_snapshot=snapshot or None,
         members=(member,),
+        match_by_name=member.match_by_name,
     )
 
 
